@@ -28,8 +28,8 @@
 
 ### 1.3 目标用户
 
-- AI Agent: 通过 CLI JSON 输出或 Python SDK 调用分析功能
-- 开发者: 直接使用 CLI 工具或 REPL 模式进行交互式分析
+- **AI Agent** (主要用户): 通过 CLI JSON 输出或 Python SDK 调用分析功能
+- **开发者**: 通过 CLI 工具查看分析结果，或通过 SDK 集成到自动化工作流
 
 ---
 
@@ -38,12 +38,12 @@
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     用户交互层                               │
-├─────────────────────┬─────────────────────┬─────────────────┤
-│     CLI 命令行       │   REPL 交互模式      │    AI Agent     │
-│  pt-snap analyze    │  pt-snap repl       │  调用 SDK 或     │
-│  pt-snap query      │  (探索/保存查询)    │  解析 CLI JSON  │
-│  pt-snap rag add    │                     │                 │
-└─────────┬───────────┴─────────────────────┴────────┬────────┘
+├─────────────────────┬───────────────────────────────────────┤
+│     CLI 命令行       │         AI Agent                      │
+│  pt-snap analyze    │  ┌─────────────────────────────────┐  │
+│  pt-snap query      │  │  调用 SDK 或解析 CLI JSON 输出    │  │
+│  pt-snap rag add    │  └─────────────────────────────────┘  │
+└─────────┬───────────┴───────────────────────────────────────┘
           │                                          │
 ┌─────────▼──────────────────────────────────────────▼────────┐
 │                    Python SDK/API                            │
@@ -214,20 +214,7 @@ $ pt-snap query exec <query_name> --format table
 $ pt-snap query custom "SELECT ..." --json
 ```
 
-#### 4.1.4 REPL 模式
-
-```bash
-$ pt-snap repl
-
-# 支持的命令:
-snapshot> show tables
-snapshot> describe trace_entry_0
-snapshot> SELECT ... (直接执行 SQL)
-snapshot> save query <name> --description "..."
-snapshot> generate python
-```
-
-#### 4.1.5 RAG 命令
+#### 4.1.4 RAG 命令
 
 ```bash
 # 添加案例到知识库
@@ -419,13 +406,10 @@ output_schema:
   - column_name: type
 ```
 
-### 5.3 REPL 探索模式
-
-支持的功能:
-- 直接执行 SQL 查询
-- 查看表结构
-- 保存查询为配置文件
-- 生成 Python SDK 代码
+**新增/更新查询配置的方式**：
+- AI Agent 可通过 `pt-snap rag add` 命令将成功的分析路径归档时，同时保存查询配置
+- 开发者可直接编辑 YAML 配置文件添加新查询
+- SDK 提供 `QueryConfig.save()` API 用于编程方式添加查询
 
 ---
 
@@ -490,6 +474,7 @@ output_schema:
 - [ ] JSON 输出格式定义
 - [ ] 基础单元测试
 - [ ] 预定义查询配置系统
+- [ ] AI Agent 调用示例/文档
 
 ### 阶段 2: SDK + 高级分析 (2-3 周)
 
@@ -501,8 +486,8 @@ output_schema:
 - [ ] 趋势分析 (trend_analyzer)
 - [ ] 调用栈分析 (stack_analyzer)
 - [ ] 对比分析 (comparator)
-- [ ] REPL 交互模式
-- [ ] AI Agent 调用示例/文档
+- [ ] 查询配置管理 API
+- [ ] SDK 使用文档
 
 ### 阶段 3: RAG 知识库集成 (2-3 周)
 
@@ -603,9 +588,6 @@ pt-snap analyze stack [--top-k N]
 pt-snap query list
 pt-snap query exec <query_name> [--format table|json]
 pt-snap query custom "<sql>" [--json]
-
-# REPL
-pt-snap repl
 
 # RAG
 pt-snap rag add --case <id> --conclusion "..." --tags "..."
