@@ -64,4 +64,6 @@
 - [ ] README.md 包含 API 文档链接（未要求）
 
 ## Version Control
-- [ ] 所有 changes committed（等待用户确认）
+- [x] 所有 changes committed
+- [x] Commit message 清晰描述变更
+- [x] Git log 历史清晰
