@@ -1,0 +1,25 @@
+version: "1.0"
+queries:
+  memory_summary_v2:
+    description: Get memory statistics by device
+    devices:
+      - all
+    parameters:
+      device_id:
+        type: int
+        default: 0
+        required: false
+        description: Device ID to query
+    query: |
+      SELECT
+        COUNT(*) as block_count,
+        SUM(size) as total_size,
+        AVG(size) as avg_size
+      FROM {{ device_block_table }}
+    output_schema:
+      - column: block_count
+        type: int
+      - column: total_size
+        type: int
+      - column: avg_size
+        type: float

@@ -2,4 +2,4 @@
 
 from pt_snap_analyzer.version import __version__
 
-__all__ = ["__version__"]
+__all__ = ["__version__", "query"]

@@ -1,0 +1,34 @@
+version: "1.0"
+queries:
+  leak_detection_v2:
+    description: Detect memory leaks by finding allocations without free events
+    devices:
+      - all
+      - "0"
+      - "1"
+    parameters:
+      min_size:
+        type: int
+        default: 0
+        required: false
+        description: Minimum leak size in bytes
+      device_id:
+        type: int
+        default: null
+        required: false
+        description: Device ID to query
+    query: |
+      SELECT id, address, size, allocEventId
+      FROM {{ device_block_table }}
+      WHERE size >= {{ min_size }}
+        AND (allocEventId >= 0 AND (freeEventId IS NULL OR freeEventId < 0))
+      ORDER BY size DESC
+    output_schema:
+      - column: id
+        type: int
+      - column: address
+        type: hex
+      - column: size
+        type: int
+      - column: allocEventId
+        type: int

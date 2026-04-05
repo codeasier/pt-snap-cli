@@ -1,0 +1,34 @@
+version: "1.0"
+queries:
+  events_by_action_v2:
+    description: Get events filtered by action type
+    devices:
+      - all
+    parameters:
+      action:
+        type: int
+        default: null
+        required: true
+        description: Action type to filter (0=alloc, 1=free)
+      limit:
+        type: int
+        default: 100
+        required: false
+        description: Maximum rows to return
+    query: |
+      SELECT * FROM {{ device_trace_table }}
+      WHERE action = {{ action }}
+      LIMIT {{ limit }}
+    output_schema:
+      - column: id
+        type: int
+      - column: action
+        type: int
+      - column: timestamp
+        type: int
+      - column: address
+        type: hex
+      - column: size
+        type: int
+      - column: streamId
+        type: int

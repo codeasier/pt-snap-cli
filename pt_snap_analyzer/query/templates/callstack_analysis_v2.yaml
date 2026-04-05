@@ -1,0 +1,43 @@
+version: "1.0"
+queries:
+  callstack_analysis_v2:
+    description: Analyze memory allocation by callstack
+    devices:
+      - all
+      - "0"
+      - "1"
+    parameters:
+      min_count:
+        type: int
+        default: 5
+        required: false
+        description: Minimum allocation count to include
+      min_size:
+        type: int
+        default: 0
+        required: false
+        description: Minimum total size in bytes
+    query: |
+      SELECT
+        callstack,
+        COUNT(*) as alloc_count,
+        SUM(size) as total_size,
+        AVG(size) as avg_size,
+        MAX(size) as max_size
+      FROM {{ device_trace_table }}
+      WHERE callstack IS NOT NULL
+      GROUP BY callstack
+      HAVING alloc_count >= {{ min_count }}
+        AND total_size >= {{ min_size }}
+      ORDER BY total_size DESC
+    output_schema:
+      - column: callstack
+        type: str
+      - column: alloc_count
+        type: int
+      - column: total_size
+        type: int
+      - column: avg_size
+        type: float
+      - column: max_size
+        type: int

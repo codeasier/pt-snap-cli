@@ -1,0 +1,37 @@
+version: "1.0"
+queries:
+  blocks_by_size_v2:
+    description: Get blocks filtered by size range
+    devices:
+      - all
+    parameters:
+      min_size:
+        type: int
+        default: 0
+        required: false
+        description: Minimum block size
+      max_size:
+        type: int
+        default: null
+        required: false
+        description: Maximum block size
+      limit:
+        type: int
+        default: 100
+        required: false
+        description: Maximum rows to return
+    query: |
+      SELECT * FROM {{ device_block_table }}
+      WHERE size >= {{ min_size }}
+      {% if max_size is not none %}AND size <= {{ max_size }}{% endif %}
+      ORDER BY size DESC
+      LIMIT {{ limit }}
+    output_schema:
+      - column: id
+        type: int
+      - column: address
+        type: hex
+      - column: size
+        type: int
+      - column: active
+        type: int
