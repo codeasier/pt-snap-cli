@@ -1,0 +1,79 @@
+name: 🔄 Pull Request
+description: 提交代码变更请求
+title: "[PR] "
+labels: ["bug", "enhancement", "documentation", "question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢提交 Pull Request！请填写以下表单。
+  
+  - type: textarea
+    id: description
+    attributes:
+      label: 变更说明
+      description: 清晰简洁地描述你的变更内容
+    validations:
+      required: true
+  
+  - type: textarea
+    id: related_issues
+    attributes:
+      label: 关联 Issue
+      description: 关联的 Issue 编号，如 Fixes #123
+      render: shell
+    validations:
+      required: false
+  
+  - type: checkboxes
+    id: pr_type
+    attributes:
+      label: 变更类型
+      options:
+        - label: Bug fix (修复了一个非破坏性的 bug)
+        - label: New feature (添加了一个新功能)
+        - label: Breaking change (修复或功能变更会导致现有功能失效)
+        - label: Documentation update (文档更新)
+        - label: Refactoring (代码重构，无功能变更)
+        - label: Performance improvement (性能优化)
+        - label: Test improvement (测试改进)
+        - label: Other (其他)
+    validations:
+      required: true
+  
+  - type: textarea
+    id: test_plan
+    attributes:
+      label: 测试计划
+      description: 描述你是如何测试这些变更的
+      value: |
+        - [ ] 已添加自动化测试
+        - [ ] 已手动测试
+        - [ ] 测试步骤：
+          1. 
+          2. 
+          3. 
+    validations:
+      required: true
+  
+  - type: textarea
+    id: checklist
+    attributes:
+      label: 自检清单
+      description: 确保你的 PR 满足以下条件
+      value: |
+        - [ ] 代码遵循项目的代码规范
+        - [ ] 已进行自我代码审查
+        - [ ] 更新了相关文档
+        - [ ] 没有引入新的警告
+        - [ ] 如果有必要，已通知团队其他成员
+    validations:
+      required: true
+  
+  - type: textarea
+    id: additional
+    attributes:
+      label: 补充信息
+      description: 任何额外的上下文、截图等
+    validations:
+      required: false

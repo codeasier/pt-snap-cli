@@ -1,0 +1,62 @@
+name: ✨ Feature Request
+description: 提出新功能建议
+title: "[FEATURE] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢提出建议！请填写以下表单。
+  
+  - type: textarea
+    id: description
+    attributes:
+      label: 功能描述
+      description: 清晰简洁地描述你希望添加的功能
+    validations:
+      required: true
+  
+  - type: textarea
+    id: use_case
+    attributes:
+      label: 使用场景
+      description: 描述这个功能会解决什么问题，或带来什么价值
+    validations:
+      required: true
+  
+  - type: textarea
+    id: implementation
+    attributes:
+      label: 期望的实现方式
+      description: 描述你希望这个功能如何工作
+    validations:
+      required: false
+  
+  - type: textarea
+    id: examples
+    attributes:
+      label: 示例
+      description: 如果适用，提供使用示例
+      render: shell
+    validations:
+      required: false
+  
+  - type: textarea
+    id: references
+    attributes:
+      label: 参考资源
+      description: 相关的参考资料、类似工具的实现等
+    validations:
+      required: false
+  
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 列出功能完成时需要满足的条件
+      value: |
+        - [ ] 
+        - [ ] 
+        - [ ] 
+    validations:
+      required: false
