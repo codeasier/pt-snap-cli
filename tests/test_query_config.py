@@ -2,7 +2,7 @@
 
 import pytest
 
-from pt_snap_analyzer.query.config import QueryConfig, QueryParameter, QueryTemplate
+from pt_snap_cli.query.config import QueryConfig, QueryParameter, QueryTemplate
 
 
 class TestQueryParameter:

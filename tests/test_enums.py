@@ -1,6 +1,6 @@
 """Tests for enum types."""
 
-from pt_snap_analyzer.models._enums import BlockState, EventType
+from pt_snap_cli.models._enums import BlockState, EventType
 
 
 class TestEventType:

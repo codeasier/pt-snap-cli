@@ -1,13 +1,13 @@
-"""CLI entry point for pt-snap-analyzer."""
+"""CLI entry point for pt-snap-cli."""
 
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from pt_snap_analyzer import __version__
-from pt_snap_analyzer.config import Config
-from pt_snap_analyzer.context import Context
+from pt_snap_cli import __version__
+from pt_snap_cli.config import Config
+from pt_snap_cli.context import Context
 
 app = typer.Typer(
     name="pt-snap",
@@ -19,7 +19,7 @@ app = typer.Typer(
 def version_callback(value: bool) -> None:
     """Callback for --version flag."""
     if value:
-        typer.echo(f"pt-snap-analyzer version {__version__}")
+        typer.echo(f"pt-snap-cli version {__version__}")
         raise typer.Exit()
 
 
@@ -99,9 +99,9 @@ def query_database(
         pt-snap query custom.db --template-use leak_detection_v2  # Override with custom path
         pt-snap query --template-info leak_detection_v2
     """
-    from pt_snap_analyzer.query import QueryExecutor
-    from pt_snap_analyzer.query.registry import list_queries_with_details, get_template_info
-    from pt_snap_analyzer.config import Config
+    from pt_snap_cli.query import QueryExecutor
+    from pt_snap_cli.query.registry import list_queries_with_details, get_template_info
+    from pt_snap_cli.config import Config
 
     if list_templates:
         details = list_queries_with_details()

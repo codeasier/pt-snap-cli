@@ -46,7 +46,7 @@ run_tests() {
     echo "========================================"
     
     pytest "${test_pattern}" \
-        --cov=pt_snap_analyzer \
+        --cov=pt_snap_cli \
         --cov-report=html:"${REPORTS_DIR}/htmlcov" \
         --cov-report=xml:"${REPORTS_DIR}/xml/coverage.xml" \
         --cov-report=term-missing \

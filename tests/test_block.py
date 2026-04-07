@@ -1,6 +1,6 @@
 """Tests for MemoryBlock model."""
 
-from pt_snap_analyzer.models import BlockState, MemoryBlock
+from pt_snap_cli.models import BlockState, MemoryBlock
 
 
 class TestMemoryBlock:

@@ -1,4 +1,4 @@
-"""Configuration management for pt-snap-analyzer."""
+"""Configuration management for pt-snap-cli."""
 
 from __future__ import annotations
 
@@ -8,15 +8,15 @@ from typing import Any
 
 
 class Config:
-    """Configuration manager for pt-snap-analyzer.
+    """Configuration manager for pt-snap-cli.
     
     Manages user configuration including current database path.
-    Configuration is stored in ~/.config/pt-snap-analyzer/config.json
+    Configuration is stored in ~/.config/pt-snap-cli/config.json
     """
     
     def __init__(self) -> None:
         """Initialize configuration manager."""
-        self.config_dir = Path.home() / ".config" / "pt-snap-analyzer"
+        self.config_dir = Path.home() / ".config" / "pt-snap-cli"
         self.config_file = self.config_dir / "config.json"
         self._config: dict[str, Any] = {}
         self._load()

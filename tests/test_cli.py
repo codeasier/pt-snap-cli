@@ -8,9 +8,9 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from pt_snap_analyzer.cli import app
-from pt_snap_analyzer.query.config import QueryTemplate
-from pt_snap_analyzer.query.registry import QueryRegistry, register_query
+from pt_snap_cli.cli import app
+from pt_snap_cli.query.config import QueryTemplate
+from pt_snap_cli.query.registry import QueryRegistry, register_query
 
 runner = CliRunner()
 
@@ -73,7 +73,7 @@ def sample_db(tmp_path: Path) -> Path:
 @pytest.fixture
 def config_with_db(tmp_path: Path, sample_db: Path) -> None:
     """Set up config with sample database."""
-    config_dir = tmp_path / ".config" / "pt-snap-analyzer"
+    config_dir = tmp_path / ".config" / "pt-snap-cli"
     config_dir.mkdir(parents=True)
     config_file = config_dir / "config.json"
     config_file.write_text(json.dumps({"current_db_path": str(sample_db)}))
@@ -101,7 +101,7 @@ class TestCLI:
         """Test --version flag."""
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
-        assert "pt-snap-analyzer version" in result.stdout
+        assert "pt-snap-cli version" in result.stdout
 
     def test_help_flag(self) -> None:
         """Test --help flag."""
@@ -143,7 +143,7 @@ class TestQueryCommandErrors:
     
     def test_query_with_config(self, tmp_path: Path, sample_db: Path) -> None:
         """Test 'query' command uses configured database."""
-        config_dir = tmp_path / ".config" / "pt-snap-analyzer"
+        config_dir = tmp_path / ".config" / "pt-snap-cli"
         config_dir.mkdir(parents=True)
         config_file = config_dir / "config.json"
         config_file.write_text(json.dumps({"current_db_path": str(sample_db)}))
@@ -156,7 +156,7 @@ class TestQueryCommandErrors:
     
     def test_query_configured_db_not_found(self, tmp_path: Path) -> None:
         """Test 'query' command when configured database doesn't exist."""
-        config_dir = tmp_path / ".config" / "pt-snap-analyzer"
+        config_dir = tmp_path / ".config" / "pt-snap-cli"
         config_dir.mkdir(parents=True)
         config_file = config_dir / "config.json"
         config_file.write_text(json.dumps({"current_db_path": "/nonexistent/path.db"}))
@@ -197,7 +197,7 @@ class TestQueryTemplateInfo:
     
     def test_template_info_with_complex_parameters(self, sample_db: Path) -> None:
         """Test template info with various parameter types."""
-        from pt_snap_analyzer.query.config import QueryParameter
+        from pt_snap_cli.query.config import QueryParameter
         
         template = QueryTemplate(
             name="complex_template",
@@ -292,7 +292,7 @@ class TestQueryTemplateInfo:
 
     def test_use_show_current(self, tmp_path: Path, sample_db: Path) -> None:
         """Test 'use' command without arguments shows current database."""
-        config_dir = tmp_path / ".config" / "pt-snap-analyzer"
+        config_dir = tmp_path / ".config" / "pt-snap-cli"
         config_dir.mkdir(parents=True)
         config_file = config_dir / "config.json"
         config_file.write_text(json.dumps({"current_db_path": str(sample_db)}))
@@ -304,7 +304,7 @@ class TestQueryTemplateInfo:
 
     def test_use_no_database_set(self, tmp_path: Path) -> None:
         """Test 'use' command when no database is configured."""
-        config_dir = tmp_path / ".config" / "pt-snap-analyzer"
+        config_dir = tmp_path / ".config" / "pt-snap-cli"
         config_dir.mkdir(parents=True)
         
         result = runner.invoke(app, ["use"])
@@ -313,7 +313,7 @@ class TestQueryTemplateInfo:
 
     def test_use_database_not_exist_warning(self, tmp_path: Path) -> None:
         """Test 'use' command shows warning when configured database doesn't exist."""
-        config_dir = tmp_path / ".config" / "pt-snap-analyzer"
+        config_dir = tmp_path / ".config" / "pt-snap-cli"
         config_dir.mkdir(parents=True)
         config_file = config_dir / "config.json"
         config_file.write_text(json.dumps({"current_db_path": "/nonexistent/path.db"}))
@@ -325,7 +325,7 @@ class TestQueryTemplateInfo:
 
     def test_config_show(self, tmp_path: Path, sample_db: Path) -> None:
         """Test 'config' command shows configuration."""
-        config_dir = tmp_path / ".config" / "pt-snap-analyzer"
+        config_dir = tmp_path / ".config" / "pt-snap-cli"
         config_dir.mkdir(parents=True)
         config_file = config_dir / "config.json"
         config_file.write_text(json.dumps({"current_db_path": str(sample_db)}))
@@ -337,7 +337,7 @@ class TestQueryTemplateInfo:
 
     def test_config_clear(self, tmp_path: Path) -> None:
         """Test 'config --clear' command clears configuration."""
-        config_dir = tmp_path / ".config" / "pt-snap-analyzer"
+        config_dir = tmp_path / ".config" / "pt-snap-cli"
         config_dir.mkdir(parents=True)
         config_file = config_dir / "config.json"
         config_file.write_text(json.dumps({"current_db_path": "/some/path.db"}))
@@ -351,7 +351,7 @@ class TestQueryTemplateInfo:
 
     def test_config_no_config(self, tmp_path: Path) -> None:
         """Test 'config' command when no config exists."""
-        config_dir = tmp_path / ".config" / "pt-snap-analyzer"
+        config_dir = tmp_path / ".config" / "pt-snap-cli"
         config_dir.mkdir(parents=True)
         
         result = runner.invoke(app, ["config"])
@@ -363,7 +363,7 @@ class TestQueryTemplateInfo:
         result = runner.invoke(app, ["config", "--path"])
         assert result.exit_code == 0
         assert "Config file" in result.stdout
-        assert "pt-snap-analyzer" in result.stdout
+        assert "pt-snap-cli" in result.stdout
 
 
 class TestQueryCommand:
@@ -386,7 +386,7 @@ class TestQueryCommand:
 
     def test_query_template_info(self, sample_db: Path) -> None:
         """Test 'query --template-info' command."""
-        from pt_snap_analyzer.query.config import QueryParameter
+        from pt_snap_cli.query.config import QueryParameter
         
         template = QueryTemplate(
             name="info_template",

@@ -2,8 +2,8 @@
 
 import pytest
 
-from pt_snap_analyzer.query.builder import QueryBuilder
-from pt_snap_analyzer.query.condition import And, Equal, GreaterThan, In, Or
+from pt_snap_cli.query.builder import QueryBuilder
+from pt_snap_cli.query.condition import And, Equal, GreaterThan, In, Or
 
 
 class TestQueryBuilder:

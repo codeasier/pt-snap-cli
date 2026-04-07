@@ -1,6 +1,6 @@
 """Tests for models package exports."""
 
-from pt_snap_analyzer.models import BlockState, EventType, MemoryBlock, MemoryEvent
+from pt_snap_cli.models import BlockState, EventType, MemoryBlock, MemoryEvent
 
 
 class TestModelsExport:

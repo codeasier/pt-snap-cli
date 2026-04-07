@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from pt_snap_analyzer.config import Config
+from pt_snap_cli.config import Config
 
 
 class TestConfig:
@@ -130,7 +130,7 @@ class TestConfig:
         original_home = Path.home
         Path.home = lambda: tmp_path
         try:
-            config_dir = tmp_path / ".config" / "pt-snap-analyzer"
+            config_dir = tmp_path / ".config" / "pt-snap-cli"
             config_dir.mkdir(parents=True)
             config_file = config_dir / "config.json"
             
@@ -153,7 +153,7 @@ class TestConfig:
         original_home = Path.home
         Path.home = lambda: tmp_path
         try:
-            config_dir = tmp_path / ".config" / "pt-snap-analyzer"
+            config_dir = tmp_path / ".config" / "pt-snap-cli"
             config_dir.mkdir(parents=True)
             config_file = config_dir / "config.json"
             config_file.write_text("invalid json {")

@@ -1,149 +1,269 @@
-# pt-snap-analyzer
+# pt-snap-cli
 
-PyTorch Memory Snapshot Analysis Tool - 用于分析 PyTorch 内存快照的命令行工具。
+[中文文档](README_zh.md) | English
 
-## 安装
+PyTorch Memory Snapshot Analysis CLI - A command-line tool for analyzing PyTorch memory snapshots.
+
+## Installation
 
 ```bash
 pip install -e .
 ```
 
-## 使用方法
+## Usage
 
-### pt-snap CLI 使用
+### pt-snap CLI Usage
 
-#### 1. 查看版本
+#### 1. Check Version
 
 ```bash
 pt-snap --version
 ```
 
-#### 2. 设置数据库
+#### 2. Set Database
 
-使用 snapshot 数据库文件：
+Use a snapshot database file:
 
 ```bash
 pt-snap use <path/to/snapshot.pkl.db>
 ```
 
-示例：
+Example:
 ```bash
 pt-snap use examples/snapshot_large.pickle.db
 ```
 
-该命令会验证数据库并显示可用的设备列表。
+This command validates the database and displays the list of available devices.
 
-#### 3. 执行查询
+### Configuration Management
 
-使用 `query` 命令执行内存分析查询：
+`pt-snap` supports saving context state to avoid specifying the database path every time during analysis.
+
+#### Set Current Database
+
+```bash
+# Set and validate database
+pt-snap use /path/to/your/snapshot.db
+```
+
+After successful setup, the database path is automatically saved to `~/.config/pt-snap-cli/config.json`.
+
+#### View Current Configuration
+
+```bash
+# View current database
+pt-snap use
+```
+
+#### Query with Configuration (No dbpath Needed)
+
+```bash
+# List all query templates
+pt-snap query --list
+
+# Execute query (automatically uses configured database)
+pt-snap query --template-use memory_summary_v2
+
+# Query with parameters
+pt-snap query --template-use leak_detection_v2 --params '{"min_size": 1024}'
+
+# Specify device
+pt-snap query --template-use active_blocks_v2 --device 0
+```
+
+#### Override Configured Database
+
+Even with a configured database, you can still specify a different database on the command line:
+
+```bash
+# Use temporarily specified database (does not affect configuration)
+pt-snap query /path/to/other.db --template-use memory_summary_v2
+```
+
+#### Manage Configuration
+
+```bash
+# View complete configuration
+pt-snap config
+
+# View configuration file path
+pt-snap config --path
+
+# Clear all configuration
+pt-snap config --clear
+```
+
+#### Configuration File Location
+
+Configuration file is saved at: `~/.config/pt-snap-cli/config.json`
+
+Configuration content example:
+```json
+{
+  "current_db_path": "/path/to/your/snapshot.db"
+}
+```
+
+#### Error Handling
+
+**Query without configured database:**
+
+```bash
+pt-snap query --template-use memory_summary_v2
+# Error: No database path specified and no database configured.
+# Use 'pt-snap use <database_path>' to set a database, or provide db_path argument.
+```
+
+**Configured database file does not exist:**
+
+If the configured database file is deleted or moved, the system automatically clears the configuration and prompts:
+
+```bash
+pt-snap query --template-use memory_summary_v2
+# Error: Configured database not found: /path/to/missing.db
+# Use 'pt-snap use <new_database_path>' to set a new database.
+```
+
+#### Complete Workflow Example
+
+```bash
+# 1. First use, set database
+pt-snap use examples/snapshot_expandable.pkl.db
+
+# 2. Then query directly without repeating path
+pt-snap query --template-use memory_summary_v2
+pt-snap query --template-use active_blocks_v2 --device 0
+pt-snap query --template-use leak_detection_v2
+
+# 3. View current configuration
+pt-snap config
+
+# 4. If need to switch to other database
+pt-snap use /path/to/new_snapshot.db
+
+# 5. Clear configuration
+pt-snap config --clear
+```
+
+#### Advantages
+
+1. **Improve Efficiency**: No need to enter full database path every query
+2. **Reduce Errors**: Avoid query failures due to path input errors
+3. **Flexible Override**: Still supports specifying different database paths when needed
+4. **Auto Cleanup**: Automatically clears configuration when configured database file doesn't exist
+5. **Transparent Configuration**: Can easily view and manage configuration
+
+### Execute Queries
+
+Use the `query` command to perform memory analysis queries:
 
 ```bash
 pt-snap query [--template-use <template_name>] [--params <json>] [--device <id>] [--list] [--template-info <template>]
 ```
 
-**参数说明：**
-- `db_path`: SQLite 数据库文件路径（可选，已配置时不需要）
-- `--template-use`: 查询模板名称（必需，除非使用 --list 或 --template-info）
-- `--params`: JSON 格式的查询参数（可选）
-- `--device`: 设备 ID（可选）
-- `--list`: 列出可用的查询模板
-- `--template-info <template>`: 显示指定模板的详细信息（参数和输出 schema）
+**Parameters:**
+- `db_path`: SQLite database file path (optional if configured)
+- `--template-use`: Query template name (required unless using --list or --template-info)
+- `--params`: Query parameters in JSON format (optional)
+- `--device`: Device ID (optional)
+- `--list`: List available query templates
+- `--template-info <template>`: Show detailed information about a specific template (parameters and output schema)
 
-**示例：**
+**Examples:**
 
-列出所有可用的查询模板：
+List all available query templates:
 ```bash
 pt-snap query --list
 ```
 
-使用模板查询（泄漏检测）：
+Query using template (leak detection):
 ```bash
 pt-snap query --template-use leak_detection_v2 --params '{"min_size": 1024}'
 ```
 
-指定设备查询：
+Query specific device:
 ```bash
 pt-snap query --template-use active_blocks_v2 --device 0
 ```
 
-查看模板详细信息：
+View template details:
 ```bash
 pt-snap query --template-info leak_detection_v2
 ```
 
-### Query 功能使用
+### Query Module Usage
 
-Query 模块提供了强大的内存快照查询功能，支持模板化查询和参数化配置。
+The Query module provides powerful memory snapshot query functionality with template-based queries and parameterized configuration.
 
-#### 可用的查询模板
+#### Available Query Templates
 
-1. **leak_detection_v2** - 内存泄漏检测
+1. **leak_detection_v2** - Memory Leak Detection
    
-   检测没有释放事件的内存分配。
+   Detects memory allocations without free events.
    
    ```bash
    pt-snap query --template-use leak_detection_v2 --params '{"min_size": 1024}'
    ```
    
-   参数：
-   - `min_size`: 最小泄漏大小（字节），默认 1024
-   - `device_id`: 设备 ID
+   Parameters:
+   - `min_size`: Minimum leak size (bytes), default 1024
+   - `device_id`: Device ID
 
-2. **callstack_analysis_v2** - 调用栈分析
+2. **callstack_analysis_v2** - Callstack Analysis
    
-   分析内存分配的调用栈信息。
+   Analyzes callstack information for memory allocations.
    
    ```bash
    pt-snap query --template-use callstack_analysis_v2
    ```
 
-3. **memory_timeline_v2** - 内存时间线
+3. **memory_timeline_v2** - Memory Timeline
    
-   展示内存分配的时间线信息。
+   Shows timeline information for memory allocations.
    
    ```bash
    pt-snap query --template-use memory_timeline_v2
    ```
 
-4. **active_blocks_v2** - 活跃内存块
+4. **active_blocks_v2** - Active Memory Blocks
    
-   查看当前活跃的内存块。
+   View currently active memory blocks.
    
    ```bash
    pt-snap query --template-use active_blocks_v2
    ```
 
-5. **memory_summary_v2** - 内存摘要
+5. **memory_summary_v2** - Memory Summary
    
-   显示内存使用统计摘要。
+   Display memory usage statistics summary.
    
    ```bash
    pt-snap query --template-use memory_summary_v2
    ```
 
-6. **blocks_by_size_v2** - 按大小排序的块
+6. **blocks_by_size_v2** - Blocks by Size
    
-   按分配大小排序显示内存块。
+   Display memory blocks sorted by allocation size.
    
    ```bash
    pt-snap query --template-use blocks_by_size_v2
    ```
 
-7. **events_by_action_v2** - 按动作分类的事件
+7. **events_by_action_v2** - Events by Action
    
-   按动作类型分组显示事件。
+   Display events grouped by action type.
    
    ```bash
    pt-snap query --template-use events_by_action_v2
    ```
 
-#### 查询输出
+#### Query Output
 
-查询结果会以列表形式显示：
-- 显示前 10 条结果
-- 如果结果超过 10 条，会显示剩余数量
+Query results are displayed in list format:
+- Shows first 10 results
+- If more than 10 results, shows remaining count
 
-示例输出：
+Example output:
 ```
 Found 150 results:
   {'id': 1, 'address': '0x1000', 'size': 2048, ...}
@@ -152,23 +272,23 @@ Found 150 results:
   ... and 140 more
 ```
 
-#### 高级用法
+#### Advanced Usage
 
-**使用 ResultMapper 自定义结果映射：**
+**Using ResultMapper for Custom Result Mapping:**
 
 ```python
-from pt_snap_analyzer.query.mapper import ResultMapper, map_result, map_results
+from pt_snap_cli.query.mapper import ResultMapper, map_result, map_results
 
-# 创建映射器
+# Create mapper
 mapper = ResultMapper()
 
-# 注册自定义类型转换器
+# Register custom type converter
 mapper.register_type_converter("custom", lambda x: f"custom_{x}")
 
-# 注册模型工厂
+# Register model factory
 mapper.register_model_factory("MyModel", lambda d: MyModel(d))
 
-# 映射单行结果
+# Map single row result
 row = {"id": "1", "size": "1024"}
 schema = [
     {"column": "id", "type": "int"},
@@ -176,73 +296,73 @@ schema = [
 ]
 result = mapper.map(row, schema)
 
-# 映射所有结果
+# Map all results
 results = mapper.map_all(rows, schema)
 
-# 映射到模型对象
+# Map to model object
 model = mapper.map_to_model(row, "MyModel")
 models = mapper.map_all_to_model(rows, "MyModel")
 ```
 
-**使用便捷函数：**
+**Using Convenience Functions:**
 
 ```python
-from pt_snap_analyzer.query.mapper import map_result, map_results
+from pt_snap_cli.query.mapper import map_result, map_results
 
-# 映射单个结果
+# Map single result
 mapped = map_result(row, schema)
 
-# 映射多个结果
+# Map multiple results
 mapped_all = map_results(rows, schema)
 ```
 
-#### Query 架构
+#### Query Architecture
 
-查询模板使用 YAML 格式定义，包含：
-- `version`: 模板版本
-- `queries`: 查询定义
-  - `description`: 查询描述
-  - `devices`: 支持的设备列表
-  - `parameters`: 参数定义（类型、默认值、是否必需）
-  - `query`: SQL 查询语句（支持 Jinja2 模板语法）
-  - `output_schema`: 输出 schema 定义（列名和类型）
+Query templates are defined in YAML format, including:
+- `version`: Template version
+- `queries`: Query definitions
+  - `description`: Query description
+  - `devices`: List of supported devices
+  - `parameters`: Parameter definitions (type, default value, required)
+  - `query`: SQL query statement (supports Jinja2 template syntax)
+  - `output_schema`: Output schema definition (column names and types)
 
-支持的类型转换器：
-- `int`: 整数
-- `float`: 浮点数
-- `str`: 字符串
-- `bool`: 布尔值
-- `hex`: 十六进制（整数转 hex 字符串）
-- `datetime`: 日期时间
+Supported type converters:
+- `int`: Integer
+- `float`: Float
+- `str`: String
+- `bool`: Boolean
+- `hex`: Hexadecimal (integer to hex string)
+- `datetime`: Datetime
 
-## 项目结构
+## Project Structure
 
 ```
 pt-snap-cli/
-├── pt_snap_analyzer/
-│   ├── cli.py              # CLI 入口
-│   ├── context.py          # 上下文管理
+├── pt_snap_cli/
+│   ├── cli.py              # CLI entry point
+│   ├── context.py          # Context management
 │   ├── query/
-│   │   ├── builder.py      # 查询构建器
-│   │   ├── executor.py     # 查询执行器
-│   │   ├── mapper.py       # 结果映射器
-│   │   ├── registry.py     # 查询注册表
-│   │   ├── condition.py    # 查询条件
-│   │   ├── config.py       # 查询配置
-│   │   └── templates/      # 查询模板
-│   └── models/             # 数据模型
-├── tests/                  # 测试文件
-├── examples/               # 示例数据
-└── docs/                   # 文档
+│   │   ├── builder.py      # Query builder
+│   │   ├── executor.py     # Query executor
+│   │   ├── mapper.py       # Result mapper
+│   │   ├── registry.py     # Query registry
+│   │   ├── condition.py    # Query conditions
+│   │   ├── config.py       # Query configuration
+│   │   └── templates/      # Query templates
+│   └── models/             # Data models
+├── tests/                  # Test files
+├── examples/               # Example data
+└── docs/                   # Documentation
 ```
 
-## 开发
+## Development
 
-运行测试：
+Run tests:
 ```bash
 pytest
 ```
 
-## 版本
+## Version
 
-当前版本：参见 [pyproject.toml](pyproject.toml)
+Current version: See [pyproject.toml](pyproject.toml)

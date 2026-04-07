@@ -2,8 +2,8 @@
 
 import pytest
 
-from pt_snap_analyzer.query.config import QueryParameter, QueryTemplate
-from pt_snap_analyzer.query.executor import QueryExecutor, TemplateRenderError
+from pt_snap_cli.query.config import QueryParameter, QueryTemplate
+from pt_snap_cli.query.executor import QueryExecutor, TemplateRenderError
 
 
 class TestQueryExecutor:

@@ -7,8 +7,8 @@ from typing import Any
 
 from jinja2 import Environment, StrictUndefined, TemplateSyntaxError
 
-from pt_snap_analyzer.context import Context
-from pt_snap_analyzer.query.config import QueryConfig, QueryTemplate
+from pt_snap_cli.context import Context
+from pt_snap_cli.query.config import QueryConfig, QueryTemplate
 
 
 class QueryExecutionError(Exception):
@@ -208,7 +208,7 @@ class QueryExecutor:
         Returns:
             QueryTemplate or None if not found.
         """
-        from pt_snap_analyzer.query.registry import get_query
+        from pt_snap_cli.query.registry import get_query
 
         if config_name:
             config = self._configs.get(config_name)
@@ -249,7 +249,7 @@ class QueryExecutor:
         Returns:
             List of template names.
         """
-        from pt_snap_analyzer.query.registry import list_queries
+        from pt_snap_cli.query.registry import list_queries
 
         names = []
         for config in self._configs.values():

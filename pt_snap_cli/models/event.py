@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from pt_snap_analyzer.models._enums import EventType
+    from pt_snap_cli.models._enums import EventType
 
 
 @dataclass

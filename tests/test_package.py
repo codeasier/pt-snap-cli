@@ -1,6 +1,6 @@
 """Tests for package initialization."""
 
-from pt_snap_analyzer import __version__
+from pt_snap_cli import __version__
 
 
 class TestPackage:

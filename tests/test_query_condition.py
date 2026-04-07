@@ -1,7 +1,7 @@
 """Tests for query condition classes."""
 
 
-from pt_snap_analyzer.query.condition import (
+from pt_snap_cli.query.condition import (
     And,
     Equal,
     GreaterThan,

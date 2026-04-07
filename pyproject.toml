@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pt-snap-analyzer"
+name = "pt-snap-cli"
 version = "0.1.0"
 description = "PyTorch Memory Snapshot Analysis Tool"
 readme = "README.md"
@@ -43,11 +43,11 @@ rag = [
 ]
 
 [project.scripts]
-pt-snap = "pt_snap_analyzer.cli:app"
+pt-snap = "pt_snap_cli.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["pt_snap_analyzer*"]
+include = ["pt_snap_cli*"]
 
 [tool.black]
 line-length = 100

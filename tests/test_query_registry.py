@@ -1,8 +1,8 @@
 """Tests for query registry."""
 
 
-from pt_snap_analyzer.query.config import QueryTemplate, QueryParameter
-from pt_snap_analyzer.query.registry import (
+from pt_snap_cli.query.config import QueryTemplate, QueryParameter
+from pt_snap_cli.query.registry import (
     QueryRegistry,
     get_query,
     list_queries,

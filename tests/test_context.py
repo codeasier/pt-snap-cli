@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_analyzer.context import Context, DatabaseNotFoundError, SchemaVersionError
+from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionError
 
 
 @pytest.fixture

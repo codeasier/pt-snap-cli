@@ -1,6 +1,6 @@
 """Tests for MemoryEvent model."""
 
-from pt_snap_analyzer.models import EventType, MemoryEvent
+from pt_snap_cli.models import EventType, MemoryEvent
 
 
 class TestMemoryEvent:

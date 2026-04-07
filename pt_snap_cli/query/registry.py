@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from pt_snap_analyzer.query.config import QueryConfig, QueryTemplate
+from pt_snap_cli.query.config import QueryConfig, QueryTemplate
 
 QueryFactory = Callable[[], QueryTemplate]
 

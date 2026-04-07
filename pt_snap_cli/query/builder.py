@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pt_snap_analyzer.query.condition import Condition
+from pt_snap_cli.query.condition import Condition
 
 
 class QueryBuilder:
