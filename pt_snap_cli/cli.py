@@ -37,8 +37,12 @@ def main(
 @app.command("use")
 def use_database(
     db_path: Annotated[Path | None, typer.Argument(help="Path to SQLite database file")] = None,
-    session: Annotated[bool, typer.Option("--session", help="Print a shell export for this session only")] = False,
-    global_context: Annotated[bool, typer.Option("--global", help="Store the database in legacy global config")] = False,
+    session: Annotated[
+        bool, typer.Option("--session", help="Print a shell export for this session only")
+    ] = False,
+    global_context: Annotated[
+        bool, typer.Option("--global", help="Store the database in legacy global config")
+    ] = False,
 ) -> None:
     """Set the current analysis database.
 
@@ -104,12 +108,24 @@ def use_database(
 
 @app.command("query")
 def query_database(
-    db_path: Annotated[Path | None, typer.Argument(help="Path to database file (optional if configured)")] = None,
-    template_use: Annotated[str | None, typer.Option("--template-use", help="Query template name to execute")] = None,
+    db_path: Annotated[
+        Path | None, typer.Argument(help="Path to database file (optional if configured)")
+    ] = None,
+    template_use: Annotated[
+        str | None, typer.Option("--template-use", help="Query template name to execute")
+    ] = None,
     params: Annotated[str | None, typer.Option(help="Query parameters as JSON string")] = None,
     device: Annotated[int | None, typer.Option(help="Device ID to query")] = None,
-    list_templates: Annotated[bool, typer.Option("--list", help="List all available query templates")] = False,
-    template_info: Annotated[str | None, typer.Option("--template-info", help="Show detailed information about a template (including parameters and output schema)")] = None,
+    list_templates: Annotated[
+        bool, typer.Option("--list", help="List all available query templates")
+    ] = False,
+    template_info: Annotated[
+        str | None,
+        typer.Option(
+            "--template-info",
+            help="Show detailed information about a template (including parameters and output schema)",
+        ),
+    ] = None,
 ) -> None:
     """Execute queries on the memory snapshot database.
 
@@ -150,19 +166,26 @@ def query_database(
             typer.echo()
 
             typer.echo("Parameters:")
-            if info['parameters']:
-                for param_name, param_details in info['parameters'].items():
-                    required_str = " (required)" if param_details['required'] else " (optional)"
-                    default_str = f" [default: {param_details['default']}]" if param_details['default'] is not None else ""
-                    typer.secho(f"  {param_name}: {param_details['type']}{required_str}{default_str}", fg=typer.colors.YELLOW)
+            if info["parameters"]:
+                for param_name, param_details in info["parameters"].items():
+                    required_str = " (required)" if param_details["required"] else " (optional)"
+                    default_str = (
+                        f" [default: {param_details['default']}]"
+                        if param_details["default"] is not None
+                        else ""
+                    )
+                    typer.secho(
+                        f"  {param_name}: {param_details['type']}{required_str}{default_str}",
+                        fg=typer.colors.YELLOW,
+                    )
                     typer.echo(f"    {param_details['description']}")
             else:
                 typer.echo("  None")
             typer.echo()
 
             typer.echo("Output Schema:")
-            if info['output_schema']:
-                for col in info['output_schema']:
+            if info["output_schema"]:
+                for col in info["output_schema"]:
                     typer.echo(f"  {col['column']}: {col['type']}")
             else:
                 typer.echo("  Dynamic (depends on query)")
@@ -170,28 +193,44 @@ def query_database(
 
             typer.echo("Example Usage:")
             example_params = {}
-            for param_name, param_details in info['parameters'].items():
-                if param_details['type'] == 'int':
-                    example_params[param_name] = param_details['default'] if param_details['default'] is not None else 0
-                elif param_details['type'] == 'float':
-                    example_params[param_name] = param_details['default'] if param_details['default'] is not None else 0.0
-                elif param_details['type'] == 'str':
-                    example_params[param_name] = param_details['default'] if param_details['default'] is not None else "example"
-                elif param_details['type'] == 'bool':
+            for param_name, param_details in info["parameters"].items():
+                if param_details["type"] == "int":
+                    example_params[param_name] = (
+                        param_details["default"] if param_details["default"] is not None else 0
+                    )
+                elif param_details["type"] == "float":
+                    example_params[param_name] = (
+                        param_details["default"] if param_details["default"] is not None else 0.0
+                    )
+                elif param_details["type"] == "str":
+                    example_params[param_name] = (
+                        param_details["default"]
+                        if param_details["default"] is not None
+                        else "example"
+                    )
+                elif param_details["type"] == "bool":
                     example_params[param_name] = True
 
             if example_params:
                 import json
+
                 params_str = json.dumps(example_params)
-                typer.echo(f"  pt-snap query {db_path or '<configured_db>'} --template-use {info['name']} --params '{params_str}'")
+                typer.echo(
+                    f"  pt-snap query {db_path or '<configured_db>'} --template-use {info['name']} --params '{params_str}'"
+                )
             else:
-                typer.echo(f"  pt-snap query {db_path or '<configured_db>'} --template-use {info['name']}")
+                typer.echo(
+                    f"  pt-snap query {db_path or '<configured_db>'} --template-use {info['name']}"
+                )
         else:
             typer.secho(f"Error: Template '{template_info}' not found", fg=typer.colors.RED)
         raise typer.Exit()
 
     if not template_use:
-        typer.secho("Error: --template-use is required when not using --list or --template-info", fg=typer.colors.RED)
+        typer.secho(
+            "Error: --template-use is required when not using --list or --template-info",
+            fg=typer.colors.RED,
+        )
         raise typer.Exit(1)
 
     config = Config()
@@ -207,7 +246,9 @@ def query_database(
             "Error: No database path specified and no database configured.",
             fg=typer.colors.RED,
         )
-        typer.echo("Use 'pt-snap use <database_path>' to set a project database, or provide db_path argument.")
+        typer.echo(
+            "Use 'pt-snap use <database_path>' to set a project database, or provide db_path argument."
+        )
         raise typer.Exit(1)
     if not db_path.exists():
         typer.secho(
@@ -216,7 +257,9 @@ def query_database(
         )
         if resolved.context_file:
             typer.echo(f"Context file: {resolved.context_file}")
-        typer.echo("Use 'pt-snap use <new_database_path>' to set a new project database, or provide db_path argument.")
+        typer.echo(
+            "Use 'pt-snap use <new_database_path>' to set a new project database, or provide db_path argument."
+        )
         raise typer.Exit(1)
 
     try:
@@ -239,7 +282,9 @@ def query_database(
                 typer.echo("No devices found in database.")
                 raise typer.Exit()
             default_device = device_ids[0]
-            results = executor.execute_template(template_use, query_params, device_id=default_device)
+            results = executor.execute_template(
+                template_use, query_params, device_id=default_device
+            )
 
         if results:
             typer.echo(f"Found {len(results)} results:")

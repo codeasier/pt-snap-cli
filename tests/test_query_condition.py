@@ -1,6 +1,5 @@
 """Tests for query condition classes."""
 
-
 from pt_snap_cli.query.condition import (
     And,
     Equal,
@@ -236,34 +235,6 @@ class TestLike:
         assert params == ["%kernel%", "%user%"]
 
 
-class TestIn:
-    def test_to_sql_single_value(self):
-        cond = In("status", ["active"])
-        sql, params = cond.to_sql()
-        assert sql == "status IN (?)"
-        assert params == ["active"]
-
-    def test_to_sql_multiple_values(self):
-        cond = In("status", ["active", "pending", "running"])
-        sql, params = cond.to_sql()
-        assert sql == "status IN (?, ?, ?)"
-        assert params == ["active", "pending", "running"]
-
-    def test_to_sql_int_values(self):
-        cond = In("device_id", [0, 1, 2])
-        sql, params = cond.to_sql()
-        assert sql == "device_id IN (?, ?, ?)"
-        assert params == [0, 1, 2]
-
-
-class TestLike:
-    def test_to_sql(self):
-        cond = Like("name", "%kernel%")
-        sql, params = cond.to_sql()
-        assert sql == "name LIKE ?"
-        assert params == ["%kernel%"]
-
-
 class TestAnd:
     def test_empty_conditions(self):
         cond = And([])
@@ -278,11 +249,13 @@ class TestAnd:
         assert params == [1]
 
     def test_multiple_conditions(self):
-        cond = And([
-            Equal("a", 1),
-            GreaterThan("b", 2),
-            LessThan("c", 3),
-        ])
+        cond = And(
+            [
+                Equal("a", 1),
+                GreaterThan("b", 2),
+                LessThan("c", 3),
+            ]
+        )
         sql, params = cond.to_sql()
         assert "(a = ?)" in sql
         assert "(b > ?)" in sql
@@ -306,10 +279,12 @@ class TestOr:
         assert params == []
 
     def test_multiple_conditions(self):
-        cond = Or([
-            Equal("status", "active"),
-            Equal("status", "pending"),
-        ])
+        cond = Or(
+            [
+                Equal("status", "active"),
+                Equal("status", "pending"),
+            ]
+        )
         sql, params = cond.to_sql()
         assert "(status = ?)" in sql
         assert "OR" in sql
@@ -337,14 +312,18 @@ class TestComplexCombinations:
         assert params == [1, 2, 3]
 
     def test_complex_nested(self):
-        inner_and = And([
-            Equal("status", "active"),
-            GreaterThan("size", 100),
-        ])
-        inner_or = Or([
-            Equal("type", "malloc"),
-            Equal("type", "cudaMalloc"),
-        ])
+        inner_and = And(
+            [
+                Equal("status", "active"),
+                GreaterThan("size", 100),
+            ]
+        )
+        inner_or = Or(
+            [
+                Equal("type", "malloc"),
+                Equal("type", "cudaMalloc"),
+            ]
+        )
         combined = inner_and & inner_or
 
         sql, params = combined.to_sql()

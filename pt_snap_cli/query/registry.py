@@ -80,15 +80,17 @@ class QueryRegistry:
         """
         details = []
         all_names = set(self._queries.keys()) | set(self._factories.keys())
-        
+
         for name in sorted(all_names):
             template = self.get(name)
             if template:
-                details.append({
-                    "name": name,
-                    "description": template.description,
-                })
-        
+                details.append(
+                    {
+                        "name": name,
+                        "description": template.description,
+                    }
+                )
+
         return details
 
     def unregister(self, name: str) -> bool:
@@ -146,7 +148,7 @@ def get_template_info(name: str) -> dict | None:
     template = _registry.get(name)
     if not template:
         return None
-    
+
     return {
         "name": template.name,
         "description": template.description,
@@ -185,7 +187,7 @@ def list_queries_with_details() -> list[dict[str, str]]:
 
 def _load_yaml_templates(template_dir: Path | str | None = None) -> None:
     """Load all YAML templates from the template directory.
-    
+
     Args:
         template_dir: Path to template directory. Defaults to package templates dir.
     """
@@ -193,14 +195,14 @@ def _load_yaml_templates(template_dir: Path | str | None = None) -> None:
         template_dir = Path(__file__).parent / "templates"
     else:
         template_dir = Path(template_dir)
-    
+
     if not template_dir.exists():
         return
-    
+
     for yaml_file in template_dir.glob("*.yaml"):
         try:
             config = QueryConfig.load_yaml(yaml_file)
-            for query_name, template in config.queries.items():
+            for _query_name, template in config.queries.items():
                 _registry.register(template)
         except Exception:
             pass

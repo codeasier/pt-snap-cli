@@ -22,9 +22,7 @@ class ResultMapper:
         }
         self._model_factories: dict[str, Callable[[dict], Any]] = {}
 
-    def register_type_converter(
-        self, type_name: str, converter: Callable[[Any], Any]
-    ) -> None:
+    def register_type_converter(self, type_name: str, converter: Callable[[Any], Any]) -> None:
         """Register a type converter.
 
         Args:
@@ -33,9 +31,7 @@ class ResultMapper:
         """
         self._type_converters[type_name] = converter
 
-    def register_model_factory(
-        self, model_name: str, factory: Callable[[dict], Any]
-    ) -> None:
+    def register_model_factory(self, model_name: str, factory: Callable[[dict], Any]) -> None:
         """Register a model factory.
 
         Args:

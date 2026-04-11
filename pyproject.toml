@@ -31,12 +31,18 @@ dependencies = [
     "jinja2>=3.0.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/codeasier/pt-snap-cli"
+Repository = "https://github.com/codeasier/pt-snap-cli"
+Issues = "https://github.com/codeasier/pt-snap-cli/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "black>=23.0.0",
     "ruff>=0.0.280",
+    "build>=1.0.0",
 ]
 rag = [
     "chromadb>=0.4.0",
@@ -70,3 +76,21 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["pt_snap_cli"]
+branch = true
+omit = ["*/tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+]
+fail_under = 0
+
+[tool.coverage.xml]
+output = "coverage.xml"

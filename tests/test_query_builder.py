@@ -15,21 +15,13 @@ class TestQueryBuilder:
 
     def test_select_specific_columns(self):
         builder = QueryBuilder()
-        sql, params = (
-            builder.from_table("trace_entry_0")
-            .columns("id", "address", "size")
-            .build()
-        )
+        sql, params = builder.from_table("trace_entry_0").columns("id", "address", "size").build()
         assert sql == "SELECT id, address, size FROM trace_entry_0"
         assert params == []
 
     def test_where_clause(self):
         builder = QueryBuilder()
-        sql, params = (
-            builder.from_table("trace_entry_0")
-            .where(Equal("status", "active"))
-            .build()
-        )
+        sql, params = builder.from_table("trace_entry_0").where(Equal("status", "active")).build()
         assert "WHERE" in sql
         assert "(status = ?)" in sql
         assert params == ["active"]
@@ -50,11 +42,7 @@ class TestQueryBuilder:
 
     def test_order_by(self):
         builder = QueryBuilder()
-        sql, params = (
-            builder.from_table("trace_entry_0")
-            .order_by("size", descending=True)
-            .build()
-        )
+        sql, params = builder.from_table("trace_entry_0").order_by("size", descending=True).build()
         assert "ORDER BY size DESC" in sql
 
     def test_order_by_multiple(self):
@@ -69,30 +57,17 @@ class TestQueryBuilder:
 
     def test_group_by(self):
         builder = QueryBuilder()
-        sql, params = (
-            builder.from_table("trace_entry_0")
-            .group_by("eventType")
-            .build()
-        )
+        sql, params = builder.from_table("trace_entry_0").group_by("eventType").build()
         assert "GROUP BY eventType" in sql
 
     def test_limit(self):
         builder = QueryBuilder()
-        sql, params = (
-            builder.from_table("trace_entry_0")
-            .limit(100)
-            .build()
-        )
+        sql, params = builder.from_table("trace_entry_0").limit(100).build()
         assert "LIMIT 100" in sql
 
     def test_offset(self):
         builder = QueryBuilder()
-        sql, params = (
-            builder.from_table("trace_entry_0")
-            .limit(100)
-            .offset(50)
-            .build()
-        )
+        sql, params = builder.from_table("trace_entry_0").limit(100).offset(50).build()
         assert "LIMIT 100" in sql
         assert "OFFSET 50" in sql
 
@@ -128,27 +103,25 @@ class TestQueryBuilder:
     def test_in_condition(self):
         builder = QueryBuilder()
         sql, params = (
-            builder.from_table("trace_entry_0")
-            .where(In("eventType", ["alloc", "free"]))
-            .build()
+            builder.from_table("trace_entry_0").where(In("eventType", ["alloc", "free"])).build()
         )
         assert "eventType IN (?, ?)" in sql
         assert params == ["alloc", "free"]
 
     def test_combined_conditions(self):
         builder = QueryBuilder()
-        cond = And([
-            Equal("status", "active"),
-            Or([
-                Equal("type", "malloc"),
-                Equal("type", "cudaMalloc"),
-            ]),
-        ])
-        sql, params = (
-            builder.from_table("trace_entry_0")
-            .where(cond)
-            .build()
+        cond = And(
+            [
+                Equal("status", "active"),
+                Or(
+                    [
+                        Equal("type", "malloc"),
+                        Equal("type", "cudaMalloc"),
+                    ]
+                ),
+            ]
         )
+        sql, params = builder.from_table("trace_entry_0").where(cond).build()
         assert "WHERE" in sql
         assert "AND" in sql
         assert "OR" in sql
