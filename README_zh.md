@@ -35,33 +35,48 @@ pt-snap use examples/snapshot_large.pickle.db
 
 该命令会验证数据库并显示可用的设备列表。
 
-### 配置管理
+### Context 管理
 
-`pt-snap` 支持保存上下文状态，避免在分析时每次都指定数据库路径。
+`pt-snap` 支持项目级上下文，避免不同终端、Agent 或工作目录分析不同数据库时互相覆盖。
 
-#### 设置当前数据库
+#### 设置项目数据库
 
 ```bash
-# 设置并验证数据库
+# 为当前项目目录设置并验证数据库
 pt-snap use /path/to/your/snapshot.db
 ```
 
-设置成功后，数据库路径会自动保存到 `~/.config/pt-snap-cli/config.json`。
+设置成功后，数据库路径会保存到当前目录的 `.pt-snap/context.json`。
 
-#### 查看当前配置
+#### Session 级覆盖
+
+当某个 shell 或 Agent 需要独立数据库，且不想修改项目 context 时，使用 `PT_SNAP_DB_PATH`：
 
 ```bash
-# 查看当前数据库
+export PT_SNAP_DB_PATH=/path/to/agent-specific/snapshot.db
+pt-snap query --template-use memory_summary_v2
+```
+
+也可以先验证数据库并输出 export 命令：
+
+```bash
+pt-snap use /path/to/agent-specific/snapshot.db --session
+```
+
+#### 查看当前生效 Context
+
+```bash
+# 查看当前生效数据库及来源
 pt-snap use
 ```
 
-#### 使用配置进行查询（无需指定 dbpath）
+#### 使用 Context 进行查询（无需指定 dbpath）
 
 ```bash
 # 列出所有查询模板
 pt-snap query --list
 
-# 执行查询（自动使用配置的数据库）
+# 执行查询（自动使用解析出的数据库 context）
 pt-snap query --template-use memory_summary_v2
 
 # 带参数查询
@@ -71,33 +86,51 @@ pt-snap query --template-use leak_detection_v2 --params '{"min_size": 1024}'
 pt-snap query --template-use active_blocks_v2 --device 0
 ```
 
-#### 覆盖配置的数据库
+#### 解析优先级
 
-即使配置了数据库，仍然可以在命令行中指定不同的数据库：
+数据库 context 按以下顺序解析：
+
+1. 显式 `pt-snap query <db_path>`
+2. `PT_SNAP_DB_PATH`
+3. 从当前目录向上查找最近的 `.pt-snap/context.json`
+4. legacy 全局配置 `~/.config/pt-snap-cli/config.json`
+
+即使已经配置 context，仍然可以在命令行中指定不同的数据库：
 
 ```bash
-# 使用临时指定的数据库（不影响配置）
+# 使用临时指定的数据库（不影响 context）
 pt-snap query /path/to/other.db --template-use memory_summary_v2
 ```
 
-#### 管理配置
+#### Legacy 全局配置
+
+全局配置会保留用于兼容旧版本和个人默认值；并发 Agent 场景推荐使用项目 context 或 `PT_SNAP_DB_PATH`。
 
 ```bash
-# 查看完整配置
+# 写入 ~/.config/pt-snap-cli/config.json
+pt-snap use /path/to/your/snapshot.db --global
+```
+
+#### 管理 Legacy 全局配置
+
+```bash
+# 查看全局配置
 pt-snap config
 
-# 查看配置文件路径
+# 查看全局配置文件路径
 pt-snap config --path
 
-# 清除所有配置
+# 清除全局配置
 pt-snap config --clear
 ```
 
-#### 配置文件位置
+#### Context 文件位置
 
-配置文件保存在：`~/.config/pt-snap-cli/config.json`
+项目 context 保存在：`.pt-snap/context.json`
 
-配置内容示例：
+legacy 全局配置保存在：`~/.config/pt-snap-cli/config.json`
+
+context 内容示例：
 ```json
 {
   "current_db_path": "/path/to/your/snapshot.db"
@@ -111,23 +144,23 @@ pt-snap config --clear
 ```bash
 pt-snap query --template-use memory_summary_v2
 # Error: No database path specified and no database configured.
-# Use 'pt-snap use <database_path>' to set a database, or provide db_path argument.
+# Use 'pt-snap use <database_path>' to set a project database, or provide db_path argument.
 ```
 
 **配置的数据库文件不存在：**
 
-如果配置的数据库文件被删除或移动，系统会自动清除配置并提示：
+如果解析出的数据库文件被删除或移动，`pt-snap` 会报告 context 来源，并保留 context 文件不做隐式清理：
 
 ```bash
 pt-snap query --template-use memory_summary_v2
-# Error: Configured database not found: /path/to/missing.db
-# Use 'pt-snap use <new_database_path>' to set a new database.
+# Error: Database from project context not found: /path/to/missing.db
+# Use 'pt-snap use <new_database_path>' to set a new project database, or provide db_path argument.
 ```
 
 #### 完整工作流程示例
 
 ```bash
-# 1. 初次使用，设置数据库
+# 1. 初次使用，设置项目数据库
 pt-snap use examples/snapshot_expandable.pkl.db
 
 # 2. 之后可以直接查询，无需重复指定路径
@@ -135,13 +168,16 @@ pt-snap query --template-use memory_summary_v2
 pt-snap query --template-use active_blocks_v2 --device 0
 pt-snap query --template-use leak_detection_v2
 
-# 3. 查看当前配置
-pt-snap config
+# 3. 查看当前生效 context 及来源
+pt-snap use
 
-# 4. 如果需要切换到其他数据库
+# 4. 如果当前 shell 或 Agent 需要另一个数据库
+export PT_SNAP_DB_PATH=/path/to/agent_snapshot.db
+
+# 5. 如果项目要切换到其他数据库
 pt-snap use /path/to/new_snapshot.db
 
-# 5. 清除配置
+# 6. 仅清除 legacy 全局配置
 pt-snap config --clear
 ```
 
@@ -149,9 +185,9 @@ pt-snap config --clear
 
 1. **提高效率**：无需每次查询都输入完整的数据库路径
 2. **减少错误**：避免因路径输入错误导致的查询失败
-3. **灵活覆盖**：仍然支持在需要时指定不同的数据库路径
-4. **自动清理**：当配置的数据库文件不存在时自动清除配置
-5. **配置透明**：可以轻松查看和管理配置
+3. **并发 Agent 安全**：项目 context 与 `PT_SNAP_DB_PATH` 避免跨进程全局状态冲突
+4. **灵活覆盖**：显式 db path 和 session 环境变量仍可覆盖项目默认值
+5. **Context 透明**：`pt-snap use` 会显示当前生效数据库及来源
 
 ### 执行查询
 

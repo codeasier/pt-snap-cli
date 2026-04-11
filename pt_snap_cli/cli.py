@@ -6,7 +6,7 @@ from typing import Annotated
 import typer
 
 from pt_snap_cli import __version__
-from pt_snap_cli.config import Config
+from pt_snap_cli.config import ENV_DB_PATH, Config, ContextResolutionError
 from pt_snap_cli.context import Context
 
 app = typer.Typer(
@@ -37,35 +37,61 @@ def main(
 @app.command("use")
 def use_database(
     db_path: Annotated[Path | None, typer.Argument(help="Path to SQLite database file")] = None,
+    session: Annotated[bool, typer.Option("--session", help="Print a shell export for this session only")] = False,
+    global_context: Annotated[bool, typer.Option("--global", help="Store the database in legacy global config")] = False,
 ) -> None:
     """Set the current analysis database.
 
-    Validates the database and saves the path to configuration.
+    Validates the database and saves the path to project context by default.
     After setting, you can use 'pt-snap query' without specifying db_path.
-    
-    If called without arguments, shows the current database.
+
+    Use --session for an isolated shell/agent override.
+    Use --global for legacy user-wide configuration.
+    If called without arguments, shows the effective database.
     """
     config = Config()
-    
+
     if db_path is None:
-        current = config.current_db_path
-        if current:
-            typer.echo(f"Current database: {current}")
-            if not current.exists():
+        try:
+            resolved = config.resolve_db_context()
+        except ContextResolutionError as e:
+            typer.secho(f"Error: {e}", fg=typer.colors.RED)
+            raise typer.Exit(1) from None
+
+        if resolved.db_path:
+            typer.echo(f"Current database ({resolved.source}): {resolved.db_path}")
+            if resolved.context_file:
+                typer.echo(f"Context file: {resolved.context_file}")
+            if not resolved.db_path.exists():
                 typer.secho("Warning: Database file does not exist!", fg=typer.colors.YELLOW)
         else:
             typer.echo("No current database set.")
-            typer.echo("Usage: pt-snap use <database_path>")
+            typer.echo("Usage: pt-snap use <database_path> [--session|--global]")
         raise typer.Exit()
-    
+
+    if session and global_context:
+        typer.secho("Error: --session and --global cannot be used together.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
     if not db_path.exists():
         typer.secho(f"Error: Database file not found: {db_path}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
     try:
         ctx = Context(db_path)
-        config.current_db_path = db_path
-        typer.secho(f"Using database: {db_path}", fg=typer.colors.GREEN)
+        resolved_db_path = db_path.expanduser().resolve()
+        if session:
+            import shlex
+
+            typer.echo(f"export {ENV_DB_PATH}={shlex.quote(str(resolved_db_path))}")
+            return
+        if global_context:
+            config.current_db_path = resolved_db_path
+            typer.secho(f"Using global database: {resolved_db_path}", fg=typer.colors.GREEN)
+        else:
+            context_file = config.write_project_db_path(resolved_db_path)
+            typer.secho(f"Using project database: {resolved_db_path}", fg=typer.colors.GREEN)
+            typer.echo(f"Project context: {context_file}")
         devices = ctx.device_ids
         if devices:
             typer.echo(f"Available devices: {', '.join(map(str, devices))}")
@@ -86,23 +112,22 @@ def query_database(
     template_info: Annotated[str | None, typer.Option("--template-info", help="Show detailed information about a template (including parameters and output schema)")] = None,
 ) -> None:
     """Execute queries on the memory snapshot database.
-    
+
     The db_path argument is optional if you have configured a database with 'pt-snap use'.
-    
+
     Use --list to see all supported query templates.
     Use --template-info {template_name} to see detailed template information.
 
     Examples:
-        pt-snap use snapshot.pkl.db                    # Set current database
-        pt-snap query --list                           # List templates (uses configured db)
-        pt-snap query --template-use leak_detection_v2 # Query with configured db
+        pt-snap use snapshot.pkl.db                    # Set project database
+        pt-snap query --list                           # List templates
+        pt-snap query --template-use leak_detection_v2 # Query with resolved context
         pt-snap query --template-use active_blocks_v2 --device 0
         pt-snap query custom.db --template-use leak_detection_v2  # Override with custom path
         pt-snap query --template-info leak_detection_v2
     """
     from pt_snap_cli.query import QueryExecutor
-    from pt_snap_cli.query.registry import list_queries_with_details, get_template_info
-    from pt_snap_cli.config import Config
+    from pt_snap_cli.query.registry import get_template_info, list_queries_with_details
 
     if list_templates:
         details = list_queries_with_details()
@@ -123,7 +148,7 @@ def query_database(
             typer.secho(f"Template: {info['name']}", fg=typer.colors.GREEN, bold=True)
             typer.echo(f"Description: {info['description']}")
             typer.echo()
-            
+
             typer.echo("Parameters:")
             if info['parameters']:
                 for param_name, param_details in info['parameters'].items():
@@ -134,7 +159,7 @@ def query_database(
             else:
                 typer.echo("  None")
             typer.echo()
-            
+
             typer.echo("Output Schema:")
             if info['output_schema']:
                 for col in info['output_schema']:
@@ -142,7 +167,7 @@ def query_database(
             else:
                 typer.echo("  Dynamic (depends on query)")
             typer.echo()
-            
+
             typer.echo("Example Usage:")
             example_params = {}
             for param_name, param_details in info['parameters'].items():
@@ -154,7 +179,7 @@ def query_database(
                     example_params[param_name] = param_details['default'] if param_details['default'] is not None else "example"
                 elif param_details['type'] == 'bool':
                     example_params[param_name] = True
-            
+
             if example_params:
                 import json
                 params_str = json.dumps(example_params)
@@ -169,24 +194,33 @@ def query_database(
         typer.secho("Error: --template-use is required when not using --list or --template-info", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    # Get database path from argument or config
+    config = Config()
+    try:
+        resolved = config.resolve_db_context(db_path)
+    except ContextResolutionError as e:
+        typer.secho(f"Error: {e}", fg=typer.colors.RED)
+        raise typer.Exit(1) from None
+
+    db_path = resolved.db_path
     if db_path is None:
-        config = Config()
-        db_path = config.current_db_path
-        if db_path is None:
-            typer.secho(
-                "Error: No database path specified and no database configured.",
-                fg=typer.colors.RED,
-            )
-            typer.echo("Use 'pt-snap use <database_path>' to set a database, or provide db_path argument.")
-            raise typer.Exit(1)
-        if not db_path.exists():
-            typer.secho(f"Error: Configured database not found: {db_path}", fg=typer.colors.RED)
-            typer.echo("Use 'pt-snap use <new_database_path>' to set a new database.")
-            raise typer.Exit(1)
+        typer.secho(
+            "Error: No database path specified and no database configured.",
+            fg=typer.colors.RED,
+        )
+        typer.echo("Use 'pt-snap use <database_path>' to set a project database, or provide db_path argument.")
+        raise typer.Exit(1)
+    if not db_path.exists():
+        typer.secho(
+            f"Error: Database from {resolved.source} context not found: {db_path}",
+            fg=typer.colors.RED,
+        )
+        if resolved.context_file:
+            typer.echo(f"Context file: {resolved.context_file}")
+        typer.echo("Use 'pt-snap use <new_database_path>' to set a new project database, or provide db_path argument.")
+        raise typer.Exit(1)
 
     try:
-        context = Context(db_path, devices=[device] if device else None)
+        context = Context(db_path, devices=[device] if device is not None else None)
         executor = QueryExecutor(
             context, template_dir=Path(__file__).parent / "query" / "templates"
         )
@@ -230,22 +264,22 @@ def show_config(
     show_path: Annotated[bool, typer.Option("--path", help="Show config file path")] = False,
 ) -> None:
     """Show or manage pt-snap configuration.
-    
+
     Shows current configuration including the configured database path.
     Use --clear to reset configuration.
     Use --path to see where configuration is stored.
     """
     config = Config()
-    
+
     if show_path:
         typer.echo(f"Config file: {config.config_file}")
         raise typer.Exit()
-    
+
     if clear:
         config.clear()
         typer.secho("Configuration cleared.", fg=typer.colors.GREEN)
         raise typer.Exit()
-    
+
     current_config = config.show()
     if not current_config:
         typer.echo("No configuration set.")
