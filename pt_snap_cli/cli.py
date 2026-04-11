@@ -13,6 +13,7 @@ app = typer.Typer(
     name="pt-snap",
     help="PyTorch Memory Snapshot Analysis Tool",
     add_completion=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 
 

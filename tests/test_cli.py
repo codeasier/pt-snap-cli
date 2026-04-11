@@ -109,6 +109,18 @@ class TestCLI:
         assert result.exit_code == 0
         assert "PyTorch Memory Snapshot Analysis Tool" in result.stdout
 
+    def test_short_help_flag(self) -> None:
+        """Test -h flag."""
+        result = runner.invoke(app, ["-h"])
+        assert result.exit_code == 0
+        assert "PyTorch Memory Snapshot Analysis Tool" in result.stdout
+
+    def test_subcommand_short_help_flag(self) -> None:
+        """Test -h flag for subcommands."""
+        result = runner.invoke(app, ["query", "-h"])
+        assert result.exit_code == 0
+        assert "Execute queries on the memory snapshot database" in result.stdout
+
     def test_use_database_not_found(self, tmp_path: Path) -> None:
         """Test 'use' command with non-existent database."""
         non_existent = tmp_path / "not_found.db"
