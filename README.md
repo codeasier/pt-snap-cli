@@ -35,33 +35,48 @@ pt-snap use examples/snapshot_large.pickle.db
 
 This command validates the database and displays the list of available devices.
 
-### Configuration Management
+### Context Management
 
-`pt-snap` supports saving context state to avoid specifying the database path every time during analysis.
+`pt-snap` supports project-scoped context so different terminals, agents, or working directories can analyze different databases without overwriting each other.
 
-#### Set Current Database
+#### Set Project Database
 
 ```bash
-# Set and validate database
+# Set and validate the database for the current project directory
 pt-snap use /path/to/your/snapshot.db
 ```
 
-After successful setup, the database path is automatically saved to `~/.config/pt-snap-cli/config.json`.
+After successful setup, the database path is saved to `.pt-snap/context.json` in the current directory.
 
-#### View Current Configuration
+#### Session-Scoped Override
+
+Use `PT_SNAP_DB_PATH` when one shell or agent needs an isolated database without changing project context:
 
 ```bash
-# View current database
+export PT_SNAP_DB_PATH=/path/to/agent-specific/snapshot.db
+pt-snap query --template-use memory_summary_v2
+```
+
+You can also print the export command after validation:
+
+```bash
+pt-snap use /path/to/agent-specific/snapshot.db --session
+```
+
+#### View Effective Context
+
+```bash
+# View the effective database and its source
 pt-snap use
 ```
 
-#### Query with Configuration (No dbpath Needed)
+#### Query with Context (No dbpath Needed)
 
 ```bash
 # List all query templates
 pt-snap query --list
 
-# Execute query (automatically uses configured database)
+# Execute query (automatically uses the resolved database context)
 pt-snap query --template-use memory_summary_v2
 
 # Query with parameters
@@ -71,33 +86,51 @@ pt-snap query --template-use leak_detection_v2 --params '{"min_size": 1024}'
 pt-snap query --template-use active_blocks_v2 --device 0
 ```
 
-#### Override Configured Database
+#### Resolution Priority
 
-Even with a configured database, you can still specify a different database on the command line:
+Database context is resolved in this order:
+
+1. Explicit `pt-snap query <db_path>`
+2. `PT_SNAP_DB_PATH`
+3. Nearest `.pt-snap/context.json`, searching from the current directory upward
+4. Legacy global config at `~/.config/pt-snap-cli/config.json`
+
+Even with context configured, you can still specify a different database on the command line:
 
 ```bash
-# Use temporarily specified database (does not affect configuration)
+# Use temporarily specified database (does not affect context)
 pt-snap query /path/to/other.db --template-use memory_summary_v2
 ```
 
-#### Manage Configuration
+#### Legacy Global Configuration
+
+Global configuration is kept for compatibility and personal defaults, but project or session context is recommended for concurrent agent workflows.
 
 ```bash
-# View complete configuration
+# Store in ~/.config/pt-snap-cli/config.json
+pt-snap use /path/to/your/snapshot.db --global
+```
+
+#### Manage Legacy Global Configuration
+
+```bash
+# View global configuration
 pt-snap config
 
-# View configuration file path
+# View global configuration file path
 pt-snap config --path
 
-# Clear all configuration
+# Clear global configuration
 pt-snap config --clear
 ```
 
-#### Configuration File Location
+#### Context File Locations
 
-Configuration file is saved at: `~/.config/pt-snap-cli/config.json`
+Project context is saved at: `.pt-snap/context.json`
 
-Configuration content example:
+Legacy global configuration is saved at: `~/.config/pt-snap-cli/config.json`
+
+Context content example:
 ```json
 {
   "current_db_path": "/path/to/your/snapshot.db"
@@ -111,23 +144,23 @@ Configuration content example:
 ```bash
 pt-snap query --template-use memory_summary_v2
 # Error: No database path specified and no database configured.
-# Use 'pt-snap use <database_path>' to set a database, or provide db_path argument.
+# Use 'pt-snap use <database_path>' to set a project database, or provide db_path argument.
 ```
 
 **Configured database file does not exist:**
 
-If the configured database file is deleted or moved, the system automatically clears the configuration and prompts:
+If the resolved database file is deleted or moved, `pt-snap` reports the context source and leaves the context file unchanged:
 
 ```bash
 pt-snap query --template-use memory_summary_v2
-# Error: Configured database not found: /path/to/missing.db
-# Use 'pt-snap use <new_database_path>' to set a new database.
+# Error: Database from project context not found: /path/to/missing.db
+# Use 'pt-snap use <new_database_path>' to set a new project database, or provide db_path argument.
 ```
 
 #### Complete Workflow Example
 
 ```bash
-# 1. First use, set database
+# 1. First use, set the project database
 pt-snap use examples/snapshot_expandable.pkl.db
 
 # 2. Then query directly without repeating path
@@ -135,13 +168,16 @@ pt-snap query --template-use memory_summary_v2
 pt-snap query --template-use active_blocks_v2 --device 0
 pt-snap query --template-use leak_detection_v2
 
-# 3. View current configuration
-pt-snap config
+# 3. View the effective context and source
+pt-snap use
 
-# 4. If need to switch to other database
+# 4. If this shell or agent needs a different database
+export PT_SNAP_DB_PATH=/path/to/agent_snapshot.db
+
+# 5. If the project should switch to another database
 pt-snap use /path/to/new_snapshot.db
 
-# 5. Clear configuration
+# 6. Clear legacy global configuration only
 pt-snap config --clear
 ```
 
@@ -149,9 +185,9 @@ pt-snap config --clear
 
 1. **Improve Efficiency**: No need to enter full database path every query
 2. **Reduce Errors**: Avoid query failures due to path input errors
-3. **Flexible Override**: Still supports specifying different database paths when needed
-4. **Auto Cleanup**: Automatically clears configuration when configured database file doesn't exist
-5. **Transparent Configuration**: Can easily view and manage configuration
+3. **Concurrent Agent Safety**: Project context and `PT_SNAP_DB_PATH` avoid cross-process global state conflicts
+4. **Flexible Override**: Explicit db paths and session env still override project defaults
+5. **Transparent Context**: `pt-snap use` shows the effective database and where it came from
 
 ### Execute Queries
 
