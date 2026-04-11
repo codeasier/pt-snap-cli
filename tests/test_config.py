@@ -138,10 +138,9 @@ class TestConfig:
 
             db_path = tmp_path / "existing.db"
             db_path.touch()
-            config_file.write_text(json.dumps({
-                "current_db_path": str(db_path),
-                "other_key": "other_value"
-            }))
+            config_file.write_text(
+                json.dumps({"current_db_path": str(db_path), "other_key": "other_value"})
+            )
 
             config = Config()
             assert config.current_db_path == db_path.resolve()

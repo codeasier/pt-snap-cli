@@ -149,9 +149,7 @@ class Config:
             with open(context_file) as f:
                 data = json.load(f)
         except (json.JSONDecodeError, OSError) as exc:
-            raise ContextResolutionError(
-                f"Invalid project context file: {context_file}"
-            ) from exc
+            raise ContextResolutionError(f"Invalid project context file: {context_file}") from exc
 
         db_path = data.get(CURRENT_DB_KEY)
         if not db_path:

@@ -53,15 +53,21 @@ def create_sample_db(db_path: Path, size: int = 1024) -> Path:
     """)
 
     # Insert sample data
-    conn.execute("""
+    conn.execute(
+        """
         INSERT INTO trace_entry_0 (action, device_id, size, timestamp)
         VALUES ('malloc', 0, ?, 1.0)
-    """, (size,))
+    """,
+        (size,),
+    )
 
-    conn.execute("""
+    conn.execute(
+        """
         INSERT INTO blocks_0 (device_id, address, size, start_time, end_time)
         VALUES (0, 1000, ?, 1.0, 2.0)
-    """, (size,))
+    """,
+        (size,),
+    )
 
     conn.commit()
     conn.close()
@@ -88,7 +94,7 @@ def mock_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Mock Path.home to use tmp_path."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("PT_SNAP_DB_PATH", raising=False)
-    with patch.object(Path, 'home', return_value=tmp_path):
+    with patch.object(Path, "home", return_value=tmp_path):
         yield
 
 
@@ -227,41 +233,43 @@ class TestQueryTemplateInfo:
                     type="int",
                     default=42,
                     required=False,
-                    description="Integer parameter"
+                    description="Integer parameter",
                 ),
                 "float_param": QueryParameter(
                     name="float_param",
                     type="float",
                     default=3.14,
                     required=False,
-                    description="Float parameter"
+                    description="Float parameter",
                 ),
                 "str_param": QueryParameter(
                     name="str_param",
                     type="str",
                     default="default_value",
                     required=False,
-                    description="String parameter"
+                    description="String parameter",
                 ),
                 "bool_param": QueryParameter(
                     name="bool_param",
                     type="bool",
                     default=True,
                     required=False,
-                    description="Boolean parameter"
+                    description="Boolean parameter",
                 ),
                 "required_param": QueryParameter(
                     name="required_param",
                     type="int",
                     default=None,
                     required=True,
-                    description="Required parameter"
-                )
-            }
+                    description="Required parameter",
+                ),
+            },
         )
         register_query(template)
 
-        result = runner.invoke(app, ["query", str(sample_db), "--template-info", "complex_template"])
+        result = runner.invoke(
+            app, ["query", str(sample_db), "--template-info", "complex_template"]
+        )
         assert result.exit_code == 0
         assert "Template: complex_template" in result.stdout
         assert "int_param" in result.stdout
@@ -278,11 +286,13 @@ class TestQueryTemplateInfo:
         template = QueryTemplate(
             name="no_param_template",
             description="Template without parameters",
-            query="SELECT COUNT(*) FROM blocks"
+            query="SELECT COUNT(*) FROM blocks",
         )
         register_query(template)
 
-        result = runner.invoke(app, ["query", str(sample_db), "--template-info", "no_param_template"])
+        result = runner.invoke(
+            app, ["query", str(sample_db), "--template-info", "no_param_template"]
+        )
         assert result.exit_code == 0
         assert "Parameters:" in result.stdout
         assert "None" in result.stdout
@@ -292,11 +302,13 @@ class TestQueryTemplateInfo:
         template = QueryTemplate(
             name="no_schema_template",
             description="Template without output schema",
-            query="SELECT * FROM blocks"
+            query="SELECT * FROM blocks",
         )
         register_query(template)
 
-        result = runner.invoke(app, ["query", str(sample_db), "--template-info", "no_schema_template"])
+        result = runner.invoke(
+            app, ["query", str(sample_db), "--template-info", "no_schema_template"]
+        )
         assert result.exit_code == 0
         assert "Output Schema:" in result.stdout
         assert "Dynamic" in result.stdout
@@ -414,7 +426,9 @@ class TestQueryCommand:
 
     def test_query_list_templates(self, sample_db: Path) -> None:
         """Test 'query --list' command lists templates."""
-        register_query(QueryTemplate(name="test_template", description="Test query", query="SELECT 1"))
+        register_query(
+            QueryTemplate(name="test_template", description="Test query", query="SELECT 1")
+        )
 
         result = runner.invoke(app, ["query", str(sample_db), "--list"])
         assert result.exit_code == 0
@@ -425,7 +439,10 @@ class TestQueryCommand:
         """Test 'query --list' when no templates registered."""
         result = runner.invoke(app, ["query", str(sample_db), "--list"])
         assert result.exit_code == 0
-        assert "No query templates available" in result.stdout or "Available query templates" in result.stdout
+        assert (
+            "No query templates available" in result.stdout
+            or "Available query templates" in result.stdout
+        )
 
     def test_query_template_info(self, sample_db: Path) -> None:
         """Test 'query --template-info' command."""
@@ -437,17 +454,10 @@ class TestQueryCommand:
             query="SELECT * FROM blocks",
             parameters={
                 "device_id": QueryParameter(
-                    name="device_id",
-                    type="int",
-                    default=0,
-                    required=False,
-                    description="Device ID"
+                    name="device_id", type="int", default=0, required=False, description="Device ID"
                 )
             },
-            output_schema=[
-                {"column": "id", "type": "int"},
-                {"column": "size", "type": "int"}
-            ]
+            output_schema=[{"column": "id", "type": "int"}, {"column": "size", "type": "int"}],
         )
         register_query(template)
 
@@ -469,7 +479,11 @@ class TestQueryCommand:
         context_dir = Path.cwd() / ".pt-snap"
         context_dir.mkdir()
         (context_dir / "context.json").write_text(json.dumps({"current_db_path": str(sample_db)}))
-        register_query(QueryTemplate(name="size_query", description="Test", query="SELECT size FROM trace_entry_0"))
+        register_query(
+            QueryTemplate(
+                name="size_query", description="Test", query="SELECT size FROM trace_entry_0"
+            )
+        )
 
         result = runner.invoke(app, ["query", "--template-use", "size_query"])
 
@@ -488,7 +502,11 @@ class TestQueryCommand:
         context_dir.mkdir()
         (context_dir / "context.json").write_text(json.dumps({"current_db_path": str(sample_db)}))
         monkeypatch.setenv("PT_SNAP_DB_PATH", str(env_db))
-        register_query(QueryTemplate(name="size_query", description="Test", query="SELECT size FROM trace_entry_0"))
+        register_query(
+            QueryTemplate(
+                name="size_query", description="Test", query="SELECT size FROM trace_entry_0"
+            )
+        )
 
         result = runner.invoke(app, ["query", "--template-use", "size_query"])
 
@@ -508,7 +526,11 @@ class TestQueryCommand:
         context_dir.mkdir()
         (context_dir / "context.json").write_text(json.dumps({"current_db_path": str(sample_db)}))
         monkeypatch.setenv("PT_SNAP_DB_PATH", str(env_db))
-        register_query(QueryTemplate(name="size_query", description="Test", query="SELECT size FROM trace_entry_0"))
+        register_query(
+            QueryTemplate(
+                name="size_query", description="Test", query="SELECT size FROM trace_entry_0"
+            )
+        )
 
         result = runner.invoke(app, ["query", str(explicit_db), "--template-use", "size_query"])
 
@@ -521,11 +543,13 @@ class TestQueryCommand:
             name="device_query",
             description="Query with device",
             query="SELECT * FROM blocks_0 WHERE device_id = ?",
-            devices=[0]
+            devices=[0],
         )
         register_query(template)
 
-        result = runner.invoke(app, ["query", str(sample_db), "--template-use", "device_query", "--device", "0"])
+        result = runner.invoke(
+            app, ["query", str(sample_db), "--template-use", "device_query", "--device", "0"]
+        )
         # The test might fail due to executor issues, but we're testing CLI flow
         assert result.exit_code in [0, 1]
 
@@ -535,11 +559,21 @@ class TestQueryCommand:
             name="param_query",
             description="Query with params",
             query="SELECT * FROM trace_entry_0 WHERE device_id = ?",
-            devices=[0]
+            devices=[0],
         )
         register_query(template)
 
-        result = runner.invoke(app, ["query", str(sample_db), "--template-use", "param_query", "--params", '{"device_id": 0}'])
+        result = runner.invoke(
+            app,
+            [
+                "query",
+                str(sample_db),
+                "--template-use",
+                "param_query",
+                "--params",
+                '{"device_id": 0}',
+            ],
+        )
         # The test might fail due to executor issues, but we're testing CLI flow
         assert result.exit_code in [0, 1]
 
@@ -547,6 +581,8 @@ class TestQueryCommand:
         """Test 'query' command with invalid JSON params."""
         register_query(QueryTemplate(name="test", description="Test", query="SELECT 1"))
 
-        result = runner.invoke(app, ["query", str(sample_db), "--template-use", "test", "--params", "invalid json"])
+        result = runner.invoke(
+            app, ["query", str(sample_db), "--template-use", "test", "--params", "invalid json"]
+        )
         assert result.exit_code == 1
         assert "Error" in result.stdout

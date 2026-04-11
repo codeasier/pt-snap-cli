@@ -1,14 +1,13 @@
 """Tests for query registry."""
 
-
-from pt_snap_cli.query.config import QueryTemplate, QueryParameter
+from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.registry import (
     QueryRegistry,
     get_query,
+    get_template_info,
     list_queries,
     list_queries_with_details,
     register_query,
-    get_template_info,
 )
 
 
@@ -81,21 +80,17 @@ class TestModuleFunctions:
 
     def test_list_queries_with_details(self):
         template1 = QueryTemplate(
-            name="detailed_query1",
-            description="First detailed query",
-            query="SELECT 1"
+            name="detailed_query1", description="First detailed query", query="SELECT 1"
         )
         template2 = QueryTemplate(
-            name="detailed_query2",
-            description="Second detailed query",
-            query="SELECT 2"
+            name="detailed_query2", description="Second detailed query", query="SELECT 2"
         )
         register_query(template1)
         register_query(template2)
 
         details = list_queries_with_details()
         assert len(details) >= 2
-        
+
         found_q1 = False
         found_q2 = False
         for detail in details:
@@ -105,7 +100,7 @@ class TestModuleFunctions:
             elif detail["name"] == "detailed_query2":
                 assert detail["description"] == "Second detailed query"
                 found_q2 = True
-        
+
         assert found_q1 and found_q2
 
     def test_get_template_info(self):
@@ -120,20 +115,20 @@ class TestModuleFunctions:
                     type="int",
                     default=0,
                     required=False,
-                    description="Device ID to filter"
+                    description="Device ID to filter",
                 ),
                 "min_size": QueryParameter(
                     name="min_size",
                     type="int",
                     default=None,
                     required=True,
-                    description="Minimum block size"
-                )
+                    description="Minimum block size",
+                ),
             },
             output_schema=[
                 {"column": "block_id", "type": "int"},
-                {"column": "size", "type": "int"}
-            ]
+                {"column": "size", "type": "int"},
+            ],
         )
         register_query(template)
 
@@ -159,7 +154,7 @@ class TestModuleFunctions:
         template = QueryTemplate(
             name="simple_query",
             description="Simple query without parameters",
-            query="SELECT COUNT(*) FROM blocks"
+            query="SELECT COUNT(*) FROM blocks",
         )
         register_query(template)
 
@@ -176,7 +171,7 @@ class TestModuleFunctions:
     def test_registry_reset(self):
         register_query(QueryTemplate(name="test", query="SELECT 1"))
         assert get_query("test") is not None
-        
+
         QueryRegistry.reset()
         new_registry = QueryRegistry()
         assert new_registry.get("test") is None

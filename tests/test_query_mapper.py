@@ -129,6 +129,7 @@ class TestModuleFunctions:
 
     def test_register_type_converter(self):
         from pt_snap_cli.query.mapper import _default_mapper
+
         register_type_converter("test_type", str.upper)
 
         row = {"value": "hello"}
@@ -139,6 +140,7 @@ class TestModuleFunctions:
 
     def test_register_model_factory(self):
         from pt_snap_cli.query.mapper import _default_mapper
+
         class TestModel:
             def __init__(self, data):
                 self.value = data["value"]

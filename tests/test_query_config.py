@@ -73,9 +73,7 @@ class TestQueryTemplate:
             name="test",
             parameters={
                 "min_size": QueryParameter(name="min_size", type="int", default=0),
-                "required_param": QueryParameter(
-                    name="required_param", type="str", required=True
-                ),
+                "required_param": QueryParameter(name="required_param", type="str", required=True),
             },
         )
         params = {"required_param": "value", "min_size": "100"}
@@ -87,9 +85,7 @@ class TestQueryTemplate:
         template = QueryTemplate(
             name="test",
             parameters={
-                "required_param": QueryParameter(
-                    name="required_param", type="str", required=True
-                ),
+                "required_param": QueryParameter(name="required_param", type="str", required=True),
             },
         )
         with pytest.raises(ValueError):

@@ -91,13 +91,9 @@ class QueryExecutor:
             jinja_template = self._env.from_string(template.query)
             return jinja_template.render(render_context)
         except TemplateSyntaxError as e:
-            raise TemplateRenderError(
-                f"Template syntax error in '{template.name}': {e}"
-            ) from e
+            raise TemplateRenderError(f"Template syntax error in '{template.name}': {e}") from e
         except Exception as e:
-            raise TemplateRenderError(
-                f"Failed to render template '{template.name}': {e}"
-            ) from e
+            raise TemplateRenderError(f"Failed to render template '{template.name}': {e}") from e
 
     def execute(
         self,
@@ -124,9 +120,7 @@ class QueryExecutor:
                 else:
                     cursor.execute(sql)
                 columns = [desc[0] for desc in cursor.description]
-                return [
-                    dict(zip(columns, row, strict=False)) for row in cursor.fetchall()
-                ]
+                return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
         except Exception as e:
             raise QueryExecutionError(f"Query execution failed: {e}") from e
 
@@ -186,9 +180,7 @@ class QueryExecutor:
         results = {}
         for device_id in self._context.device_ids:
             try:
-                results[device_id] = self.execute_template(
-                    name, params, device_id, config_name
-                )
+                results[device_id] = self.execute_template(name, params, device_id, config_name)
             except QueryExecutionError:
                 results[device_id] = []
 
