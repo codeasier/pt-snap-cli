@@ -119,6 +119,13 @@ def query_database(
     list_templates: Annotated[
         bool, typer.Option("--list", help="List all available query templates")
     ] = False,
+    category: Annotated[
+        str | None,
+        typer.Option(
+            "--category",
+            help="Filter templates by category (basic, statistical, business)",
+        ),
+    ] = None,
     template_info: Annotated[
         str | None,
         typer.Option(
@@ -137,24 +144,47 @@ def query_database(
     Examples:
         pt-snap use snapshot.pkl.db                    # Set project database
         pt-snap query --list                           # List templates
-        pt-snap query --template-use leak_detection_v2 # Query with resolved context
-        pt-snap query --template-use active_blocks_v2 --device 0
-        pt-snap query custom.db --template-use leak_detection_v2  # Override with custom path
-        pt-snap query --template-info leak_detection_v2
+        pt-snap query --template-use leak_detection    # Query with resolved context
+        pt-snap query --template-use active_blocks --device 0
+        pt-snap query custom.db --template-use leak_detection  # Override with custom path
+        pt-snap query --template-info leak_detection
+        pt-snap query --list --category basic          # List only basic queries
     """
     from pt_snap_cli.query import QueryExecutor
-    from pt_snap_cli.query.registry import get_template_info, list_queries_with_details
+    from pt_snap_cli.query.registry import (
+        get_template_info,
+        list_by_category_with_details,
+    )
 
     if list_templates:
-        details = list_queries_with_details()
-        if details:
-            typer.echo("Available query templates:")
-            typer.echo()
-            for info in details:
-                typer.secho(f"  {info['name']}", fg=typer.colors.GREEN, bold=True)
-                typer.echo(f"    {info['description']}")
+        categories = ["basic", "statistical", "business"]
+        category_labels = {
+            "basic": "Basic Queries",
+            "statistical": "Statistical Queries",
+            "business": "Business Queries",
+        }
+
+        if category is not None and category not in categories:
+            typer.secho(
+                f"Error: Invalid category '{category}'. Must be one of: {', '.join(categories)}",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
+
+        filter_cats = [category] if category in categories else categories
+        any_found = False
+
+        for cat in filter_cats:
+            details = list_by_category_with_details(cat)
+            if details:
+                any_found = True
+                typer.secho(f"{category_labels[cat]}:", fg=typer.colors.GREEN, bold=True)
+                for info in details:
+                    typer.secho(f"  {info['name']}", fg=typer.colors.GREEN, bold=True)
+                    typer.echo(f"    {info['description']}")
                 typer.echo()
-        else:
+
+        if not any_found:
             typer.echo("No query templates available.")
         raise typer.Exit()
 

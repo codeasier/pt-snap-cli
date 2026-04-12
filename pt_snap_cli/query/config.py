@@ -63,6 +63,7 @@ class QueryTemplate:
     parameters: dict[str, QueryParameter] = field(default_factory=dict)
     query: str = ""
     output_schema: list[dict[str, str]] = field(default_factory=list)
+    category: str = "basic"
 
     def validate_params(self, params: dict[str, Any]) -> dict[str, Any]:
         """Validate and convert parameters.
@@ -115,6 +116,7 @@ class QueryTemplate:
             parameters=parameters,
             query=data.get("query", ""),
             output_schema=data.get("output_schema", []),
+            category=data.get("category", "basic"),
         )
 
 

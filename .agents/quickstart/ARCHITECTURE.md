@@ -61,10 +61,10 @@ Models 模块
 pt-snap use snapshot.pkl.db
 
 # 2. 执行泄漏检测
-pt-snap query snapshot.pkl.db --template leak_detection_v2
+pt-snap query snapshot.pkl.db --template leak_detection
 
 # 3. 调用栈分析
-pt-snap query snapshot.pkl.db --template callstack_analysis_v2
+pt-snap query snapshot.pkl.db --template callstack_analysis
 ```
 
 ## 相关文件

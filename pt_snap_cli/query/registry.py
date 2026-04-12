@@ -93,6 +93,44 @@ class QueryRegistry:
 
         return details
 
+    def list_by_category(self, category: str) -> list[str]:
+        """List query names filtered by category.
+
+        Args:
+            category: Category to filter by (basic, statistical, business).
+
+        Returns:
+            Sorted list of query names in the given category.
+        """
+        all_names = set(self._queries.keys()) | set(self._factories.keys())
+        result = []
+        for name in sorted(all_names):
+            template = self.get(name)
+            if template and template.category == category:
+                result.append(name)
+        return result
+
+    def list_by_category_with_details(self, category: str) -> list[dict[str, str]]:
+        """List queries filtered by category with details.
+
+        Args:
+            category: Category to filter by (basic, statistical, business).
+
+        Returns:
+            List of dicts with name and description for the given category.
+        """
+        details = []
+        for name in self.list_by_category(category):
+            template = self.get(name)
+            if template:
+                details.append(
+                    {
+                        "name": name,
+                        "description": template.description,
+                    }
+                )
+        return details
+
     def unregister(self, name: str) -> bool:
         """Unregister a query template.
 
@@ -183,6 +221,30 @@ def list_queries_with_details() -> list[dict[str, str]]:
         List of dicts with name, description, devices, and parameters.
     """
     return _registry.list_queries_with_details()
+
+
+def list_by_category(category: str) -> list[str]:
+    """List query names filtered by category.
+
+    Args:
+        category: Category to filter by (basic, statistical, business).
+
+    Returns:
+        Sorted list of query names in the given category.
+    """
+    return _registry.list_by_category(category)
+
+
+def list_by_category_with_details(category: str) -> list[dict[str, str]]:
+    """List queries filtered by category with details.
+
+    Args:
+        category: Category to filter by (basic, statistical, business).
+
+    Returns:
+        List of dicts with name and description for the given category.
+    """
+    return _registry.list_by_category_with_details(category)
 
 
 def _load_yaml_templates(template_dir: Path | str | None = None) -> None:

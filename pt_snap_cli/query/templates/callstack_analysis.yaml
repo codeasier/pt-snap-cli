@@ -1,6 +1,7 @@
 version: "1.0"
 queries:
-  callstack_analysis_v2:
+  callstack_analysis:
+    category: statistical
     description: Analyze memory allocation by callstack
     devices:
       - all

@@ -54,7 +54,7 @@ Use `PT_SNAP_DB_PATH` when one shell or agent needs an isolated database without
 
 ```bash
 export PT_SNAP_DB_PATH=/path/to/agent-specific/snapshot.db
-pt-snap query --template-use memory_summary_v2
+pt-snap query --template-use memory_summary
 ```
 
 You can also print the export command after validation:
@@ -77,13 +77,13 @@ pt-snap use
 pt-snap query --list
 
 # Execute query (automatically uses the resolved database context)
-pt-snap query --template-use memory_summary_v2
+pt-snap query --template-use memory_summary
 
 # Query with parameters
-pt-snap query --template-use leak_detection_v2 --params '{"min_size": 1024}'
+pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 
 # Specify device
-pt-snap query --template-use active_blocks_v2 --device 0
+pt-snap query --template-use active_blocks --device 0
 ```
 
 #### Resolution Priority
@@ -99,7 +99,7 @@ Even with context configured, you can still specify a different database on the 
 
 ```bash
 # Use temporarily specified database (does not affect context)
-pt-snap query /path/to/other.db --template-use memory_summary_v2
+pt-snap query /path/to/other.db --template-use memory_summary
 ```
 
 #### Legacy Global Configuration
@@ -142,7 +142,7 @@ Context content example:
 **Query without configured database:**
 
 ```bash
-pt-snap query --template-use memory_summary_v2
+pt-snap query --template-use memory_summary
 # Error: No database path specified and no database configured.
 # Use 'pt-snap use <database_path>' to set a project database, or provide db_path argument.
 ```
@@ -152,7 +152,7 @@ pt-snap query --template-use memory_summary_v2
 If the resolved database file is deleted or moved, `pt-snap` reports the context source and leaves the context file unchanged:
 
 ```bash
-pt-snap query --template-use memory_summary_v2
+pt-snap query --template-use memory_summary
 # Error: Database from project context not found: /path/to/missing.db
 # Use 'pt-snap use <new_database_path>' to set a new project database, or provide db_path argument.
 ```
@@ -164,9 +164,9 @@ pt-snap query --template-use memory_summary_v2
 pt-snap use examples/snapshot_expandable.pkl.db
 
 # 2. Then query directly without repeating path
-pt-snap query --template-use memory_summary_v2
-pt-snap query --template-use active_blocks_v2 --device 0
-pt-snap query --template-use leak_detection_v2
+pt-snap query --template-use memory_summary
+pt-snap query --template-use active_blocks --device 0
+pt-snap query --template-use leak_detection
 
 # 3. View the effective context and source
 pt-snap use
@@ -202,7 +202,8 @@ pt-snap query [--template-use <template_name>] [--params <json>] [--device <id>]
 - `--template-use`: Query template name (required unless using --list or --template-info)
 - `--params`: Query parameters in JSON format (optional)
 - `--device`: Device ID (optional)
-- `--list`: List available query templates
+- `--list`: List available query templates (grouped by category)
+- `--category`: Filter templates by category when using --list (`basic`, `statistical`, `business`)
 - `--template-info <template>`: Show detailed information about a specific template (parameters and output schema)
 
 **Examples:**
@@ -214,17 +215,17 @@ pt-snap query --list
 
 Query using template (leak detection):
 ```bash
-pt-snap query --template-use leak_detection_v2 --params '{"min_size": 1024}'
+pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 ```
 
 Query specific device:
 ```bash
-pt-snap query --template-use active_blocks_v2 --device 0
+pt-snap query --template-use active_blocks --device 0
 ```
 
 View template details:
 ```bash
-pt-snap query --template-info leak_detection_v2
+pt-snap query --template-info leak_detection
 ```
 
 ### Query Module Usage
@@ -233,65 +234,31 @@ The Query module provides powerful memory snapshot query functionality with temp
 
 #### Available Query Templates
 
-1. **leak_detection_v2** - Memory Leak Detection
-   
-   Detects memory allocations without free events.
-   
+Templates are organized into three categories. List them with `pt-snap query --list` or filter by category with `pt-snap query --list --category <basic|statistical|business>`.
+
+**Basic Queries** — raw data lookup:
+
+1. **active_blocks** - Active Memory Blocks
+2. **blocks_by_size** - Blocks by Size
+3. **events_by_action** - Events by Action
+4. **memory_timeline** - Memory Timeline
+
+**Statistical Queries** — aggregation and analysis:
+
+5. **callstack_analysis** - Callstack Analysis
+6. **memory_summary** - Memory Summary
+
+**Business Queries** — domain-specific analysis:
+
+7. **leak_detection** - Memory Leak Detection
+
    ```bash
-   pt-snap query --template-use leak_detection_v2 --params '{"min_size": 1024}'
+   pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
    ```
-   
+
    Parameters:
-   - `min_size`: Minimum leak size (bytes), default 1024
+   - `min_size`: Minimum leak size (bytes), default 0
    - `device_id`: Device ID
-
-2. **callstack_analysis_v2** - Callstack Analysis
-   
-   Analyzes callstack information for memory allocations.
-   
-   ```bash
-   pt-snap query --template-use callstack_analysis_v2
-   ```
-
-3. **memory_timeline_v2** - Memory Timeline
-   
-   Shows timeline information for memory allocations.
-   
-   ```bash
-   pt-snap query --template-use memory_timeline_v2
-   ```
-
-4. **active_blocks_v2** - Active Memory Blocks
-   
-   View currently active memory blocks.
-   
-   ```bash
-   pt-snap query --template-use active_blocks_v2
-   ```
-
-5. **memory_summary_v2** - Memory Summary
-   
-   Display memory usage statistics summary.
-   
-   ```bash
-   pt-snap query --template-use memory_summary_v2
-   ```
-
-6. **blocks_by_size_v2** - Blocks by Size
-   
-   Display memory blocks sorted by allocation size.
-   
-   ```bash
-   pt-snap query --template-use blocks_by_size_v2
-   ```
-
-7. **events_by_action_v2** - Events by Action
-   
-   Display events grouped by action type.
-   
-   ```bash
-   pt-snap query --template-use events_by_action_v2
-   ```
 
 #### Query Output
 

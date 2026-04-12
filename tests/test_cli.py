@@ -425,24 +425,25 @@ class TestQueryCommand:
     """Test query command."""
 
     def test_query_list_templates(self, sample_db: Path) -> None:
-        """Test 'query --list' command lists templates."""
+        """Test 'query --list' command lists templates grouped by category."""
         register_query(
             QueryTemplate(name="test_template", description="Test query", query="SELECT 1")
         )
 
         result = runner.invoke(app, ["query", str(sample_db), "--list"])
         assert result.exit_code == 0
-        assert "Available query templates" in result.stdout
+        assert "Basic Queries:" in result.stdout
         assert "test_template" in result.stdout
 
     def test_query_list_no_templates(self, sample_db: Path) -> None:
-        """Test 'query --list' when no templates registered."""
+        """Test 'query --list' shows default packaged templates."""
         result = runner.invoke(app, ["query", str(sample_db), "--list"])
         assert result.exit_code == 0
-        assert (
-            "No query templates available" in result.stdout
-            or "Available query templates" in result.stdout
-        )
+        # Default packaged templates should be listed
+        assert "Basic Queries:" in result.stdout
+        assert "active_blocks" in result.stdout
+        assert "Statistical Queries:" in result.stdout
+        assert "Business Queries:" in result.stdout
 
     def test_query_template_info(self, sample_db: Path) -> None:
         """Test 'query --template-info' command."""
@@ -586,3 +587,31 @@ class TestQueryCommand:
         )
         assert result.exit_code == 1
         assert "Error" in result.stdout
+
+    def test_query_list_by_category(self, sample_db: Path) -> None:
+        """Test 'query --list --category basic' filters by category."""
+        register_query(
+            QueryTemplate(name="basic_q", description="Basic", query="SELECT 1", category="basic")
+        )
+        register_query(
+            QueryTemplate(
+                name="stat_q", description="Stats", query="SELECT COUNT(*)", category="statistical"
+            )
+        )
+
+        result = runner.invoke(app, ["query", str(sample_db), "--list", "--category", "basic"])
+        assert result.exit_code == 0
+        assert "Basic Queries:" in result.stdout
+        assert "basic_q" in result.stdout
+        assert "Statistical Queries:" not in result.stdout
+        assert "stat_q" not in result.stdout
+
+    def test_query_list_invalid_category(self, sample_db: Path) -> None:
+        """Test 'query --list --category invalid' returns error."""
+        register_query(
+            QueryTemplate(name="test", description="Test", query="SELECT 1", category="basic")
+        )
+
+        result = runner.invoke(app, ["query", str(sample_db), "--list", "--category", "invalid"])
+        assert result.exit_code != 0
+        assert "Invalid category" in result.stdout

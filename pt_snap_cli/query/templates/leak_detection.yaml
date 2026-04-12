@@ -1,6 +1,7 @@
 version: "1.0"
 queries:
-  leak_detection_v2:
+  leak_detection:
+    category: business
     description: Detect memory leaks by finding allocations without free events
     devices:
       - all
