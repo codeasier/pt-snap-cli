@@ -3,8 +3,11 @@
 from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.registry import (
     QueryRegistry,
+    _load_all_templates,
     get_query,
     get_template_info,
+    list_by_category,
+    list_by_category_with_details,
     list_queries,
     list_queries_with_details,
     register_query,
@@ -175,3 +178,51 @@ class TestModuleFunctions:
         QueryRegistry.reset()
         new_registry = QueryRegistry()
         assert new_registry.get("test") is None
+
+
+class TestListByCategory:
+    def setup_method(self):
+        QueryRegistry.reset()
+        _load_all_templates()
+
+    def test_list_by_category_basic(self):
+        register_query(QueryTemplate(name="test_basic", query="SELECT 1", category="basic"))
+
+        result = list_by_category("basic")
+        assert "test_basic" in result
+        # Packaged basic templates should also be present
+        assert "active_blocks" in result
+
+    def test_list_by_category_statistical(self):
+        register_query(
+            QueryTemplate(name="test_stat", query="SELECT COUNT(*)", category="statistical")
+        )
+
+        result = list_by_category("statistical")
+        assert "test_stat" in result
+        assert "memory_summary" in result
+
+    def test_list_by_category_business(self):
+        register_query(QueryTemplate(name="test_biz", query="SELECT 1", category="business"))
+
+        result = list_by_category("business")
+        assert "test_biz" in result
+        assert "leak_detection" in result
+
+    def test_list_by_category_with_details(self):
+        register_query(
+            QueryTemplate(
+                name="test_detail", description="Test detail", query="SELECT 1", category="basic"
+            )
+        )
+
+        result = list_by_category_with_details("basic")
+        # Should include our registered template
+        names = [d["name"] for d in result]
+        assert "test_detail" in names
+        detail = next(d for d in result if d["name"] == "test_detail")
+        assert detail["description"] == "Test detail"
+
+    def test_list_by_category_unknown_returns_empty(self):
+        result = list_by_category("nonexistent")
+        assert result == []

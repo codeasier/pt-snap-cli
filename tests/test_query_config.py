@@ -67,6 +67,21 @@ class TestQueryTemplate:
         assert template.devices == ["all", "0"]
         assert "min_size" in template.parameters
         assert template.parameters["min_size"].type == "int"
+        assert template.category == "basic"
+
+    def test_from_dict_with_category(self):
+        data = {
+            "name": "test_query",
+            "description": "Test query",
+            "category": "statistical",
+            "query": "SELECT COUNT(*) FROM table",
+        }
+        template = QueryTemplate.from_dict(data)
+        assert template.category == "statistical"
+
+    def test_default_category_is_basic(self):
+        template = QueryTemplate(name="test")
+        assert template.category == "basic"
 
     def test_validate_params(self):
         template = QueryTemplate(
@@ -99,6 +114,7 @@ version: "1.0"
 queries:
   test_query:
     description: A test query
+    category: business
     devices:
       - all
     parameters:
@@ -115,6 +131,18 @@ queries:
         assert config.version == "1.0"
         assert "test_query" in config.queries
         assert config.get_query("test_query").description == "A test query"
+        assert config.get_query("test_query").category == "business"
+
+    def test_load_yaml_default_category(self):
+        yaml_content = """
+version: "1.0"
+queries:
+  no_category_query:
+    description: Query without category
+    query: "SELECT 1"
+"""
+        config = QueryConfig.load_yaml_from_string(yaml_content)
+        assert config.get_query("no_category_query").category == "basic"
 
     def test_list_queries(self):
         config = QueryConfig(

@@ -1,20 +1,16 @@
 version: "1.0"
 queries:
-  blocks_by_size_v2:
-    description: Get blocks filtered by size range
+  active_blocks:
+    category: basic
+    description: Get active memory blocks (active=1)
     devices:
       - all
     parameters:
-      min_size:
-        type: int
-        default: 0
-        required: false
-        description: Minimum block size
-      max_size:
+      device_id:
         type: int
         default: null
         required: false
-        description: Maximum block size
+        description: Device ID to query
       limit:
         type: int
         default: 100
@@ -22,8 +18,7 @@ queries:
         description: Maximum rows to return
     query: |
       SELECT * FROM {{ device_block_table }}
-      WHERE size >= {{ min_size }}
-      {% if max_size is not none %}AND size <= {{ max_size }}{% endif %}
+      WHERE state = 1
       ORDER BY size DESC
       LIMIT {{ limit }}
     output_schema:
@@ -33,5 +28,11 @@ queries:
         type: hex
       - column: size
         type: int
-      - column: active
+      - column: requestedSize
+        type: int
+      - column: state
+        type: int
+      - column: allocEventId
+        type: int
+      - column: freeEventId
         type: int

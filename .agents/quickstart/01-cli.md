@@ -45,7 +45,7 @@ pt-snap --version
 pt-snap use examples/snapshot.pkl.db
 
 # 执行查询
-pt-snap query snapshot.pkl.db --template leak_detection_v2 --params '{"min_size": 1024}'
+pt-snap query snapshot.pkl.db --template leak_detection --params '{"min_size": 1024}'
 
 # 列出模板
 pt-snap query snapshot.pkl.db --list

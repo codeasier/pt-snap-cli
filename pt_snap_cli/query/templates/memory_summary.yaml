@@ -1,6 +1,7 @@
 version: "1.0"
 queries:
-  memory_summary_v2:
+  memory_summary:
+    category: statistical
     description: Get memory statistics by device
     devices:
       - all

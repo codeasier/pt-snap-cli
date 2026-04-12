@@ -55,11 +55,11 @@ Fluent API 构建 SQL 查询。
 
 ## 预定义模板
 
-位于 `query/templates/` 目录：
+位于 `query/templates/` 目录，按分类组织：
 
-1. **leak_detection_v2.yaml** - 内存泄漏检测
-2. **callstack_analysis_v2.yaml** - 调用栈分析
-3. **memory_timeline_v2.yaml** - 内存时间线
+- **Basic**: `active_blocks.yaml`, `blocks_by_size.yaml`, `events_by_action.yaml`, `memory_timeline.yaml`
+- **Statistical**: `memory_summary.yaml`, `callstack_analysis.yaml`
+- **Business**: `leak_detection.yaml`
 
 ## 使用示例
 
@@ -74,7 +74,7 @@ executor = QueryExecutor(ctx, template_dir=Path("query/templates"))
 
 # 执行模板查询
 results = executor.execute_template(
-    "leak_detection_v2",
+    "leak_detection",
     params={"min_size": 1024},
     device_id=0
 )
