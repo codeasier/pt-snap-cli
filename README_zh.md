@@ -342,18 +342,19 @@ mapped_all = map_results(rows, schema)
 
 ```
 pt-snap-cli/
-├── pt_snap_cli/
-│   ├── cli.py              # CLI 入口
-│   ├── context.py          # 上下文管理
-│   ├── query/
-│   │   ├── builder.py      # 查询构建器
-│   │   ├── executor.py     # 查询执行器
-│   │   ├── mapper.py       # 结果映射器
-│   │   ├── registry.py     # 查询注册表
-│   │   ├── condition.py    # 查询条件
-│   │   ├── config.py       # 查询配置
-│   │   └── templates/      # 查询模板
-│   └── models/             # 数据模型
+├── src/
+│   └── pt_snap_cli/
+│       ├── cli.py              # CLI 入口
+│       ├── context.py          # 上下文管理
+│       ├── query/
+│       │   ├── builder.py      # 查询构建器
+│       │   ├── executor.py     # 查询执行器
+│       │   ├── mapper.py       # 结果映射器
+│       │   ├── registry.py     # 查询注册表
+│       │   ├── condition.py    # 查询条件
+│       │   ├── config.py       # 查询配置
+│       │   └── templates/      # 查询模板
+│       └── models/             # 数据模型
 ├── tests/                  # 测试文件
 ├── examples/               # 示例数据
 └── docs/                   # 文档

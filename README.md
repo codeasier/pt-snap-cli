@@ -342,18 +342,19 @@ Supported type converters:
 
 ```
 pt-snap-cli/
-├── pt_snap_cli/
-│   ├── cli.py              # CLI entry point
-│   ├── context.py          # Context management
-│   ├── query/
-│   │   ├── builder.py      # Query builder
-│   │   ├── executor.py     # Query executor
-│   │   ├── mapper.py       # Result mapper
-│   │   ├── registry.py     # Query registry
-│   │   ├── condition.py    # Query conditions
-│   │   ├── config.py       # Query configuration
-│   │   └── templates/      # Query templates
-│   └── models/             # Data models
+├── src/
+│   └── pt_snap_cli/
+│       ├── cli.py              # CLI entry point
+│       ├── context.py          # Context management
+│       ├── query/
+│       │   ├── builder.py      # Query builder
+│       │   ├── executor.py     # Query executor
+│       │   ├── mapper.py       # Result mapper
+│       │   ├── registry.py     # Query registry
+│       │   ├── condition.py    # Query conditions
+│       │   ├── config.py       # Query configuration
+│       │   └── templates/      # Query templates
+│       └── models/             # Data models
 ├── tests/                  # Test files
 ├── examples/               # Example data
 └── docs/                   # Documentation

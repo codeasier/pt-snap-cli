@@ -53,7 +53,7 @@ rag = [
 pt-snap = "pt_snap_cli.cli:app"
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 include = ["pt_snap_cli*"]
 
 [tool.setuptools.package-data]
