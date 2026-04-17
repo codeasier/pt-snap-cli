@@ -376,12 +376,9 @@ def _safe_call() -> int:
     except KeyError as e:
         # Click's shell completion can raise KeyError when COMP_WORDS or
         # COMP_LINE is not set in non-standard terminal environments.
+        # Exit silently — printing to stdout causes the shell to try
+        # executing the error message as a command.
         if str(e) in ("'COMP_WORDS'", "'COMP_LINE'", "'COMP_POINT'"):
-            typer.secho(
-                "Error: shell completion is not properly configured. "
-                "Run 'pt-snap --install-completion' and restart your shell.",
-                fg=typer.colors.RED,
-            )
             return 1
         raise
 
