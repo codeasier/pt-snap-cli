@@ -7,7 +7,7 @@ import typer
 
 from pt_snap_cli import __version__
 from pt_snap_cli.config import ENV_DB_PATH, Config, ContextResolutionError
-from pt_snap_cli.context import Context
+from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionError
 
 app = typer.Typer(
     name="pt-snap",
@@ -101,8 +101,11 @@ def use_database(
             typer.echo(f"Available devices: {', '.join(map(str, devices))}")
         else:
             typer.echo("No devices found in database.")
-    except Exception as e:
+    except (DatabaseNotFoundError, SchemaVersionError) as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED)
+        raise typer.Exit(1) from None
+    except Exception as e:
+        typer.secho(f"Error: unexpected failure opening database: {e}", fg=typer.colors.RED)
         raise typer.Exit(1) from None
 
 

@@ -120,7 +120,7 @@ class QueryExecutor:
                 else:
                     cursor.execute(sql)
                 columns = [desc[0] for desc in cursor.description]
-                return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+                return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
         except Exception as e:
             raise QueryExecutionError(f"Query execution failed: {e}") from e
 
