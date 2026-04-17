@@ -18,6 +18,7 @@ class QueryBuilder:
         self._limit: int | None = None
         self._offset: int | None = None
         self._group_by: list[str] = []
+        self._having: list[Condition] = []
 
     def from_table(self, table: str) -> QueryBuilder:
         """Set the table to query from.
@@ -84,6 +85,21 @@ class QueryBuilder:
         self._group_by.extend(columns)
         return self
 
+    def having(self, condition: Condition) -> QueryBuilder:
+        """Add a HAVING condition.
+
+        HAVING filters groups after aggregation. Should be used
+        after a GROUP BY clause.
+
+        Args:
+            condition: Condition to add.
+
+        Returns:
+            Self for chaining.
+        """
+        self._having.append(condition)
+        return self
+
     def limit(self, n: int) -> QueryBuilder:
         """Set LIMIT clause.
 
@@ -135,6 +151,14 @@ class QueryBuilder:
         if self._group_by:
             sql += " GROUP BY " + ", ".join(self._group_by)
 
+        if self._having:
+            having_parts = []
+            for cond in self._having:
+                cond_sql, cond_params = cond.to_sql()
+                having_parts.append(cond_sql)
+                params.extend(cond_params)
+            sql += " HAVING " + " AND ".join(f"({part})" for part in having_parts)
+
         if self._order_by:
             sql += " ORDER BY " + ", ".join(self._order_by)
 
@@ -159,4 +183,5 @@ class QueryBuilder:
         self._limit = None
         self._offset = None
         self._group_by = []
+        self._having = []
         return self

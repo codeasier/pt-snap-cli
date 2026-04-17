@@ -125,3 +125,55 @@ class TestQueryBuilder:
         assert "WHERE" in sql
         assert "AND" in sql
         assert "OR" in sql
+
+    def test_having_clause(self):
+        builder = QueryBuilder()
+        sql, params = (
+            builder.from_table("trace_entry_0")
+            .group_by("eventType")
+            .having(GreaterThan("COUNT(*)", 10))
+            .build()
+        )
+        assert "GROUP BY eventType" in sql
+        assert "HAVING" in sql
+        assert "(COUNT(*) > ?)" in sql
+        assert params == [10]
+
+    def test_multiple_having_clauses(self):
+        builder = QueryBuilder()
+        sql, params = (
+            builder.from_table("trace_entry_0")
+            .group_by("eventType")
+            .having(GreaterThan("COUNT(*)", 10))
+            .having(GreaterThan("SUM(size)", 1024))
+            .build()
+        )
+        assert "HAVING (COUNT(*) > ?) AND (SUM(size) > ?)" in sql
+        assert params == [10, 1024]
+
+    def test_full_query_with_having(self):
+        builder = QueryBuilder()
+        sql, params = (
+            builder.from_table("trace_entry_0")
+            .columns("eventType", "COUNT(*) as cnt")
+            .where(Equal("action", "malloc"))
+            .group_by("eventType")
+            .having(GreaterThan("COUNT(*)", 5))
+            .order_by("cnt", descending=True)
+            .limit(10)
+            .build()
+        )
+        assert sql.startswith("SELECT eventType, COUNT(*) as cnt FROM trace_entry_0")
+        assert "WHERE" in sql
+        assert "GROUP BY eventType" in sql
+        assert "HAVING" in sql
+        assert "ORDER BY cnt DESC" in sql
+        assert "LIMIT 10" in sql
+        assert params == ["malloc", 5]
+
+    def test_reset_clears_having(self):
+        builder = QueryBuilder()
+        builder.from_table("t").group_by("c").having(GreaterThan("x", 1))
+        builder.reset()
+        sql, params = builder.from_table("t").build()
+        assert "HAVING" not in sql
