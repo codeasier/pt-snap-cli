@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 
 from pt_snap_cli import __version__
+from pt_snap_cli.completion import complete_categories, complete_device_ids, complete_template_names
 from pt_snap_cli.config import ENV_DB_PATH, Config, ContextResolutionError
 from pt_snap_cli.context import Context
 
@@ -112,10 +113,21 @@ def query_database(
         Path | None, typer.Argument(help="Path to database file (optional if configured)")
     ] = None,
     template_use: Annotated[
-        str | None, typer.Option("--template-use", help="Query template name to execute")
+        str | None,
+        typer.Option(
+            "--template-use",
+            help="Query template name to execute",
+            autocompletion=complete_template_names,
+        ),
     ] = None,
     params: Annotated[str | None, typer.Option(help="Query parameters as JSON string")] = None,
-    device: Annotated[int | None, typer.Option(help="Device ID to query")] = None,
+    device: Annotated[
+        int | None,
+        typer.Option(
+            help="Device ID to query",
+            autocompletion=complete_device_ids,
+        ),
+    ] = None,
     list_templates: Annotated[
         bool, typer.Option("--list", help="List all available query templates")
     ] = False,
@@ -124,6 +136,7 @@ def query_database(
         typer.Option(
             "--category",
             help="Filter templates by category (basic, statistical, business)",
+            autocompletion=complete_categories,
         ),
     ] = None,
     template_info: Annotated[
@@ -131,6 +144,7 @@ def query_database(
         typer.Option(
             "--template-info",
             help="Show detailed information about a template (including parameters and output schema)",
+            autocompletion=complete_template_names,
         ),
     ] = None,
 ) -> None:
