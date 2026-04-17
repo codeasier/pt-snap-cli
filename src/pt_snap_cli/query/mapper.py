@@ -16,7 +16,7 @@ class ResultMapper:
             "int": int,
             "float": float,
             "str": str,
-            "bool": bool,
+            "bool": lambda x: x.lower() in ("true", "1", "yes") if isinstance(x, str) else bool(x),
             "hex": lambda x: hex(x) if isinstance(x, int) else x,
             "datetime": lambda x: x,
         }

@@ -24,7 +24,14 @@ class TestQueryParameter:
     def test_validate_bool(self):
         param = QueryParameter(name="test", type="bool", required=False)
         assert param.validate("true") is True
+        assert param.validate("false") is False
+        assert param.validate("True") is True
+        assert param.validate("False") is False
+        assert param.validate("1") is True
+        assert param.validate("0") is False
+        assert param.validate("yes") is True
         assert param.validate(False) is False
+        assert param.validate(True) is True
 
     def test_validate_missing_optional(self):
         param = QueryParameter(name="test", type="str", required=False, default="default")

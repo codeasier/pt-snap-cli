@@ -41,7 +41,7 @@ class QueryParameter:
             "str": str,
             "int": int,
             "float": float,
-            "bool": lambda x: bool(x) if isinstance(x, str) else x,
+            "bool": lambda x: x.lower() in ("true", "1", "yes") if isinstance(x, str) else bool(x),
         }
 
         converter = type_converters.get(self.type, str)
