@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 from pathlib import Path
 
@@ -266,8 +267,8 @@ def _load_yaml_templates(template_dir: Path | str | None = None) -> None:
             config = QueryConfig.load_yaml(yaml_file)
             for _query_name, template in config.queries.items():
                 _registry.register(template)
-        except Exception:
-            pass
+        except Exception as e:
+            warnings.warn(f"Failed to load query template from {yaml_file}: {e}", stacklevel=2)
 
 
 def _load_all_templates() -> None:
@@ -277,5 +278,5 @@ def _load_all_templates() -> None:
 
 try:
     _load_all_templates()
-except Exception:
-    pass
+except Exception as e:
+    warnings.warn(f"Failed to load query templates: {e}", stacklevel=2)

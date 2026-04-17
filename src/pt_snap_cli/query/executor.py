@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -57,8 +58,8 @@ class QueryExecutor:
             try:
                 config = QueryConfig.load_yaml(yaml_file)
                 self._configs[yaml_file.stem] = config
-            except Exception:
-                pass
+            except Exception as e:
+                warnings.warn(f"Failed to load query template from {yaml_file}: {e}", stacklevel=2)
 
     def render(
         self,
