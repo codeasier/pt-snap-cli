@@ -13,7 +13,7 @@ from pt_snap_cli.context import Context
 app = typer.Typer(
     name="pt-snap",
     help="PyTorch Memory Snapshot Analysis Tool",
-    add_completion=False,
+    add_completion=True,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 
