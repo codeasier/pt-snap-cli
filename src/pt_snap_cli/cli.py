@@ -381,5 +381,26 @@ def show_config(
             typer.echo(f"  {key}: {value}")
 
 
+def _safe_call() -> int:
+    """Wrapper for the console script entry point to handle completion errors.
+
+    Returns:
+        Exit code (0 for success, 1 for errors).
+    """
+    try:
+        app()
+        return 0
+    except KeyError as e:
+        # Click's shell completion can raise KeyError when COMP_WORDS or
+        # COMP_LINE is not set in non-standard terminal environments.
+        # Exit silently — printing to stdout causes the shell to try
+        # executing the error message as a command.
+        if str(e) in ("'COMP_WORDS'", "'COMP_LINE'", "'COMP_POINT'"):
+            return 1
+        raise
+
+
 if __name__ == "__main__":
-    app()
+    import sys
+
+    sys.exit(_safe_call())

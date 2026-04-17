@@ -49,7 +49,7 @@ rag = [
 ]
 
 [project.scripts]
-pt-snap = "pt_snap_cli.cli:app"
+pt-snap = "pt_snap_cli.cli:_safe_call"
 
 [tool.setuptools.packages.find]
 where = ["src"]

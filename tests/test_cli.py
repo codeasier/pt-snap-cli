@@ -615,3 +615,41 @@ class TestQueryCommand:
         result = runner.invoke(app, ["query", str(sample_db), "--list", "--category", "invalid"])
         assert result.exit_code != 0
         assert "Invalid category" in result.stdout
+
+
+class TestSafeCall:
+    """Test _safe_call wrapper for console script entry point."""
+
+    def test_safe_call_runs_app(self, sample_db: Path) -> None:
+        """Test that _safe_call successfully runs the CLI app."""
+        from unittest.mock import patch
+
+        from pt_snap_cli.cli import _safe_call
+
+        with patch("sys.argv", ["pt-snap", "--version"]):
+            with pytest.raises(SystemExit) as exc_info:
+                _safe_call()
+            assert exc_info.value.code == 0
+
+    def test_safe_call_catches_comp_keyerror(self) -> None:
+        """Test _safe_call catches KeyError from broken shell completion."""
+        from unittest.mock import patch
+
+        from pt_snap_cli.cli import _safe_call
+
+        # Simulate Click trying completion with missing COMP_WORDS
+        with patch("sys.argv", ["pt-snap"]):
+            with patch("click.core.Command.parse_args", side_effect=KeyError("COMP_WORDS")):
+                exit_code = _safe_call()
+                assert exit_code == 1
+
+    def test_safe_call_reraises_unrelated_keyerror(self) -> None:
+        """Test _safe_call re-raises KeyError not related to shell completion."""
+        from unittest.mock import patch
+
+        from pt_snap_cli.cli import _safe_call
+
+        with patch("sys.argv", ["pt-snap"]):
+            with patch("click.core.Command.parse_args", side_effect=KeyError("some_other_key")):
+                with pytest.raises(KeyError, match="some_other_key"):
+                    _safe_call()
