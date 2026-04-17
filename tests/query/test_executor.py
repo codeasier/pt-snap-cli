@@ -135,3 +135,49 @@ class TestQueryExecutor:
         executor.register_template(template)
 
         assert "test_query" in executor.list_templates()
+
+    def test_execute_on_all_devices(self):
+        """Test execute_on_all_devices runs template on each device."""
+        mock_context = _make_mock_context(device_ids=[0, 1])
+        executor = QueryExecutor(mock_context)
+        executor.register_template(
+            QueryTemplate(
+                name="device_test",
+                description="Test",
+                query="SELECT {{ device_id }} as dev",
+            )
+        )
+
+        results = executor.execute_on_all_devices("device_test")
+        assert 0 in results
+        assert 1 in results
+
+    def test_execute_on_all_devices_template_not_found(self):
+        """Test execute_on_all_devices raises for missing template."""
+        mock_context = _make_mock_context(device_ids=[0])
+        executor = QueryExecutor(mock_context)
+
+        from pt_snap_cli.query.executor import QueryExecutionError
+
+        with pytest.raises(QueryExecutionError, match="Template not found"):
+            executor.execute_on_all_devices("nonexistent")
+
+    def test_execute_on_all_devices_empty_device_list(self):
+        """Test execute_on_all_devices with no devices returns empty dict."""
+        mock_context = _make_mock_context(device_ids=[])
+        executor = QueryExecutor(mock_context)
+        executor.register_template(
+            QueryTemplate(name="empty_test", description="Test", query="SELECT 1")
+        )
+
+        results = executor.execute_on_all_devices("empty_test")
+        assert results == {}
+
+
+def _make_mock_context(device_ids: list[int]):
+    """Create a mock Context with the given device IDs."""
+    from unittest.mock import MagicMock
+
+    mock = MagicMock()
+    mock.device_ids = device_ids
+    return mock

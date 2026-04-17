@@ -110,6 +110,41 @@ class TestResultMapper:
         assert len(models) == 2
         assert all(isinstance(m, MockModel) for m in models)
 
+    def test_map_to_model_not_registered_raises_keyerror(self):
+        mapper = ResultMapper()
+        with pytest.raises(KeyError) as exc_info:
+            mapper.map_to_model({"id": 1}, "MissingModel")
+        assert "MissingModel" in str(exc_info.value)
+
+    def test_map_all_to_model_propagates_keyerror(self):
+        mapper = ResultMapper()
+        with pytest.raises(KeyError):
+            mapper.map_all_to_model([{"id": 1}], "MissingModel")
+
+    def test_map_bool_string_values(self):
+        mapper = ResultMapper()
+        row = {"flag_true": "true", "flag_false": "false", "flag_1": "1", "flag_0": "0"}
+        schema = [
+            {"column": "flag_true", "type": "bool"},
+            {"column": "flag_false", "type": "bool"},
+            {"column": "flag_1", "type": "bool"},
+            {"column": "flag_0", "type": "bool"},
+        ]
+
+        result = mapper.map(row, schema)
+        assert result["flag_true"] is True
+        assert result["flag_false"] is False
+        assert result["flag_1"] is True
+        assert result["flag_0"] is False
+
+    def test_map_conversion_error_keeps_original_value(self):
+        mapper = ResultMapper()
+        row = {"value": "not_an_int"}
+        schema = [{"column": "value", "type": "int"}]
+
+        result = mapper.map(row, schema)
+        assert result["value"] == "not_an_int"
+
 
 class TestModuleFunctions:
     def test_map_result(self):
