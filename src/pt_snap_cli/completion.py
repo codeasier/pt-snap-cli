@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-from pt_snap_cli.config import CURRENT_DB_KEY, Config
+from pt_snap_cli.config import DB_PATH_KEY, Config
 
 
 def complete_template_names() -> list[str]:
@@ -24,18 +24,18 @@ def complete_categories() -> list[str]:
 def _resolve_db_for_completion() -> Path | None:
     """Resolve the database path using the same priority as the CLI.
 
-    Priority: env var > project context > global config.
+    Priority: env var > project focus > global config.
     """
     env_path = os.environ.get("PT_SNAP_DB_PATH")
     if env_path:
         return Path(env_path).expanduser()
 
-    project_context = Config.find_project_context_path()
-    if project_context:
+    project_focus = Config.find_project_focus_path()
+    if project_focus:
         try:
-            with open(project_context) as f:
+            with open(project_focus) as f:
                 data = json.load(f)
-            db_path = data.get(CURRENT_DB_KEY)
+            db_path = data.get(DB_PATH_KEY) or data.get("current_db_path")
             if db_path:
                 return Path(db_path).expanduser()
         except (json.JSONDecodeError, OSError):

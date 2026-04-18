@@ -12,9 +12,9 @@ from pt_snap_cli.completion import (
     complete_template_names,
 )
 from pt_snap_cli.config import (
-    CURRENT_DB_KEY,
-    PROJECT_CONTEXT_DIR,
-    PROJECT_CONTEXT_FILE,
+    DB_PATH_KEY,
+    PROJECT_FOCUS_DIR,
+    PROJECT_FOCUS_FILE,
 )
 from pt_snap_cli.query.config import QueryTemplate
 from pt_snap_cli.query.registry import QueryRegistry, register_query
@@ -115,12 +115,12 @@ class TestCompleteDeviceIds:
             else:
                 os.environ["PT_SNAP_DB_PATH"] = old_env
 
-    def test_uses_project_context(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_uses_project_focus(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         db_path = _create_sample_db(tmp_path / "test.db")
-        context_dir = tmp_path / PROJECT_CONTEXT_DIR
-        context_dir.mkdir()
-        context_file = context_dir / PROJECT_CONTEXT_FILE
-        context_file.write_text(json.dumps({CURRENT_DB_KEY: str(db_path)}))
+        focus_dir = tmp_path / PROJECT_FOCUS_DIR
+        focus_dir.mkdir()
+        focus_file = focus_dir / PROJECT_FOCUS_FILE
+        focus_file.write_text(json.dumps({DB_PATH_KEY: str(db_path)}))
         monkeypatch.chdir(tmp_path)
 
         result = complete_device_ids()

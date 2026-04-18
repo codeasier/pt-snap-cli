@@ -13,13 +13,13 @@ pip install -e .
 ## Quick Start
 
 ```bash
-# Set the snapshot database (saves context for future queries)
-pt-snap use examples/snapshot_expandable.pkl.db
+# Set the snapshot database and device
+pt-snap focus examples/snapshot_expandable.pkl.db --device 0
 
 # List available queries
 pt-snap query --list
 
-# Run a query
+# Run a query (automatically uses the focused device)
 pt-snap query --template-use memory_summary
 
 # Detect potential memory leaks
@@ -32,7 +32,7 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 
 | Command | Description |
 |---------|-------------|
-| `pt-snap use` | Set and manage snapshot database context |
+| `pt-snap focus` | Set and manage analysis focus (database + device) |
 | `pt-snap query` | Run memory analysis queries |
 | `pt-snap config` | Manage global configuration |
 
@@ -41,7 +41,7 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 | Topic | Guide |
 |-------|-------|
 | Getting started | [Quick Start](docs/en/quickstart.md) |
-| Managing contexts | [Context Management](docs/en/context-management.md) |
+| Managing focus | [Focus Management](docs/en/focus-management.md) |
 | Running queries | [Querying](docs/en/querying.md) |
 | Database format | [SnapshotDB Schema](docs/en/database.md) |
 | Python API | [ResultMapper API](docs/en/result-mapper-api.md) |
@@ -63,7 +63,8 @@ pt-snap-cli/
 ├── src/
 │   └── pt_snap_cli/
 │       ├── cli.py              # CLI entry point
-│       ├── context.py          # Context management
+│       ├── context.py          # Database context manager
+│       ├── config.py           # Focus management
 │       ├── query/
 │       │   ├── builder.py      # Query builder
 │       │   ├── executor.py     # Query executor

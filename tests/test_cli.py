@@ -86,7 +86,7 @@ def config_with_db(tmp_path: Path, sample_db: Path) -> None:
     config_dir = tmp_path / ".config" / "pt-snap-cli"
     config_dir.mkdir(parents=True)
     config_file = config_dir / "config.json"
-    config_file.write_text(json.dumps({"current_db_path": str(sample_db)}))
+    config_file.write_text(json.dumps({"db_path": str(sample_db)}))
 
 
 @pytest.fixture(autouse=True)
@@ -133,10 +133,10 @@ class TestCLI:
         assert result.exit_code == 0
         assert "Execute queries on the memory snapshot database" in result.stdout
 
-    def test_use_database_not_found(self, tmp_path: Path) -> None:
-        """Test 'use' command with non-existent database."""
+    def test_focus_database_not_found(self, tmp_path: Path) -> None:
+        """Test 'focus' command with non-existent database."""
         non_existent = tmp_path / "not_found.db"
-        result = runner.invoke(app, ["use", str(non_existent)])
+        result = runner.invoke(app, ["focus", str(non_existent)])
         assert result.exit_code == 1
         assert "Error" in result.stdout
 
@@ -170,7 +170,7 @@ class TestQueryCommandErrors:
         config_dir = tmp_path / ".config" / "pt-snap-cli"
         config_dir.mkdir(parents=True)
         config_file = config_dir / "config.json"
-        config_file.write_text(json.dumps({"current_db_path": str(sample_db)}))
+        config_file.write_text(json.dumps({"db_path": str(sample_db)}))
 
         register_query(QueryTemplate(name="test_query", description="Test", query="SELECT 1"))
 
@@ -183,7 +183,7 @@ class TestQueryCommandErrors:
         config_dir = tmp_path / ".config" / "pt-snap-cli"
         config_dir.mkdir(parents=True)
         config_file = config_dir / "config.json"
-        config_file.write_text(json.dumps({"current_db_path": "/nonexistent/path.db"}))
+        config_file.write_text(json.dumps({"db_path": "/nonexistent/path.db"}))
 
         register_query(QueryTemplate(name="test", description="Test", query="SELECT 1"))
 
@@ -193,25 +193,24 @@ class TestQueryCommandErrors:
         assert "database" in result.stdout.lower()
 
 
-class TestUseCommandErrors:
-    """Test use command error scenarios."""
+class TestFocusCommandErrors:
+    """Test focus command error scenarios."""
 
-    def test_use_database_invalid(self, tmp_path: Path) -> None:
-        """Test 'use' command with invalid database."""
+    def test_focus_database_invalid(self, tmp_path: Path) -> None:
+        """Test 'focus' command with invalid database."""
         invalid_db = tmp_path / "invalid.db"
         invalid_db.write_text("not a database")
 
-        result = runner.invoke(app, ["use", str(invalid_db)])
+        result = runner.invoke(app, ["focus", str(invalid_db)])
         assert result.exit_code == 1
         assert "error" in result.stdout.lower()
 
-    def test_use_database_exception_handling(self, tmp_path: Path) -> None:
-        """Test 'use' command exception handling."""
-        # Create a file that will cause an exception when opening as Context
+    def test_focus_database_exception_handling(self, tmp_path: Path) -> None:
+        """Test 'focus' command exception handling."""
         bad_file = tmp_path / "bad.db"
         bad_file.write_text("corrupted content")
 
-        result = runner.invoke(app, ["use", str(bad_file)])
+        result = runner.invoke(app, ["focus", str(bad_file)])
         assert result.exit_code == 1
         assert "error" in result.stdout.lower()
 
@@ -313,89 +312,147 @@ class TestQueryTemplateInfo:
         assert "Output Schema:" in result.stdout
         assert "Dynamic" in result.stdout
 
-    def test_use_database_success(self, sample_db: Path) -> None:
-        """Test 'use' command writes project context by default."""
-        result = runner.invoke(app, ["use", str(sample_db)])
+    def test_focus_database_success(self, sample_db: Path) -> None:
+        """Test 'focus' command writes project focus by default."""
+        result = runner.invoke(app, ["focus", str(sample_db)])
         assert result.exit_code == 0
         assert "Using project database" in result.stdout
-        assert "Project context" in result.stdout
+        assert "Focus file" in result.stdout
         assert "Available devices" in result.stdout
-        context_file = Path.cwd() / ".pt-snap" / "context.json"
-        assert json.loads(context_file.read_text())["current_db_path"] == str(sample_db.resolve())
+        focus_file = Path.cwd() / ".pt-snap" / "focus.json"
+        assert json.loads(focus_file.read_text())["db_path"] == str(sample_db.resolve())
 
-    def test_use_database_global(self, tmp_path: Path, sample_db: Path) -> None:
-        """Test 'use --global' preserves legacy global config behavior."""
-        result = runner.invoke(app, ["use", str(sample_db), "--global"])
+    def test_focus_database_with_device(self, sample_db: Path) -> None:
+        """Test 'focus --device' sets both database and device."""
+        result = runner.invoke(app, ["focus", str(sample_db), "--device", "0"])
+        assert result.exit_code == 0
+        assert "Focused device: 0" in result.stdout
+
+        focus_file = Path.cwd() / ".pt-snap" / "focus.json"
+        data = json.loads(focus_file.read_text())
+        assert data["db_path"] == str(sample_db.resolve())
+        assert data["device_id"] == 0
+
+    def test_focus_database_global(self, tmp_path: Path, sample_db: Path) -> None:
+        """Test 'focus --global' preserves legacy global config behavior."""
+        result = runner.invoke(app, ["focus", str(sample_db), "--global"])
         assert result.exit_code == 0
         assert "Using global database" in result.stdout
         config_file = tmp_path / ".config" / "pt-snap-cli" / "config.json"
-        assert json.loads(config_file.read_text())["current_db_path"] == str(sample_db.resolve())
-        assert not (Path.cwd() / ".pt-snap" / "context.json").exists()
+        assert json.loads(config_file.read_text())["db_path"] == str(sample_db.resolve())
+        assert not (Path.cwd() / ".pt-snap" / "focus.json").exists()
 
-    def test_use_database_session(self, sample_db: Path) -> None:
-        """Test 'use --session' prints export without writing context files."""
-        result = runner.invoke(app, ["use", str(sample_db), "--session"])
+    def test_focus_database_session(self, sample_db: Path) -> None:
+        """Test 'focus --session' prints export without writing focus files."""
+        result = runner.invoke(app, ["focus", str(sample_db), "--session"])
         assert result.exit_code == 0
         assert result.stdout.strip() == f"export PT_SNAP_DB_PATH={sample_db.resolve()}"
-        assert not (Path.cwd() / ".pt-snap" / "context.json").exists()
+        assert not (Path.cwd() / ".pt-snap" / "focus.json").exists()
 
-    def test_use_database_session_and_global_conflict(self, sample_db: Path) -> None:
-        """Test mutually exclusive use scopes."""
-        result = runner.invoke(app, ["use", str(sample_db), "--session", "--global"])
+    def test_focus_database_session_and_global_conflict(self, sample_db: Path) -> None:
+        """Test mutually exclusive focus scopes."""
+        result = runner.invoke(app, ["focus", str(sample_db), "--session", "--global"])
         assert result.exit_code == 1
         assert "cannot be used together" in result.stdout
 
-    def test_use_show_current(self, tmp_path: Path, sample_db: Path) -> None:
-        """Test 'use' command without arguments shows effective database."""
-        context_dir = tmp_path / ".pt-snap"
-        context_dir.mkdir()
-        context_file = context_dir / "context.json"
-        context_file.write_text(json.dumps({"current_db_path": str(sample_db)}))
+    def test_focus_show_current(self, tmp_path: Path, sample_db: Path) -> None:
+        """Test 'focus' command without arguments shows effective focus."""
+        focus_dir = tmp_path / ".pt-snap"
+        focus_dir.mkdir()
+        focus_file = focus_dir / "focus.json"
+        focus_file.write_text(json.dumps({"db_path": str(sample_db)}))
 
-        result = runner.invoke(app, ["use"])
+        result = runner.invoke(app, ["focus"])
         assert result.exit_code == 0
         assert "Current database (project)" in result.stdout
         assert str(sample_db) in result.stdout
 
-    def test_use_no_database_set(self, tmp_path: Path) -> None:
-        """Test 'use' command when no database is configured."""
+    def test_focus_show_current_with_device(self, tmp_path: Path, sample_db: Path) -> None:
+        """Test 'focus' without arguments shows db and device."""
+        focus_dir = tmp_path / ".pt-snap"
+        focus_dir.mkdir()
+        focus_file = focus_dir / "focus.json"
+        focus_file.write_text(json.dumps({"db_path": str(sample_db), "device_id": 1}))
+
+        result = runner.invoke(app, ["focus"])
+        assert result.exit_code == 0
+        assert "Focused device: 1" in result.stdout
+
+    def test_focus_no_database_set(self, tmp_path: Path) -> None:
+        """Test 'focus' command when no focus is configured."""
         config_dir = tmp_path / ".config" / "pt-snap-cli"
         config_dir.mkdir(parents=True)
 
-        result = runner.invoke(app, ["use"])
+        result = runner.invoke(app, ["focus"])
         assert result.exit_code == 0
-        assert "No current database set" in result.stdout
+        assert "No current focus set" in result.stdout
 
-    def test_use_database_not_exist_warning(self, tmp_path: Path) -> None:
-        """Test 'use' command shows warning when effective database doesn't exist."""
-        context_dir = tmp_path / ".pt-snap"
-        context_dir.mkdir()
-        context_file = context_dir / "context.json"
-        context_file.write_text(json.dumps({"current_db_path": "/nonexistent/path.db"}))
+    def test_focus_database_not_exist_warning(self, tmp_path: Path) -> None:
+        """Test 'focus' command shows warning when effective focus doesn't exist."""
+        focus_dir = tmp_path / ".pt-snap"
+        focus_dir.mkdir()
+        focus_file = focus_dir / "focus.json"
+        focus_file.write_text(json.dumps({"db_path": "/nonexistent/path.db"}))
 
-        result = runner.invoke(app, ["use"])
+        result = runner.invoke(app, ["focus"])
         assert result.exit_code == 0
         assert "Current database" in result.stdout
         assert "Warning" in result.stdout
+
+    def test_focus_device_only_update(self, tmp_path: Path, sample_db: Path) -> None:
+        """Test 'focus --device' without db_path updates device only."""
+        focus_dir = tmp_path / ".pt-snap"
+        focus_dir.mkdir()
+        (focus_dir / "focus.json").write_text(json.dumps({"db_path": str(sample_db)}))
+
+        result = runner.invoke(app, ["focus", "--device", "0"])
+        assert result.exit_code == 0
+        assert "Focused device" in result.stdout
+
+        data = json.loads((focus_dir / "focus.json").read_text())
+        assert data["device_id"] == 0
+        assert data["db_path"] == str(sample_db)
+
+    def test_focus_device_only_no_db_set(self, tmp_path: Path) -> None:
+        """Test 'focus --device' without a database set fails."""
+        result = runner.invoke(app, ["focus", "--device", "0"])
+        assert result.exit_code == 1
+        assert "No database set" in result.stdout
+
+    def test_focus_device_invalid(self, sample_db: Path) -> None:
+        """Test 'focus --device' with invalid device ID."""
+        result = runner.invoke(app, ["focus", str(sample_db), "--device", "99"])
+        assert result.exit_code == 1
+        assert "Device 99 not found" in result.stdout
+
+    def test_focus_device_only_invalid(self, tmp_path: Path, sample_db: Path) -> None:
+        """Test 'focus --device' with invalid device when db already set."""
+        focus_dir = tmp_path / ".pt-snap"
+        focus_dir.mkdir()
+        (focus_dir / "focus.json").write_text(json.dumps({"db_path": str(sample_db)}))
+
+        result = runner.invoke(app, ["focus", "--device", "99"])
+        assert result.exit_code == 1
+        assert "Device 99 not found" in result.stdout
 
     def test_config_show(self, tmp_path: Path, sample_db: Path) -> None:
         """Test 'config' command shows configuration."""
         config_dir = tmp_path / ".config" / "pt-snap-cli"
         config_dir.mkdir(parents=True)
         config_file = config_dir / "config.json"
-        config_file.write_text(json.dumps({"current_db_path": str(sample_db)}))
+        config_file.write_text(json.dumps({"db_path": str(sample_db)}))
 
         result = runner.invoke(app, ["config"])
         assert result.exit_code == 0
         assert "Current configuration" in result.stdout
-        assert "current_db_path" in result.stdout
+        assert "db_path" in result.stdout
 
     def test_config_clear(self, tmp_path: Path) -> None:
         """Test 'config --clear' command clears configuration."""
         config_dir = tmp_path / ".config" / "pt-snap-cli"
         config_dir.mkdir(parents=True)
         config_file = config_dir / "config.json"
-        config_file.write_text(json.dumps({"current_db_path": "/some/path.db"}))
+        config_file.write_text(json.dumps({"db_path": "/some/path.db"}))
 
         result = runner.invoke(app, ["config", "--clear"])
         assert result.exit_code == 0
@@ -475,11 +532,11 @@ class TestQueryCommand:
         # The error should mention either database or template-use
         assert "error" in result.stdout.lower()
 
-    def test_query_uses_project_context(self, sample_db: Path) -> None:
-        """Test 'query' command uses project context."""
-        context_dir = Path.cwd() / ".pt-snap"
-        context_dir.mkdir()
-        (context_dir / "context.json").write_text(json.dumps({"current_db_path": str(sample_db)}))
+    def test_query_uses_project_focus(self, sample_db: Path) -> None:
+        """Test 'query' command uses project focus."""
+        focus_dir = Path.cwd() / ".pt-snap"
+        focus_dir.mkdir()
+        (focus_dir / "focus.json").write_text(json.dumps({"db_path": str(sample_db)}))
         register_query(
             QueryTemplate(
                 name="size_query", description="Test", query="SELECT size FROM trace_entry_0"
@@ -491,17 +548,17 @@ class TestQueryCommand:
         assert result.exit_code == 0
         assert "'size': 1024" in result.stdout
 
-    def test_query_env_overrides_project_context(
+    def test_query_env_overrides_project_focus(
         self,
         tmp_path: Path,
         sample_db: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Test PT_SNAP_DB_PATH overrides project context."""
+        """Test PT_SNAP_DB_PATH overrides project focus."""
         env_db = create_sample_db(tmp_path / "env.db", size=2048)
-        context_dir = Path.cwd() / ".pt-snap"
-        context_dir.mkdir()
-        (context_dir / "context.json").write_text(json.dumps({"current_db_path": str(sample_db)}))
+        focus_dir = Path.cwd() / ".pt-snap"
+        focus_dir.mkdir()
+        (focus_dir / "focus.json").write_text(json.dumps({"db_path": str(sample_db)}))
         monkeypatch.setenv("PT_SNAP_DB_PATH", str(env_db))
         register_query(
             QueryTemplate(
@@ -523,9 +580,9 @@ class TestQueryCommand:
         """Test explicit db path has highest priority."""
         env_db = create_sample_db(tmp_path / "env.db", size=2048)
         explicit_db = create_sample_db(tmp_path / "explicit.db", size=4096)
-        context_dir = Path.cwd() / ".pt-snap"
-        context_dir.mkdir()
-        (context_dir / "context.json").write_text(json.dumps({"current_db_path": str(sample_db)}))
+        focus_dir = Path.cwd() / ".pt-snap"
+        focus_dir.mkdir()
+        (focus_dir / "focus.json").write_text(json.dumps({"db_path": str(sample_db)}))
         monkeypatch.setenv("PT_SNAP_DB_PATH", str(env_db))
         register_query(
             QueryTemplate(
@@ -551,7 +608,6 @@ class TestQueryCommand:
         result = runner.invoke(
             app, ["query", str(sample_db), "--template-use", "device_query", "--device", "0"]
         )
-        # The test might fail due to executor issues, but we're testing CLI flow
         assert result.exit_code in [0, 1]
 
     def test_query_with_params(self, sample_db: Path) -> None:
@@ -575,7 +631,6 @@ class TestQueryCommand:
                 '{"device_id": 0}',
             ],
         )
-        # The test might fail due to executor issues, but we're testing CLI flow
         assert result.exit_code in [0, 1]
 
     def test_query_invalid_json_params(self, sample_db: Path) -> None:
@@ -637,7 +692,6 @@ class TestSafeCall:
 
         from pt_snap_cli.cli import _safe_call
 
-        # Simulate Click trying completion with missing COMP_WORDS
         with patch("sys.argv", ["pt-snap"]):
             with patch("click.core.Command.parse_args", side_effect=KeyError("COMP_WORDS")):
                 exit_code = _safe_call()
