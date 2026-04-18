@@ -64,15 +64,26 @@ Parameters:
 
 ## Output Format
 
-Results display as a list:
-- Shows first 10 results
-- If more than 10, shows remaining count
+All results are displayed by default. Use `-n` to limit the number of rows shown:
 
 ```
-Found 150 results:
+# Show all results (default)
+pt-snap query --template-use leak_detection
+
+# Show only first 5
+pt-snap query --template-use leak_detection -n 5
+
+# Show all results (explicit)
+pt-snap query --template-use leak_detection -n 0
+```
+
+Example output (with `-n 2`):
+
+```
+Found 150 results, showing 2:
   {'id': 1, 'address': '0x1000', 'size': 2048, ...}
-  ...
-  ... and 140 more
+  {'id': 2, 'address': '0x2000', 'size': 4096, ...}
+  ... and 148 more (use -n to show more)
 ```
 
 ## Template Architecture
