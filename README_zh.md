@@ -13,13 +13,13 @@ pip install -e .
 ## 快速开始
 
 ```bash
-# 设置快照数据库（保存上下文供后续查询使用）
-pt-snap use examples/snapshot_expandable.pkl.db
+# 设置快照数据库和设备
+pt-snap focus examples/snapshot_expandable.pkl.db --device 0
 
 # 列出可用查询
 pt-snap query --list
 
-# 运行查询
+# 运行查询（自动使用 focus 中设置的设备）
 pt-snap query --template-use memory_summary
 
 # 检测潜在内存泄漏
@@ -32,7 +32,7 @@ pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 
 | 命令 | 说明 |
 |------|------|
-| `pt-snap use` | 设置和管理快照数据库上下文 |
+| `pt-snap focus` | 设置和管理分析焦点（数据库 + 设备） |
 | `pt-snap query` | 运行内存分析查询 |
 | `pt-snap config` | 管理全局配置 |
 
@@ -41,7 +41,7 @@ pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 | 主题 | 指南 |
 |------|------|
 | 入门指南 | [Quick Start](docs/zh/quickstart.md) |
-| Context 管理 | [Context Management](docs/zh/context-management.md) |
+| Focus 管理 | [Focus Management](docs/zh/focus-management.md) |
 | 运行查询 | [Querying](docs/zh/querying.md) |
 | 数据库格式 | [SnapshotDB Schema](docs/zh/database.md) |
 | Python API | [ResultMapper API](docs/zh/result-mapper-api.md) |
@@ -63,7 +63,8 @@ pt-snap-cli/
 ├── src/
 │   └── pt_snap_cli/
 │       ├── cli.py              # CLI 入口
-│       ├── context.py          # 上下文管理
+│       ├── context.py          # 数据库连接管理器
+│       ├── config.py           # 焦点管理
 │       ├── query/
 │       │   ├── builder.py      # 查询构建器
 │       │   ├── executor.py     # 查询执行器

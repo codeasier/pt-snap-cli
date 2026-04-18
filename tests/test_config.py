@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.config import ENV_DB_PATH, Config, ContextResolutionError
+from pt_snap_cli.config import (
+    DB_PATH_KEY,
+    DEVICE_ID_KEY,
+    ENV_DB_PATH,
+    Config,
+    FocusResolutionError,
+)
 
 
 class TestConfig:
@@ -13,20 +19,19 @@ class TestConfig:
 
     def test_config_init_empty(self, tmp_path: Path) -> None:
         """Test config initialization with no config file."""
-        # Monkey-patch Path.home to use tmp_path
         original_home = Path.home
         Path.home = lambda: tmp_path
         try:
             config = Config()
             assert not config.config_file.exists()
             assert config.current_db_path is None
+            assert config.current_device_id is None
             assert config.show() == {}
         finally:
             Path.home = original_home
 
     def test_config_set_db_path(self, tmp_path: Path) -> None:
         """Test setting database path."""
-        # Monkey-patch Path.home to use tmp_path
         original_home = Path.home
         Path.home = lambda: tmp_path
         try:
@@ -41,13 +46,12 @@ class TestConfig:
 
             # Verify persisted to file
             config_data = json.loads(config.config_file.read_text())
-            assert config_data["current_db_path"] == str(db_path.resolve())
+            assert config_data[DB_PATH_KEY] == str(db_path.resolve())
         finally:
             Path.home = original_home
 
     def test_config_clear_db_path(self, tmp_path: Path) -> None:
         """Test clearing database path."""
-        # Monkey-patch Path.home to use tmp_path
         original_home = Path.home
         Path.home = lambda: tmp_path
         try:
@@ -60,13 +64,46 @@ class TestConfig:
 
             assert config.current_db_path is None
             config_data = json.loads(config.config_file.read_text())
-            assert "current_db_path" not in config_data
+            assert DB_PATH_KEY not in config_data
+        finally:
+            Path.home = original_home
+
+    def test_config_set_device_id(self, tmp_path: Path) -> None:
+        """Test setting device ID in global config."""
+        original_home = Path.home
+        Path.home = lambda: tmp_path
+        try:
+            config = Config()
+            config.current_device_id = 2
+
+            assert config.current_device_id == 2
+
+            # Verify persisted
+            config2 = Config()
+            assert config2.current_device_id == 2
+
+            config_data = json.loads(config.config_file.read_text())
+            assert config_data[DEVICE_ID_KEY] == 2
+        finally:
+            Path.home = original_home
+
+    def test_config_clear_device_id(self, tmp_path: Path) -> None:
+        """Test clearing device ID from global config."""
+        original_home = Path.home
+        Path.home = lambda: tmp_path
+        try:
+            config = Config()
+            config.current_device_id = 1
+            config.current_device_id = None
+
+            assert config.current_device_id is None
+            config_data = json.loads(config.config_file.read_text())
+            assert DEVICE_ID_KEY not in config_data
         finally:
             Path.home = original_home
 
     def test_config_get_set(self, tmp_path: Path) -> None:
         """Test generic get/set methods."""
-        # Monkey-patch Path.home to use tmp_path
         original_home = Path.home
         Path.home = lambda: tmp_path
         try:
@@ -80,7 +117,6 @@ class TestConfig:
 
     def test_config_clear_all(self, tmp_path: Path) -> None:
         """Test clearing all configuration."""
-        # Monkey-patch Path.home to use tmp_path
         original_home = Path.home
         Path.home = lambda: tmp_path
         try:
@@ -92,12 +128,12 @@ class TestConfig:
 
             assert config.show() == {}
             assert config.current_db_path is None
+            assert config.current_device_id is None
         finally:
             Path.home = original_home
 
     def test_config_validate_db_path_exists(self, tmp_path: Path) -> None:
         """Test validate_db_path when file exists."""
-        # Monkey-patch Path.home to use tmp_path
         original_home = Path.home
         Path.home = lambda: tmp_path
         try:
@@ -113,7 +149,6 @@ class TestConfig:
 
     def test_config_validate_db_path_not_exists(self, tmp_path: Path) -> None:
         """Test validate_db_path when file doesn't exist."""
-        # Monkey-patch Path.home to use tmp_path
         original_home = Path.home
         Path.home = lambda: tmp_path
         try:
@@ -122,13 +157,12 @@ class TestConfig:
             config.current_db_path = db_path
 
             assert config.validate_db_path() is False
-            assert config.current_db_path is None  # Should be cleared
+            assert config.current_db_path is None
         finally:
             Path.home = original_home
 
     def test_config_load_from_file(self, tmp_path: Path) -> None:
         """Test loading config from existing file."""
-        # Monkey-patch Path.home to use tmp_path
         original_home = Path.home
         Path.home = lambda: tmp_path
         try:
@@ -139,7 +173,7 @@ class TestConfig:
             db_path = tmp_path / "existing.db"
             db_path.touch()
             config_file.write_text(
-                json.dumps({"current_db_path": str(db_path), "other_key": "other_value"})
+                json.dumps({DB_PATH_KEY: str(db_path), "other_key": "other_value"})
             )
 
             config = Config()
@@ -150,7 +184,6 @@ class TestConfig:
 
     def test_config_load_invalid_json(self, tmp_path: Path) -> None:
         """Test loading config from invalid JSON file."""
-        # Monkey-patch Path.home to use tmp_path
         original_home = Path.home
         Path.home = lambda: tmp_path
         try:
@@ -165,8 +198,8 @@ class TestConfig:
             Path.home = original_home
 
 
-class TestDbContextResolver:
-    """Test database context resolution."""
+class TestDbFocusResolver:
+    """Test database focus resolution."""
 
     @pytest.fixture(autouse=True)
     def mock_home_and_env(
@@ -178,41 +211,61 @@ class TestDbContextResolver:
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         monkeypatch.delenv(ENV_DB_PATH, raising=False)
 
-    def test_write_and_resolve_project_context(
+    def test_write_and_resolve_project_focus(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Test writing and resolving project context."""
+        """Test writing and resolving project focus."""
         monkeypatch.chdir(tmp_path)
         db_path = tmp_path / "test.db"
         db_path.touch()
         config = Config()
 
-        context_file = config.write_project_db_path(db_path)
-        resolved = config.resolve_db_context()
+        focus_file = config.write_project_focus(db_path)
+        resolved = config.resolve_focus()
 
-        assert context_file == tmp_path / ".pt-snap" / "context.json"
+        assert focus_file == tmp_path / ".pt-snap" / "focus.json"
         assert resolved.db_path == db_path.resolve()
         assert resolved.source == "project"
-        assert resolved.context_file == context_file
+        assert resolved.focus_file == focus_file
+        assert resolved.device_id is None
 
-    def test_resolve_project_context_from_child_directory(
+    def test_write_and_resolve_with_device_id(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Test resolving project context by walking up parent directories."""
+        """Test writing and resolving focus with device_id."""
+        monkeypatch.chdir(tmp_path)
+        db_path = tmp_path / "test.db"
+        db_path.touch()
+        config = Config()
+
+        focus_file = config.write_project_focus(db_path, device_id=1)
+        resolved = config.resolve_focus()
+
+        assert focus_file == tmp_path / ".pt-snap" / "focus.json"
+        assert resolved.db_path == db_path.resolve()
+        assert resolved.device_id == 1
+        assert resolved.source == "project"
+
+    def test_resolve_project_focus_from_child_directory(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Test resolving project focus by walking up parent directories."""
         project = tmp_path / "project"
         child = project / "nested" / "child"
         child.mkdir(parents=True)
         db_path = tmp_path / "test.db"
         db_path.touch()
         config = Config()
-        config.write_project_db_path(db_path, base_dir=project)
+        config.write_project_focus(db_path, base_dir=project)
         monkeypatch.chdir(child)
 
-        resolved = config.resolve_db_context()
+        resolved = config.resolve_focus()
 
         assert resolved.db_path == db_path.resolve()
         assert resolved.source == "project"
@@ -222,7 +275,7 @@ class TestDbContextResolver:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Test database context priority order."""
+        """Test database focus priority order."""
         monkeypatch.chdir(tmp_path)
         explicit_db = tmp_path / "explicit.db"
         env_db = tmp_path / "env.db"
@@ -233,15 +286,15 @@ class TestDbContextResolver:
 
         config = Config()
         config.current_db_path = global_db
-        config.write_project_db_path(project_db)
+        config.write_project_focus(project_db)
         monkeypatch.setenv(ENV_DB_PATH, str(env_db))
 
-        explicit = config.resolve_db_context(explicit_db)
-        env = config.resolve_db_context()
+        explicit = config.resolve_focus(explicit_db)
+        env = config.resolve_focus()
         monkeypatch.delenv(ENV_DB_PATH)
-        project = config.resolve_db_context()
-        (tmp_path / ".pt-snap" / "context.json").unlink()
-        global_context = config.resolve_db_context()
+        project = config.resolve_focus()
+        (tmp_path / ".pt-snap" / "focus.json").unlink()
+        global_focus = config.resolve_focus()
 
         assert explicit.db_path == explicit_db
         assert explicit.source == "explicit"
@@ -249,15 +302,15 @@ class TestDbContextResolver:
         assert env.source == "env"
         assert project.db_path == project_db.resolve()
         assert project.source == "project"
-        assert global_context.db_path == global_db.resolve()
-        assert global_context.source == "global"
+        assert global_focus.db_path == global_db.resolve()
+        assert global_focus.source == "global"
 
-    def test_project_context_is_cwd_scoped(
+    def test_project_focus_is_cwd_scoped(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Test different working directories can use different contexts."""
+        """Test different working directories can use different focuses."""
         project_a = tmp_path / "project-a"
         project_b = tmp_path / "project-b"
         project_a.mkdir()
@@ -267,41 +320,91 @@ class TestDbContextResolver:
         db_a.touch()
         db_b.touch()
         config = Config()
-        config.write_project_db_path(db_a, base_dir=project_a)
-        config.write_project_db_path(db_b, base_dir=project_b)
+        config.write_project_focus(db_a, base_dir=project_a)
+        config.write_project_focus(db_b, base_dir=project_b)
 
         monkeypatch.chdir(project_a)
-        resolved_a = config.resolve_db_context()
+        resolved_a = config.resolve_focus()
         monkeypatch.chdir(project_b)
-        resolved_b = config.resolve_db_context()
+        resolved_b = config.resolve_focus()
 
         assert resolved_a.db_path == db_a.resolve()
         assert resolved_b.db_path == db_b.resolve()
 
-    def test_invalid_project_context_json(
+    def test_invalid_project_focus_json(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Test invalid project context JSON fails clearly."""
+        """Test invalid project focus JSON fails clearly."""
         monkeypatch.chdir(tmp_path)
-        context_dir = tmp_path / ".pt-snap"
-        context_dir.mkdir()
-        (context_dir / "context.json").write_text("not-json")
+        focus_dir = tmp_path / ".pt-snap"
+        focus_dir.mkdir()
+        (focus_dir / "focus.json").write_text("not-json")
 
-        with pytest.raises(ContextResolutionError, match="Invalid project context file"):
-            Config().resolve_db_context()
+        with pytest.raises(FocusResolutionError, match="Invalid project focus file"):
+            Config().resolve_focus()
 
-    def test_project_context_missing_db_key(
+    def test_project_focus_missing_db_key(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Test project context without current_db_path fails clearly."""
+        """Test project focus without db_path fails clearly."""
         monkeypatch.chdir(tmp_path)
-        context_dir = tmp_path / ".pt-snap"
-        context_dir.mkdir()
-        (context_dir / "context.json").write_text(json.dumps({"other": "value"}))
+        focus_dir = tmp_path / ".pt-snap"
+        focus_dir.mkdir()
+        (focus_dir / "focus.json").write_text(json.dumps({"other": "value"}))
 
-        with pytest.raises(ContextResolutionError, match="current_db_path"):
-            Config().resolve_db_context()
+        with pytest.raises(FocusResolutionError, match="db_path"):
+            Config().resolve_focus()
+
+    def test_backward_compat_old_current_db_path_key(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Test that old 'current_db_path' key is still readable."""
+        monkeypatch.chdir(tmp_path)
+        focus_dir = tmp_path / ".pt-snap"
+        focus_dir.mkdir()
+        old_db = tmp_path / "old.db"
+        old_db.touch()
+        (focus_dir / "focus.json").write_text(json.dumps({"current_db_path": str(old_db)}))
+
+        resolved = Config().resolve_focus()
+        assert resolved.db_path == old_db.resolve()
+        assert resolved.source == "project"
+
+    def test_global_device_id_in_resolve(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Test global device_id is included in resolved focus."""
+        monkeypatch.chdir(tmp_path)
+        db_path = tmp_path / "test.db"
+        db_path.touch()
+        config = Config()
+        config.current_db_path = db_path
+        config.current_device_id = 3
+
+        resolved = config.resolve_focus()
+        assert resolved.db_path == db_path.resolve()
+        assert resolved.device_id == 3
+        assert resolved.source == "global"
+
+    def test_explicit_device_id_with_explicit_db(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Test passing explicit device_id along with explicit db_path."""
+        monkeypatch.chdir(tmp_path)
+        db_path = tmp_path / "test.db"
+        db_path.touch()
+
+        resolved = Config().resolve_focus(db_path, explicit_device_id=2)
+        assert resolved.db_path == db_path
+        assert resolved.device_id == 2
+        assert resolved.source == "explicit"

@@ -7,7 +7,7 @@ import typer
 
 from pt_snap_cli import __version__
 from pt_snap_cli.completion import complete_categories, complete_device_ids, complete_template_names
-from pt_snap_cli.config import ENV_DB_PATH, Config, ContextResolutionError
+from pt_snap_cli.config import ENV_DB_PATH, Config, FocusResolutionError
 from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionError
 
 app = typer.Typer(
@@ -35,49 +35,95 @@ def main(
     """PyTorch Memory Snapshot Analysis Tool."""
 
 
-@app.command("use")
-def use_database(
+@app.command("focus")
+def focus_database(
     db_path: Annotated[Path | None, typer.Argument(help="Path to SQLite database file")] = None,
+    device: Annotated[
+        int | None,
+        typer.Option(
+            "--device", "-d", help="Device ID to focus on", autocompletion=complete_device_ids
+        ),
+    ] = None,
     session: Annotated[
         bool, typer.Option("--session", help="Print a shell export for this session only")
     ] = False,
-    global_context: Annotated[
-        bool, typer.Option("--global", help="Store the database in legacy global config")
+    global_focus: Annotated[
+        bool, typer.Option("--global", help="Store the focus in legacy global config")
     ] = False,
 ) -> None:
-    """Set the current analysis database.
+    """Set the current analysis focus (database and optional device).
 
-    Validates the database and saves the path to project context by default.
-    After setting, you can use 'pt-snap query' without specifying db_path.
+    Validates the database and saves the focus to project by default.
+    After setting, you can use 'pt-snap query' without specifying db_path or device.
 
+    Use --device to also persist a device ID for queries.
     Use --session for an isolated shell/agent override.
     Use --global for legacy user-wide configuration.
-    If called without arguments, shows the effective database.
+    If called without arguments, shows the current focus.
     """
     config = Config()
 
-    if db_path is None:
+    if db_path is None and device is None:
         try:
-            resolved = config.resolve_db_context()
-        except ContextResolutionError as e:
+            resolved = config.resolve_focus()
+        except FocusResolutionError as e:
             typer.secho(f"Error: {e}", fg=typer.colors.RED)
             raise typer.Exit(1) from None
 
         if resolved.db_path:
             typer.echo(f"Current database ({resolved.source}): {resolved.db_path}")
-            if resolved.context_file:
-                typer.echo(f"Context file: {resolved.context_file}")
+            if resolved.focus_file:
+                typer.echo(f"Focus file: {resolved.focus_file}")
+            if resolved.device_id is not None:
+                typer.echo(f"Focused device: {resolved.device_id}")
             if not resolved.db_path.exists():
                 typer.secho("Warning: Database file does not exist!", fg=typer.colors.YELLOW)
         else:
-            typer.echo("No current database set.")
-            typer.echo("Usage: pt-snap use <database_path> [--session|--global]")
+            typer.echo("No current focus set.")
+            typer.echo("Usage: pt-snap focus <database_path> [--device <id>] [--session|--global]")
         raise typer.Exit()
 
-    if session and global_context:
+    if session and global_focus:
         typer.secho("Error: --session and --global cannot be used together.", fg=typer.colors.RED)
         raise typer.Exit(1)
 
+    # Handle device-only update (keep current db, change device)
+    if db_path is None and device is not None:
+        try:
+            resolved = config.resolve_focus()
+        except FocusResolutionError as e:
+            typer.secho(f"Error: {e}", fg=typer.colors.RED)
+            raise typer.Exit(1) from None
+
+        if resolved.db_path is None:
+            typer.secho(
+                "Error: No database set. Use 'pt-snap focus <db_path>' first.",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
+        if not resolved.db_path.exists():
+            typer.secho(f"Error: Database not found: {resolved.db_path}", fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+        ctx = Context(resolved.db_path)
+        if device not in ctx.device_ids:
+            typer.secho(
+                f"Error: Device {device} not found. Available: {ctx.device_ids}",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
+
+        if global_focus or resolved.source == "global":
+            config.current_device_id = device
+            typer.secho(f"Focused device (global): {device}", fg=typer.colors.GREEN)
+        else:
+            focus_file = config.project_focus_path()
+            config.write_project_focus(resolved.db_path, device_id=device)
+            typer.secho(f"Focused device (project): {device}", fg=typer.colors.GREEN)
+            typer.echo(f"Focus file: {focus_file}")
+        raise typer.Exit()
+
+    # Handle db_path provided (with optional device)
     if not db_path.exists():
         typer.secho(f"Error: Database file not found: {db_path}", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -85,18 +131,32 @@ def use_database(
     try:
         ctx = Context(db_path)
         resolved_db_path = db_path.expanduser().resolve()
+
+        if device is not None and device not in ctx.device_ids:
+            typer.secho(
+                f"Error: Device {device} not found. Available: {ctx.device_ids}",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
+
         if session:
             import shlex
 
             typer.echo(f"export {ENV_DB_PATH}={shlex.quote(str(resolved_db_path))}")
             return
-        if global_context:
+        if global_focus:
             config.current_db_path = resolved_db_path
+            if device is not None:
+                config.current_device_id = device
             typer.secho(f"Using global database: {resolved_db_path}", fg=typer.colors.GREEN)
+            if device is not None:
+                typer.echo(f"Focused device: {device}")
         else:
-            context_file = config.write_project_db_path(resolved_db_path)
+            focus_file = config.write_project_focus(resolved_db_path, device_id=device)
             typer.secho(f"Using project database: {resolved_db_path}", fg=typer.colors.GREEN)
-            typer.echo(f"Project context: {context_file}")
+            typer.echo(f"Focus file: {focus_file}")
+            if device is not None:
+                typer.echo(f"Focused device: {device}")
         devices = ctx.device_ids
         if devices:
             typer.echo(f"Available devices: {', '.join(map(str, devices))}")
@@ -153,15 +213,18 @@ def query_database(
 ) -> None:
     """Execute queries on the memory snapshot database.
 
-    The db_path argument is optional if you have configured a database with 'pt-snap use'.
+    The db_path argument is optional if you have configured a focus with 'pt-snap focus'.
+    The device argument is optional if you have set a focused device.
 
     Use --list to see all supported query templates.
     Use --template-info {template_name} to see detailed template information.
 
     Examples:
-        pt-snap use snapshot.pkl.db                    # Set project database
-        pt-snap query --list                           # List templates
-        pt-snap query --template-use leak_detection    # Query with resolved context
+        pt-snap focus snapshot.pkl.db                    # Set project database
+        pt-snap focus snapshot.pkl.db --device 0         # Set database and device
+        pt-snap focus --device 1                         # Change device only
+        pt-snap query --list                             # List templates
+        pt-snap query --template-use leak_detection      # Uses focused db and device
         pt-snap query --template-use active_blocks --device 0
         pt-snap query custom.db --template-use leak_detection  # Override with custom path
         pt-snap query --template-info leak_detection
@@ -286,8 +349,8 @@ def query_database(
 
     config = Config()
     try:
-        resolved = config.resolve_db_context(db_path)
-    except ContextResolutionError as e:
+        resolved = config.resolve_focus(db_path, explicit_device_id=device)
+    except FocusResolutionError as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED)
         raise typer.Exit(1) from None
 
@@ -298,18 +361,18 @@ def query_database(
             fg=typer.colors.RED,
         )
         typer.echo(
-            "Use 'pt-snap use <database_path>' to set a project database, or provide db_path argument."
+            "Use 'pt-snap focus <database_path>' to set a project database, or provide db_path argument."
         )
         raise typer.Exit(1)
     if not db_path.exists():
         typer.secho(
-            f"Error: Database from {resolved.source} context not found: {db_path}",
+            f"Error: Database from {resolved.source} focus not found: {db_path}",
             fg=typer.colors.RED,
         )
-        if resolved.context_file:
-            typer.echo(f"Context file: {resolved.context_file}")
+        if resolved.focus_file:
+            typer.echo(f"Focus file: {resolved.focus_file}")
         typer.echo(
-            "Use 'pt-snap use <new_database_path>' to set a new project database, or provide db_path argument."
+            "Use 'pt-snap focus <new_database_path>' to set a new project database, or provide db_path argument."
         )
         raise typer.Exit(1)
 
@@ -325,17 +388,19 @@ def query_database(
 
             query_params = json.loads(params)
 
+        # Determine device: explicit > focused > first discovered
         if device is not None:
-            results = executor.execute_template(template_use, query_params, device_id=device)
+            target_device = device
+        elif resolved.device_id is not None:
+            target_device = resolved.device_id
         else:
             device_ids = context.device_ids
             if not device_ids:
                 typer.echo("No devices found in database.")
                 raise typer.Exit()
-            default_device = device_ids[0]
-            results = executor.execute_template(
-                template_use, query_params, device_id=default_device
-            )
+            target_device = device_ids[0]
+
+        results = executor.execute_template(template_use, query_params, device_id=target_device)
 
         if results:
             typer.echo(f"Found {len(results)} results:")
