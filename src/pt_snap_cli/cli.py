@@ -210,6 +210,13 @@ def query_database(
             autocompletion=complete_template_names,
         ),
     ] = None,
+    max_rows: Annotated[
+        int | None,
+        typer.Option(
+            "-n",
+            help="Maximum number of result rows to display (<= 0 for unlimited, default: unlimited)",
+        ),
+    ] = None,
 ) -> None:
     """Execute queries on the memory snapshot database.
 
@@ -400,11 +407,13 @@ def query_database(
         results = executor.execute_template(template_use, query_params, device_id=target_device)
 
         if results:
-            typer.echo(f"Found {len(results)} results:")
-            for row in results[:10]:
+            effective_limit = max_rows if max_rows is not None and max_rows > 0 else len(results)
+            display = results[:effective_limit]
+            typer.echo(f"Found {len(results)} results, showing {len(display)}:")
+            for row in display:
                 typer.echo(f"  {row}")
-            if len(results) > 10:
-                typer.echo(f"  ... and {len(results) - 10} more")
+            if effective_limit < len(results):
+                typer.echo(f"  ... and {len(results) - effective_limit} more (use -n to show more)")
         else:
             typer.echo("No results found.")
 
