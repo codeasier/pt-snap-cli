@@ -198,7 +198,7 @@ def query_database(
         str | None,
         typer.Option(
             "--category",
-            help="Filter templates by category (basic, statistical, business)",
+            help="Filter templates by category",
             autocompletion=complete_categories,
         ),
     ] = None,
@@ -232,6 +232,7 @@ def query_database(
     """
     from pt_snap_cli.query import QueryExecutor
     from pt_snap_cli.query.registry import (
+        discover_categories,
         get_template_info,
         list_by_category_with_details,
     )
@@ -241,12 +242,8 @@ def query_database(
         list_templates = True
 
     if list_templates:
-        categories = ["basic", "statistical", "business"]
-        category_labels = {
-            "basic": "Basic Queries",
-            "statistical": "Statistical Queries",
-            "business": "Business Queries",
-        }
+        categories = discover_categories()
+        category_labels = {cat: cat.replace("_", " ").title() + " Queries" for cat in categories}
 
         if category is not None and category not in categories:
             typer.secho(

@@ -17,8 +17,10 @@ def complete_template_names() -> list[str]:
 
 
 def complete_categories() -> list[str]:
-    """Return valid category names for shell completion."""
-    return ["basic", "statistical", "business"]
+    """Return valid category names from template directory structure for shell completion."""
+    from pt_snap_cli.query.registry import discover_categories
+
+    return discover_categories()
 
 
 def _resolve_db_for_completion() -> Path | None:

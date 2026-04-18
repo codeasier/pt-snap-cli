@@ -248,8 +248,58 @@ def list_by_category_with_details(category: str) -> list[dict[str, str]]:
     return _registry.list_by_category_with_details(category)
 
 
+def get_template_dir() -> Path:
+    """Return the path to the template directory."""
+    return Path(__file__).parent / "templates"
+
+
+def discover_categories(template_dir: Path | str | None = None) -> list[str]:
+    """Discover category names from subdirectory structure.
+
+    Args:
+        template_dir: Path to template directory. Defaults to package templates dir.
+
+    Returns:
+        Sorted list of category names (subdirectory names).
+    """
+    if template_dir is None:
+        template_dir = get_template_dir()
+    else:
+        template_dir = Path(template_dir)
+
+    if not template_dir.exists():
+        return []
+
+    return sorted(
+        d.name
+        for d in template_dir.iterdir()
+        if d.is_dir() and not d.name.startswith("_") and not d.name.startswith(".")
+    )
+
+
+def _infer_category(yaml_file: Path, template_dir: Path) -> str | None:
+    """Infer category from the parent directory of a YAML file.
+
+    Returns None when the file is directly under the template root
+    (not in a subdirectory), letting YAML's own category field or
+    default take precedence.
+    """
+    try:
+        parent = yaml_file.resolve().parent.name
+        template_root = template_dir.resolve().name
+        if parent != template_root:
+            return parent
+    except OSError:
+        pass
+    return None
+
+
 def _load_yaml_templates(template_dir: Path | str | None = None) -> None:
     """Load all YAML templates from the template directory.
+
+    Scans recursively (``**/*.yaml``) so that each subdirectory
+    acts as a category.  The subdirectory name is used as the
+    template's category when the YAML does not declare one.
 
     Args:
         template_dir: Path to template directory. Defaults to package templates dir.
@@ -262,9 +312,10 @@ def _load_yaml_templates(template_dir: Path | str | None = None) -> None:
     if not template_dir.exists():
         return
 
-    for yaml_file in template_dir.glob("*.yaml"):
+    for yaml_file in sorted(template_dir.glob("**/*.yaml")):
         try:
-            config = QueryConfig.load_yaml(yaml_file)
+            default_cat = _infer_category(yaml_file, template_dir)
+            config = QueryConfig.load_yaml(yaml_file, default_category=default_cat)
             for _query_name, template in config.queries.items():
                 _registry.register(template)
         except Exception as e:

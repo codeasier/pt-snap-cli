@@ -1,7 +1,6 @@
 version: "1.0"
 queries:
   memory_peak:
-    category: statistical
     description: Get peak memory metrics from trace events with corresponding event IDs
     devices:
       - all

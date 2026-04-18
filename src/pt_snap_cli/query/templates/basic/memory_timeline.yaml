@@ -1,7 +1,6 @@
 version: "1.0"
 queries:
   memory_timeline:
-    category: basic
     description: Get memory allocation timeline for analysis
     devices:
       - all
