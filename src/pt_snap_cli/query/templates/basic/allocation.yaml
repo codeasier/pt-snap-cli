@@ -1,0 +1,73 @@
+version: "1.0"
+queries:
+  allocation:
+    description: Memory allocation timeline — (id, allocated, active, reserved) curve
+    devices:
+      - all
+    parameters:
+      min_id:
+        type: int
+        default: null
+        required: false
+        description: Minimum event ID (start of range)
+      max_id:
+        type: int
+        default: null
+        required: false
+        description: Maximum event ID (end of range)
+      min_allocated:
+        type: int
+        default: null
+        required: false
+        description: Minimum total allocated bytes
+      min_active:
+        type: int
+        default: null
+        required: false
+        description: Minimum total active bytes
+      min_reserved:
+        type: int
+        default: null
+        required: false
+        description: Minimum memory pool reserved bytes
+      order_by:
+        type: str
+        default: "id"
+        required: false
+        description: Column to order by
+      order_dir:
+        type: str
+        default: "ASC"
+        required: false
+        description: Sort direction (ASC or DESC)
+      limit:
+        type: int
+        default: 1000
+        required: false
+        description: Maximum rows to return
+      offset:
+        type: int
+        default: 0
+        required: false
+        description: Number of rows to skip
+    query: |
+      SELECT id, allocated, active, reserved
+      FROM {{ device_trace_table }}
+      WHERE 1=1
+        {% if min_id is not none %}AND id >= {{ min_id }}{% endif %}
+        {% if max_id is not none %}AND id <= {{ max_id }}{% endif %}
+        {% if min_allocated is not none %}AND allocated >= {{ min_allocated }}{% endif %}
+        {% if min_active is not none %}AND active >= {{ min_active }}{% endif %}
+        {% if min_reserved is not none %}AND reserved >= {{ min_reserved }}{% endif %}
+      ORDER BY {{ order_by }} {{ order_dir }}
+      LIMIT {{ limit }}
+      {% if offset > 0 %}OFFSET {{ offset }}{% endif %}
+    output_schema:
+      - column: id
+        type: int
+      - column: allocated
+        type: int
+      - column: active
+        type: int
+      - column: reserved
+        type: int

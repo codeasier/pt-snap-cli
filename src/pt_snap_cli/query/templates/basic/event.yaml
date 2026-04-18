@@ -1,0 +1,112 @@
+version: "1.0"
+queries:
+  event:
+    description: Query memory events with flexible field filters
+    devices:
+      - all
+    parameters:
+      id:
+        type: int
+        default: null
+        required: false
+        description: Event ID (negative = pre-snapshot synthetic events)
+      min_id:
+        type: int
+        default: null
+        required: false
+        description: Minimum event ID (start of range)
+      max_id:
+        type: int
+        default: null
+        required: false
+        description: Maximum event ID (end of range)
+      action:
+        type: int
+        default: null
+        required: false
+        description: Action type (0=segment_map, 1=segment_unmap, 2=segment_alloc, 3=segment_free, 4=alloc, 5=free_requested, 6=free_completed, 7=workspace_snapshot)
+      address:
+        type: int
+        default: null
+        required: false
+        description: Memory address
+      size:
+        type: int
+        default: null
+        required: false
+        description: Allocation size in bytes
+      stream:
+        type: int
+        default: null
+        required: false
+        description: CUDA/CANN stream ID
+      min_allocated:
+        type: int
+        default: null
+        required: false
+        description: Minimum total allocated bytes
+      min_active:
+        type: int
+        default: null
+        required: false
+        description: Minimum total active bytes
+      min_reserved:
+        type: int
+        default: null
+        required: false
+        description: Minimum memory pool reserved bytes
+      order_by:
+        type: str
+        default: "id"
+        required: false
+        description: Column to order by
+      order_dir:
+        type: str
+        default: "ASC"
+        required: false
+        description: Sort direction (ASC or DESC)
+      limit:
+        type: int
+        default: 1000
+        required: false
+        description: Maximum rows to return
+      offset:
+        type: int
+        default: 0
+        required: false
+        description: Number of rows to skip
+    query: |
+      SELECT * FROM {{ device_trace_table }}
+      WHERE 1=1
+        {% if id is not none %}AND id = {{ id }}{% endif %}
+        {% if min_id is not none %}AND id >= {{ min_id }}{% endif %}
+        {% if max_id is not none %}AND id <= {{ max_id }}{% endif %}
+        {% if action is not none %}AND action = {{ action }}{% endif %}
+        {% if address is not none %}AND address = {{ address }}{% endif %}
+        {% if size is not none %}AND size = {{ size }}{% endif %}
+        {% if stream is not none %}AND stream = {{ stream }}{% endif %}
+        {% if min_allocated is not none %}AND allocated >= {{ min_allocated }}{% endif %}
+        {% if min_active is not none %}AND active >= {{ min_active }}{% endif %}
+        {% if min_reserved is not none %}AND reserved >= {{ min_reserved }}{% endif %}
+      ORDER BY {{ order_by }} {{ order_dir }}
+      LIMIT {{ limit }}
+      {% if offset > 0 %}OFFSET {{ offset }}{% endif %}
+    output_schema:
+      - column: id
+        type: int
+      - column: action
+        type: int
+      - column: address
+        type: hex
+      - column: size
+        type: int
+      - column: stream
+        type: int
+      - column: allocated
+        type: int
+      - column: active
+        type: int
+      - column: reserved
+        type: int
+      - column: callstack
+        type: str

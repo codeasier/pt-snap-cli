@@ -48,9 +48,9 @@ pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 
 ## 查询模板
 
-7 个内置模板，3 个分类：
+6 个内置模板，3 个分类：
 
-- **Basic**: `active_blocks`, `blocks_by_size`, `events_by_action`, `memory_timeline`
+- **Basic**: `block`, `event`, `allocation`
 - **Statistical**: `callstack_analysis`, `memory_peak`
 - **Business**: `leak_detection`
 

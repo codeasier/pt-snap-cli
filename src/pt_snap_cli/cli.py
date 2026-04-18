@@ -225,7 +225,7 @@ def query_database(
         pt-snap focus --device 1                         # Change device only
         pt-snap query --list                             # List templates
         pt-snap query --template-use leak_detection      # Uses focused db and device
-        pt-snap query --template-use active_blocks --device 0
+        pt-snap query --template-use block --device 0 --state 1
         pt-snap query custom.db --template-use leak_detection  # Override with custom path
         pt-snap query --template-info leak_detection
         pt-snap query --list --category basic          # List only basic queries

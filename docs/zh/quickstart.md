@@ -47,7 +47,7 @@ pt-snap query --template-use memory_peak
 pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 
 # 查询自动使用 focus 中设置的设备，也可以显式覆盖
-pt-snap query --template-use active_blocks --device 1
+pt-snap query --template-use block --device 1 --state 1
 ```
 
 ## 下一步
