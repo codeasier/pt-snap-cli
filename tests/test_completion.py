@@ -96,7 +96,8 @@ class TestCompleteDeviceIds:
             else:
                 os.environ["PT_SNAP_DB_PATH"] = old_env
 
-    def test_returns_empty_for_no_db(self):
+    def test_returns_empty_for_no_db(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.chdir(tmp_path)
         result = complete_device_ids()
         # Without any DB configured, should return empty list
         assert result == []
