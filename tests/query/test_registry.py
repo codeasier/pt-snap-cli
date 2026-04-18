@@ -191,7 +191,7 @@ class TestListByCategory:
         result = list_by_category("basic")
         assert "test_basic" in result
         # Packaged basic templates should also be present
-        assert "active_blocks" in result
+        assert "block" in result
 
     def test_list_by_category_statistical(self):
         register_query(

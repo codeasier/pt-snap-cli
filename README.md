@@ -48,9 +48,9 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 
 ## Query Templates
 
-7 built-in templates across 3 categories:
+6 built-in templates across 3 categories:
 
-- **Basic**: `active_blocks`, `blocks_by_size`, `events_by_action`, `memory_timeline`
+- **Basic**: `block`, `event`, `allocation`
 - **Statistical**: `callstack_analysis`, `memory_peak`
 - **Business**: `leak_detection`
 

@@ -1,0 +1,118 @@
+version: "1.0"
+queries:
+  block:
+    description: Query memory blocks with flexible field filters
+    devices:
+      - all
+    parameters:
+      id:
+        type: int
+        default: null
+        required: false
+        description: Block ID
+      address:
+        type: int
+        default: null
+        required: false
+        description: Memory address
+      size:
+        type: int
+        default: null
+        required: false
+        description: Exact block size in bytes
+      min_size:
+        type: int
+        default: null
+        required: false
+        description: Minimum block size
+      max_size:
+        type: int
+        default: null
+        required: false
+        description: Maximum block size
+      requestedSize:
+        type: int
+        default: null
+        required: false
+        description: Exact user-requested size
+      allocEventId:
+        type: int
+        default: null
+        required: false
+        description: Allocation event ID
+      min_allocEventId:
+        type: int
+        default: null
+        required: false
+        description: Minimum allocation event ID
+      max_allocEventId:
+        type: int
+        default: null
+        required: false
+        description: Maximum allocation event ID
+      freeEventId:
+        type: int
+        default: null
+        required: false
+        description: Free event ID
+      min_freeEventId:
+        type: int
+        default: null
+        required: false
+        description: Minimum free event ID
+      max_freeEventId:
+        type: int
+        default: null
+        required: false
+        description: Maximum free event ID
+      order_by:
+        type: str
+        default: "size"
+        required: false
+        description: Column to order by
+      order_dir:
+        type: str
+        default: "DESC"
+        required: false
+        description: Sort direction (ASC or DESC)
+      limit:
+        type: int
+        default: 100
+        required: false
+        description: Maximum rows to return
+      offset:
+        type: int
+        default: 0
+        required: false
+        description: Number of rows to skip
+    query: |
+      SELECT * FROM {{ device_block_table }}
+      WHERE 1=1
+        {% if id is not none %}AND id = {{ id }}{% endif %}
+        {% if address is not none %}AND address = {{ address }}{% endif %}
+        {% if size is not none %}AND size = {{ size }}{% endif %}
+        {% if min_size is not none %}AND size >= {{ min_size }}{% endif %}
+        {% if max_size is not none %}AND size <= {{ max_size }}{% endif %}
+        {% if requestedSize is not none %}AND requestedSize = {{ requestedSize }}{% endif %}
+        {% if allocEventId is not none %}AND allocEventId = {{ allocEventId }}{% endif %}
+        {% if min_allocEventId is not none %}AND allocEventId >= {{ min_allocEventId }}{% endif %}
+        {% if max_allocEventId is not none %}AND allocEventId <= {{ max_allocEventId }}{% endif %}
+        {% if freeEventId is not none %}AND freeEventId = {{ freeEventId }}{% endif %}
+        {% if min_freeEventId is not none %}AND freeEventId >= {{ min_freeEventId }}{% endif %}
+        {% if max_freeEventId is not none %}AND freeEventId <= {{ max_freeEventId }}{% endif %}
+      ORDER BY {{ order_by }} {{ order_dir }}
+      LIMIT {{ limit }}
+      {% if offset > 0 %}OFFSET {{ offset }}{% endif %}
+    output_schema:
+      - column: id
+        type: int
+      - column: address
+        type: int
+      - column: size
+        type: int
+      - column: requestedSize
+        type: int
+      - column: allocEventId
+        type: int
+      - column: freeEventId
+        type: int

@@ -32,10 +32,9 @@ pt-snap query [--template-use <template_name>] [--params <json>] [--device <id>]
 
 | 模板 | 说明 |
 |------|------|
-| `active_blocks` | 当前活跃（未释放）的内存块 |
-| `blocks_by_size` | 按大小排序的内存块 |
-| `events_by_action` | 按动作类型分组的事件 |
-| `memory_timeline` | 内存分配时间线 |
+| `block` | 灵活字段过滤的内存块查询 |
+| `event` | 灵活字段过滤的内存事件查询 |
+| `allocation` | 内存分配时间线（id, allocated, active, reserved） |
 
 ### Statistical Queries
 

@@ -32,10 +32,9 @@ Raw data lookup.
 
 | Template | Description |
 |----------|-------------|
-| `active_blocks` | Currently active (unfreed) memory blocks |
-| `blocks_by_size` | Memory blocks sorted by size |
-| `events_by_action` | Events grouped by action type |
-| `memory_timeline` | Memory allocation timeline |
+| `block` | Query memory blocks with flexible field filters |
+| `event` | Query memory events with flexible field filters |
+| `allocation` | Memory allocation timeline (id, allocated, active, reserved) |
 
 ### Statistical Queries
 

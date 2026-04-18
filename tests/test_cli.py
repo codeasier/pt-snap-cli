@@ -498,7 +498,7 @@ class TestQueryCommand:
         assert result.exit_code == 0
         # Default packaged templates should be listed
         assert "Basic Queries:" in result.stdout
-        assert "active_blocks" in result.stdout
+        assert "block" in result.stdout
         assert "Statistical Queries:" in result.stdout
         assert "Business Queries:" in result.stdout
 

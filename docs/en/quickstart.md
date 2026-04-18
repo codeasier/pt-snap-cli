@@ -47,7 +47,7 @@ pt-snap query --template-use memory_peak
 pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 
 # Query automatically uses the focused device, or you can override it
-pt-snap query --template-use active_blocks --device 1
+pt-snap query --template-use block --device 1 --state 1
 ```
 
 ## What's Next
