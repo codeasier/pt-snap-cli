@@ -72,10 +72,12 @@ class TestCompleteTemplateNames:
 class TestCompleteCategories:
     def test_returns_three_categories(self):
         result = complete_categories()
-        assert result == ["basic", "statistical", "business"]
+        assert len(result) == 3
+        assert set(result) == {"basic", "statistical", "business"}
 
     def test_order_is_fixed(self):
-        assert complete_categories() == ["basic", "statistical", "business"]
+        result = complete_categories()
+        assert result == sorted(result)
 
 
 class TestCompleteDeviceIds:

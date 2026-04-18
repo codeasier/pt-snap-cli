@@ -90,11 +90,13 @@ class QueryTemplate:
         return validated
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> QueryTemplate:
+    def from_dict(cls, data: dict[str, Any], default_category: str | None = None) -> QueryTemplate:
         """Create QueryTemplate from dictionary.
 
         Args:
             data: Dictionary with template data.
+            default_category: Category inferred from directory structure when
+                not explicitly declared in the YAML.
 
         Returns:
             QueryTemplate instance.
@@ -116,7 +118,7 @@ class QueryTemplate:
             parameters=parameters,
             query=data.get("query", ""),
             output_schema=data.get("output_schema", []),
-            category=data.get("category", "basic"),
+            category=data.get("category") or default_category or "basic",
         )
 
 
@@ -147,11 +149,13 @@ class QueryConfig:
         return list(self.queries.keys())
 
     @classmethod
-    def load_yaml(cls, path: str | Path) -> QueryConfig:
+    def load_yaml(cls, path: str | Path, default_category: str | None = None) -> QueryConfig:
         """Load configuration from YAML file.
 
         Args:
             path: Path to YAML file.
+            default_category: Category inferred from directory structure when
+                not explicitly declared in the YAML.
 
         Returns:
             QueryConfig instance.
@@ -170,7 +174,7 @@ class QueryConfig:
         queries = {}
         for name, query_data in data.get("queries", {}).items():
             query_data["name"] = name
-            queries[name] = QueryTemplate.from_dict(query_data)
+            queries[name] = QueryTemplate.from_dict(query_data, default_category=default_category)
 
         return cls(
             version=data.get("version", "1.0"),

@@ -1,7 +1,6 @@
 version: "1.0"
 queries:
   events_by_action:
-    category: basic
     description: Get events filtered by action type
     devices:
       - all
