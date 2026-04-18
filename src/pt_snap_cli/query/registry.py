@@ -271,7 +271,8 @@ def discover_categories(template_dir: Path | str | None = None) -> list[str]:
         return []
 
     return sorted(
-        d.name for d in template_dir.iterdir()
+        d.name
+        for d in template_dir.iterdir()
         if d.is_dir() and not d.name.startswith("_") and not d.name.startswith(".")
     )
 
