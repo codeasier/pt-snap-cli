@@ -34,7 +34,7 @@ When a shell or agent needs an isolated database without changing project focus:
 
 ```bash
 export PT_SNAP_DB_PATH=/path/to/agent-specific/snapshot.db
-pt-snap query --template-use memory_summary
+pt-snap query --template-use memory_peak
 ```
 
 Or validate and print the export command in one step:
@@ -57,10 +57,10 @@ Even with focus configured, you can temporarily specify a different database or 
 
 ```bash
 # Uses this database temporarily, does not affect saved focus
-pt-snap query /path/to/other.db --template-use memory_summary
+pt-snap query /path/to/other.db --template-use memory_peak
 
 # Override device (ignores focused device_id)
-pt-snap query --template-use memory_summary --device 2
+pt-snap query --template-use memory_peak --device 2
 ```
 
 ## Legacy Global Configuration
@@ -101,7 +101,7 @@ pt-snap config --clear  # Clear global configuration
 **No focus configured:**
 
 ```bash
-pt-snap query --template-use memory_summary
+pt-snap query --template-use memory_peak
 # Error: No database path specified and no database configured.
 # Use 'pt-snap focus <database_path>' to set a project database, or provide db_path argument.
 ```
@@ -109,7 +109,7 @@ pt-snap query --template-use memory_summary
 **Database file not found:**
 
 ```bash
-pt-snap query --template-use memory_summary
+pt-snap query --template-use memory_peak
 # Error: Database from project focus not found: /path/to/missing.db
 # Use 'pt-snap focus <new_database_path>' to set a new project database, or provide db_path argument.
 ```

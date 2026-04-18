@@ -37,7 +37,7 @@ pt-snap query --list
 ### Step 3: Run a Query
 
 ```bash
-pt-snap query --template-use memory_summary
+pt-snap query --template-use memory_peak
 ```
 
 ### Step 4: Try Advanced Queries

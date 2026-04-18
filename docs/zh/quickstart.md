@@ -37,7 +37,7 @@ pt-snap query --list
 ### 第三步：运行查询
 
 ```bash
-pt-snap query --template-use memory_summary
+pt-snap query --template-use memory_peak
 ```
 
 ### 第四步：尝试高级查询

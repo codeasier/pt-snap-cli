@@ -200,7 +200,7 @@ class TestListByCategory:
 
         result = list_by_category("statistical")
         assert "test_stat" in result
-        assert "memory_summary" in result
+        assert "memory_peak" in result
 
     def test_list_by_category_business(self):
         register_query(QueryTemplate(name="test_biz", query="SELECT 1", category="business"))

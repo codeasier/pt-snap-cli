@@ -58,7 +58,7 @@ Fluent API 构建 SQL 查询。
 位于 `query/templates/` 目录，按分类组织：
 
 - **Basic**: `active_blocks.yaml`, `blocks_by_size.yaml`, `events_by_action.yaml`, `memory_timeline.yaml`
-- **Statistical**: `memory_summary.yaml`, `callstack_analysis.yaml`
+- **Statistical**: `memory_peak.yaml`, `callstack_analysis.yaml`
 - **Business**: `leak_detection.yaml`
 
 ## 使用示例
