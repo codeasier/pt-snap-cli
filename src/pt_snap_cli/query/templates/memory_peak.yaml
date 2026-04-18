@@ -1,0 +1,60 @@
+version: "1.0"
+queries:
+  memory_peak:
+    category: statistical
+    description: Get peak memory metrics from trace events with corresponding event IDs
+    devices:
+      - all
+    parameters:
+      start_id:
+        type: int
+        default: null
+        required: false
+        description: Start event ID for range filtering
+      end_id:
+        type: int
+        default: null
+        required: false
+        description: End event ID for range filtering
+    query: |
+      SELECT
+        (SELECT MAX(allocated) FROM {{ device_trace_table }}
+          {% if start_id is not none %}WHERE id >= {{ start_id|int }}{% if end_id is not none %} AND id <= {{ end_id|int }}{% endif %}{% elif end_id is not none %}WHERE id <= {{ end_id|int }}{% endif %}
+        ) as peak_allocated,
+        (SELECT MIN(id) FROM {{ device_trace_table }}
+          WHERE allocated = (SELECT MAX(allocated) FROM {{ device_trace_table }}
+            {% if start_id is not none %}WHERE id >= {{ start_id|int }}{% if end_id is not none %} AND id <= {{ end_id|int }}{% endif %}{% elif end_id is not none %}WHERE id <= {{ end_id|int }}{% endif %}
+          )
+          {% if start_id is not none %}AND id >= {{ start_id|int }}{% if end_id is not none %} AND id <= {{ end_id|int }}{% endif %}{% elif end_id is not none %}AND id <= {{ end_id|int }}{% endif %}
+        ) as peak_allocated_event_id,
+        (SELECT MAX(active) FROM {{ device_trace_table }}
+          {% if start_id is not none %}WHERE id >= {{ start_id|int }}{% if end_id is not none %} AND id <= {{ end_id|int }}{% endif %}{% elif end_id is not none %}WHERE id <= {{ end_id|int }}{% endif %}
+        ) as peak_active,
+        (SELECT MIN(id) FROM {{ device_trace_table }}
+          WHERE active = (SELECT MAX(active) FROM {{ device_trace_table }}
+            {% if start_id is not none %}WHERE id >= {{ start_id|int }}{% if end_id is not none %} AND id <= {{ end_id|int }}{% endif %}{% elif end_id is not none %}WHERE id <= {{ end_id|int }}{% endif %}
+          )
+          {% if start_id is not none %}AND id >= {{ start_id|int }}{% if end_id is not none %} AND id <= {{ end_id|int }}{% endif %}{% elif end_id is not none %}AND id <= {{ end_id|int }}{% endif %}
+        ) as peak_active_event_id,
+        (SELECT MAX(reserved) FROM {{ device_trace_table }}
+          {% if start_id is not none %}WHERE id >= {{ start_id|int }}{% if end_id is not none %} AND id <= {{ end_id|int }}{% endif %}{% elif end_id is not none %}WHERE id <= {{ end_id|int }}{% endif %}
+        ) as peak_reserved,
+        (SELECT MIN(id) FROM {{ device_trace_table }}
+          WHERE reserved = (SELECT MAX(reserved) FROM {{ device_trace_table }}
+            {% if start_id is not none %}WHERE id >= {{ start_id|int }}{% if end_id is not none %} AND id <= {{ end_id|int }}{% endif %}{% elif end_id is not none %}WHERE id <= {{ end_id|int }}{% endif %}
+          )
+          {% if start_id is not none %}AND id >= {{ start_id|int }}{% if end_id is not none %} AND id <= {{ end_id|int }}{% endif %}{% elif end_id is not none %}AND id <= {{ end_id|int }}{% endif %}
+        ) as peak_reserved_event_id
+    output_schema:
+      - column: peak_allocated
+        type: int
+      - column: peak_allocated_event_id
+        type: int
+      - column: peak_active
+        type: int
+      - column: peak_active_event_id
+        type: int
+      - column: peak_reserved
+        type: int
+      - column: peak_reserved_event_id
+        type: int

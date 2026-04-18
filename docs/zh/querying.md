@@ -44,7 +44,7 @@ pt-snap query [--template-use <template_name>] [--params <json>] [--device <id>]
 | 模板 | 说明 |
 |------|------|
 | `callstack_analysis` | 调用栈分析 |
-| `memory_summary` | 内存使用统计摘要 |
+| `memory_peak` | 峰值内存指标 |
 
 ### Business Queries
 

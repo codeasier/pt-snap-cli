@@ -34,7 +34,7 @@ pt-snap focus --device 1
 
 ```bash
 export PT_SNAP_DB_PATH=/path/to/agent-specific/snapshot.db
-pt-snap query --template-use memory_summary
+pt-snap query --template-use memory_peak
 ```
 
 或在验证数据库的同时输出 export 命令：
@@ -57,10 +57,10 @@ pt-snap focus
 
 ```bash
 # 仅本次查询使用该数据库，不影响已保存的 focus
-pt-snap query /path/to/other.db --template-use memory_summary
+pt-snap query /path/to/other.db --template-use memory_peak
 
 # 覆盖设备（忽略 focus 中的 device_id）
-pt-snap query --template-use memory_summary --device 2
+pt-snap query --template-use memory_peak --device 2
 ```
 
 ## Legacy 全局配置
@@ -101,7 +101,7 @@ pt-snap config --clear  # 清除全局配置
 **未设置焦点时查询：**
 
 ```bash
-pt-snap query --template-use memory_summary
+pt-snap query --template-use memory_peak
 # Error: No database path specified and no database configured.
 # Use 'pt-snap focus <database_path>' to set a project database, or provide db_path argument.
 ```
@@ -109,7 +109,7 @@ pt-snap query --template-use memory_summary
 **数据库文件不存在：**
 
 ```bash
-pt-snap query --template-use memory_summary
+pt-snap query --template-use memory_peak
 # Error: Database from project focus not found: /path/to/missing.db
 # Use 'pt-snap focus <new_database_path>' to set a new project database, or provide db_path argument.
 ```

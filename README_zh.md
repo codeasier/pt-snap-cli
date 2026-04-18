@@ -20,7 +20,7 @@ pt-snap focus examples/snapshot_expandable.pkl.db --device 0
 pt-snap query --list
 
 # 运行查询（自动使用 focus 中设置的设备）
-pt-snap query --template-use memory_summary
+pt-snap query --template-use memory_peak
 
 # 检测潜在内存泄漏
 pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
@@ -51,7 +51,7 @@ pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 7 个内置模板，3 个分类：
 
 - **Basic**: `active_blocks`, `blocks_by_size`, `events_by_action`, `memory_timeline`
-- **Statistical**: `callstack_analysis`, `memory_summary`
+- **Statistical**: `callstack_analysis`, `memory_peak`
 - **Business**: `leak_detection`
 
 详见 [Querying](docs/zh/querying.md)。

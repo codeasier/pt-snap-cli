@@ -44,7 +44,7 @@ Aggregation and analysis.
 | Template | Description |
 |----------|-------------|
 | `callstack_analysis` | Analyze callstack information |
-| `memory_summary` | Memory usage statistics |
+| `memory_peak` | Peak memory metrics |
 
 ### Business Queries
 

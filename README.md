@@ -20,7 +20,7 @@ pt-snap focus examples/snapshot_expandable.pkl.db --device 0
 pt-snap query --list
 
 # Run a query (automatically uses the focused device)
-pt-snap query --template-use memory_summary
+pt-snap query --template-use memory_peak
 
 # Detect potential memory leaks
 pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
@@ -51,7 +51,7 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 7 built-in templates across 3 categories:
 
 - **Basic**: `active_blocks`, `blocks_by_size`, `events_by_action`, `memory_timeline`
-- **Statistical**: `callstack_analysis`, `memory_summary`
+- **Statistical**: `callstack_analysis`, `memory_peak`
 - **Business**: `leak_detection`
 
 See [Querying](docs/en/querying.md) for details.
