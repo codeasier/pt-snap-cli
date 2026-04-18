@@ -64,15 +64,26 @@ pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 
 ## 输出格式
 
-结果以列表形式展示：
-- 显示前 10 条结果
-- 超过 10 条时，显示剩余数量
+默认情况下显示所有结果。使用 `-n` 限制显示行数：
 
 ```
-Found 150 results:
+# 显示所有结果（默认）
+pt-snap query --template-use leak_detection
+
+# 仅显示前 5 条
+pt-snap query --template-use leak_detection -n 5
+
+# 显示所有结果（显式）
+pt-snap query --template-use leak_detection -n 0
+```
+
+示例输出（使用 `-n 2`）：
+
+```
+Found 150 results, showing 2:
   {'id': 1, 'address': '0x1000', 'size': 2048, ...}
-  ...
-  ... and 140 more
+  {'id': 2, 'address': '0x2000', 'size': 4096, ...}
+  ... and 148 more (use -n to show more)
 ```
 
 ## 模板架构

@@ -77,9 +77,9 @@ queries:
         description: Sort direction (ASC or DESC)
       limit:
         type: int
-        default: 100
+        default: -1
         required: false
-        description: Maximum rows to return
+        description: Maximum rows to return (-1 for unlimited)
       offset:
         type: int
         default: 0
