@@ -4,7 +4,9 @@
 
 ## Overview
 
-SnapshotDB is the SQLite database format for persisting PyTorch memory profiling data. It supports multi-device (multi-GPU) snapshot storage and querying.
+SnapshotDB is the SQLite database format for persisting PyTorch memory profiling data. It supports multi-device (multi-GPU) snapshot storage and querying. Notably, it does more than simply converting raw pickle snapshot data into SQLite — it performs a complete "replay" of the raw memory snapshot data and records additional information during the replay, such as:
+1. The total memory pool size and total allocated block size after any event;
+2. The complete lifecycle of all memory blocks during the collection period (which event allocated them, which event freed them).
 
 **Example database file**: `snapshot_expandable.pkl.db`
 
@@ -71,7 +73,7 @@ CREATE TABLE trace_entry_0 (
 | 4 | alloc | Memory allocation event |
 | 5 | free_requested | Free request |
 | 6 | free_completed | Free completed |
-| 7 | workspace_snapshot | Workspace snapshot |
+| 7 | workspace_snapshot | NPU-specific workspace memory pool snapshot |
 
 #### ID Constraints
 
@@ -139,6 +141,20 @@ CREATE TABLE block_0 (
 |-----------|------------|
 | `id >= 0` | `block.id` matches `allocEventId`, pointing to the same-ID allocation event in `trace_entry` |
 | `id < 0` | The block was already allocated before snapshot collection began. Only its existence and initial state are known from pickle data; allocation time is unknown. The negative value itself carries no semantic meaning beyond uniqueness |
+
+#### allocEventId Constraints
+
+| Condition | Constraint |
+|-----------|------------|
+| `allocEventId >= 0` | `block.id` matches `allocEventId`, pointing to the same-ID allocation event in `trace_entry` |
+| `allocEventId == -1` | The allocation event for this block was not captured during snapshot collection (the block was already allocated before collection started) |
+
+#### freeEventId Constraints
+
+| Condition | Constraint |
+|-----------|------------|
+| `freeEventId >= 0` | `block.id` matches `freeEventId`, pointing to the same-ID free event in `trace_entry` |
+| `freeEventId == -1` | The free completion event for this block was not captured during snapshot collection (the block was not freed when collection ended) |
 
 #### State Usage
 

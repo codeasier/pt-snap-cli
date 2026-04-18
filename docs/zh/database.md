@@ -5,6 +5,9 @@
 ## 概述
 
 SnapshotDB 是内存快照数据的 SQLite 数据库存储格式，用于持久化内存分配追踪信息。支持多设备（多 GPU）快照数据的存储和查询。
+需要说明的是，它不仅仅是将内存快照原始pickle数据转成了SQLite数据库，而是针对原始内存快照数据进行了一次完整的“回放”，并记录了回放过程中的额外信息，如
+1. 任一事件发生后的内存池总大小、总分配内存块大小；
+2. 采集周期中，所有的内存块的完整生命周期（在哪个事件申请、哪个事件释放）
 
 **数据库示例文件**: `snapshot_expandable.pkl.db`
 
@@ -71,7 +74,7 @@ CREATE TABLE trace_entry_0 (
 | 4 | alloc | 内存分配事件 |
 | 5 | free_requested | 释放请求 |
 | 6 | free_completed | 释放完成 |
-| 7 | workspace_snapshot | 工作区快照 |
+| 7 | workspace_snapshot | NPU特有的workspace内存池快照 |
 
 #### id 字段约束
 
@@ -139,6 +142,20 @@ CREATE TABLE block_0 (
 |------|------|
 | `id >= 0` | `block.id` 与 `allocEventId` 一致，共同指向 `trace_entry` 中相同 ID 的分配事件 |
 | `id < 0` | 仅代表通过原始 pickle 数据中的 Segment 信息得知该内存块在采集开始时已分配，无从得知分配时间。负数值本身无实际含义，仅用于唯一标识 |
+
+#### allocEventId约束
+
+| 条件 | 约束 |
+|------|------|
+| `allocEventId >= 0` | `block.id` 与 `allocEventId` 一致，共同指向 `trace_entry` 中相同 ID 的分配事件 |
+| `allocEventId == -1` | 代表在内存快照采集期间，未采集到该内存块的申请事件（在开始采集之前该内存块就已经申请分配完成） |
+
+#### freeEventId约束
+
+| 条件 | 约束 |
+|------|------|
+| `freeEventId >= 0` | `block.id` 与 `allocEventId` 一致，共同指向 `trace_entry` 中相同 ID 的分配事件 |
+| `freeEventId == -1` | 代表在内存快照采集期间，未采集到该内存块的释放完成事件（在结束采集时该内存块并未释放） |
 
 #### state 约束
 
