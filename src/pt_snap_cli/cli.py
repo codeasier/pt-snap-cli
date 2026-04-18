@@ -173,6 +173,10 @@ def query_database(
         list_by_category_with_details,
     )
 
+    # Implicit list mode when --category is provided without --template-use
+    if category is not None and not list_templates and not template_use and not template_info:
+        list_templates = True
+
     if list_templates:
         categories = ["basic", "statistical", "business"]
         category_labels = {
