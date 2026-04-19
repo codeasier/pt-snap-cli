@@ -35,6 +35,28 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 | `pt-snap focus` | Set and manage analysis focus (database + device) |
 | `pt-snap query` | Run memory analysis queries |
 | `pt-snap config` | Manage global configuration |
+| `pt-snap-mcp` | Start the MCP server for agent integration |
+
+## MCP Server
+
+`pt-snap-cli` provides an MCP (Model Context Protocol) server so AI agents can interact with PyTorch memory snapshots programmatically.
+
+```bash
+# Start the MCP server
+pt-snap-mcp
+```
+
+The server exposes the following tools:
+
+| Tool | Description |
+|------|-------------|
+| `get_focus` | Get the current analysis focus |
+| `set_focus` | Set focus to a database and optional device |
+| `list_templates` | List available query templates |
+| `get_template_info` | Get template details and parameters |
+| `execute_query` | Run a query template against the focused database |
+
+See the [MCP guide](docs/en/mcp.md) for setup and usage details.
 
 ## Documentation
 
@@ -43,6 +65,7 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 | Getting started | [Quick Start](docs/en/quickstart.md) |
 | Managing focus | [Focus Management](docs/en/focus-management.md) |
 | Running queries | [Querying](docs/en/querying.md) |
+| MCP server | [MCP Guide](docs/en/mcp.md) |
 | Database format | [SnapshotDB Schema](docs/en/database.md) |
 | Python API | [ResultMapper API](docs/en/result-mapper-api.md) |
 
@@ -65,6 +88,7 @@ pt-snap-cli/
 │       ├── cli.py              # CLI entry point
 │       ├── context.py          # Database context manager
 │       ├── config.py           # Focus management
+│       ├── api.py              # Python API layer
 │       ├── query/
 │       │   ├── builder.py      # Query builder
 │       │   ├── executor.py     # Query executor
@@ -73,7 +97,8 @@ pt-snap-cli/
 │       │   ├── condition.py    # Query conditions
 │       │   ├── config.py       # Query configuration
 │       │   └── templates/      # Query templates
-│       └── models/             # Data models
+│       ├── models/             # Data models
+│       └── mcp/                # MCP server for agent integration
 ├── tests/                  # Test files
 ├── examples/               # Example data
 └── docs/                   # Documentation

@@ -25,6 +25,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "mcp>=1.0.0",
     "typer>=0.9.0",
     "pyyaml>=6.0",
     "jinja2>=3.0.0",
@@ -50,6 +51,7 @@ rag = [
 
 [project.scripts]
 pt-snap = "pt_snap_cli.cli:_safe_call"
+pt-snap-mcp = "pt_snap_cli.mcp.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

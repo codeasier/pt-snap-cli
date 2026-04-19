@@ -54,4 +54,5 @@ pt-snap query --template-use block --device 1 --state 1
 
 - [Focus Management](focus-management.md) — Learn how to manage database and device focus across projects and sessions
 - [Querying](querying.md) — Full guide to all query templates, parameters, and output
+- [MCP Server](mcp.md) — Use the MCP server for AI agent integration
 - [Database Schema](database.md) — Understand the SnapshotDB format

@@ -35,6 +35,28 @@ pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 | `pt-snap focus` | 设置和管理分析焦点（数据库 + 设备） |
 | `pt-snap query` | 运行内存分析查询 |
 | `pt-snap config` | 管理全局配置 |
+| `pt-snap-mcp` | 启动 MCP 服务器以支持 Agent 集成 |
+
+## MCP 服务器
+
+`pt-snap-cli` 提供了 MCP（Model Context Protocol）服务器，使 AI Agent 能够以编程方式与 PyTorch 内存快照交互。
+
+```bash
+# 启动 MCP 服务器
+pt-snap-mcp
+```
+
+服务器暴露以下工具：
+
+| 工具 | 说明 |
+|------|------|
+| `get_focus` | 获取当前分析焦点 |
+| `set_focus` | 设置焦点到指定数据库和设备 |
+| `list_templates` | 列出可用的查询模板 |
+| `get_template_info` | 获取模板详情和参数 |
+| `execute_query` | 对焦点数据库执行查询模板 |
+
+详见 [MCP 指南](docs/zh/mcp.md)。
 
 ## 文档
 
@@ -43,6 +65,7 @@ pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 | 入门指南 | [Quick Start](docs/zh/quickstart.md) |
 | Focus 管理 | [Focus Management](docs/zh/focus-management.md) |
 | 运行查询 | [Querying](docs/zh/querying.md) |
+| MCP 服务器 | [MCP 指南](docs/zh/mcp.md) |
 | 数据库格式 | [SnapshotDB Schema](docs/zh/database.md) |
 | Python API | [ResultMapper API](docs/zh/result-mapper-api.md) |
 
@@ -65,6 +88,7 @@ pt-snap-cli/
 │       ├── cli.py              # CLI 入口
 │       ├── context.py          # 数据库连接管理器
 │       ├── config.py           # 焦点管理
+│       ├── api.py              # Python API 层
 │       ├── query/
 │       │   ├── builder.py      # 查询构建器
 │       │   ├── executor.py     # 查询执行器
@@ -73,7 +97,8 @@ pt-snap-cli/
 │       │   ├── condition.py    # 查询条件
 │       │   ├── config.py       # 查询配置
 │       │   └── templates/      # 查询模板
-│       └── models/             # 数据模型
+│       ├── models/             # 数据模型
+│       └── mcp/                # MCP 服务器（Agent 集成）
 ├── tests/                  # 测试文件
 ├── examples/               # 示例数据
 └── docs/                   # 文档
