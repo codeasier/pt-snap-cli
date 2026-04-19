@@ -47,7 +47,6 @@ def _reset_registry():
 @pytest.fixture(autouse=True)
 def _fresh_analyzer():
     """Reset the module-level _analyzer for each test."""
-
     import pt_snap_cli.mcp.server as server_mod
 
     yield

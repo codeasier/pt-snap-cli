@@ -25,6 +25,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "mcp>=1.0.0",
     "typer>=0.9.0",
     "pyyaml>=6.0",
     "jinja2>=3.0.0",
@@ -42,9 +43,6 @@ dev = [
     "black>=23.0.0",
     "ruff>=0.0.280",
     "build>=1.0.0",
-]
-mcp = [
-    "mcp>=1.0.0",
 ]
 rag = [
     "chromadb>=0.4.0",
