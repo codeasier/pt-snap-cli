@@ -54,4 +54,5 @@ pt-snap query --template-use block --device 1 --state 1
 
 - [Focus 管理](focus-management.md) — 学习如何在多个项目和会话之间管理数据库和设备焦点
 - [运行查询](querying.md) — 所有查询模板、参数和输出的完整指南
+- [MCP 服务器](mcp.md) — 使用 MCP 服务器进行 AI Agent 集成
 - [数据库格式](database.md) — 了解 SnapshotDB 格式
