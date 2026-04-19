@@ -43,6 +43,9 @@ dev = [
     "ruff>=0.0.280",
     "build>=1.0.0",
 ]
+mcp = [
+    "mcp>=1.0.0",
+]
 rag = [
     "chromadb>=0.4.0",
     "langchain>=0.1.0",
@@ -50,6 +53,7 @@ rag = [
 
 [project.scripts]
 pt-snap = "pt_snap_cli.cli:_safe_call"
+pt-snap-mcp = "pt_snap_cli.mcp.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
