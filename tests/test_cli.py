@@ -610,6 +610,44 @@ class TestQueryCommand:
         )
         assert result.exit_code in [0, 1]
 
+    def test_query_uses_focused_device_zero(self, sample_db: Path) -> None:
+        """Test query respects focused device 0."""
+        focus_dir = Path.cwd() / ".pt-snap"
+        focus_dir.mkdir()
+        (focus_dir / "focus.json").write_text(
+            json.dumps({"db_path": str(sample_db), "device_id": 0})
+        )
+        register_query(
+            QueryTemplate(
+                name="size_query_device_zero",
+                description="Test",
+                query="SELECT size FROM trace_entry_0",
+            )
+        )
+
+        result = runner.invoke(app, ["query", "--template-use", "size_query_device_zero"])
+
+        assert result.exit_code == 0
+        assert "'size': 1024" in result.stdout
+
+    def test_query_max_rows_zero_is_unlimited(self, sample_db: Path) -> None:
+        """Test -n 0 shows all rows."""
+        register_query(
+            QueryTemplate(
+                name="two_rows",
+                description="Test",
+                query="SELECT 1 AS value UNION ALL SELECT 2 AS value",
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            ["query", str(sample_db), "--template-use", "two_rows", "-n", "0"],
+        )
+
+        assert result.exit_code == 0
+        assert "Found 2 results, showing 2:" in result.stdout
+
     def test_query_with_params(self, sample_db: Path) -> None:
         """Test 'query' command with --params option."""
         template = QueryTemplate(

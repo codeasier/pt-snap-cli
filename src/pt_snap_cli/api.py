@@ -1,8 +1,4 @@
-"""High-level API for PyTorch memory snapshot analysis.
-
-This module provides a programmatic interface that both the CLI
-and the MCP server can use. It has no MCP dependency.
-"""
+"""High-level API for PyTorch memory snapshot analysis."""
 
 from __future__ import annotations
 
@@ -11,14 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from pt_snap_cli.config import Config
-from pt_snap_cli.context import Context
-from pt_snap_cli.query.executor import QueryExecutor
-from pt_snap_cli.query.registry import (
-    get_template_info as _get_template_info,
-)
-from pt_snap_cli.query.registry import (
-    list_by_category_with_details,
-    list_queries_with_details,
+from pt_snap_cli.core import (
+    DatabaseMissingError,
+    DatabaseSchemaError,
+    FocusNotConfiguredError,
+    FocusService,
+    QueryService,
 )
 
 
@@ -43,60 +37,66 @@ class SnapshotAnalyzer:
         self._config = Config()
         self._db_path = db_path
         self._device_id = device_id
-        self._context: Context | None = None
-        self._executor: QueryExecutor | None = None
-
-    def _ensure_context(self) -> tuple[Context, QueryExecutor]:
-        """Resolve focus and create context/executor if needed."""
-        if self._context is not None and self._executor is not None:
-            return self._context, self._executor
-
-        resolved = self._config.resolve_focus(self._db_path, explicit_device_id=self._device_id)
-        if resolved.db_path is None:
-            raise RuntimeError("No database configured. Call set_focus() first.")
-        self._context = Context(resolved.db_path)
-        self._executor = QueryExecutor(self._context)
-        return self._context, self._executor
+        self._focus_service = FocusService(self._config)
+        self._query_service = QueryService(self._focus_service)
 
     def get_focus(self) -> FocusState:
-        """Get current focus state."""
-        resolved = self._config.resolve_focus(self._db_path, explicit_device_id=self._device_id)
-        devices: list[int] = []
-        if resolved.db_path and resolved.db_path.exists():
-            try:
-                ctx = Context(resolved.db_path)
-                devices = ctx.device_ids
-            except Exception:
-                pass
+        state = self._focus_service.get_focus(
+            explicit_db_path=self._db_path,
+            explicit_device_id=self._device_id,
+        )
         return FocusState(
-            db_path=str(resolved.db_path) if resolved.db_path else None,
-            device_id=resolved.device_id,
-            source=resolved.source,
-            available_devices=devices,
+            db_path=str(state.db_path) if state.db_path is not None else None,
+            device_id=state.device_id,
+            source=state.source,
+            available_devices=state.available_devices,
         )
 
     def set_focus(self, db_path: str | None = None, device_id: int | None = None) -> FocusState:
-        """Set focus to a new database/device."""
-        if db_path:
+        if db_path is not None:
+            try:
+                self._focus_service.validate_session_db(db_path)
+            except DatabaseMissingError as exc:
+                raise FileNotFoundError(str(exc)) from exc
+            except DatabaseSchemaError as exc:
+                raise ValueError(str(exc)) from exc
             self._db_path = Path(db_path)
-            # Validate immediately
-            Context(self._db_path)
         if device_id is not None:
             self._device_id = device_id
-        # Reset cached context so next _ensure_context re-resolves
-        self._context = None
-        self._executor = None
         return self.get_focus()
 
-    def list_templates(self, category: str | None = None) -> list[dict]:
-        """List available query templates."""
-        if category:
-            return list_by_category_with_details(category)
-        return list_queries_with_details()
+    def list_templates(self, category: str | None = None) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": template.name,
+                "description": template.description,
+                "category": template.category,
+            }
+            for template in self._query_service.list_templates(category)
+        ]
 
-    def get_template_info(self, name: str) -> dict | None:
-        """Get detailed template information."""
-        return _get_template_info(name)
+    def get_template_info(self, name: str) -> dict[str, Any] | None:
+        try:
+            info = self._query_service.get_template_info(name)
+        except Exception:
+            return None
+
+        return {
+            "name": info.name,
+            "description": info.description,
+            "category": info.category,
+            "devices": info.devices,
+            "parameters": {
+                param_name: {
+                    "type": param.type,
+                    "default": param.default,
+                    "required": param.required,
+                    "description": param.description,
+                }
+                for param_name, param in info.parameters.items()
+            },
+            "output_schema": info.output_schema,
+        }
 
     def execute_query(
         self,
@@ -105,20 +105,19 @@ class SnapshotAnalyzer:
         device_id: int | None = None,
         max_rows: int | None = None,
     ) -> dict[str, Any]:
-        """Execute a query template. Returns {total, returned, device_id, rows}."""
-        ctx, executor = self._ensure_context()
-        target_device = device_id or self._device_id
-        if target_device is None and ctx.device_ids:
-            target_device = ctx.device_ids[0]
-
-        rows = executor.execute_template(template, params or {}, device_id=target_device)
-        total = len(rows)
-        if max_rows is not None and max_rows > 0:
-            rows = rows[:max_rows]
-
+        try:
+            result = self._query_service.execute_query(
+                template=template,
+                params=params,
+                db_path=self._db_path,
+                device_id=device_id if device_id is not None else self._device_id,
+                max_rows=max_rows,
+            )
+        except FocusNotConfiguredError as exc:
+            raise RuntimeError("No database configured. Call set_focus() first.") from exc
         return {
-            "total": total,
-            "returned": len(rows),
-            "device_id": target_device,
-            "rows": rows,
+            "total": result.total,
+            "returned": result.returned,
+            "device_id": result.device_id,
+            "rows": result.rows,
         }
