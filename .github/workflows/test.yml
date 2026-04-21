@@ -30,6 +30,9 @@ jobs:
       - name: Black format check
         run: black --check .
 
+      - name: basedPyright check
+        run: python -m basedpyright --pythonpath "$(python -c 'import sys; print(sys.executable)')"
+
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest

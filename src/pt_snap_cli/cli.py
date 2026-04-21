@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import shlex
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn, cast
 
 import typer
 
@@ -51,7 +52,7 @@ def version_callback(value: bool) -> None:
 
 @app.callback()
 def main(
-    version: Annotated[
+    _: Annotated[
         bool | None,
         typer.Option("--version", "-v", help="Show version and exit", callback=version_callback),
     ] = None,
@@ -117,15 +118,18 @@ def focus_database(
         raise typer.Exit()
 
     try:
+        focus_db_path = db_path
+        if focus_db_path is None:
+            raise AssertionError("db_path must be provided when setting focus")
         if session:
-            state = focus_service.validate_session_db(db_path)
+            state = focus_service.validate_session_db(focus_db_path)
             typer.echo(f"export {ENV_DB_PATH}={shlex.quote(str(state.db_path))}")
             return
         if global_focus:
-            state = focus_service.set_global_focus(db_path, device)
+            state = focus_service.set_global_focus(focus_db_path, device)
             typer.secho(f"Using global database: {state.db_path}", fg=typer.colors.GREEN)
         else:
-            state = focus_service.set_project_focus(db_path, device)
+            state = focus_service.set_project_focus(focus_db_path, device)
             typer.secho(f"Using project database: {state.db_path}", fg=typer.colors.GREEN)
             if state.focus_file:
                 typer.echo(f"Focus file: {state.focus_file}")
@@ -207,7 +211,7 @@ def query_database(
             }
             if category is not None:
                 filter_cats = [category]
-                query_service.list_templates(category)
+                _ = query_service.list_templates(category)
             else:
                 filter_cats = categories
             any_found = False
@@ -289,7 +293,10 @@ def query_database(
         _error("--template-use is required when not using --list or --template-info")
 
     try:
-        query_params = json.loads(params) if params else {}
+        loaded_params = json.loads(params) if params else {}  # pyright: ignore[reportUnknownVariableType]
+        if not isinstance(loaded_params, dict):
+            raise ValueError("Query parameters must be a JSON object.")
+        query_params = cast(dict[str, object], loaded_params)
         result = query_service.execute_query(
             template=template_use,
             params=query_params,
@@ -369,11 +376,11 @@ def show_config(
         typer.echo("No configuration set.")
     else:
         typer.echo("Current configuration:")
-        for key, value in current_config.items():
+        for key, value in cast(Mapping[str, object], current_config).items():
             typer.echo(f"  {key}: {value}")
 
 
-def _error(message: str) -> None:
+def _error(message: str) -> NoReturn:
     typer.secho(f"Error: {message}", fg=typer.colors.RED)
     raise typer.Exit(1) from None
 
