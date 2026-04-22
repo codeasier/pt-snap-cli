@@ -293,7 +293,9 @@ def query_database(
         _error("--template-use is required when not using --list or --template-info")
 
     try:
-        loaded_params = json.loads(params) if params else {}  # pyright: ignore[reportUnknownVariableType]
+        loaded_params = (  # pyright: ignore[reportUnknownVariableType]
+            json.loads(params) if params else {}
+        )
         if not isinstance(loaded_params, dict):
             raise ValueError("Query parameters must be a JSON object.")
         query_params = cast(dict[str, object], loaded_params)
