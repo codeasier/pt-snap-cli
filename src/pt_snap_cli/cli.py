@@ -49,10 +49,6 @@ def _query_service() -> QueryService:
     return QueryService(_focus_service())
 
 
-def _report_service() -> ReportService:
-    return ReportService(_focus_service())
-
-
 def version_callback(value: bool) -> None:
     if value:
         typer.echo(f"pt-snap-cli version {__version__}")
@@ -391,8 +387,10 @@ def report_peak_memory(
     json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
 ) -> None:
     """Generate a peak memory attribution report."""
+    focus_service = _focus_service()
+    report_service = ReportService(focus_service)
     try:
-        report = _report_service().peak_memory_report(
+        report = report_service.peak_memory_report(
             db_path=db_path,
             device_id=device,
             metric=metric,
@@ -412,7 +410,18 @@ def report_peak_memory(
         )
         raise typer.Exit(1) from None
     except DatabaseMissingError:
-        typer.secho(f"Error: Database not found: {db_path}", fg=typer.colors.RED)
+        try:
+            state = focus_service.get_focus(explicit_db_path=db_path, explicit_device_id=device)
+        except FocusFileInvalidError:
+            state = None
+        source = state.source if state is not None else "configured"
+        path = state.db_path if state is not None else db_path
+        typer.secho(f"Error: Database from {source} focus not found: {path}", fg=typer.colors.RED)
+        if state is not None and state.focus_file:
+            typer.echo(f"Focus file: {state.focus_file}")
+        typer.echo(
+            "Use 'pt-snap focus <new_database_path>' to set a new project database, or provide db_path argument."
+        )
         raise typer.Exit(1) from None
     except InvalidDeviceError as e:
         _error(str(e))

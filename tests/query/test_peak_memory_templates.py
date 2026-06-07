@@ -147,6 +147,54 @@ def test_active_blocks_at_event_applies_event_boundary_and_size_filter(
     assert [row["id"] for row in rows] == [1, 4]
 
 
+def test_active_blocks_at_event_treats_null_free_event_as_live(peak_memory_db: Path) -> None:
+    conn = sqlite3.connect(str(peak_memory_db))
+    conn.execute(
+        """
+        INSERT INTO block_0
+          (id, address, size, requestedSize, state, allocEventId, freeEventId)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (6, 0x6000, 1536, 1500, 1, 2, None),
+    )
+    conn.commit()
+    conn.close()
+
+    rows = _execute_template(
+        peak_memory_db,
+        "active_blocks_at_event",
+        {"event_id": 3, "include_static": False, "order_by": "id", "order_dir": "ASC"},
+    )
+
+    assert [row["id"] for row in rows] == [1, 6]
+
+
+def test_active_memory_callstack_at_event_treats_null_free_event_as_live(
+    peak_memory_db: Path,
+) -> None:
+    conn = sqlite3.connect(str(peak_memory_db))
+    conn.execute(
+        """
+        INSERT INTO block_0
+          (id, address, size, requestedSize, state, allocEventId, freeEventId)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (6, 0x6000, 1536, 1500, 1, 2, None),
+    )
+    conn.commit()
+    conn.close()
+
+    rows = _execute_template(
+        peak_memory_db,
+        "active_memory_callstack_at_event",
+        {"event_id": 3, "include_static": False, "top_n": -1},
+    )
+
+    by_callstack = {row["callstack"]: row for row in rows}
+    assert by_callstack["freed.py:20"]["size_bytes"] == 1536
+    assert by_callstack["freed.py:20"]["block_count"] == 1
+
+
 def test_active_memory_callstack_at_event_groups_dynamic_static_and_missing_callstacks(
     peak_memory_db: Path,
 ) -> None:

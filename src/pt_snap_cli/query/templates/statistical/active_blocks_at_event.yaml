@@ -57,7 +57,7 @@ queries:
         WHERE size >= {{ min_size|int }}
           AND (
             {% if include_static %}(allocEventId = -1 AND freeEventId = -1) OR{% endif %}
-            (allocEventId != -1 AND allocEventId <= {{ event_id|int }} AND (freeEventId = -1 OR freeEventId > {{ event_id|int }}))
+            (allocEventId != -1 AND allocEventId <= {{ event_id|int }} AND (freeEventId IS NULL OR freeEventId < 0 OR freeEventId > {{ event_id|int }}))
           )
       )
       SELECT *

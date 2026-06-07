@@ -868,3 +868,16 @@ class TestReportCommand:
         assert "[static] allocEventId=-1, freeEventId=-1" not in {
             row["callstack"] for row in payload["callstack_groups"]
         }
+
+    def test_peak_memory_report_configured_db_not_found(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".config" / "pt-snap-cli"
+        config_dir.mkdir(parents=True)
+        missing_db = tmp_path / "missing.db"
+        config_file = config_dir / "config.json"
+        config_file.write_text(json.dumps({"db_path": str(missing_db)}))
+
+        result = runner.invoke(app, ["report", "peak-memory"])
+
+        assert result.exit_code == 1
+        assert "Database from global focus not found" in result.stdout
+        assert str(missing_db) in result.stdout
