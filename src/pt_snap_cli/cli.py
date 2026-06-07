@@ -244,6 +244,8 @@ def query_database(
 
         typer.secho(f"Template: {info.name}", fg=typer.colors.GREEN, bold=True)
         typer.echo(f"Description: {info.description}")
+        typer.echo(f"Category: {info.category}")
+        typer.echo(f"Devices: {info.devices}")
         typer.echo()
         typer.echo("Parameters:")
         if info.parameters:

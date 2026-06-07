@@ -112,3 +112,16 @@ pytest                           # Run all tests
 black . && ruff check .          # Format and lint
 python -m build                  # Build sdist and wheel
 ```
+
+### CLI/MCP semantic contract
+
+The CLI and MCP server must keep using the shared API/core services as the single
+semantic source of truth. The CLI may render results as terminal text and the MCP
+server may return JSON-like tool payloads, but normalized meanings must stay in
+sync for focus handling, query template listing, template metadata, query
+execution, and shared error cases.
+
+`tests/test_contract_cli_mcp.py` compares normalized CLI output with MCP tool
+results on the same inputs and fixtures. When adding a new shared CLI/MCP capability,
+update or add a contract case in that file so CI fails if either adapter drifts
+from the shared behavior.
