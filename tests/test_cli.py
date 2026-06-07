@@ -796,10 +796,9 @@ class TestSafeCall:
 
         from pt_snap_cli.cli import _safe_call
 
-        with patch("sys.argv", ["pt-snap"]):
-            with patch("click.core.Command.parse_args", side_effect=KeyError("COMP_WORDS")):
-                exit_code = _safe_call()
-                assert exit_code == 1
+        with patch("pt_snap_cli.cli.app", side_effect=KeyError("COMP_WORDS")):
+            exit_code = _safe_call()
+            assert exit_code == 1
 
     def test_safe_call_reraises_unrelated_keyerror(self) -> None:
         """Test _safe_call re-raises KeyError not related to shell completion."""
@@ -807,10 +806,9 @@ class TestSafeCall:
 
         from pt_snap_cli.cli import _safe_call
 
-        with patch("sys.argv", ["pt-snap"]):
-            with patch("click.core.Command.parse_args", side_effect=KeyError("some_other_key")):
-                with pytest.raises(KeyError, match="some_other_key"):
-                    _safe_call()
+        with patch("pt_snap_cli.cli.app", side_effect=KeyError("some_other_key")):
+            with pytest.raises(KeyError, match="some_other_key"):
+                _safe_call()
 
 
 class TestReportCommand:
@@ -854,8 +852,8 @@ class TestReportCommand:
             ["report", "peak-memory", str(report_db), "--metric", "invalid"],
         )
 
-        assert result.exit_code == 1
-        assert "Invalid metric" in result.stdout
+        assert result.exit_code == 2
+        assert "Invalid value" in result.stdout or "Invalid value" in result.stderr
 
     def test_peak_memory_report_exclude_static(self, tmp_path: Path) -> None:
         report_db = create_peak_report_db(tmp_path / "report.db")

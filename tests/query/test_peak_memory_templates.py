@@ -7,7 +7,12 @@ import pytest
 
 from pt_snap_cli.context import Context
 from pt_snap_cli.query.executor import QueryExecutor
-from pt_snap_cli.query.registry import QueryRegistry, _load_all_templates, get_query, list_by_category
+from pt_snap_cli.query.registry import (
+    QueryRegistry,
+    _load_all_templates,
+    get_query,
+    list_by_category,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -124,11 +129,19 @@ def test_active_blocks_at_event_excludes_static_when_disabled(peak_memory_db: Pa
     assert [row["id"] for row in rows] == [1]
 
 
-def test_active_blocks_at_event_applies_event_boundary_and_size_filter(peak_memory_db: Path) -> None:
+def test_active_blocks_at_event_applies_event_boundary_and_size_filter(
+    peak_memory_db: Path,
+) -> None:
     rows = _execute_template(
         peak_memory_db,
         "active_blocks_at_event",
-        {"event_id": 5, "include_static": False, "min_size": 1000, "order_by": "id", "order_dir": "ASC"},
+        {
+            "event_id": 5,
+            "include_static": False,
+            "min_size": 1000,
+            "order_by": "id",
+            "order_dir": "ASC",
+        },
     )
 
     assert [row["id"] for row in rows] == [1, 4]

@@ -7,7 +7,7 @@ import shlex
 from collections.abc import Mapping
 from dataclasses import asdict
 from pathlib import Path
-from typing import Annotated, NoReturn, cast
+from typing import Annotated, Literal, NoReturn, cast
 
 import typer
 
@@ -380,7 +380,7 @@ def report_peak_memory(
         ),
     ] = None,
     metric: Annotated[
-        str,
+        Literal["active", "allocated", "reserved"],
         typer.Option(help="Peak metric to report: active, allocated, or reserved"),
     ] = "active",
     include_static: Annotated[
@@ -395,7 +395,7 @@ def report_peak_memory(
         report = _report_service().peak_memory_report(
             db_path=db_path,
             device_id=device,
-            metric=metric,  # type: ignore[arg-type]
+            metric=metric,
             include_static=include_static,
             limit=limit,
         )
@@ -458,16 +458,13 @@ def _print_peak_memory_report(report: PeakMemoryReport) -> None:
     if report.allocator_gap:
         gap = report.allocator_gap
         typer.echo(
-            f"  active peak event: {gap.get('peak_active_event_id')} "
-            f"reserved-active gap={gap.get('reserved_active_gap_at_active_peak')}"
+            f"  active peak event: {gap.get('peak_active_event_id')} reserved-active gap={gap.get('reserved_active_gap_at_active_peak')}"
         )
         typer.echo(
-            f"  allocated peak event: {gap.get('peak_allocated_event_id')} "
-            f"reserved-allocated gap={gap.get('reserved_allocated_gap_at_allocated_peak')}"
+            f"  allocated peak event: {gap.get('peak_allocated_event_id')} reserved-allocated gap={gap.get('reserved_allocated_gap_at_allocated_peak')}"
         )
         typer.echo(
-            f"  reserved peak event: {gap.get('peak_reserved_event_id')} "
-            f"reserved-active gap={gap.get('reserved_active_gap_at_reserved_peak')}"
+            f"  reserved peak event: {gap.get('peak_reserved_event_id')} reserved-active gap={gap.get('reserved_active_gap_at_reserved_peak')}"
         )
         typer.echo(f"  all peaks same event: {bool(gap.get('all_peaks_same_event'))}")
     else:
@@ -480,8 +477,7 @@ def _print_peak_memory_report(report: PeakMemoryReport) -> None:
         return
     for index, row in enumerate(report.callstack_groups, start=1):
         typer.echo(
-            f"  [{index}] {row.get('category')} {row.get('size_bytes')} bytes, "
-            f"{row.get('block_count')} blocks ({row.get('percent_of_active_blocks')}%)"
+            f"  [{index}] {row.get('category')} {row.get('size_bytes')} bytes, {row.get('block_count')} blocks ({row.get('percent_of_active_blocks')}%)"
         )
         typer.echo(f"      {row.get('callstack')}")
 
