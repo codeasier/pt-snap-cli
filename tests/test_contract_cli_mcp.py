@@ -187,7 +187,11 @@ def _normalize_cli_template_info(output: str) -> dict[str, object]:
             current_param = name
         elif section == "parameters" and current_param and line.startswith("    "):
             info["parameters"][current_param]["description"] = stripped
-        elif section == "output_schema" and line.startswith("  ") and stripped != "Dynamic (depends on query)":
+        elif (
+            section == "output_schema"
+            and line.startswith("  ")
+            and stripped != "Dynamic (depends on query)"
+        ):
             column, column_type = stripped.split(": ", 1)
             info["output_schema"].append({"column": column, "type": column_type})
 
@@ -211,7 +215,9 @@ def _normalize_cli_missing_focus(output: str) -> dict[str, str]:
     return {"kind": "focus_not_configured"}
 
 
-def test_focus_contract_matches_cli_and_mcp_semantics(contract_db: Path, mcp_server: ModuleType) -> None:
+def test_focus_contract_matches_cli_and_mcp_semantics(
+    contract_db: Path, mcp_server: ModuleType
+) -> None:
     cli_result = runner.invoke(app, ["focus", str(contract_db), "--device", "1"])
     assert cli_result.exit_code == 0
 
