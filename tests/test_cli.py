@@ -74,6 +74,72 @@ def create_sample_db(db_path: Path, size: int = 1024) -> Path:
     return db_path
 
 
+def create_peak_report_db(db_path: Path) -> Path:
+    """Create a memory snapshot database for peak report CLI tests."""
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("""
+        CREATE TABLE dictionary (
+            `table` TEXT,
+            `column` TEXT,
+            `key` TEXT,
+            `value` TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE trace_entry_0 (
+            id INTEGER PRIMARY KEY,
+            action INTEGER,
+            address INTEGER,
+            size INTEGER,
+            stream INTEGER,
+            allocated INTEGER,
+            active INTEGER,
+            reserved INTEGER,
+            callstack TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE block_0 (
+            id INTEGER PRIMARY KEY,
+            address INTEGER,
+            size INTEGER,
+            requestedSize INTEGER,
+            state INTEGER,
+            allocEventId INTEGER,
+            freeEventId INTEGER
+        )
+    """)
+    conn.executemany(
+        """
+        INSERT INTO trace_entry_0
+          (id, action, address, size, stream, allocated, active, reserved, callstack)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (1, 2, 0x1000, 1024, 0, 1024, 1024, 4096, "train.py:10"),
+            (2, 2, 0x2000, 2048, 0, 3072, 3072, 4096, "block.py:20"),
+            (3, 3, 0x2000, 2048, 0, 1024, 1024, 8192, "free.py:30"),
+            (4, 2, 0x4000, 4096, 0, 5120, 5120, 8192, "after.py:40"),
+        ],
+    )
+    conn.executemany(
+        """
+        INSERT INTO block_0
+          (id, address, size, requestedSize, state, allocEventId, freeEventId)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (-10, 0xA000, 8192, 8000, 1, -1, -1),
+            (1, 0x1000, 1024, 1000, 1, 1, -1),
+            (2, 0x2000, 2048, 2000, 0, 2, 3),
+            (4, 0x4000, 4096, 4000, 1, 4, -1),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    return db_path
+
+
 @pytest.fixture
 def sample_db(tmp_path: Path) -> Path:
     """Create a sample SQLite database for testing."""
@@ -730,10 +796,9 @@ class TestSafeCall:
 
         from pt_snap_cli.cli import _safe_call
 
-        with patch("sys.argv", ["pt-snap"]):
-            with patch("click.core.Command.parse_args", side_effect=KeyError("COMP_WORDS")):
-                exit_code = _safe_call()
-                assert exit_code == 1
+        with patch("pt_snap_cli.cli.app", side_effect=KeyError("COMP_WORDS")):
+            exit_code = _safe_call()
+            assert exit_code == 1
 
     def test_safe_call_reraises_unrelated_keyerror(self) -> None:
         """Test _safe_call re-raises KeyError not related to shell completion."""
@@ -741,7 +806,78 @@ class TestSafeCall:
 
         from pt_snap_cli.cli import _safe_call
 
-        with patch("sys.argv", ["pt-snap"]):
-            with patch("click.core.Command.parse_args", side_effect=KeyError("some_other_key")):
-                with pytest.raises(KeyError, match="some_other_key"):
-                    _safe_call()
+        with patch("pt_snap_cli.cli.app", side_effect=KeyError("some_other_key")):
+            with pytest.raises(KeyError, match="some_other_key"):
+                _safe_call()
+
+
+class TestReportCommand:
+    """Test report subcommands."""
+
+    def test_report_help(self) -> None:
+        result = runner.invoke(app, ["report", "--help"])
+        assert result.exit_code == 0
+        assert "Generate memory analysis reports" in result.stdout
+
+    def test_peak_memory_report_text_output(self, tmp_path: Path) -> None:
+        report_db = create_peak_report_db(tmp_path / "report.db")
+
+        result = runner.invoke(app, ["report", "peak-memory", str(report_db)])
+
+        assert result.exit_code == 0
+        assert "Peak memory report" in result.stdout
+        assert "Metric: active" in result.stdout
+        assert "Allocator gap:" in result.stdout
+        assert "Active memory by callstack:" in result.stdout
+        assert "[static] allocEventId=-1, freeEventId=-1" in result.stdout
+
+    def test_peak_memory_report_json_output(self, tmp_path: Path) -> None:
+        report_db = create_peak_report_db(tmp_path / "report.db")
+
+        result = runner.invoke(app, ["report", "peak-memory", str(report_db), "--json"])
+
+        assert result.exit_code == 0
+        payload = json.loads(result.stdout)
+        assert payload["metric"] == "active"
+        assert payload["event_id"] == 4
+        assert payload["peak"]["peak_active_event_id"] == 4
+        assert payload["allocator_gap"]["peak_reserved_event_id"] == 3
+        assert isinstance(payload["callstack_groups"], list)
+
+    def test_peak_memory_report_invalid_metric(self, tmp_path: Path) -> None:
+        report_db = create_peak_report_db(tmp_path / "report.db")
+
+        result = runner.invoke(
+            app,
+            ["report", "peak-memory", str(report_db), "--metric", "invalid"],
+        )
+
+        assert result.exit_code == 2
+        assert "Invalid value" in result.stdout or "Invalid value" in result.stderr
+
+    def test_peak_memory_report_exclude_static(self, tmp_path: Path) -> None:
+        report_db = create_peak_report_db(tmp_path / "report.db")
+
+        result = runner.invoke(
+            app,
+            ["report", "peak-memory", str(report_db), "--exclude-static", "--json"],
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(result.stdout)
+        assert "[static] allocEventId=-1, freeEventId=-1" not in {
+            row["callstack"] for row in payload["callstack_groups"]
+        }
+
+    def test_peak_memory_report_configured_db_not_found(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".config" / "pt-snap-cli"
+        config_dir.mkdir(parents=True)
+        missing_db = tmp_path / "missing.db"
+        config_file = config_dir / "config.json"
+        config_file.write_text(json.dumps({"db_path": str(missing_db)}))
+
+        result = runner.invoke(app, ["report", "peak-memory"])
+
+        assert result.exit_code == 1
+        assert "Database from global focus not found" in result.stdout
+        assert str(missing_db) in result.stdout

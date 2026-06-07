@@ -59,7 +59,10 @@ where = ["src"]
 include = ["pt_snap_cli*"]
 
 [tool.setuptools.package-data]
-pt_snap_cli = ["query/templates/*.yaml"]
+pt_snap_cli = [
+    "query/templates/*.yaml",
+    "query/templates/*/*.yaml",
+]
 
 [tool.black]
 line-length = 100
