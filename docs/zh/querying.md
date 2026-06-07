@@ -44,6 +44,8 @@ pt-snap query [--template-use <template_name>] [--params <json>] [--device <id>]
 |------|------|
 | `callstack_analysis` | 调用栈分析 |
 | `memory_peak` | 峰值内存指标 |
+| `active_blocks_at_event` | 查询某个事件时刻仍然活跃的 block，可选包含静态内存 |
+| `allocator_gap` | 比较 allocated、active、reserved 三类峰值事件及其同事件 gap |
 
 ### Business Queries
 
@@ -52,6 +54,88 @@ pt-snap query [--template-use <template_name>] [--params <json>] [--device <id>]
 | 模板 | 说明 |
 |------|------|
 | `leak_detection` | 查找未匹配释放事件的分配 |
+| `active_memory_callstack_at_event` | 对某个事件时刻的活跃内存块按分配调用栈做聚合，并单独标识静态内存 |
+
+## 峰值内存归因工作流
+
+这些新增能力把“先找到峰值，再解释峰值时刻哪些内存仍然活跃”的手工分析流程产品化了。
+
+### 1. 先定位峰值事件
+
+```bash
+pt-snap query --template-use memory_peak
+```
+
+这个模板会返回 `allocated`、`active`、`reserved` 的峰值，以及各自对应的事件 ID。
+
+### 2. 查看该事件时刻仍然活跃的 block
+
+```bash
+pt-snap query --template-use active_blocks_at_event --params '{"event_id": 1234, "include_static": true}'
+```
+
+`active_blocks_at_event` 认为 block 在 `event_id` 时刻仍然活跃的条件是：
+
+- `allocEventId <= event_id`
+- 且 `freeEventId = -1` 或 `freeEventId > event_id`
+
+当 `include_static=true` 时，还会包含 `allocEventId=-1 AND freeEventId=-1` 的 block，并标记为 `static`。
+
+### 3. 对该时刻的活跃内存做调用栈归因
+
+```bash
+pt-snap query --template-use active_memory_callstack_at_event --params '{"event_id": 1234, "include_static": true, "top_n": 20}'
+```
+
+这个查询会：
+
+- 先从 `event_id` 时刻的活跃 block 集合开始
+- 把动态 block 回连到 `trace_entry_<device>` 的分配事件
+- 按分配调用栈做聚合
+- 对静态内存单独分组，而不是伪造调用栈
+
+### 4. 比较不同指标的峰值与 gap
+
+```bash
+pt-snap query --template-use allocator_gap
+```
+
+这个模板会报告：
+
+- `allocated`、`active`、`reserved` 的峰值事件
+- 它们是否发生在同一个事件
+- 同一事件上的 gap，例如 `reserved - active`、`reserved - allocated`
+
+这样可以避免误把不同事件上的峰值直接相减，并错误解释为同一时刻的碎片或缓存 gap。
+
+## Report 命令
+
+如果需要更高层的摘要，可以使用：
+
+```bash
+pt-snap report peak-memory [db_path] [--device <id>] [--metric active|allocated|reserved] [--include-static|--exclude-static] [--limit <n>] [--json]
+```
+
+示例：
+
+```bash
+# 生成基于 active 峰值事件的文本报告
+pt-snap report peak-memory /path/to/snapshot.db
+
+# 改为查看 reserved 峰值
+pt-snap report peak-memory /path/to/snapshot.db --metric reserved
+
+# 输出机器可读 JSON
+pt-snap report peak-memory /path/to/snapshot.db --json
+```
+
+这个 report 命令会组合：
+
+- `memory_peak`
+- `allocator_gap`
+- `active_memory_callstack_at_event`
+
+并输出人类可读摘要或 JSON。
 
 **示例：**
 ```bash
