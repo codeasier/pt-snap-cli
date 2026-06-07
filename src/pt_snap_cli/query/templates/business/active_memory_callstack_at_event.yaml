@@ -1,0 +1,90 @@
+version: "1.0"
+queries:
+  active_memory_callstack_at_event:
+    description: Aggregate active memory blocks at an event by allocation callstack, including static memory classification
+    devices:
+      - all
+    parameters:
+      event_id:
+        type: int
+        required: true
+        description: Trace event ID used as the point-in-time lifecycle boundary
+      include_static:
+        type: bool
+        default: true
+        required: false
+        description: Include static blocks with allocEventId=-1 and freeEventId=-1 as a separate group
+      min_size:
+        type: int
+        default: 0
+        required: false
+        description: Minimum individual block size in bytes
+      top_n:
+        type: int
+        default: 20
+        required: false
+        description: Maximum number of callstack groups to return (-1 for unlimited)
+    query: |
+      WITH active_blocks AS (
+        SELECT
+          id,
+          size,
+          requestedSize,
+          allocEventId,
+          freeEventId,
+          CASE
+            WHEN allocEventId = -1 AND freeEventId = -1 THEN 'static'
+            ELSE 'dynamic_live_at_event'
+          END AS category
+        FROM {{ device_block_table }}
+        WHERE size >= {{ min_size|int }}
+          AND (
+            {% if include_static %}(allocEventId = -1 AND freeEventId = -1) OR{% endif %}
+            (allocEventId != -1 AND allocEventId <= {{ event_id|int }} AND (freeEventId = -1 OR freeEventId > {{ event_id|int }}))
+          )
+      ), grouped AS (
+        SELECT
+          CASE
+            WHEN b.category = 'static' THEN '[static] allocEventId=-1, freeEventId=-1'
+            ELSE COALESCE(t.callstack, '[missing callstack]')
+          END AS callstack,
+          b.category,
+          COUNT(*) AS block_count,
+          SUM(b.size) AS size_bytes,
+          ROUND(SUM(b.size) / 1073741824.0, 6) AS size_gib,
+          SUM(b.requestedSize) AS requested_bytes,
+          ROUND(SUM(b.requestedSize) / 1073741824.0, 6) AS requested_gib
+        FROM active_blocks b
+        LEFT JOIN {{ device_trace_table }} t
+          ON b.allocEventId = t.id
+        GROUP BY callstack, b.category
+      )
+      SELECT
+        callstack,
+        category,
+        block_count,
+        size_bytes,
+        size_gib,
+        requested_bytes,
+        requested_gib,
+        ROUND(size_bytes * 100.0 / NULLIF(SUM(size_bytes) OVER (), 0), 4) AS percent_of_active_blocks
+      FROM grouped
+      ORDER BY size_bytes DESC, block_count DESC, callstack ASC
+      LIMIT {{ top_n|int }}
+    output_schema:
+      - column: callstack
+        type: str
+      - column: category
+        type: str
+      - column: block_count
+        type: int
+      - column: size_bytes
+        type: int
+      - column: size_gib
+        type: float
+      - column: requested_bytes
+        type: int
+      - column: requested_gib
+        type: float
+      - column: percent_of_active_blocks
+        type: float

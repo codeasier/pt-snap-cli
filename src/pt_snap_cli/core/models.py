@@ -59,3 +59,13 @@ class QueryResult:
     returned: int
     device_id: int | None
     rows: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class PeakMemoryReport:
+    device_id: int | None
+    metric: str
+    event_id: int | None
+    peak: dict[str, Any]
+    allocator_gap: dict[str, Any] | None
+    callstack_groups: list[dict[str, Any]]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shlex
 from collections.abc import Mapping
+from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, NoReturn, cast
 
@@ -21,8 +22,10 @@ from pt_snap_cli.core import (
     FocusService,
     InvalidCategoryError,
     InvalidDeviceError,
+    PeakMemoryReport,
     QueryExecutionError,
     QueryService,
+    ReportService,
     TemplateNotFoundError,
     TemplateRenderError,
 )
@@ -34,6 +37,8 @@ app = typer.Typer(
     add_completion=True,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
+report_app = typer.Typer(help="Generate memory analysis reports")
+app.add_typer(report_app, name="report")
 
 
 def _focus_service() -> FocusService:
@@ -42,6 +47,10 @@ def _focus_service() -> FocusService:
 
 def _query_service() -> QueryService:
     return QueryService(_focus_service())
+
+
+def _report_service() -> ReportService:
+    return ReportService(_focus_service())
 
 
 def version_callback(value: bool) -> None:
@@ -354,6 +363,127 @@ def query_database(
     ) as e:
         typer.secho(f"Error executing query: {e}", fg=typer.colors.RED)
         raise typer.Exit(1) from None
+
+
+@report_app.command("peak-memory")
+def report_peak_memory(
+    db_path: Annotated[
+        Path | None, typer.Argument(help="Path to database file (optional if configured)")
+    ] = None,
+    device: Annotated[
+        int | None,
+        typer.Option(
+            "--device",
+            "-d",
+            help="Device ID to report",
+            autocompletion=complete_device_ids,
+        ),
+    ] = None,
+    metric: Annotated[
+        str,
+        typer.Option(help="Peak metric to report: active, allocated, or reserved"),
+    ] = "active",
+    include_static: Annotated[
+        bool,
+        typer.Option("--include-static/--exclude-static", help="Include static memory group"),
+    ] = True,
+    limit: Annotated[int, typer.Option("--limit", "-n", help="Maximum callstack groups")] = 20,
+    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+) -> None:
+    """Generate a peak memory attribution report."""
+    try:
+        report = _report_service().peak_memory_report(
+            db_path=db_path,
+            device_id=device,
+            metric=metric,  # type: ignore[arg-type]
+            include_static=include_static,
+            limit=limit,
+        )
+    except ValueError as e:
+        _error(str(e))
+    except FocusFileInvalidError as e:
+        _error(str(e))
+    except FocusNotConfiguredError:
+        typer.secho(
+            "Error: No database path specified and no database configured.", fg=typer.colors.RED
+        )
+        typer.echo(
+            "Use 'pt-snap focus <database_path>' to set a project database, or provide db_path argument."
+        )
+        raise typer.Exit(1) from None
+    except DatabaseMissingError:
+        typer.secho(f"Error: Database not found: {db_path}", fg=typer.colors.RED)
+        raise typer.Exit(1) from None
+    except InvalidDeviceError as e:
+        _error(str(e))
+    except (
+        TemplateNotFoundError,
+        TemplateRenderError,
+        QueryExecutionError,
+        DatabaseSchemaError,
+    ) as e:
+        typer.secho(f"Error generating report: {e}", fg=typer.colors.RED)
+        raise typer.Exit(1) from None
+
+    if json_output:
+        typer.echo(json.dumps(asdict(report), indent=2))
+        return
+
+    _print_peak_memory_report(report)
+
+
+def _print_peak_memory_report(report: PeakMemoryReport) -> None:
+    typer.secho("Peak memory report", fg=typer.colors.GREEN, bold=True)
+    typer.echo(f"Device: {report.device_id}")
+    typer.echo(f"Metric: {report.metric}")
+    typer.echo(f"Event ID: {report.event_id}")
+    typer.echo()
+
+    typer.secho("Peak counters:", fg=typer.colors.GREEN, bold=True)
+    if report.peak:
+        typer.echo(
+            f"  allocated: {report.peak.get('peak_allocated')} at event {report.peak.get('peak_allocated_event_id')}"
+        )
+        typer.echo(
+            f"  active: {report.peak.get('peak_active')} at event {report.peak.get('peak_active_event_id')}"
+        )
+        typer.echo(
+            f"  reserved: {report.peak.get('peak_reserved')} at event {report.peak.get('peak_reserved_event_id')}"
+        )
+    else:
+        typer.echo("  No peak counters found.")
+    typer.echo()
+
+    typer.secho("Allocator gap:", fg=typer.colors.GREEN, bold=True)
+    if report.allocator_gap:
+        gap = report.allocator_gap
+        typer.echo(
+            f"  active peak event: {gap.get('peak_active_event_id')} "
+            f"reserved-active gap={gap.get('reserved_active_gap_at_active_peak')}"
+        )
+        typer.echo(
+            f"  allocated peak event: {gap.get('peak_allocated_event_id')} "
+            f"reserved-allocated gap={gap.get('reserved_allocated_gap_at_allocated_peak')}"
+        )
+        typer.echo(
+            f"  reserved peak event: {gap.get('peak_reserved_event_id')} "
+            f"reserved-active gap={gap.get('reserved_active_gap_at_reserved_peak')}"
+        )
+        typer.echo(f"  all peaks same event: {bool(gap.get('all_peaks_same_event'))}")
+    else:
+        typer.echo("  No allocator gap data found.")
+    typer.echo()
+
+    typer.secho("Active memory by callstack:", fg=typer.colors.GREEN, bold=True)
+    if not report.callstack_groups:
+        typer.echo("  No active memory callstack groups found.")
+        return
+    for index, row in enumerate(report.callstack_groups, start=1):
+        typer.echo(
+            f"  [{index}] {row.get('category')} {row.get('size_bytes')} bytes, "
+            f"{row.get('block_count')} blocks ({row.get('percent_of_active_blocks')}%)"
+        )
+        typer.echo(f"      {row.get('callstack')}")
 
 
 @app.command("config")
