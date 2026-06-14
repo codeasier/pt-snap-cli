@@ -153,6 +153,50 @@ def focus_database(
         _error(str(e))
 
 
+@app.command("import")
+def import_snapshot(
+    snapshot_file: Annotated[Path, typer.Argument(help="Path to .pkl snapshot")],
+    output_dir: Annotated[Path | None, typer.Option("--output-dir", "-o")] = None,
+    device: Annotated[int | None, typer.Option("--device", "-d")] = None,
+    no_focus: Annotated[bool, typer.Option("--no-focus", help="Skip focus update")] = False,
+) -> None:
+    """Import a PyTorch memory snapshot into a SQLite database."""
+    from pt_snap_cli.core.errors import (
+        DatabaseSchemaError,
+        FocusFileInvalidError,
+        ImportExecutionError,
+        ImportToolMissingError,
+        SnapshotFileInvalidError,
+    )
+    from pt_snap_cli.core.import_service import ImportService
+    from pt_snap_cli.core.models import ImportOptions
+
+    try:
+        result = ImportService().import_snapshot(
+            ImportOptions(
+                snapshot_file=snapshot_file,
+                output_dir=output_dir,
+                device=device,
+                set_focus=not no_focus,
+            )
+        )
+    except (
+        ImportToolMissingError,
+        ImportExecutionError,
+        SnapshotFileInvalidError,
+        FocusFileInvalidError,
+        DatabaseSchemaError,
+    ) as e:
+        _error(str(e))
+        raise typer.Exit(code=1) from None
+
+    typer.echo(f"Imported: {result.db_path}")
+    if result.focus_state is not None:
+        focus_file = getattr(result.focus_state, "focus_file", None)
+        if focus_file is not None:
+            typer.echo(f"Focus: {focus_file}")
+
+
 @app.command("query")
 def query_database(
     db_path: Annotated[

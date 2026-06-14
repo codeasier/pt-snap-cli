@@ -69,3 +69,18 @@ class PeakMemoryReport:
     peak: dict[str, Any]
     allocator_gap: dict[str, Any] | None
     callstack_groups: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class ImportOptions:
+    snapshot_file: Path
+    output_dir: Path | None = None
+    device: int | None = None
+    set_focus: bool = True
+
+
+@dataclass(frozen=True)
+class ImportResult:
+    db_path: Path
+    device_id: int | None
+    focus_state: FocusState | None

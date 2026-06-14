@@ -67,6 +67,10 @@ class Context:
             self._device_ids = self._discover_device_ids()
         return self._device_ids
 
+    def discover_devices(self) -> list[int]:
+        """Discover device IDs available in the database."""
+        return self.device_ids
+
     def _discover_device_ids(self) -> list[int]:
         """Discover device IDs from database table names."""
         device_ids = set()

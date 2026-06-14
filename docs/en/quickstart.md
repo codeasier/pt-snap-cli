@@ -12,6 +12,16 @@ pip install -e .
 
 ## Your First Analysis
 
+### Optional: Import a PyTorch Snapshot
+
+If you have a raw `.pkl` memory snapshot, install the optional integration and import it first:
+
+```bash
+pip install -e ".[memsnapdump]"
+pt-snap import snapshot.pkl
+pt-snap query --list
+```
+
 ### Step 1: Set the Snapshot Database and Device
 
 Point `pt-snap` to your SQLite snapshot database file:

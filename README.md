@@ -12,6 +12,14 @@ pip install -e .
 
 ## Quick Start
 
+To start from a raw PyTorch memory snapshot, install the optional MemSnapDump integration from local source, import the pickle into a SnapshotDB, then list the available query templates:
+
+```bash
+pip install -e ".[memsnapdump]"
+pt-snap import snapshot.pkl
+pt-snap query --list
+```
+
 ```bash
 # Set the snapshot database and device
 pt-snap focus examples/snapshot_expandable.pkl.db --device 0
@@ -33,6 +41,7 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 | Command | Description |
 |---------|-------------|
 | `pt-snap focus` | Set and manage analysis focus (database + device) |
+| `pt-snap import <snapshot.pkl>` | Import a PyTorch memory snapshot pickle into a SnapshotDB |
 | `pt-snap query` | Run memory analysis queries |
 | `pt-snap config` | Manage global configuration |
 | `pt-snap-mcp` | Start the MCP server for agent integration |

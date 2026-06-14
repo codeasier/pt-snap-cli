@@ -36,3 +36,15 @@ class TemplateRenderError(PtSnapCoreError):
 
 class QueryExecutionError(PtSnapCoreError):
     pass
+
+
+class ImportToolMissingError(PtSnapCoreError):
+    pass
+
+
+class SnapshotFileInvalidError(PtSnapCoreError):
+    pass
+
+
+class ImportExecutionError(PtSnapCoreError):
+    pass

@@ -12,6 +12,16 @@ pip install -e .
 
 ## 第一次分析
 
+### 可选：导入 PyTorch 快照
+
+如果你手上是原始 `.pkl` 内存快照，请先安装可选集成并导入：
+
+```bash
+pip install -e ".[memsnapdump]"
+pt-snap import snapshot.pkl
+pt-snap query --list
+```
+
 ### 第一步：设置快照数据库和设备
 
 将 `pt-snap` 指向你的 SQLite 快照数据库文件：
