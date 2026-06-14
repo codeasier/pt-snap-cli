@@ -188,7 +188,6 @@ def import_snapshot(
         DatabaseSchemaError,
     ) as e:
         _error(str(e))
-        raise typer.Exit(code=1) from None
 
     typer.echo(f"Imported: {result.db_path}")
     if result.focus_state is not None:

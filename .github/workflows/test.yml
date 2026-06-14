@@ -55,7 +55,7 @@ jobs:
             pip-${{ runner.os }}-${{ matrix.python-version }}-
 
       - name: Install dependencies
-        run: pip install -e .[dev]
+        run: pip install -e .[dev,memsnapdump]
 
       - name: Run tests with coverage
         run: pytest --cov --cov-report=xml --cov-report=term-missing
