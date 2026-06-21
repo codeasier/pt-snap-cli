@@ -67,6 +67,14 @@ class Context:
             self._device_ids = self._discover_device_ids()
         return self._device_ids
 
+    def discover_devices(self) -> list[int]:
+        """Discover device IDs available in the database.
+
+        Method-style alias of the ``device_ids`` property, exposed for
+        callers (e.g. import service) that prefer an explicit method.
+        """
+        return self.device_ids
+
     def _discover_device_ids(self) -> list[int]:
         """Discover device IDs from database table names."""
         device_ids = set()

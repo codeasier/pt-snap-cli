@@ -1,6 +1,7 @@
 """Tests for CLI."""
 
 import json
+import shutil
 import sqlite3
 from pathlib import Path
 from unittest.mock import patch
@@ -809,6 +810,77 @@ class TestSafeCall:
         with patch("pt_snap_cli.cli.app", side_effect=KeyError("some_other_key")):
             with pytest.raises(KeyError, match="some_other_key"):
                 _safe_call()
+
+
+class TestImportCommand:
+    """Test import command."""
+
+    def test_import_success_writes_focus(self, tmp_path: Path) -> None:
+        """Test import writes a database and project focus by default."""
+        source = Path(__file__).parent / "fixtures" / "snapshots" / "snapshot_with_empty_cache.pkl"
+        snapshot = tmp_path / "sample.pkl"
+        shutil.copy(source, snapshot)
+
+        result = runner.invoke(app, ["import", str(snapshot)], catch_exceptions=False)
+
+        assert result.exit_code == 0
+        assert "Imported:" in result.stdout
+        assert (tmp_path / ".pt-snap" / "focus.json").exists()
+
+    def test_import_missing_tool_message(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test import reports vendored backend packaging guidance when unavailable."""
+        from pt_snap_cli.core.import_service import ImportToolMissingError
+
+        snapshot = tmp_path / "sample.pkl"
+        snapshot.write_bytes(b"not a real snapshot")
+
+        def raise_missing_tool(*args: object, **kwargs: object) -> object:
+            raise ImportToolMissingError(
+                "Vendored snapshot import backend is unavailable. Reinstall pt-snap-cli; the package may be incomplete."
+            )
+
+        monkeypatch.setattr(
+            "pt_snap_cli.core.import_service.ImportService.import_snapshot",
+            raise_missing_tool,
+        )
+
+        result = runner.invoke(app, ["import", str(snapshot)])
+
+        assert result.exit_code != 0
+        assert "vendored snapshot import backend" in result.output.lower()
+        assert "reinstall pt-snap-cli" in result.output.lower()
+        assert "memsnapdump" not in result.output.lower()
+
+    def test_import_invalid_path(self) -> None:
+        """Test import rejects missing snapshot paths."""
+        result = runner.invoke(app, ["import", "/no/such/file.pkl"])
+
+        assert result.exit_code != 0
+        assert "exist" in result.output.lower()
+
+    def test_import_invalid_suffix(self, tmp_path: Path) -> None:
+        """Test import rejects non-pkl snapshot paths."""
+        snapshot = tmp_path / "sample.txt"
+        snapshot.write_text("not a snapshot")
+
+        result = runner.invoke(app, ["import", str(snapshot)])
+
+        assert result.exit_code != 0
+        assert "suffix" in result.output.lower() or ".pkl" in result.output.lower()
+
+    def test_import_no_focus(self, tmp_path: Path) -> None:
+        """Test import --no-focus creates a database without writing project focus."""
+        source = Path(__file__).parent / "fixtures" / "snapshots" / "snapshot_with_empty_cache.pkl"
+        snapshot = tmp_path / "sample.pkl"
+        shutil.copy(source, snapshot)
+
+        result = runner.invoke(app, ["import", str(snapshot), "--no-focus"], catch_exceptions=False)
+
+        assert result.exit_code == 0
+        assert not (tmp_path / ".pt-snap").exists()
+        assert (tmp_path / "sample.pkl.db").exists()
 
 
 class TestReportCommand:

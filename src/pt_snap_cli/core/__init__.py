@@ -3,16 +3,22 @@ from pt_snap_cli.core.errors import (
     DatabaseSchemaError,
     FocusFileInvalidError,
     FocusNotConfiguredError,
+    ImportExecutionError,
+    ImportToolMissingError,
     InvalidCategoryError,
     InvalidDeviceError,
     PtSnapCoreError,
     QueryExecutionError,
+    SnapshotFileInvalidError,
     TemplateNotFoundError,
     TemplateRenderError,
 )
 from pt_snap_cli.core.focus_service import FocusService
+from pt_snap_cli.core.import_service import ImportService
 from pt_snap_cli.core.models import (
     FocusState,
+    ImportOptions,
+    ImportResult,
     PeakMemoryReport,
     QueryResult,
     ResolvedFocus,
@@ -34,6 +40,9 @@ __all__ = [
     "TemplateNotFoundError",
     "TemplateRenderError",
     "QueryExecutionError",
+    "ImportToolMissingError",
+    "SnapshotFileInvalidError",
+    "ImportExecutionError",
     "ResolvedFocus",
     "FocusState",
     "TemplateParameter",
@@ -41,7 +50,10 @@ __all__ = [
     "TemplateInfo",
     "QueryResult",
     "PeakMemoryReport",
+    "ImportOptions",
+    "ImportResult",
     "FocusService",
     "QueryService",
     "ReportService",
+    "ImportService",
 ]
