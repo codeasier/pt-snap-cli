@@ -179,16 +179,12 @@ def import_snapshot(
         ImportToolMissingError,
         ImportExecutionError,
         SnapshotFileInvalidError,
-        FocusFileInvalidError,
-        DatabaseSchemaError,
     ) as e:
         _error(str(e))
 
     typer.echo(f"Imported: {result.db_path}")
-    if result.focus_state is not None:
-        focus_file = getattr(result.focus_state, "focus_file", None)
-        if focus_file is not None:
-            typer.echo(f"Focus: {focus_file}")
+    if result.focus_state is not None and result.focus_state.focus_file is not None:
+        typer.echo(f"Focus: {result.focus_state.focus_file}")
 
 
 @app.command("query")

@@ -831,7 +831,7 @@ class TestImportCommand:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test import reports vendored backend packaging guidance when unavailable."""
-        from pt_snap_cli.core.import_service import ImportToolMissingError
+        from pt_snap_cli.core.errors import ImportToolMissingError
 
         snapshot = tmp_path / "sample.pkl"
         snapshot.write_bytes(b"not a real snapshot")
@@ -863,6 +863,8 @@ class TestImportCommand:
     def test_import_invalid_suffix(self, tmp_path: Path) -> None:
         """Test import rejects non-pkl snapshot paths."""
         snapshot = tmp_path / "sample.txt"
+        # Content is irrelevant: the .txt suffix is rejected before the
+        # backend ever opens the file.
         snapshot.write_text("not a snapshot")
 
         result = runner.invoke(app, ["import", str(snapshot)])
