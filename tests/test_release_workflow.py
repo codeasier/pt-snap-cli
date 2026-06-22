@@ -1,0 +1,35 @@
+from pathlib import Path
+
+
+WORKFLOW = Path(".github/workflows/release.yml")
+
+
+def _workflow_text() -> str:
+    return WORKFLOW.read_text()
+
+
+def test_release_workflow_fetches_full_git_history_for_setuptools_scm() -> None:
+    text = _workflow_text()
+
+    assert "uses: actions/checkout@v4" in text
+    assert "fetch-depth: 0" in text
+
+
+def test_release_workflow_verifies_built_package_version_against_tag() -> None:
+    text = _workflow_text()
+
+    assert "Verify built package version matches tag" in text
+    assert "importlib.metadata" in text
+    assert "version('pt-snap-cli')" in text or 'version("pt-snap-cli")' in text
+    assert "Tag v$TAG does not match built package version" in text
+    assert "tomllib.load" not in text
+    assert "['project']['version']" not in text
+
+
+def test_release_workflow_creates_github_release_from_changelog() -> None:
+    text = _workflow_text()
+
+    assert "Extract release notes from changelog" in text
+    assert "## [$TAG]" in text
+    assert "gh release create" in text
+    assert "dist/*" in text
