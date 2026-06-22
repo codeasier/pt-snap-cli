@@ -98,7 +98,7 @@ jobs:
 
           tag = os.environ["GITHUB_REF"].removeprefix("refs/tags/v")
           text = Path("CHANGELOG.md").read_text()
-          pattern = rf"^## \\[{re.escape(tag)}\\].*?$(.*?)(?=^## \\[|\\Z)"
+          pattern = rf"^## \[{re.escape(tag)}\].*?$(.*?)(?=^## \[|\Z)"
           match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
           if not match:
               raise SystemExit(f"CHANGELOG.md does not contain release notes for ## [{tag}]")

@@ -1,6 +1,8 @@
+import re
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/release.yml")
+CHANGELOG = Path("CHANGELOG.md")
 
 
 def _workflow_text() -> str:
@@ -34,3 +36,16 @@ def test_release_workflow_creates_github_release_from_changelog() -> None:
     assert "release-notes.md" in text
     assert "gh release create" in text
     assert "dist/*" in text
+
+
+def test_release_notes_regex_extracts_current_changelog_entry() -> None:
+    tag = "0.1.1"
+    text = CHANGELOG.read_text()
+    pattern = rf"^## \[{re.escape(tag)}\].*?$(.*?)(?=^## \[|\Z)"
+
+    match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
+
+    assert match is not None
+    notes = match.group(1).strip()
+    assert notes
+    assert "MemSnapDump" in notes
