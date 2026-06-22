@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import importlib
 import pickle
+import sys
 from pathlib import Path
 
 import pytest
@@ -24,17 +26,22 @@ def _import_service_type():
     return ImportService
 
 
-def test_import_writes_db_and_sets_focus(tmp_path: Path) -> None:
+def test_import_writes_db_and_sets_focus(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import_service_cls = _import_service_type()
     service = import_service_cls()
+    project_dir = tmp_path / "project"
+    output_dir = tmp_path / "output"
+    project_dir.mkdir()
+    monkeypatch.chdir(project_dir)
 
     result = service.import_snapshot(
-        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path)
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=output_dir)
     )
 
     assert result.db_path.exists()
     assert result.db_path.suffix == ".db"
-    assert (tmp_path / ".pt-snap" / "focus.json").exists()
+    assert (project_dir / ".pt-snap" / "focus.json").exists()
+    assert not (output_dir / ".pt-snap" / "focus.json").exists()
 
 
 @pytest.mark.slow
@@ -98,8 +105,55 @@ def test_import_snapshot_file_invalid_corrupt_pickle(tmp_path: Path) -> None:
         service.import_snapshot(ImportOptions(snapshot_file=snapshot_file))
 
 
+def test_failed_reimport_preserves_existing_database(tmp_path: Path) -> None:
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    result = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+    original_size = result.db_path.stat().st_size
+    assert Context(result.db_path).discover_devices()
+
+    with pytest.raises(ImportExecutionError, match=r"backend (failed|reported failure)"):
+        service.import_snapshot(
+            ImportOptions(
+                snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, device=999, set_focus=False
+            )
+        )
+
+    assert result.db_path.exists()
+    assert result.db_path.stat().st_size == original_size
+    assert Context(result.db_path).discover_devices()
+
+
+def test_import_replaces_destination_errors_are_wrapped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+
+    def fail_replace(*args: object) -> None:
+        raise OSError("cannot replace")
+
+    monkeypatch.setattr("pt_snap_cli.core.snapshot_import_backend.os.replace", fail_replace)
+
+    with pytest.raises(ImportExecutionError, match="cannot replace"):
+        service.import_snapshot(
+            ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+        )
+
+
+def test_snapshot_import_backend_lazy_loads_vendor_module() -> None:
+    sys.modules.pop("pt_snap_cli.core.snapshot_import_backend", None)
+    vendor_module = "pt_snap_cli.vendor.memsnapdump.tools.adaptors.snapshot2db"
+    sys.modules.pop(vendor_module, None)
+
+    importlib.import_module("pt_snap_cli.core.snapshot_import_backend")
+
+    assert vendor_module not in sys.modules
+
+
 def test_import_raises_on_missing_tool(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """If the vendored backend fails to import, the service surfaces ImportToolMissingError."""
     import_service_cls = _import_service_type()
     service = import_service_cls()
 

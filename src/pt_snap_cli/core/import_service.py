@@ -42,7 +42,6 @@ class ImportService:
                 focus_state = self._focus_service.set_project_focus(
                     db_path=db_path,
                     device_id=options.device,
-                    base_dir=output_dir,
                 )
             except (FocusFileInvalidError, DatabaseSchemaError) as exc:
                 # Focus write happens after the .db is on disk; if the new
