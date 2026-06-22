@@ -35,6 +35,8 @@ def test_release_workflow_creates_github_release_from_changelog() -> None:
     assert "CHANGELOG.md does not contain release notes for ## [{tag}]" in text
     assert "release-notes.md" in text
     assert "gh release create" in text
+    assert 'TAG=${GITHUB_REF#refs/tags/}' in text
+    assert '--title "$TAG"' in text
     assert "dist/*" in text
 
 
