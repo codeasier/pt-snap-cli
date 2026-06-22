@@ -67,3 +67,25 @@ jobs:
           name: coverage-report
           path: coverage.xml
           retention-days: 30
+
+      - name: Build wheel
+        if: matrix.python-version == '3.13'
+        run: |
+          python -m pip install --upgrade build
+          python -m build --wheel
+
+      - name: Wheel smoke test (verify vendored backend is packaged)
+        if: matrix.python-version == '3.13'
+        run: |
+          set -euo pipefail
+          python -m pip install --force-reinstall dist/*.whl
+          # Confirm the vendored closure was actually packaged into the wheel.
+          python -c "import pt_snap_cli.vendor.memsnapdump.tools.adaptors.snapshot2db as m; assert hasattr(m, 'run_dump_to_db'), 'vendored run_dump_to_db missing in installed wheel'"
+          # End-to-end import against a real fixture — catches any packaging
+          # regression where setuptools drops src/pt_snap_cli/vendor/.
+          FIXTURE=tests/fixtures/snapshots/snapshot_with_empty_cache.pkl
+          rm -rf /tmp/pt-snap-wheel-smoke
+          mkdir -p /tmp/pt-snap-wheel-smoke
+          pt-snap import "$FIXTURE" --no-focus --output-dir /tmp/pt-snap-wheel-smoke
+          test -f /tmp/pt-snap-wheel-smoke/snapshot_with_empty_cache.pkl.db
+          rm -rf /tmp/pt-snap-wheel-smoke

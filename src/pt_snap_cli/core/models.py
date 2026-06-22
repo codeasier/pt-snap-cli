@@ -69,3 +69,39 @@ class PeakMemoryReport:
     peak: dict[str, Any]
     allocator_gap: dict[str, Any] | None
     callstack_groups: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class ImportOptions:
+    """Options for `pt-snap import`.
+
+    Attributes:
+        snapshot_file: Path to the input `.pkl` or `.pickle` snapshot.
+        output_dir: Directory where the generated `<name>.db` is written.
+            Defaults to the snapshot file's parent directory.
+        device: Optional device id to focus on. When None, all available
+            devices are imported.
+        set_focus: When True (default), also write project focus so subsequent
+            `pt-snap query` / `pt-snap report` commands reuse the new DB.
+    """
+
+    snapshot_file: Path
+    output_dir: Path | None = None
+    device: int | None = None
+    set_focus: bool = True
+
+
+@dataclass(frozen=True)
+class ImportResult:
+    """Result of `pt-snap import`.
+
+    Attributes:
+        db_path: Path to the generated SQLite database.
+        device_id: Device id used during import, or None when not specified.
+        focus_state: The FocusState written to project focus when
+            options.set_focus is True, otherwise None.
+    """
+
+    db_path: Path
+    device_id: int | None
+    focus_state: FocusState | None

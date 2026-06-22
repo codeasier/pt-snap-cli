@@ -12,6 +12,24 @@ SnapshotDB is the SQLite database format for persisting PyTorch memory profiling
 
 ---
 
+## Producing a snapshot DB
+
+`pt-snap` analyzes SQLite SnapshotDB files. If you start with a raw PyTorch memory snapshot pickle, import the snapshot with the built-in backend:
+
+```bash
+pt-snap import snapshot.pkl
+```
+
+The import command uses a vendored MemSnapDump backend to produce `snapshot.pkl.db` next to the input file by default, then updates project focus so subsequent commands can use it directly:
+
+```bash
+pt-snap query --list
+```
+
+You can also generate the same SnapshotDB format with another compatible producer, then point `pt-snap focus` at the resulting `.db` file.
+
+---
+
 ## Database Structure
 
 ### Tables
