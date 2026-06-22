@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0", "wheel", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pt-snap-cli"
-version = "0.1.0b1"
+dynamic = ["version"]
 description = "PyTorch Memory Snapshot Analysis CLI"
 readme = "README.md"
 license = {text = "MIT"}
@@ -63,6 +63,10 @@ pt_snap_cli = [
     "query/templates/*.yaml",
     "query/templates/*/*.yaml",
 ]
+
+[tool.setuptools_scm]
+version_scheme = "no-guess-dev"
+local_scheme = "no-local-version"
 
 [tool.black]
 line-length = 100
