@@ -29,6 +29,11 @@ pt-snap query --list
 pt-snap import snapshot.pkl --force
 ```
 
+当前导入流程会先完整加载 pickle，再开始处理。导入大型快照时，请预留约为 pickle
+文件大小 3-10 倍的可用内存；实际峰值取决于 frame 对象的数量。建议在内存充足的机器上
+执行导入。`--device` 只能减少后续回放和数据库写入量，无法降低最初加载 pickle 时的
+内存峰值。
+
 ### 第一步：设置快照数据库和设备
 
 将 `pt-snap` 指向你的 SQLite 快照数据库文件：

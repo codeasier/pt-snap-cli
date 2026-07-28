@@ -30,6 +30,12 @@ Use `--force` when you intentionally need to rebuild it:
 pt-snap import snapshot.pkl --force
 ```
 
+Import currently loads the entire pickle before processing it. For large snapshots, allow
+roughly 3-10 times the pickle file size in available memory; the exact peak depends on the
+number of frame objects. Run the import on a machine with sufficient memory. `--device`
+limits subsequent replay and database writes, but does not reduce the initial pickle-loading
+memory peak.
+
 ### Step 1: Set the Snapshot Database and Device
 
 Point `pt-snap` to your SQLite snapshot database file:

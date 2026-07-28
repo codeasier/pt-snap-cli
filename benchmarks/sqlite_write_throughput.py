@@ -1,0 +1,53 @@
+"""Compare default SQLite writes with the SnapshotDb import configuration.
+
+Run with ``PYTHONPATH=src python benchmarks/sqlite_write_throughput.py``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import tempfile
+import time
+from pathlib import Path
+
+from pt_snap_cli.vendor.memsnapdump.tools.adaptors.database.snapshot_db import SnapshotDb
+from pt_snap_cli.vendor.memsnapdump.util.sqlite_meta import SqliteDB
+
+
+def measure(db: SqliteDB, rows: int, batch_size: int) -> float:
+    db.conn.execute("CREATE TABLE benchmark (id INTEGER, payload TEXT)")
+    started = time.perf_counter()
+    for offset in range(0, rows, batch_size):
+        batch_end = min(offset + batch_size, rows)
+        db.conn.executemany(
+            "INSERT INTO benchmark VALUES (?, ?)",
+            ((index, "x" * 256) for index in range(offset, batch_end)),
+        )
+        db.conn.commit()
+    return time.perf_counter() - started
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rows", type=int, default=100_000)
+    parser.add_argument("--batch-size", type=int, default=1_000)
+    args = parser.parse_args()
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        baseline = SqliteDB(str(root / "baseline.db"))
+        optimized = SnapshotDb(str(root / "optimized.db"))
+        try:
+            baseline_seconds = measure(baseline, args.rows, args.batch_size)
+            optimized_seconds = measure(optimized, args.rows, args.batch_size)
+        finally:
+            baseline.conn.close()
+            optimized.conn.close()
+
+    print(f"default:   {baseline_seconds:.3f}s")
+    print(f"optimized: {optimized_seconds:.3f}s")
+    print(f"speedup:   {baseline_seconds / optimized_seconds:.2f}x")
+
+
+if __name__ == "__main__":
+    main()
