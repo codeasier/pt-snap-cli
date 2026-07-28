@@ -1,5 +1,5 @@
-from ....util.sqlite_meta import SqliteColumn, SqliteTable, SqliteDB
-from .defs import EventFieldDefs, BlockFieldDefs
+from ....util.sqlite_meta import SqliteColumn, SqliteDB, SqliteTable
+from .defs import BlockFieldDefs, EventFieldDefs
 
 TRACE_ENTRY_ACTION_VALUE_MAP = {
     "segment_map": 0,
@@ -70,6 +70,13 @@ class SnapshotDb(SqliteDB):
             ),
             delete_if_exists=True,
         )
+        table = self.get_trace_entry_table(device)
+        for column in (
+            EventFieldDefs.ALLOCATED,
+            EventFieldDefs.ACTIVE,
+            EventFieldDefs.RESERVED,
+        ):
+            table.create_index(self.conn, column)
 
     def create_block_table(self, device: int = 0):
         self.create_table(
@@ -78,6 +85,13 @@ class SnapshotDb(SqliteDB):
             ),
             delete_if_exists=True,
         )
+        table = self.get_block_table(device)
+        for column in (
+            BlockFieldDefs.ALLOC_EVENT_ID,
+            BlockFieldDefs.FREE_EVENT_ID,
+            BlockFieldDefs.SIZE,
+        ):
+            table.create_index(self.conn, column)
 
     def get_trace_entry_table(self, device: int = 0):
         return self.get_table_by_name(self.get_trace_table_name_by_device(device))
