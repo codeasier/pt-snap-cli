@@ -166,6 +166,17 @@ class TestMCPToolFunctions:
         assert "device_id" in result
         assert "rows" in result
 
+    def test_get_database_metadata(self, valid_db: Path) -> None:
+        import pt_snap_cli.mcp.server as server_mod
+        from pt_snap_cli.api import SnapshotAnalyzer
+
+        server_mod._analyzer = SnapshotAnalyzer(db_path=valid_db)
+
+        result = server_mod.get_database_metadata()
+
+        assert result["status"] == "unavailable"
+        assert result["reason"] == "metadata_missing"
+
 
 class TestMCPEntryPoint:
     """Test the MCP server entry point."""

@@ -86,6 +86,10 @@ jobs:
           FIXTURE=tests/fixtures/snapshots/snapshot_with_empty_cache.pkl
           rm -rf /tmp/pt-snap-wheel-smoke
           mkdir -p /tmp/pt-snap-wheel-smoke
+          DB=/tmp/pt-snap-wheel-smoke/snapshot_with_empty_cache.pkl.db
           pt-snap import "$FIXTURE" --no-focus --output-dir /tmp/pt-snap-wheel-smoke
-          test -f /tmp/pt-snap-wheel-smoke/snapshot_with_empty_cache.pkl.db
+          test -f "$DB"
+          SECOND_IMPORT=$(pt-snap import "$FIXTURE" --no-focus --output-dir /tmp/pt-snap-wheel-smoke)
+          echo "$SECOND_IMPORT" | grep -q '^Reused:'
+          pt-snap metadata "$DB" --json | python -c "import json, sys; data=json.load(sys.stdin); assert data['status'] == 'available'"
           rm -rf /tmp/pt-snap-wheel-smoke

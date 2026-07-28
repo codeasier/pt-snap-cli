@@ -69,3 +69,15 @@ class ImportExecutionError(PtSnapCoreError):
     """
 
     pass
+
+
+class ImportMetadataError(PtSnapCoreError):
+    """Raised when import metadata cannot be read, written, or validated."""
+
+    pass
+
+
+class SourceChangedError(ImportExecutionError):
+    """Raised when the source snapshot changes while an import is running."""
+
+    pass

@@ -12,6 +12,7 @@ from pt_snap_cli.core import (
     DatabaseSchemaError,
     FocusNotConfiguredError,
     FocusService,
+    ImportMetadataService,
     QueryService,
 )
 
@@ -39,6 +40,7 @@ class SnapshotAnalyzer:
         self._device_id = device_id
         self._focus_service = FocusService(self._config)
         self._query_service = QueryService(self._focus_service)
+        self._metadata_service = ImportMetadataService()
 
     def get_focus(self) -> FocusState:
         state = self._focus_service.get_focus(
@@ -121,3 +123,18 @@ class SnapshotAnalyzer:
             "device_id": result.device_id,
             "rows": result.rows,
         }
+
+    def get_database_metadata(self, db_path: str | None = None) -> dict[str, Any]:
+        resolved = self._focus_service.resolve_focus(
+            explicit_db_path=db_path if db_path is not None else self._db_path,
+            explicit_device_id=self._device_id,
+        )
+        if resolved.db_path is None:
+            raise RuntimeError("No database configured. Call set_focus() first.")
+        try:
+            inspection = self._metadata_service.inspect(resolved.db_path)
+        except DatabaseMissingError as exc:
+            raise FileNotFoundError(str(exc)) from exc
+        except DatabaseSchemaError as exc:
+            raise ValueError(str(exc)) from exc
+        return self._metadata_service.inspection_to_dict(inspection)

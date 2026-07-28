@@ -316,3 +316,14 @@ def test_missing_template_error_contract_matches_cli_and_mcp_semantics(
     assert _normalize_cli_missing_template(cli_result.stdout) == mcp_server.get_template_info(
         template_name
     )
+
+
+def test_metadata_contract_matches_cli_and_mcp_semantics(
+    contract_db: Path, mcp_server: ModuleType
+) -> None:
+    cli_result = runner.invoke(app, ["metadata", str(contract_db), "--json"])
+    assert cli_result.exit_code == 0
+
+    server = _set_mcp_focus(mcp_server, contract_db)
+
+    assert json.loads(cli_result.stdout) == server.get_database_metadata()

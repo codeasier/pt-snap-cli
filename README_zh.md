@@ -13,6 +13,10 @@ pip install -e .
 ## 快速开始
 
 ```bash
+# 从原始 pickle 导入；相同内容和配置会自动复用已有 DB
+pt-snap import snapshot.pkl
+pt-snap metadata snapshot.pkl.db
+
 # 设置快照数据库和设备
 pt-snap focus examples/snapshot_expandable.pkl.db --device 0
 
@@ -33,7 +37,10 @@ pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 | 命令 | 说明 |
 |------|------|
 | `pt-snap focus` | 设置和管理分析焦点（数据库 + 设备） |
+| `pt-snap import <snapshot.pkl>` | 将 PyTorch 原始内存快照导入 SnapshotDB |
+| `pt-snap metadata [database.db]` | 查看 SnapshotDB 的导入来源与兼容性 metadata |
 | `pt-snap query` | 运行内存分析查询 |
+| `pt-snap report` | 生成高层内存分析报告 |
 | `pt-snap config` | 管理全局配置 |
 | `pt-snap-mcp` | 启动 MCP 服务器以支持 Agent 集成 |
 
@@ -55,6 +62,7 @@ pt-snap-mcp
 | `list_templates` | 列出可用的查询模板 |
 | `get_template_info` | 获取模板详情和参数 |
 | `execute_query` | 对焦点数据库执行查询模板 |
+| `get_database_metadata` | 查看焦点或指定数据库的导入 metadata |
 
 详见 [MCP 指南](docs/zh/mcp.md)。
 
@@ -71,11 +79,11 @@ pt-snap-mcp
 
 ## 查询模板
 
-6 个内置模板，3 个分类：
+9 个内置模板，3 个分类：
 
 - **Basic**: `block`, `event`, `allocation`
-- **Statistical**: `callstack_analysis`, `memory_peak`
-- **Business**: `leak_detection`
+- **Statistical**: `active_blocks_at_event`, `allocator_gap`, `callstack_analysis`, `memory_peak`
+- **Business**: `active_memory_callstack_at_event`, `leak_detection`
 
 详见 [Querying](docs/zh/querying.md)。
 

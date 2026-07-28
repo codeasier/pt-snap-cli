@@ -58,6 +58,11 @@ def execute_query(
     return _analyzer.execute_query(template, params, device_id, max_rows)
 
 
+@mcp.tool()
+def get_database_metadata(db_path: str | None = None) -> dict[str, Any]:
+    return _analyzer.get_database_metadata(db_path)
+
+
 @mcp.resource("focus://current")
 def focus_resource() -> dict[str, Any]:
     state = _analyzer.get_focus()

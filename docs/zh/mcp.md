@@ -29,6 +29,7 @@ pt-snap-mcp
 | `list_templates` | 列出可用的查询模板，可按类别筛选 |
 | `get_template_info` | 获取模板详情，包括参数信息 |
 | `execute_query` | 对焦点数据库执行查询模板 |
+| `get_database_metadata` | 查看焦点或指定数据库的导入来源 metadata |
 
 ## 可用资源
 
@@ -48,6 +49,7 @@ pt-snap-mcp
 2. 调用 `list_templates` 发现可用查询
 3. 调用 `get_template_info` 查看模板参数
 4. 调用 `execute_query` 执行查询
+5. 需要确认导入来源或缓存兼容性时调用 `get_database_metadata`
 
 ## 使用示例
 
@@ -66,6 +68,10 @@ get_template_info("leak_detection")
 # 运行查询
 execute_query("leak_detection", params={"min_size": 1024})
 # 返回: {"total": 5, "returned": 5, "rows": [...]}
+
+# 查看数据库导入 metadata
+get_database_metadata()
+# 返回: {"status": "available", "metadata": {"source_sha256": "...", ...}}
 ```
 
 ## CLI 命令

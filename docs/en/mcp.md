@@ -29,6 +29,7 @@ This starts a FastMCP server that exposes tools for analyzing PyTorch memory sna
 | `list_templates` | List available query templates, optionally filtered by category |
 | `get_template_info` | Get detailed information about a template including parameters |
 | `execute_query` | Execute a query template against the focused database |
+| `get_database_metadata` | Inspect import provenance for the focused or specified database |
 
 ## Available Resources
 
@@ -48,6 +49,7 @@ This starts a FastMCP server that exposes tools for analyzing PyTorch memory sna
 2. Call `list_templates` to discover available queries
 3. Call `get_template_info` with a template name to see its parameters
 4. Call `execute_query` with the template name and parameters
+5. Call `get_database_metadata` when import provenance or cache compatibility is needed
 
 ## Example Usage
 
@@ -66,6 +68,10 @@ get_template_info("leak_detection")
 # Run a query
 execute_query("leak_detection", params={"min_size": 1024})
 # Returns: {"total": 5, "returned": 5, "rows": [...]}
+
+# Inspect database import metadata
+get_database_metadata()
+# Returns: {"status": "available", "metadata": {"source_sha256": "...", ...}}
 ```
 
 ## CLI Commands
