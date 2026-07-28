@@ -56,6 +56,10 @@ class SnapshotDb(SqliteDB):
 
     def __init__(self, path: str):
         super().__init__(path, auto_create=True, with_dictionary_table=True)
+        # Import builds a replaceable database, so favor write throughput over crash recovery.
+        self.conn.execute("PRAGMA journal_mode = MEMORY")
+        self.conn.execute("PRAGMA synchronous = OFF")
+        self.conn.execute("PRAGMA cache_size = -65536")
         # 清理旧版本表格
         self._clear_old_tables()
 

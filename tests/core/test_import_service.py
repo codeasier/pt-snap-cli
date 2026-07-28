@@ -106,6 +106,8 @@ def test_import_snapshot_file_invalid_corrupt_pickle(tmp_path: Path) -> None:
     with pytest.raises(ImportExecutionError, match=r"backend (failed|reported failure)"):
         service.import_snapshot(ImportOptions(snapshot_file=snapshot_file))
 
+    assert not (tmp_path / "corrupt.pkl.db").exists()
+
 
 def test_failed_reimport_preserves_existing_database(tmp_path: Path) -> None:
     import_service_cls = _import_service_type()
