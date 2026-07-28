@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import tempfile
 import time
+from contextlib import ExitStack
 from pathlib import Path
 
 from pt_snap_cli.vendor.memsnapdump.tools.adaptors.database.snapshot_db import SnapshotDb
@@ -33,16 +34,14 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=1_000)
     args = parser.parse_args()
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
+    with tempfile.TemporaryDirectory() as tmp_dir, ExitStack() as stack:
         root = Path(tmp_dir)
         baseline = SqliteDB(str(root / "baseline.db"))
+        stack.callback(baseline.conn.close)
         optimized = SnapshotDb(str(root / "optimized.db"))
-        try:
-            baseline_seconds = measure(baseline, args.rows, args.batch_size)
-            optimized_seconds = measure(optimized, args.rows, args.batch_size)
-        finally:
-            baseline.conn.close()
-            optimized.conn.close()
+        stack.callback(optimized.conn.close)
+        baseline_seconds = measure(baseline, args.rows, args.batch_size)
+        optimized_seconds = measure(optimized, args.rows, args.batch_size)
 
     print(f"default:   {baseline_seconds:.3f}s")
     print(f"optimized: {optimized_seconds:.3f}s")
