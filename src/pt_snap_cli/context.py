@@ -6,6 +6,7 @@ import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import quote
 
 
 class DatabaseNotFoundError(FileNotFoundError):
@@ -116,7 +117,9 @@ class Context:
             yield self._conn
             return
 
-        uri = f"file:{self.db_path}?mode=ro"
+        # Keep the colon in Windows drive prefixes while encoding SQLite URI metacharacters.
+        encoded_path = quote(self.db_path.as_posix(), safe="/:")
+        uri = f"file:{encoded_path}?mode=ro"
         self._conn = sqlite3.connect(uri, uri=True)
         self._conn.row_factory = sqlite3.Row
         try:

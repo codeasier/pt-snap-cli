@@ -5,6 +5,18 @@ from pathlib import Path
 from typing import Any, Literal
 
 FocusSource = Literal["explicit", "env", "project", "global", "none"]
+CacheMissReason = Literal[
+    "database_missing",
+    "database_invalid",
+    "metadata_missing",
+    "metadata_invalid",
+    "metadata_version_unsupported",
+    "source_changed",
+    "import_format_changed",
+    "device_changed",
+    "forced",
+]
+MetadataStatus = Literal["available", "unavailable", "invalid"]
 
 
 @dataclass(frozen=True)
@@ -89,6 +101,35 @@ class ImportOptions:
     output_dir: Path | None = None
     device: int | None = None
     set_focus: bool = True
+    force: bool = False
+
+
+@dataclass(frozen=True)
+class ImportMetadata:
+    metadata_schema_version: int
+    import_format_version: int
+    source_sha256: str
+    source_size: int
+    source_name: str
+    requested_device: int | None
+    importer_name: str
+    importer_version: str
+    completed_at: str
+
+
+@dataclass(frozen=True)
+class MetadataInspection:
+    db_path: Path
+    status: MetadataStatus
+    metadata: ImportMetadata | None = None
+    reason: CacheMissReason | None = None
+
+
+@dataclass(frozen=True)
+class CacheDecision:
+    reused: bool
+    metadata: ImportMetadata | None
+    reason: CacheMissReason | None
 
 
 @dataclass(frozen=True)
@@ -105,3 +146,6 @@ class ImportResult:
     db_path: Path
     device_id: int | None
     focus_state: FocusState | None
+    reused: bool
+    metadata: ImportMetadata
+    cache_miss_reason: CacheMissReason | None

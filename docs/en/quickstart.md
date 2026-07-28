@@ -18,7 +18,16 @@ If you have a raw `.pkl` memory snapshot, import it first with the built-in back
 
 ```bash
 pt-snap import snapshot.pkl
+pt-snap metadata snapshot.pkl.db
 pt-snap query --list
+```
+
+The import command stores a SHA-256 source fingerprint and import compatibility metadata inside the
+generated database. Repeating the same import with the same device selection reuses the existing DB.
+Use `--force` when you intentionally need to rebuild it:
+
+```bash
+pt-snap import snapshot.pkl --force
 ```
 
 ### Step 1: Set the Snapshot Database and Device

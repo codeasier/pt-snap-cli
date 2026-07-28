@@ -4,6 +4,7 @@ import os
 import pickle
 import sqlite3
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 from pt_snap_cli.core.errors import ImportExecutionError, ImportToolMissingError
@@ -17,8 +18,9 @@ class SnapshotImportBackend:
         snapshot_file: Path,
         output_dir: Path,
         device: int | None = None,
+        finalize_temp_db: Callable[[Path], None] | None = None,
     ) -> Path:
-        db_path = output_dir / f"{snapshot_file.name}.db"
+        db_path = self.target_db_path(snapshot_file, output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         run_dump_to_db = self._load_run_dump_to_db()
 
@@ -41,6 +43,9 @@ class SnapshotImportBackend:
             if not tmp_db_path.is_file():
                 raise ImportExecutionError(f"Expected database not produced: {tmp_db_path}")
 
+            if finalize_temp_db is not None:
+                finalize_temp_db(tmp_db_path)
+
             try:
                 os.replace(tmp_db_path, db_path)
             except OSError as exc:
@@ -49,6 +54,10 @@ class SnapshotImportBackend:
                 ) from exc
 
         return db_path
+
+    @staticmethod
+    def target_db_path(snapshot_file: Path, output_dir: Path) -> Path:
+        return output_dir / f"{snapshot_file.name}.db"
 
     @staticmethod
     def _load_run_dump_to_db():

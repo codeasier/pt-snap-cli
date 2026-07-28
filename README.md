@@ -16,6 +16,7 @@ To start from a raw PyTorch memory snapshot, import the pickle into a SnapshotDB
 
 ```bash
 pt-snap import snapshot.pkl
+pt-snap metadata snapshot.pkl.db
 pt-snap query --list
 ```
 
@@ -41,7 +42,9 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 |---------|-------------|
 | `pt-snap focus` | Set and manage analysis focus (database + device) |
 | `pt-snap import <snapshot.pkl>` | Import a PyTorch memory snapshot pickle into a SnapshotDB |
+| `pt-snap metadata [database.db]` | Inspect SnapshotDB import provenance and compatibility metadata |
 | `pt-snap query` | Run memory analysis queries |
+| `pt-snap report` | Generate higher-level memory analysis reports |
 | `pt-snap config` | Manage global configuration |
 | `pt-snap-mcp` | Start the MCP server for agent integration |
 
@@ -63,6 +66,7 @@ The server exposes the following tools:
 | `list_templates` | List available query templates |
 | `get_template_info` | Get template details and parameters |
 | `execute_query` | Run a query template against the focused database |
+| `get_database_metadata` | Inspect import metadata for the focused or specified database |
 
 See the [MCP guide](docs/en/mcp.md) for setup and usage details.
 
@@ -79,11 +83,11 @@ See the [MCP guide](docs/en/mcp.md) for setup and usage details.
 
 ## Query Templates
 
-6 built-in templates across 3 categories:
+9 built-in templates across 3 categories:
 
 - **Basic**: `block`, `event`, `allocation`
-- **Statistical**: `callstack_analysis`, `memory_peak`
-- **Business**: `leak_detection`
+- **Statistical**: `active_blocks_at_event`, `allocator_gap`, `callstack_analysis`, `memory_peak`
+- **Business**: `active_memory_callstack_at_event`, `leak_detection`
 
 See [Querying](docs/en/querying.md) for details.
 

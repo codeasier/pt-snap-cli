@@ -825,6 +825,7 @@ class TestImportCommand:
 
         assert result.exit_code == 0
         assert "Imported:" in result.stdout
+        assert "Cache miss: database_missing" in result.stdout
         assert (tmp_path / ".pt-snap" / "focus.json").exists()
 
     def test_import_missing_tool_message(
@@ -883,6 +884,67 @@ class TestImportCommand:
         assert result.exit_code == 0
         assert not (tmp_path / ".pt-snap").exists()
         assert (tmp_path / "sample.pkl.db").exists()
+
+    def test_import_reuses_matching_database(self, tmp_path: Path) -> None:
+        source = Path(__file__).parent / "fixtures" / "snapshots" / "snapshot_with_empty_cache.pkl"
+        snapshot = tmp_path / "sample.pkl"
+        shutil.copy(source, snapshot)
+
+        first = runner.invoke(app, ["import", str(snapshot), "--no-focus"])
+        second = runner.invoke(app, ["import", str(snapshot), "--no-focus"])
+
+        assert first.exit_code == 0
+        assert second.exit_code == 0
+        assert "Imported:" in first.stdout
+        assert "Reused:" in second.stdout
+        assert "Cache miss:" not in second.stdout
+
+    def test_import_force_rebuilds_matching_database(self, tmp_path: Path) -> None:
+        source = Path(__file__).parent / "fixtures" / "snapshots" / "snapshot_with_empty_cache.pkl"
+        snapshot = tmp_path / "sample.pkl"
+        shutil.copy(source, snapshot)
+        runner.invoke(app, ["import", str(snapshot), "--no-focus"])
+
+        result = runner.invoke(app, ["import", str(snapshot), "--no-focus", "--force"])
+
+        assert result.exit_code == 0
+        assert "Imported:" in result.stdout
+        assert "Cache miss: forced" in result.stdout
+
+    def test_metadata_json_reports_generated_database(self, tmp_path: Path) -> None:
+        source = Path(__file__).parent / "fixtures" / "snapshots" / "snapshot_with_empty_cache.pkl"
+        snapshot = tmp_path / "sample.pkl"
+        shutil.copy(source, snapshot)
+        runner.invoke(app, ["import", str(snapshot), "--no-focus"])
+
+        result = runner.invoke(app, ["metadata", str(tmp_path / "sample.pkl.db"), "--json"])
+        payload = json.loads(result.stdout)
+
+        assert result.exit_code == 0
+        assert payload["status"] == "available"
+        assert payload["metadata"]["source_name"] == "sample.pkl"
+        assert "source_path" not in payload["metadata"]
+
+    def test_metadata_uses_current_focus(self, tmp_path: Path) -> None:
+        source = Path(__file__).parent / "fixtures" / "snapshots" / "snapshot_with_empty_cache.pkl"
+        snapshot = tmp_path / "sample.pkl"
+        shutil.copy(source, snapshot)
+        imported = runner.invoke(app, ["import", str(snapshot)])
+        assert imported.exit_code == 0
+
+        result = runner.invoke(app, ["metadata", "--json"])
+        payload = json.loads(result.stdout)
+
+        assert result.exit_code == 0
+        assert payload["status"] == "available"
+        assert payload["db_path"] == str((tmp_path / "sample.pkl.db").resolve())
+
+    def test_metadata_reports_unavailable_for_legacy_database(self, sample_db: Path) -> None:
+        result = runner.invoke(app, ["metadata", str(sample_db)])
+
+        assert result.exit_code == 0
+        assert "Status: unavailable" in result.stdout
+        assert "Reason: metadata_missing" in result.stdout
 
 
 class TestReportCommand:

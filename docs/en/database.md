@@ -28,6 +28,25 @@ pt-snap query --list
 
 You can also generate the same SnapshotDB format with another compatible producer, then point `pt-snap focus` at the resulting `.db` file.
 
+### Import cache and metadata
+
+Generated databases contain a `pt_snap_metadata` table with the source SHA-256, exact device
+selection, import format version, producer version, and completion time. `pt-snap import` reuses an
+existing target only when the full source SHA-256, import format version, and device selection match.
+Package version changes alone do not invalidate the cache.
+
+```bash
+# Inspect provenance and compatibility metadata
+pt-snap metadata snapshot.pkl.db
+pt-snap metadata snapshot.pkl.db --json
+
+# Bypass a matching cache
+pt-snap import snapshot.pkl --force
+```
+
+Legacy or externally generated compatible databases without this table remain queryable. Their
+metadata status is reported as unavailable, and a later import rebuilds them once before reuse.
+
 ---
 
 ## Database Structure

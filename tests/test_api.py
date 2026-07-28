@@ -160,3 +160,27 @@ class TestSnapshotAnalyzerWithDB:
         # leak_detection on empty table returns 0 rows
         assert result["total"] == 0
         assert result["returned"] == 0
+
+    def test_get_database_metadata_unavailable(self, valid_db: Path) -> None:
+        analyzer = SnapshotAnalyzer(db_path=valid_db)
+
+        result = analyzer.get_database_metadata()
+
+        assert result["status"] == "unavailable"
+        assert result["reason"] == "metadata_missing"
+
+    def test_get_database_metadata_available(self, valid_db: Path) -> None:
+        from pt_snap_cli.core.import_metadata import ImportMetadataService
+
+        source = valid_db.parent / "snapshot.pkl"
+        source.write_bytes(b"snapshot")
+        service = ImportMetadataService()
+        digest = service.calculate_sha256(source)
+        service.write(valid_db, service.build_metadata(source, digest, None))
+        analyzer = SnapshotAnalyzer(db_path=valid_db)
+
+        result = analyzer.get_database_metadata()
+
+        assert result["status"] == "available"
+        assert result["metadata"]["source_sha256"] == digest
+        source.unlink()

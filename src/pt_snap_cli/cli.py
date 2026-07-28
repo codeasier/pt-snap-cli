@@ -21,6 +21,7 @@ from pt_snap_cli.core import (
     FocusNotConfiguredError,
     FocusService,
     ImportExecutionError,
+    ImportMetadataService,
     ImportOptions,
     ImportService,
     ImportToolMissingError,
@@ -164,6 +165,7 @@ def import_snapshot(
     output_dir: Annotated[Path | None, typer.Option("--output-dir", "-o")] = None,
     device: Annotated[int | None, typer.Option("--device", "-d")] = None,
     no_focus: Annotated[bool, typer.Option("--no-focus", help="Skip focus update")] = False,
+    force: Annotated[bool, typer.Option("--force", help="Rebuild even when cache matches")] = False,
 ) -> None:
     """Import a PyTorch memory snapshot into a SQLite database."""
     try:
@@ -173,6 +175,7 @@ def import_snapshot(
                 output_dir=output_dir,
                 device=device,
                 set_focus=not no_focus,
+                force=force,
             )
         )
     except (
@@ -182,9 +185,49 @@ def import_snapshot(
     ) as e:
         _error(str(e))
 
-    typer.echo(f"Imported: {result.db_path}")
+    action = "Reused" if result.reused else "Imported"
+    typer.echo(f"{action}: {result.db_path}")
+    if result.cache_miss_reason is not None:
+        typer.echo(f"Cache miss: {result.cache_miss_reason}")
     if result.focus_state is not None and result.focus_state.focus_file is not None:
         typer.echo(f"Focus: {result.focus_state.focus_file}")
+
+
+@app.command("metadata")
+def show_database_metadata(
+    db_path: Annotated[
+        Path | None, typer.Argument(help="Path to database file (optional if configured)")
+    ] = None,
+    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+) -> None:
+    """Show import metadata for a SnapshotDB."""
+    focus_service = _focus_service()
+    try:
+        resolved = focus_service.resolve_focus(explicit_db_path=db_path)
+        if resolved.db_path is None:
+            raise FocusNotConfiguredError("No database path specified and no database configured.")
+        service = ImportMetadataService()
+        inspection = service.inspect(resolved.db_path)
+    except (
+        FocusFileInvalidError,
+        FocusNotConfiguredError,
+        DatabaseMissingError,
+        DatabaseSchemaError,
+    ) as e:
+        _error(str(e))
+
+    if json_output:
+        typer.echo(json.dumps(service.inspection_to_dict(inspection), indent=2))
+        return
+
+    typer.echo(f"Database: {inspection.db_path}")
+    typer.echo(f"Status: {inspection.status}")
+    if inspection.reason is not None:
+        typer.echo(f"Reason: {inspection.reason}")
+    if inspection.metadata is not None:
+        typer.echo("Metadata:")
+        for key, value in cast(Mapping[str, object], asdict(inspection.metadata)).items():
+            typer.echo(f"  {key}: {value}")
 
 
 @app.command("query")

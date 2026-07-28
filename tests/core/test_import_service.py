@@ -42,6 +42,8 @@ def test_import_writes_db_and_sets_focus(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert result.db_path.suffix == ".db"
     assert (project_dir / ".pt-snap" / "focus.json").exists()
     assert not (output_dir / ".pt-snap" / "focus.json").exists()
+    assert result.reused is False
+    assert result.cache_miss_reason == "database_missing"
 
 
 @pytest.mark.slow
@@ -176,7 +178,12 @@ def test_import_raises_on_upstream_failure(monkeypatch: pytest.MonkeyPatch, tmp_
     import_service_cls = _import_service_type()
     service = import_service_cls()
 
-    def fail_dump_to_db(snapshot_file: Path, dump_dir: Path, device: int | None) -> Path:
+    def fail_dump_to_db(
+        snapshot_file: Path,
+        dump_dir: Path,
+        device: int | None,
+        finalize_temp_db=None,
+    ) -> Path:
         raise ImportExecutionError("Vendored snapshot import backend failed: upstream failed")
 
     monkeypatch.setattr(service._backend, "dump_to_db", fail_dump_to_db)
@@ -215,3 +222,281 @@ def test_import_output_path_uses_full_filename(tmp_path: Path) -> None:
     )
 
     assert result.db_path.name == "snapshot.pickle.db"
+
+
+@pytest.mark.parametrize("character", ["?", "#"])
+def test_import_supports_sqlite_uri_characters_in_filename(character: str, tmp_path: Path) -> None:
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    snapshot_file = tmp_path / f"snapshot{character}.pickle"
+    snapshot_file.write_bytes(EMPTY_CACHE_SNAPSHOT.read_bytes())
+
+    result = service.import_snapshot(
+        ImportOptions(snapshot_file=snapshot_file, output_dir=tmp_path, set_focus=False)
+    )
+
+    assert result.db_path.name == f"snapshot{character}.pickle.db"
+    assert service._metadata_service.inspect(result.db_path).status == "available"
+
+
+def test_repeated_import_reuses_database_without_backend(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    first = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+
+    def fail_if_called(*args: object, **kwargs: object) -> Path:
+        raise AssertionError("backend must not run on cache hit")
+
+    monkeypatch.setattr(service._backend, "dump_to_db", fail_if_called)
+    second = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+
+    assert second.db_path == first.db_path
+    assert second.reused is True
+    assert second.cache_miss_reason is None
+    assert second.metadata == first.metadata
+
+
+def test_force_rebuilds_compatible_database(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+    original_dump = service._backend.dump_to_db
+    calls = 0
+
+    def counting_dump(*args: object, **kwargs: object) -> Path:
+        nonlocal calls
+        calls += 1
+        return original_dump(*args, **kwargs)
+
+    monkeypatch.setattr(service._backend, "dump_to_db", counting_dump)
+    result = service.import_snapshot(
+        ImportOptions(
+            snapshot_file=EMPTY_CACHE_SNAPSHOT,
+            output_dir=tmp_path,
+            set_focus=False,
+            force=True,
+        )
+    )
+
+    assert calls == 1
+    assert result.reused is False
+    assert result.cache_miss_reason == "forced"
+
+
+def test_force_first_import_reports_database_missing(tmp_path: Path) -> None:
+    import_service_cls = _import_service_type()
+    result = import_service_cls().import_snapshot(
+        ImportOptions(
+            snapshot_file=EMPTY_CACHE_SNAPSHOT,
+            output_dir=tmp_path,
+            set_focus=False,
+            force=True,
+        )
+    )
+
+    assert result.reused is False
+    assert result.cache_miss_reason == "database_missing"
+
+
+def test_malformed_metadata_rebuilds_database(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import sqlite3
+
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    first = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+    with sqlite3.connect(first.db_path) as conn:
+        conn.execute("UPDATE pt_snap_metadata SET source_sha256 = 'invalid'")
+
+    original_dump = service._backend.dump_to_db
+    calls = 0
+
+    def counting_dump(*args: object, **kwargs: object) -> Path:
+        nonlocal calls
+        calls += 1
+        return original_dump(*args, **kwargs)
+
+    monkeypatch.setattr(service._backend, "dump_to_db", counting_dump)
+    result = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+
+    assert calls == 1
+    assert result.reused is False
+    assert result.cache_miss_reason == "metadata_invalid"
+    assert service._metadata_service.inspect(result.db_path).status == "available"
+
+
+def test_legacy_database_rebuilds_once_then_reuses(tmp_path: Path) -> None:
+    import sqlite3
+
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    legacy_db = tmp_path / f"{EMPTY_CACHE_SNAPSHOT.name}.db"
+    with sqlite3.connect(legacy_db) as conn:
+        conn.execute(
+            "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+        )
+        conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY)")
+        conn.execute("CREATE TABLE block_0 (id INTEGER PRIMARY KEY)")
+
+    rebuilt = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+    reused = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+
+    assert rebuilt.reused is False
+    assert rebuilt.cache_miss_reason == "metadata_missing"
+    assert reused.reused is True
+
+
+def test_metadata_write_failure_preserves_existing_database(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from pt_snap_cli.core.errors import ImportMetadataError
+
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    first = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+    original_metadata = service._metadata_service.inspect(first.db_path).metadata
+
+    def fail_write(*args: object, **kwargs: object) -> None:
+        raise ImportMetadataError("metadata write failed")
+
+    monkeypatch.setattr(service._metadata_service, "write", fail_write)
+    with pytest.raises(ImportExecutionError, match="metadata write failed"):
+        service.import_snapshot(
+            ImportOptions(
+                snapshot_file=EMPTY_CACHE_SNAPSHOT,
+                output_dir=tmp_path,
+                set_focus=False,
+                force=True,
+            )
+        )
+
+    assert service._metadata_service.inspect(first.db_path).metadata == original_metadata
+
+
+def test_initial_hash_failure_preserves_existing_database(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from pt_snap_cli.core.errors import ImportMetadataError
+
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    first = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+    original_metadata = service._metadata_service.inspect(first.db_path).metadata
+    monkeypatch.setattr(
+        service._metadata_service,
+        "calculate_sha256",
+        lambda path: (_ for _ in ()).throw(ImportMetadataError("hash failed")),
+    )
+
+    with pytest.raises(ImportExecutionError, match="hash failed"):
+        service.import_snapshot(
+            ImportOptions(
+                snapshot_file=EMPTY_CACHE_SNAPSHOT,
+                output_dir=tmp_path,
+                set_focus=False,
+                force=True,
+            )
+        )
+
+    assert service._metadata_service.inspect(first.db_path).metadata == original_metadata
+
+
+def test_import_format_change_rebuilds_database(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import pt_snap_cli.core.import_metadata as metadata_module
+
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+    monkeypatch.setattr(
+        metadata_module,
+        "IMPORT_FORMAT_VERSION",
+        metadata_module.IMPORT_FORMAT_VERSION + 1,
+    )
+
+    result = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+
+    assert result.reused is False
+    assert result.cache_miss_reason == "import_format_changed"
+
+
+def test_device_change_rebuilds_database(tmp_path: Path) -> None:
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    service.import_snapshot(
+        ImportOptions(
+            snapshot_file=MULTI_DEVICE_SNAPSHOT,
+            output_dir=tmp_path,
+            device=0,
+            set_focus=False,
+        )
+    )
+
+    result = service.import_snapshot(
+        ImportOptions(
+            snapshot_file=MULTI_DEVICE_SNAPSHOT,
+            output_dir=tmp_path,
+            device=1,
+            set_focus=False,
+        )
+    )
+
+    assert result.reused is False
+    assert result.cache_miss_reason == "device_changed"
+    assert result.metadata.requested_device == 1
+
+
+def test_source_change_during_import_preserves_existing_database(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from pt_snap_cli.core.errors import SourceChangedError
+
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    first = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+    original_size = first.db_path.stat().st_size
+    hashes = iter(["a" * 64, "b" * 64])
+    monkeypatch.setattr(service._metadata_service, "calculate_sha256", lambda path: next(hashes))
+
+    with pytest.raises(SourceChangedError, match="source changed"):
+        service.import_snapshot(
+            ImportOptions(
+                snapshot_file=EMPTY_CACHE_SNAPSHOT,
+                output_dir=tmp_path,
+                set_focus=False,
+                force=True,
+            )
+        )
+
+    assert first.db_path.stat().st_size == original_size
+    assert sorted(path.name for path in tmp_path.iterdir()) == [first.db_path.name]

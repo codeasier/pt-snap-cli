@@ -18,7 +18,15 @@ pip install -e .
 
 ```bash
 pt-snap import snapshot.pkl
+pt-snap metadata snapshot.pkl.db
 pt-snap query --list
+```
+
+导入命令会在数据库内保存原始文件的 SHA-256 和导入兼容性 metadata。再次使用相同设备配置
+导入相同内容时，会直接复用已有 DB。如需明确重建，可使用：
+
+```bash
+pt-snap import snapshot.pkl --force
 ```
 
 ### 第一步：设置快照数据库和设备
