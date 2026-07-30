@@ -1,4 +1,5 @@
 **/superpowers/
+.claude/worktrees/
 
 # Sensitive test data - do not commit
 tests/fixtures/snapshots/*.pickle
