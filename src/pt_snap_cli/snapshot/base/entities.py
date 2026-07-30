@@ -69,6 +69,7 @@ class TraceEntry:
             stream=int(trace_dict["stream"]),
             _origin=trace_dict,
             frames=[Frame.from_dict(_frame_dict) for _frame_dict in trace_dict.get("frames", [])],
+            idx=int(trace_dict["id"]) if "id" in trace_dict else -1,
         )
         return trace_entry
 
@@ -79,9 +80,11 @@ class TraceEntry:
             [f"{frame.filename}:{frame.line} {frame.name}" for frame in self.frames[::-1]]
         )
 
-    def to_dict(self):
-        return (
-            self._origin
+    def to_dict(self, include_id: bool = False):
+        if self._origin and not include_id:
+            return self._origin
+        trace_dict = (
+            dict(self._origin)
             if self._origin
             else {
                 "action": self.action,
@@ -91,6 +94,9 @@ class TraceEntry:
                 "frames": [frame.to_dict() for frame in self.frames],
             }
         )
+        if include_id:
+            trace_dict["id"] = self.idx
+        return trace_dict
 
 
 class BlockState:
@@ -276,15 +282,16 @@ class DeviceSnapshot:
         # 读取事件序列
         for idx, trace_entry_dict in enumerate(device_trace_list):
             trace_entry = TraceEntry.from_dict(trace_entry_dict)
-            trace_entry.idx = idx
+            if "id" not in trace_entry_dict:
+                trace_entry.idx = idx
             snapshot.trace_entries.append(trace_entry)
         snapshot.device = device
         return snapshot
 
-    def to_dict(self):
+    def to_dict(self, include_trace_ids: bool = False):
         return {
             "segments": [segment.to_dict() for segment in self.segments],
             # 需要根据deviceId，将事件列表填入，如果deviceId不为0，前序还要padding空事件列表
             "device_traces": [[] for _ in range(self.device)]
-            + [[trace.to_dict() for trace in self.trace_entries]],
+            + [[trace.to_dict(include_id=include_trace_ids) for trace in self.trace_entries]],
         }

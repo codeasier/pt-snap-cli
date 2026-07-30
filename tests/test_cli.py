@@ -200,6 +200,94 @@ class TestCLI:
         assert result.exit_code == 0
         assert "Execute queries on the memory snapshot database" in result.stdout
 
+    def test_split_help_contract(self) -> None:
+        result = runner.invoke(app, ["split", "--help"])
+        assert result.exit_code == 0
+        normalized_help = " ".join(result.stdout.split())
+        assert "SNAPSHOT_PATH" in result.stdout
+        assert "SNAPSHOT_FILE" not in result.stdout
+        assert "--format {pickle,json}" in normalized_help
+        assert "[default: pickle]" in result.stdout
+        for option in ("--device", "--slices", "--max-entries", "--output"):
+            assert option in result.stdout
+
+    def test_split_output_is_required(self) -> None:
+        result = runner.invoke(app, ["split", "snapshot.pkl", "--slices", "1"])
+        assert result.exit_code != 0
+        assert "--output" in result.stderr
+
+    def test_split_error_uses_domain_presentation_without_traceback(self, tmp_path: Path) -> None:
+        source = tmp_path / "missing.pkl"
+        result = runner.invoke(
+            app,
+            ["split", str(source), "--slices", "2", "--output", str(tmp_path / "out")],
+        )
+        assert result.exit_code == 1
+        assert f"Split path failed for '{source}'" in result.stdout
+        assert "Traceback" not in result.stdout
+
+    def test_split_format_metavar_does_not_bypass_domain_validation(self, tmp_path: Path) -> None:
+        source = Path(__file__).parent / "fixtures" / "snapshots" / "snapshot_expandable.pkl"
+        result = runner.invoke(
+            app,
+            [
+                "split",
+                str(source),
+                "--slices",
+                "1",
+                "--format",
+                "yaml",
+                "--output",
+                str(tmp_path / "out"),
+            ],
+        )
+        assert result.exit_code == 1
+        assert f"Split argument failed for '{source}'" in result.stdout
+        assert "format must be exactly 'pickle' or 'json'" in result.stdout
+
+    def test_split_does_not_read_or_write_focus(self, tmp_path: Path) -> None:
+        source = Path(__file__).parent / "fixtures" / "snapshots" / "snapshot_expandable.pkl"
+        with patch("pt_snap_cli.cli._focus_service", side_effect=AssertionError("focus read")):
+            result = runner.invoke(
+                app,
+                [
+                    "split",
+                    str(source),
+                    "--device",
+                    "0",
+                    "--slices",
+                    "1",
+                    "--output",
+                    str(tmp_path / "out"),
+                ],
+            )
+        assert result.exit_code == 0
+        assert "Files: 1" in result.stdout
+
+    def test_split_cli_all_devices_max_entries_json(self, tmp_path: Path) -> None:
+        source = (
+            Path(__file__).parent / "fixtures" / "snapshots" / "snapshot_with_multi_devices.pkl"
+        )
+        output = tmp_path / "json-split"
+
+        result = runner.invoke(
+            app,
+            [
+                "split",
+                str(source),
+                "--max-entries",
+                "5000",
+                "--format",
+                "json",
+                "--output",
+                str(output),
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Devices: 0, 1" in result.stdout
+        assert len(list(output.glob("*.json"))) == 4
+
     def test_focus_database_not_found(self, tmp_path: Path) -> None:
         """Test 'focus' command with non-existent database."""
         non_existent = tmp_path / "not_found.db"

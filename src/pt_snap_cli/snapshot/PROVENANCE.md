@@ -48,12 +48,9 @@ Every URL is fixed to the audited commit rather than a moving branch or tag.
 `snapshot/representation.py` is a pt-snap-cli-local shared loader/replay
 entrypoint and has no direct upstream blob.
 
-## Deferred slice source mappings
+## Slice source mappings
 
-Task 4 intentionally does not add the split engine or service. These audited
-runtime sources remain missing until the later split task:
-
-| Planned first-party path | Audited upstream blob |
+| First-party path | Audited upstream blob |
 | --- | --- |
 | `snapshot/tools/slice_dump/__init__.py` | <https://github.com/codeasier/MemSnapDump/blob/87ea207372e0985790e1a28dab499dccf3c3b9a4/src/memsnapdump/tools/slice_dump/__init__.py> |
 | `snapshot/tools/slice_dump/dump.py` | <https://github.com/codeasier/MemSnapDump/blob/87ea207372e0985790e1a28dab499dccf3c3b9a4/src/memsnapdump/tools/slice_dump/dump.py> |
@@ -84,6 +81,28 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
   `B024`/`B027` suppression preserves optional no-op allocator callbacks, and
   the targeted `B904` suppression preserves established corrupt-pickle exception
   context. No behavior-altering modernization was applied.
+- On 2026-07-31, Tasks 5 and 6 ported `tools/slice_dump/{__init__.py,dump.py,hooker.py}`
+  to the first-party namespace. Package imports and formatting changed; the
+  standalone argparse parser and module-entrypoint block were removed. Callable
+  engine return values, warnings, replay strategy, and legacy engine filenames
+  remain unchanged.
+- The product `SplitService` deliberately replaces the engine filenames with
+  `<source-stem>__device-<id>__slice-<index>.<ext>`, selects every nonempty
+  device when no device is requested, requires exactly one positive strategy,
+  and replay-validates normalized pickle/JSON output before exclusive atomic
+  directory publication. These are pt-snap product-boundary differences, not
+  claims of byte-for-byte upstream frontend equivalence.
+- `representation.py` now provides explicit pickle/JSON load, save, and
+  serialization APIs, one load/replay validation path, and strict canonical
+  bytes/SHA256 helpers for cross-format equivalence tests.
+- The first-party slice payload extends the pinned upstream representation with
+  an explicit `id` on every trace entry. This preserves the original snapshot's
+  global event IDs across slice boundaries without mutating source `_origin`
+  dictionaries. `TraceEntry` loading honors explicit IDs while retaining
+  enumeration fallback for original snapshots, so established import
+  observations remain unchanged. Upstream comparisons therefore treat IDs and
+  product filenames as intentional required differences while continuing to
+  compare selected devices, event ranges, allocator state, and slice counts.
 
 ## Migration toolchain
 

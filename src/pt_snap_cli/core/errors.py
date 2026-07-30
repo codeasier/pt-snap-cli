@@ -1,3 +1,8 @@
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal
+
+
 class PtSnapCoreError(Exception):
     pass
 
@@ -79,3 +84,26 @@ class SourceChangedError(ImportExecutionError):
     """Raised when the source snapshot changes while an import is running."""
 
     pass
+
+
+SplitPhase = Literal[
+    "argument",
+    "path",
+    "device",
+    "conflict",
+    "load/engine",
+    "generated-validation",
+    "publication",
+]
+
+
+@dataclass(frozen=True)
+class SplitError(PtSnapCoreError):
+    """A phase-identifying split failure suitable for CLI presentation."""
+
+    phase: SplitPhase
+    source_path: Path
+    detail: str
+
+    def __str__(self) -> str:
+        return f"Split {self.phase} failed for '{self.source_path}': {self.detail}"

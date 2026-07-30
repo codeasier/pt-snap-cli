@@ -32,6 +32,9 @@ from pt_snap_cli.core import (
     QueryService,
     ReportService,
     SnapshotFileInvalidError,
+    SplitError,
+    SplitOptions,
+    SplitService,
     TemplateNotFoundError,
     TemplateRenderError,
 )
@@ -191,6 +194,48 @@ def import_snapshot(
         typer.echo(f"Cache miss: {result.cache_miss_reason}")
     if result.focus_state is not None and result.focus_state.focus_file is not None:
         typer.echo(f"Focus: {result.focus_state.focus_file}")
+
+
+@app.command("split")
+def split_snapshot(
+    snapshot_file: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to .pkl or .pickle snapshot",
+            metavar="SNAPSHOT_PATH",
+        ),
+    ],
+    output: Annotated[Path, typer.Option("--output", "-o", help="New output directory")],
+    device: Annotated[int | None, typer.Option("--device", "-d")] = None,
+    slices: Annotated[int | None, typer.Option("--slices", "-s")] = None,
+    max_entries: Annotated[int | None, typer.Option("--max-entries", "-m")] = None,
+    output_format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            help="Output format: pickle or json",
+            metavar="{pickle,json}",
+        ),
+    ] = "pickle",
+) -> None:
+    """Split a snapshot into independently replayable device slices."""
+    try:
+        result = SplitService().split(
+            SplitOptions(
+                snapshot_file=snapshot_file,
+                output=output,
+                device=device,
+                slices=slices,
+                max_entries=max_entries,
+                format=output_format,
+            )
+        )
+    except SplitError as exc:
+        _error(str(exc))
+
+    typer.echo(f"Split: {result.output}")
+    typer.echo(f"Devices: {', '.join(map(str, result.devices))}")
+    typer.echo(f"Files: {len(result.files)}")
 
 
 @app.command("metadata")

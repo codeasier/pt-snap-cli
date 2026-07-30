@@ -1,0 +1,143 @@
+import json
+import pickle
+from pathlib import Path
+
+import pytest
+
+from pt_snap_cli.snapshot.base import DeviceSnapshot, TraceEntry
+from pt_snap_cli.snapshot.representation import load_snapshot_representation, replay_snapshot
+from pt_snap_cli.snapshot.simulate import SimulateDeviceSnapshot
+from pt_snap_cli.snapshot.tools.slice_dump.dump import run_slice_dump
+from pt_snap_cli.snapshot.tools.slice_dump.hooker import SliceDumpHooker
+from tests.snapshot.helpers import FIXTURE_DIR
+
+
+@pytest.mark.parametrize(
+    "fixture_name",
+    ["snapshot_with_empty_cache.pkl", "snapshot_with_empty_cache_expandable.pkl"],
+)
+def test_upstream_slice_runtime_replays_all_default_slices(
+    tmp_path: Path, fixture_name: str
+) -> None:
+    representation = load_snapshot_representation(FIXTURE_DIR / fixture_name)
+    snapshot = SimulateDeviceSnapshot(representation, 0)
+    total_entries = len(representation["device_traces"][0])
+    expected_slices = max(total_entries // 15000, 4)
+    hooker = SliceDumpHooker(str(tmp_path))
+    snapshot.register_hooker(hooker)
+
+    assert snapshot.replay()
+    outputs = list(tmp_path.glob("*.pkl"))
+    assert len(outputs) == expected_slices
+    for output in outputs:
+        _, _, replayed = _load_replay(output, "pickle", 0)
+        assert replayed
+
+
+def _load_replay(path: Path, snapshot_format: str, device: int):
+    representation = load_snapshot_representation(path, snapshot_format)  # type: ignore[arg-type]
+    snapshot, replayed = replay_snapshot(representation, device)
+    return representation, snapshot, replayed
+
+
+def _make_snapshot(entries_count: int) -> DeviceSnapshot:
+    snapshot = DeviceSnapshot()
+    snapshot.device = 0
+    snapshot.segments = []
+    snapshot.trace_entries = [
+        TraceEntry(action="alloc", addr=index, size=1, stream=0, idx=index)
+        for index in range(entries_count)
+    ]
+    return snapshot
+
+
+def test_slice_dump_hooker_rejects_invalid_directory(tmp_path: Path) -> None:
+    with pytest.raises(ValueError):
+        SliceDumpHooker(str(tmp_path / "missing"), num_of_slices=1)
+
+
+def test_slice_dump_hooker_strategy_and_warning_match_upstream(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    hooker = SliceDumpHooker(str(tmp_path), num_of_slices=2, max_entries=3)
+    hooker.num_of_events = 10
+
+    hooker._init_splitting_strategy()
+
+    assert hooker.max_entries == 3
+    assert hooker.num_of_slices == 4
+    assert "single snapshot file exceeds the max_entries limit" in caplog.text
+
+
+def test_slice_dump_hooker_json_dump_matches_upstream(tmp_path: Path) -> None:
+    hooker = SliceDumpHooker(str(tmp_path), num_of_slices=2, max_entries=2, dump_type="json")
+    hooker.num_of_events = 4
+    hooker.prev_segments = []
+    hooker.events_buffer = [TraceEntry(action="alloc", addr=1, size=2, stream=0, idx=1)]
+
+    hooker.dump(device=0)
+
+    outputs = list(tmp_path.glob("*.json"))
+    assert len(outputs) == 1
+    payload = json.loads(outputs[0].read_text(encoding="utf-8"))
+    assert payload["device_traces"][0][0]["id"] == 1
+
+
+def test_slice_dump_ids_do_not_mutate_origin_and_loading_honors_them(tmp_path: Path) -> None:
+    origin = {
+        "action": "workspace_snapshot",
+        "addr": 1,
+        "size": 2,
+        "stream": 3,
+        "frames": [],
+    }
+    representation = {"segments": [], "device_traces": [[origin]]}
+    snapshot = SimulateDeviceSnapshot(representation, 0)
+    hooker = SliceDumpHooker(str(tmp_path), num_of_slices=1, max_entries=1)
+    snapshot.register_hooker(hooker)
+
+    assert snapshot.replay()
+    assert "id" not in origin
+    output = next(tmp_path.glob("*.pkl"))
+    loaded = load_snapshot_representation(output)
+    assert loaded["device_traces"][0][0]["id"] == 0
+    reloaded = SimulateDeviceSnapshot(loaded, 0)
+    assert reloaded.device_snapshot.trace_entries[0].idx == 0
+
+    mixed = DeviceSnapshot.from_dict(
+        {
+            "segments": [],
+            "device_traces": [
+                [
+                    {**origin, "id": 42},
+                    {"action": "alloc", "addr": 2, "size": 2, "stream": 3, "frames": []},
+                ]
+            ],
+        },
+        0,
+    )
+    assert [event.idx for event in mixed.trace_entries] == [42, 1]
+
+
+def test_slice_dump_hooker_resets_buffers_after_dump(tmp_path: Path) -> None:
+    hooker = SliceDumpHooker(str(tmp_path), num_of_slices=1, max_entries=1)
+    hooker.num_of_events = 1
+    hooker.prev_segments = []
+    event = TraceEntry(action="alloc", addr=1, size=2, stream=0, idx=1)
+
+    hooker.post_undo_event(event, _make_snapshot(0))
+
+    assert hooker.events_buffer == []
+    assert hooker.dump_count == 1
+
+
+def test_run_slice_dump_retains_upstream_empty_trace_warning_and_return(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    source = tmp_path / "empty.pkl"
+    source.write_bytes(pickle.dumps({"segments": [], "device_traces": []}))
+
+    result = run_slice_dump(str(source), dump_dir=str(tmp_path))
+
+    assert result is None
+    assert "no event records cannot be replayed or split" in caplog.text
