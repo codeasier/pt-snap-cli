@@ -1,5 +1,3 @@
-from typing import Optional, Tuple
-
 from ..base import Block, DeviceSnapshot, Segment
 
 
@@ -33,18 +31,12 @@ def _scan_overlapping_segments_for_stream(
     for i in range(mid - 1, -1, -1):
         if addr < segments[i].address:
             break
-        if (
-            addr < segments[i].address + segments[i].total_size
-            and segments[i].stream == stream
-        ):
+        if addr < segments[i].address + segments[i].total_size and segments[i].stream == stream:
             return i, segments[i]
     for i in range(mid + 1, len(segments)):
         if addr < segments[i].address:
             break
-        if (
-            addr < segments[i].address + segments[i].total_size
-            and segments[i].stream == stream
-        ):
+        if addr < segments[i].address + segments[i].total_size and segments[i].stream == stream:
             return i, segments[i]
     return -1, None
 
@@ -69,16 +61,12 @@ def find_overlapping_segment(
             left = mid + 1
         else:
             if stream is not None and segments[mid].stream != stream:
-                return _scan_overlapping_segments_for_stream(
-                    segments, mid, addr, stream
-                )
+                return _scan_overlapping_segments_for_stream(segments, mid, addr, stream)
             return mid, segments[mid]
     return -1, None
 
 
-def find_segment(
-    snapshot: DeviceSnapshot, addr: int, stream: int
-) -> tuple[int, Segment | None]:
+def find_segment(snapshot: DeviceSnapshot, addr: int, stream: int) -> tuple[int, Segment | None]:
     """Find the segment whose start address exactly matches the given address.
 
     Returns `(idx, segment)` for an exact start-address and stream match,
@@ -92,7 +80,7 @@ def find_segment(
 
 def find_gap_for_alloc_block(
     snapshot: DeviceSnapshot, event_addr: int, event_size: int, stream: int = None
-) -> Optional[Tuple[Segment, int]]:
+) -> tuple[Segment, int] | None:
     """Find the insertion gap for a block allocation inside a segment.
 
     Returns `(segment, insert_idx)` when a valid gap exists, otherwise `None`.

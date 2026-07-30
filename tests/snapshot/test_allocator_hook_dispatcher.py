@@ -1,5 +1,5 @@
-from pt_snap_cli.vendor.memsnapdump.base import Block, DeviceSnapshot, Segment
-from pt_snap_cli.vendor.memsnapdump.simulate.allocator_hook_dispatcher import (
+from pt_snap_cli.snapshot.base import Block, DeviceSnapshot, Segment
+from pt_snap_cli.snapshot.simulate.allocator_hook_dispatcher import (
     AllocatorHookDispatcher,
 )
 

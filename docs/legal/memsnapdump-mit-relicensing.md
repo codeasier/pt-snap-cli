@@ -25,7 +25,7 @@ declaration, does not claim to be the rights holder, and does not supply or
 invent a signature.
 
 The applicable MIT terms are preserved in
-`src/pt_snap_cli/vendor/memsnapdump/LICENSE`. This record does not reproduce the
+`src/pt_snap_cli/snapshot/LICENSE`. This record does not reproduce the
 standard license text or represent an additional signature.
 
 ## Corroborating repository evidence

@@ -1,5 +1,5 @@
-from typing import List, Literal, Any
 from dataclasses import dataclass, field
+from typing import Any, Literal
 
 
 class Frame:
@@ -51,7 +51,7 @@ class TraceEntry:
     """
     action: str = ""
     addr: int = -1  # not present for OOM
-    frames: List[Frame] = field(default_factory=list)
+    frames: list[Frame] = field(default_factory=list)
     size: int = 0
     stream: int = 0
     device_free: int = -1  # only present for OOM, the amount of
@@ -68,10 +68,7 @@ class TraceEntry:
             size=int(trace_dict["size"]),
             stream=int(trace_dict["stream"]),
             _origin=trace_dict,
-            frames=[
-                Frame.from_dict(_frame_dict)
-                for _frame_dict in trace_dict.get("frames", [])
-            ],
+            frames=[Frame.from_dict(_frame_dict) for _frame_dict in trace_dict.get("frames", [])],
         )
         return trace_entry
 
@@ -79,23 +76,20 @@ class TraceEntry:
         if not self.frames:
             return ""
         return "\n".join(
-            [
-                f"{frame.filename}:{frame.line} {frame.name}"
-                for frame in self.frames[::-1]
-            ]
+            [f"{frame.filename}:{frame.line} {frame.name}" for frame in self.frames[::-1]]
         )
 
     def to_dict(self):
         return (
             self._origin
             if self._origin
-            else dict(
-                action=self.action,
-                addr=self.addr,
-                size=self.size,
-                stream=self.stream,
-                frames=[frame.to_dict() for frame in self.frames],
-            )
+            else {
+                "action": self.action,
+                "addr": self.addr,
+                "size": self.size,
+                "stream": self.stream,
+                "frames": [frame.to_dict() for frame in self.frames],
+            }
         )
 
 
@@ -118,7 +112,7 @@ class Block:
         "active_pending_free",  # waiting for another stream to finish using this, then it will become free
         "inactive",
     ] = BlockState.INACTIVE  # free for reuse
-    frames: List[Frame] = field(
+    frames: list[Frame] = field(
         default_factory=list
     )  # stack trace from where the allocation occurred
 
@@ -149,13 +143,13 @@ class Block:
         return block
 
     def to_dict(self):
-        return dict(
-            size=self.size,
-            requested_size=self.requested_size,
-            address=self.address,
-            state=self.state,
-            frames=[frame.to_dict() for frame in self.frames],
-        )
+        return {
+            "size": self.size,
+            "requested_size": self.requested_size,
+            "address": self.address,
+            "state": self.state,
+            "frames": [frame.to_dict() for frame in self.frames],
+        }
 
 
 @dataclass
@@ -172,9 +166,9 @@ class Segment:
     segment_type: Literal["small", "large"] = ""  # 'large' (>1MB)
     allocated_size: int = 0  # size of memory in use
     active_size: int = 0  # size of memory in use or in active_awaiting_free state
-    blocks: List[Block] = field(default_factory=list)
+    blocks: list[Block] = field(default_factory=list)
     device: int = 0
-    frames: List[Frame] = field(default_factory=list)
+    frames: list[Frame] = field(default_factory=list)
     is_expandable: bool = False
     _origin: dict = None  # Readonly
     free_or_unmap_event_idx: int = None
@@ -189,9 +183,7 @@ class Segment:
             segment_type=segment_dict["segment_type"],
             allocated_size=segment_dict["allocated_size"],
             active_size=segment_dict["active_size"],
-            frames=[
-                Frame.from_dict(_frame) for _frame in segment_dict.get("frames", [])
-            ],
+            frames=[Frame.from_dict(_frame) for _frame in segment_dict.get("frames", [])],
             device=segment_dict.get("device", 0),
             _origin=segment_dict,
             is_expandable=segment_dict.get("is_expandable", False),
@@ -232,23 +224,23 @@ class Segment:
         return segment
 
     def to_dict(self):
-        return dict(
-            address=self.address,
-            total_size=self.total_size,
-            stream=self.stream,
-            segment_type=self.segment_type,
-            allocated_size=self.allocated_size,
-            active_size=self.active_size,
-            device=self.device,
-            is_expandable=self.is_expandable,
-            frames=[frame.to_dict() for frame in self.frames],
-            blocks=[block.to_dict() for block in self.blocks],
-        )
+        return {
+            "address": self.address,
+            "total_size": self.total_size,
+            "stream": self.stream,
+            "segment_type": self.segment_type,
+            "allocated_size": self.allocated_size,
+            "active_size": self.active_size,
+            "device": self.device,
+            "is_expandable": self.is_expandable,
+            "frames": [frame.to_dict() for frame in self.frames],
+            "blocks": [block.to_dict() for block in self.blocks],
+        }
 
 
 class DeviceSnapshot:
-    segments: List[Segment]
-    trace_entries: List[TraceEntry]
+    segments: list[Segment]
+    trace_entries: list[TraceEntry]
 
     total_allocated: int  # 二次分配总量
     total_reserved: int  # 内存池总量
@@ -257,14 +249,10 @@ class DeviceSnapshot:
     device: int
 
     @classmethod
-    def from_dict(
-        cls, snapshot_dict: dict, device: int, ignore_inactive_blocks: bool = False
-    ):
+    def from_dict(cls, snapshot_dict: dict, device: int, ignore_inactive_blocks: bool = False):
         segments_dict = snapshot_dict.get("segments", [])
         device_traces = snapshot_dict.get("device_traces", [])
-        device_trace_list = (
-            device_traces[device] if 0 <= device <= len(device_traces) else []
-        )
+        device_trace_list = device_traces[device] if 0 <= device <= len(device_traces) else []
         snapshot = cls()
         snapshot.segments = []
         snapshot.trace_entries = []

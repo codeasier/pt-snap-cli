@@ -4,8 +4,8 @@ from typing import Optional
 
 import pytest
 
-from pt_snap_cli.vendor.memsnapdump.tools.adaptors.database.snapshot_db import SnapshotDb
-from pt_snap_cli.vendor.memsnapdump.util.sqlite_meta import (
+from pt_snap_cli.snapshot.tools.adaptors.database.snapshot_db import SnapshotDb
+from pt_snap_cli.snapshot.util.sqlite_meta import (
     SqliteColumn,
     SqliteDB,
     SqliteTable,

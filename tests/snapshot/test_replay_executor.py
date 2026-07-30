@@ -2,8 +2,8 @@ import unittest
 
 import pytest
 
-from pt_snap_cli.vendor.memsnapdump.base import BlockState, TraceEntry
-from pt_snap_cli.vendor.memsnapdump.simulate.replay_executor import ReplayExecutor
+from pt_snap_cli.snapshot.base import BlockState, TraceEntry
+from pt_snap_cli.snapshot.simulate.replay_executor import ReplayExecutor
 
 
 class FakeAllocator:

@@ -1,7 +1,6 @@
 from logging import Logger
 
 from ..base import Block, BlockState, Segment, TraceEntry
-
 from .simulated_caching_allocator import SimulatedCachingAllocator
 
 

@@ -39,12 +39,10 @@ class QueryExecutionError(PtSnapCoreError):
 
 
 class ImportToolMissingError(PtSnapCoreError):
-    """Raised when the vendored snapshot import backend is unavailable.
+    """Raised when the built-in snapshot import backend is unavailable.
 
-    In the vendored model, this no longer means "the user forgot to install
-    memsnapdump" — the dump2db backend is built in. It means the vendored
-    backend could not be imported or initialized, which is a packaging
-    or installation problem.
+    The backend is part of pt-snap-cli, so this indicates a packaging or
+    installation problem rather than a missing optional tool.
     """
 
     pass
@@ -64,7 +62,7 @@ class SnapshotFileInvalidError(PtSnapCoreError):
 class ImportExecutionError(PtSnapCoreError):
     """Raised when the import backend itself fails to produce a database.
 
-    Covers upstream dump2db returning False, raising an exception,
+    Covers the snapshot adaptor returning False, raising an exception,
     or producing no .db artifact where one was expected.
     """
 

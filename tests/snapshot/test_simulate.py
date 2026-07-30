@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.vendor.memsnapdump.base import BlockState
-from pt_snap_cli.vendor.memsnapdump.simulate import SimulateDeviceSnapshot, SimulateHooker
-from pt_snap_cli.vendor.memsnapdump.simulate.hooker_defs import AllocatorHooker
-from pt_snap_cli.vendor.memsnapdump.simulate.snapshot_lookup import find_overlapping_segment
-from pt_snap_cli.vendor.memsnapdump.util.file_util import load_pickle_to_dict
-from pt_snap_cli.vendor.memsnapdump.util.logger import restore_logs, suppress_logs
+from pt_snap_cli.snapshot.base import BlockState
+from pt_snap_cli.snapshot.simulate import SimulateDeviceSnapshot, SimulateHooker
+from pt_snap_cli.snapshot.simulate.hooker_defs import AllocatorHooker
+from pt_snap_cli.snapshot.simulate.snapshot_lookup import find_overlapping_segment
+from pt_snap_cli.snapshot.util.file_util import load_pickle_to_dict
+from pt_snap_cli.snapshot.util.logger import restore_logs, suppress_logs
 
 from .golden_observations import FIXTURE_REPLAY_GOLDEN
 from .helpers import FIXTURE_DIR, assert_valid_segments, assert_valid_snapshot

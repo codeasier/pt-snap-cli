@@ -1,15 +1,15 @@
 import unittest
 
-from pt_snap_cli.vendor.memsnapdump.base import (
+from pt_snap_cli.snapshot.base import (
     Block,
     BlockState,
     DeviceSnapshot,
     Segment,
     TraceEntry,
 )
-from pt_snap_cli.vendor.memsnapdump.simulate import snapshot_mutator
-from pt_snap_cli.vendor.memsnapdump.simulate.allocator_context import AllocatorContext
-from pt_snap_cli.vendor.memsnapdump.simulate.simulated_caching_allocator import (
+from pt_snap_cli.snapshot.simulate import snapshot_mutator
+from pt_snap_cli.snapshot.simulate.allocator_context import AllocatorContext
+from pt_snap_cli.snapshot.simulate.simulated_caching_allocator import (
     SimulatedCachingAllocator,
 )
 

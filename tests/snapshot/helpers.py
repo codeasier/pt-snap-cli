@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pt_snap_cli.vendor.memsnapdump.base import BlockState, DeviceSnapshot, Segment
+from pt_snap_cli.snapshot.base import BlockState, DeviceSnapshot, Segment
 
 FIXTURE_DIR = Path(__file__).parents[1] / "fixtures" / "snapshots"
 

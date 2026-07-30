@@ -1,9 +1,9 @@
-from pt_snap_cli.vendor.memsnapdump.base import Block, Frame, TraceEntry
-from pt_snap_cli.vendor.memsnapdump.tools.adaptors.database.defs import (
+from pt_snap_cli.snapshot.base import Block, Frame, TraceEntry
+from pt_snap_cli.snapshot.tools.adaptors.database.defs import (
     BlockFieldDefs,
     EventFieldDefs,
 )
-from pt_snap_cli.vendor.memsnapdump.tools.adaptors.database.entity2record import (
+from pt_snap_cli.snapshot.tools.adaptors.database.entity2record import (
     block2record,
     event2record,
     get_timestamp_by_event_idx,

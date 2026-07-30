@@ -245,7 +245,7 @@ def _profile_import(snapshot: Path, output_dir: Path, device: int, top_n: int = 
 def main() -> None:
     import argparse
 
-    logging.getLogger("pt_snap_cli.vendor").setLevel(logging.ERROR)
+    logging.getLogger("pt_snap_cli.snapshot").setLevel(logging.ERROR)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--samples", nargs="+", default=["131k", "628k"])

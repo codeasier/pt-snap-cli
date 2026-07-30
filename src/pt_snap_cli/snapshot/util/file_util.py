@@ -7,7 +7,7 @@
 import os
 import pickle
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 
 def load_pickle_to_dict(pickle_file: Path) -> dict:
@@ -32,7 +32,8 @@ def load_pickle_to_dict(pickle_file: Path) -> dict:
         with open(pickle_file, "rb") as f:
             data = pickle.load(f)
     except Exception:
-        raise pickle.UnpicklingError(f"Cannot load pickle file: {pickle_file}")
+        # Preserve the established exception context and corrupt-pickle behavior.
+        raise pickle.UnpicklingError(f"Cannot load pickle file: {pickle_file}")  # noqa: B904
 
     if not isinstance(data, dict):
         raise ValueError(
@@ -42,7 +43,7 @@ def load_pickle_to_dict(pickle_file: Path) -> dict:
     return data
 
 
-def save_dict_to_pickle(data: Dict[Any, Any], path: Path, protocol: int = 4) -> None:
+def save_dict_to_pickle(data: dict[Any, Any], path: Path, protocol: int = 4) -> None:
     """
     将字典保存为 pickle 文件。
 
@@ -56,9 +57,7 @@ def save_dict_to_pickle(data: Dict[Any, Any], path: Path, protocol: int = 4) -> 
         OSError: 文件写入失败（如权限不足、磁盘满等）
     """
     if not isinstance(data, dict):
-        raise TypeError(
-            f"Only dict type is supported, but received: {type(data).__name__}"
-        )
+        raise TypeError(f"Only dict type is supported, but received: {type(data).__name__}")
     path.parent.mkdir(parents=True, exist_ok=True)  # 自动创建父目录
 
     try:

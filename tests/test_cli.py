@@ -831,7 +831,7 @@ class TestImportCommand:
     def test_import_missing_tool_message(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test import reports vendored backend packaging guidance when unavailable."""
+        """Test import reports built-in backend packaging guidance when unavailable."""
         from pt_snap_cli.core.errors import ImportToolMissingError
 
         snapshot = tmp_path / "sample.pkl"
@@ -839,7 +839,7 @@ class TestImportCommand:
 
         def raise_missing_tool(*args: object, **kwargs: object) -> object:
             raise ImportToolMissingError(
-                "Vendored snapshot import backend is unavailable. Reinstall pt-snap-cli; the package may be incomplete."
+                "Snapshot import backend is unavailable. Reinstall pt-snap-cli; the package may be incomplete."
             )
 
         monkeypatch.setattr(
@@ -850,7 +850,7 @@ class TestImportCommand:
         result = runner.invoke(app, ["import", str(snapshot)])
 
         assert result.exit_code != 0
-        assert "vendored snapshot import backend" in result.output.lower()
+        assert "snapshot import backend" in result.output.lower()
         assert "reinstall pt-snap-cli" in result.output.lower()
         assert "memsnapdump" not in result.output.lower()
 

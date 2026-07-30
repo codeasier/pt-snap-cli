@@ -4,13 +4,13 @@
 提供函数执行时间测量的装饰器。
 """
 
-import time
 import logging
-from typing import Callable, Optional
+import time
+from collections.abc import Callable
 from functools import wraps
 
 
-def timer(name: Optional[str] = None, logger: Optional[logging.Logger] = None):
+def timer(name: str | None = None, logger: logging.Logger | None = None):
     """
     函数执行时间计时装饰器。
 

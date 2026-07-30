@@ -9,9 +9,7 @@ snapshot_mutator_logger = get_logger("ALLOCATOR")
 # Public API: block mutation helpers
 
 
-def attach_block(
-    snapshot: DeviceSnapshot, segment: Segment, block: Block, insert_idx: int
-):
+def attach_block(snapshot: DeviceSnapshot, segment: Segment, block: Block, insert_idx: int):
     """Attach a block to a segment and update allocation totals.
 
     Mutates the block, the owning segment, and snapshot totals in place.
@@ -101,9 +99,7 @@ def merge_mapped_segment(
     """
     _error = "Failed to merge mapped segment"
     if left_adjacent_idx == -1 and right_adjacent_idx == -1:
-        snapshot_mutator_logger.error(
-            f"{_error}: both adjacent segment indices are missing"
-        )
+        snapshot_mutator_logger.error(f"{_error}: both adjacent segment indices are missing")
         return False
 
     segments = snapshot.segments
@@ -123,9 +119,7 @@ def merge_mapped_segment(
     new_idx = segments.index(new_segment)
     corrected_right_idx = new_idx + 1
     if corrected_right_idx >= len(segments):
-        snapshot_mutator_logger.error(
-            f"{_error}: right adjacent segment missing after insert"
-        )
+        snapshot_mutator_logger.error(f"{_error}: right adjacent segment missing after insert")
         segments.remove(new_segment)
         return False
     if corrected_right_idx != right_adjacent_idx + 1:
@@ -194,19 +188,13 @@ def _merge_segments(snapshot: DeviceSnapshot, target_idx: int, source_idx: int) 
     _error = "Failed to merge segments"
     segments = snapshot.segments
     if target_idx < 0 or target_idx >= len(segments):
-        snapshot_mutator_logger.error(
-            f"{_error}: invalid target segment index {target_idx}"
-        )
+        snapshot_mutator_logger.error(f"{_error}: invalid target segment index {target_idx}")
         return False
     if source_idx < 0 or source_idx >= len(segments):
-        snapshot_mutator_logger.error(
-            f"{_error}: invalid source segment index {source_idx}"
-        )
+        snapshot_mutator_logger.error(f"{_error}: invalid source segment index {source_idx}")
         return False
     if target_idx == source_idx:
-        snapshot_mutator_logger.error(
-            f"{_error}: target and source are the same segment"
-        )
+        snapshot_mutator_logger.error(f"{_error}: target and source are the same segment")
         return False
     target = segments[target_idx]
     source = segments[source_idx]
@@ -237,9 +225,7 @@ def _merge_segments(snapshot: DeviceSnapshot, target_idx: int, source_idx: int) 
     return True
 
 
-def _split_segment_at(
-    snapshot: DeviceSnapshot, seg_idx: int, cut_addr: int, cut_size: int
-) -> bool:
+def _split_segment_at(snapshot: DeviceSnapshot, seg_idx: int, cut_addr: int, cut_size: int) -> bool:
     """Split a segment around a cut range and keep non-overlapping blocks.
 
     Mutates `snapshot.segments` in place. Returns `True` on success, otherwise
@@ -355,9 +341,7 @@ def _shrink_segment(
         new_start = shrink_end
         new_size = seg_end - new_start
         if new_size < 0:
-            snapshot_mutator_logger.error(
-                f"{_error}: shrink results in negative segment size"
-            )
+            snapshot_mutator_logger.error(f"{_error}: shrink results in negative segment size")
             return False
         for block in segment.blocks:
             block_start = block.address
@@ -369,9 +353,7 @@ def _shrink_segment(
                 return False
         segment.address = new_start
         segment.total_size = new_size
-        segment.blocks = [
-            block for block in segment.blocks if block.address >= new_start
-        ]
+        segment.blocks = [block for block in segment.blocks if block.address >= new_start]
     else:
         if shrink_addr < seg_start or shrink_end > seg_end:
             snapshot_mutator_logger.error(
@@ -380,9 +362,7 @@ def _shrink_segment(
             return False
         new_size = shrink_addr - seg_start
         if new_size < 0:
-            snapshot_mutator_logger.error(
-                f"{_error}: shrink results in negative segment size"
-            )
+            snapshot_mutator_logger.error(f"{_error}: shrink results in negative segment size")
             return False
         for block in segment.blocks:
             block_start = block.address
@@ -393,9 +373,7 @@ def _shrink_segment(
                 )
                 return False
         segment.blocks = [
-            block
-            for block in segment.blocks
-            if block.address + block.size <= shrink_addr
+            block for block in segment.blocks if block.address + block.size <= shrink_addr
         ]
         segment.total_size = new_size
     segment.allocated_size = sum(

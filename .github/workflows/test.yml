@@ -74,15 +74,15 @@ jobs:
           python -m pip install --upgrade build
           python -m build --wheel
 
-      - name: Wheel smoke test (verify vendored backend is packaged)
+      - name: Wheel smoke test (verify snapshot runtime is packaged)
         if: matrix.python-version == '3.13'
         run: |
           set -euo pipefail
           python -m pip install --force-reinstall dist/*.whl
-          # Confirm the vendored closure was actually packaged into the wheel.
-          python -c "import pt_snap_cli.vendor.memsnapdump.tools.adaptors.snapshot2db as m; assert hasattr(m, 'run_dump_to_db'), 'vendored run_dump_to_db missing in installed wheel'"
+          # Confirm the first-party runtime was actually packaged into the wheel.
+          python -c "import pt_snap_cli.snapshot.tools.adaptors.snapshot2db as m; assert hasattr(m, 'run_dump_to_db'), 'snapshot run_dump_to_db missing in installed wheel'"
           # End-to-end import against a real fixture — catches any packaging
-          # regression where setuptools drops src/pt_snap_cli/vendor/.
+          # regression where setuptools drops src/pt_snap_cli/snapshot/.
           FIXTURE=tests/fixtures/snapshots/snapshot_with_empty_cache.pkl
           rm -rf /tmp/pt-snap-wheel-smoke
           mkdir -p /tmp/pt-snap-wheel-smoke

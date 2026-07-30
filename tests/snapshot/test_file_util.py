@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.vendor.memsnapdump.util.file_util import (
+from pt_snap_cli.snapshot.util.file_util import (
     check_dir_valid,
     check_file_valid,
     load_pickle_to_dict,

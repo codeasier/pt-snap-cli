@@ -1,14 +1,12 @@
 import copy
-from typing import Dict
 
 from ..base import Block, DeviceSnapshot, Segment
-
 from .hooker_defs import AllocatorHooker
 
 
 class AllocatorHookDispatcher:
     def __init__(self):
-        self.hookers: Dict[int, AllocatorHooker] = {}
+        self.hookers: dict[int, AllocatorHooker] = {}
 
     def register_hooker(self, hooker: AllocatorHooker) -> int:
         idx = hash(hooker)
@@ -38,26 +36,18 @@ class AllocatorHookDispatcher:
         for hooker in self.hookers.values():
             hooker.post_replay_free_block(payload, snapshot)
 
-    def pre_replay_map_or_alloc_segment(
-        self, segment: Segment, snapshot: DeviceSnapshot
-    ):
+    def pre_replay_map_or_alloc_segment(self, segment: Segment, snapshot: DeviceSnapshot):
         for hooker in self.hookers.values():
             hooker.pre_replay_map_or_alloc_segment(segment, snapshot)
 
-    def post_replay_map_or_alloc_segment(
-        self, segment: Segment, snapshot: DeviceSnapshot
-    ):
+    def post_replay_map_or_alloc_segment(self, segment: Segment, snapshot: DeviceSnapshot):
         for hooker in self.hookers.values():
             hooker.post_replay_map_or_alloc_segment(segment, snapshot)
 
-    def pre_replay_unmap_or_free_segment(
-        self, segment: Segment, snapshot: DeviceSnapshot
-    ):
+    def pre_replay_unmap_or_free_segment(self, segment: Segment, snapshot: DeviceSnapshot):
         for hooker in self.hookers.values():
             hooker.pre_replay_unmap_or_free_segment(segment, snapshot)
 
-    def post_replay_unmap_or_free_segment(
-        self, segment: Segment, snapshot: DeviceSnapshot
-    ):
+    def post_replay_unmap_or_free_segment(self, segment: Segment, snapshot: DeviceSnapshot):
         for hooker in self.hookers.values():
             hooker.post_replay_unmap_or_free_segment(segment, snapshot)

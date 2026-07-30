@@ -1,9 +1,7 @@
 from logging import Logger
-from typing import Dict
 
 from ..base import DeviceSnapshot
 from ..util import get_logger
-
 from .allocator_context import AllocatorContext
 from .hooker_defs import AllocatorHooker, SimulateHooker
 from .replay_executor import ReplayExecutor
@@ -15,7 +13,7 @@ replay_logger = get_logger("REPLAY")
 
 class SimulateDeviceSnapshot:
     device_snapshot: DeviceSnapshot
-    hookers: Dict[int, SimulateHooker]
+    hookers: dict[int, SimulateHooker]
 
     device: int
     _loading_logger: Logger
@@ -36,15 +34,9 @@ class SimulateDeviceSnapshot:
             f"entries and {len(self.device_snapshot.segments)} segments."
         )
         self.hookers = dict[int, SimulateHooker]()
-        self.simulated_allocator_context = AllocatorContext(
-            snapshot=self.device_snapshot
-        )
-        self.simulated_allocator = SimulatedCachingAllocator(
-            self.simulated_allocator_context
-        )
-        self.replay_executor = ReplayExecutor(
-            self.simulated_allocator, self._replay_logger
-        )
+        self.simulated_allocator_context = AllocatorContext(snapshot=self.device_snapshot)
+        self.simulated_allocator = SimulatedCachingAllocator(self.simulated_allocator_context)
+        self.replay_executor = ReplayExecutor(self.simulated_allocator, self._replay_logger)
         # 识别昇腾torch-npu采集的snapshot中的workspace事件
         if (
             self.device_snapshot.trace_entries
@@ -93,10 +85,7 @@ class SimulateDeviceSnapshot:
                 return False
             self.device_snapshot.trace_entries.pop()
             current_size = len(self.device_snapshot.trace_entries)
-            if (
-                progress_update_point
-                and progress_update_point[-1] * total_size >= current_size
-            ):
+            if progress_update_point and progress_update_point[-1] * total_size >= current_size:
                 self._replay_logger.info(
                     f"{(1 - progress_update_point[-1]) * 100}% of entries have been processed, "
                     f"{current_size} entries remain."

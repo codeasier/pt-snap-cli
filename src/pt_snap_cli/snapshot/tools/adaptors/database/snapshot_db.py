@@ -65,9 +65,7 @@ class SnapshotDb(SqliteDB):
 
     def create_trace_entry_table(self, device: int = 0):
         self.create_table(
-            SqliteTable(
-                self.get_trace_table_name_by_device(device), _TRACE_ENTRY_TABLE_COLUMNS
-            ),
+            SqliteTable(self.get_trace_table_name_by_device(device), _TRACE_ENTRY_TABLE_COLUMNS),
             delete_if_exists=True,
         )
         table = self.get_trace_entry_table(device)
@@ -80,9 +78,7 @@ class SnapshotDb(SqliteDB):
 
     def create_block_table(self, device: int = 0):
         self.create_table(
-            SqliteTable(
-                self.get_block_table_name_by_device(device), _BLOCK_TABLE_COLUMNS
-            ),
+            SqliteTable(self.get_block_table_name_by_device(device), _BLOCK_TABLE_COLUMNS),
             delete_if_exists=True,
         )
         table = self.get_block_table(device)

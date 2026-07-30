@@ -8,16 +8,12 @@ SQLite 元数据管理模块
 import ast
 import os.path
 import sqlite3
+from collections.abc import Iterable
 from typing import (
     Any,
-    Dict,
-    List,
-    Optional,
-    Type,
     Union,
-    Iterable,
-    get_origin,
     get_args,
+    get_origin,
 )
 
 # 支持的 Python 类型映射
@@ -30,7 +26,7 @@ _PY_TYPE_TO_SQLITE = {
 }
 
 
-def _map_py_type_to_sqlite(py_type: Type) -> str:
+def _map_py_type_to_sqlite(py_type: type) -> str:
     """将 Python 类型转换为 SQLite 类型"""
     origin = get_origin(py_type) or py_type
     if origin in _PY_TYPE_TO_SQLITE:
@@ -117,13 +113,13 @@ class SqliteColumn:
     def __init__(
         self,
         name: str,
-        data_type: Type = str,
+        data_type: type = str,
         primary_key: bool = False,  # 是否主键
         autoincrement: bool = False,  # 是否自增
         not_null: bool = False,  # 是否不可为空
         unique: bool = False,  # 是否唯一
-        default: Optional[Any] = None,  # 缺省值,
-        value_map: Dict[Any, Any] = None,
+        default: Any | None = None,  # 缺省值,
+        value_map: dict[Any, Any] = None,
     ):
         if autoincrement and not primary_key:
             raise ValueError("autoincrement requires primary_key=True")
@@ -205,13 +201,13 @@ class SqliteTable:
     """
 
     name: str
-    column_dict: Dict[str, SqliteColumn]
-    _column_value_map: Dict[str, Dict[Any, Any]]
+    column_dict: dict[str, SqliteColumn]
+    _column_value_map: dict[str, dict[Any, Any]]
 
     def __init__(self, table_name: str, columns: Iterable[SqliteColumn] = None):
         self.name = table_name
         self.column_dict = {}
-        self._column_value_map = dict()
+        self._column_value_map = {}
         if columns:
             for column in columns:
                 self.column_dict[column.name] = column
@@ -240,9 +236,7 @@ class SqliteTable:
             return f"{drop_sql}\n{create_sql}"
         else:
             # 使用 IF NOT EXISTS 更安全
-            create_sql = create_sql.replace(
-                "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
-            )
+            create_sql = create_sql.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
             return create_sql
 
     def create_table(self, conn: sqlite3.Connection, delete_if_exists: bool = False):
@@ -267,7 +261,7 @@ class SqliteTable:
         )
         conn.commit()
 
-    def insert_record(self, conn: sqlite3.Connection, record: Dict[str, Any]):
+    def insert_record(self, conn: sqlite3.Connection, record: dict[str, Any]):
         """
         插入单条记录。
 
@@ -280,7 +274,7 @@ class SqliteTable:
         """
         self.insert_records(conn, [record])
 
-    def insert_records(self, conn: sqlite3.Connection, records: List[Dict[str, Any]]):
+    def insert_records(self, conn: sqlite3.Connection, records: list[dict[str, Any]]):
         """
         批量插入多条记录。
 
@@ -305,7 +299,7 @@ class SqliteTable:
         conn.commit()
 
     @staticmethod
-    def get_insert_columns_by_record(record: Dict[str, Any]):
+    def get_insert_columns_by_record(record: dict[str, Any]):
         """
         从记录字典中获取插入列名列表。
 
@@ -318,7 +312,7 @@ class SqliteTable:
         return [f"`{key}`" for key in record.keys()]
 
     @staticmethod
-    def get_insert_placeholder_by_record(record: Dict[str, Any]):
+    def get_insert_placeholder_by_record(record: dict[str, Any]):
         """
         生成插入语句的占位符字符串。
 
@@ -330,7 +324,7 @@ class SqliteTable:
         """
         return ", ".join(["?" for _ in record.keys()])
 
-    def get_insert_values_by_records(self, records: List[Dict[str, Any]]):
+    def get_insert_values_by_records(self, records: list[dict[str, Any]]):
         """
         从记录列表中提取插入值，应用值映射。
 
@@ -343,10 +337,7 @@ class SqliteTable:
         if not records:
             return []
         return [
-            tuple(
-                self._column_value_map.get(k, {}).get(r[k], r[k])
-                for k in records[0].keys()
-            )
+            tuple(self._column_value_map.get(k, {}).get(r[k], r[k]) for k in records[0].keys())
             for r in records
         ]
 
@@ -374,11 +365,9 @@ class SqliteDB:
 
     path: str
     conn: sqlite3.Connection
-    table_cache: Dict[str, SqliteTable]
+    table_cache: dict[str, SqliteTable]
 
-    def __init__(
-        self, path: str, auto_create: bool = True, with_dictionary_table: bool = False
-    ):
+    def __init__(self, path: str, auto_create: bool = True, with_dictionary_table: bool = False):
         self.path = os.path.realpath(path)
         if not os.path.exists(self.path):
             if not auto_create:
@@ -413,7 +402,7 @@ class SqliteDB:
             for key, value in value_map.items():
                 dictionary_table.insert_record(
                     self.conn,
-                    dict(table=table.name, column=column_name, key=value, value=key),
+                    {"table": table.name, "column": column_name, "key": value, "value": key},
                 )
         self.conn.commit()
 

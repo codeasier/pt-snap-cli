@@ -6,11 +6,11 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
+
 from .file_util import check_dir_valid
 
-_global_log_file: Optional[str] = None
-_global_file_handler: Optional[logging.FileHandler] = None
+_global_log_file: str | None = None
+_global_file_handler: logging.FileHandler | None = None
 
 
 def set_global_log_file(log_file: str) -> None:
@@ -34,9 +34,7 @@ def set_global_log_file(log_file: str) -> None:
         raise OSError(f"Log directory '{parent_dir}' does not exist.")
 
     if not parent_dir.is_dir() or not check_dir_valid(parent_dir):
-        raise OSError(
-            f"Log directory '{parent_dir}' is not writable or does not exist."
-        )
+        raise OSError(f"Log directory '{parent_dir}' is not writable or does not exist.")
 
     _global_log_file = str(log_path.absolute())
 
@@ -49,9 +47,7 @@ def set_global_log_file(log_file: str) -> None:
         style="{",
     )
 
-    _global_file_handler = logging.FileHandler(
-        _global_log_file, mode="w", encoding="utf-8"
-    )
+    _global_file_handler = logging.FileHandler(_global_log_file, mode="w", encoding="utf-8")
     _global_file_handler.setLevel(logging.DEBUG)
     _global_file_handler.setFormatter(formatter)
 

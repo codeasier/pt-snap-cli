@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.vendor.memsnapdump.util import logger as logger_module
+from pt_snap_cli.snapshot.util import logger as logger_module
 
 
 @pytest.fixture(autouse=True)

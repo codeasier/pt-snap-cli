@@ -1,7 +1,7 @@
 import unittest
 
-from pt_snap_cli.vendor.memsnapdump.base import Block, BlockState, DeviceSnapshot, Segment
-from pt_snap_cli.vendor.memsnapdump.simulate.snapshot_lookup import (
+from pt_snap_cli.snapshot.base import Block, BlockState, DeviceSnapshot, Segment
+from pt_snap_cli.snapshot.simulate.snapshot_lookup import (
     find_block,
     find_gap_for_alloc_block,
     find_overlapping_segment,

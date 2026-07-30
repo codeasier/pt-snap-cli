@@ -1,6 +1,6 @@
 import time
 
-from pt_snap_cli.vendor.memsnapdump.util.timer import timer
+from pt_snap_cli.snapshot.util.timer import timer
 
 
 class FakeLogger:

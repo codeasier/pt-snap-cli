@@ -1,11 +1,10 @@
 import copy
 
-from ..base import BlockState, Block, Segment, TraceEntry
+from ..base import Block, BlockState, Segment, TraceEntry
 from ..util import get_logger
-
+from . import snapshot_lookup, snapshot_mutator
 from .allocator_context import AllocatorContext
 from .allocator_hook_dispatcher import AllocatorHookDispatcher
-from . import snapshot_lookup, snapshot_mutator
 
 allocator_logger = get_logger("ALLOCATOR")
 
@@ -41,17 +40,12 @@ class SimulatedCachingAllocator:
         segment, insert_idx = gap_result
         if self.ctx.current_undo_event:
             new_block.free_event_idx = self.ctx.current_undo_event.idx
-        if (
-            self.ctx.current_undo_event
-            and self.ctx.current_undo_event.action == "free_completed"
-        ):
+        if self.ctx.current_undo_event and self.ctx.current_undo_event.action == "free_completed":
             new_block.state = BlockState.ACTIVE_PENDING_FREE
         else:
             new_block.state = BlockState.ACTIVE_ALLOCATED
         self.dispatcher.pre_replay_alloc_block(new_block, self.ctx.device_snapshot)
-        snapshot_mutator.attach_block(
-            self.ctx.device_snapshot, segment, new_block, insert_idx
-        )
+        snapshot_mutator.attach_block(self.ctx.device_snapshot, segment, new_block, insert_idx)
         self.dispatcher.post_replay_alloc_block(new_block, self.ctx.device_snapshot)
         return True
 
@@ -77,9 +71,7 @@ class SimulatedCachingAllocator:
                     f"{_error}: cannot find block (addr={alloc_event.addr}), workspace scenario tolerance"
                 )
                 return True
-            allocator_logger.error(
-                f"{_error}: cannot find block (addr={alloc_event.addr})"
-            )
+            allocator_logger.error(f"{_error}: cannot find block (addr={alloc_event.addr})")
             return False
         if exist_block.size < alloc_event.size:
             allocator_logger.error(
@@ -91,9 +83,7 @@ class SimulatedCachingAllocator:
         if not snapshot_mutator.detach_block(self.ctx.device_snapshot, exist_block):
             allocator_logger.error(f"{_error}: block has no segment_ptr")
             return False
-        self.dispatcher.post_replay_free_block(
-            exist_block, self.ctx.device_snapshot, use_copy=True
-        )
+        self.dispatcher.post_replay_free_block(exist_block, self.ctx.device_snapshot, use_copy=True)
         return True
 
     def active_block(self, free_requested_event: TraceEntry) -> bool:
@@ -136,9 +126,7 @@ class SimulatedCachingAllocator:
         if not snapshot_mutator.promote_pending_free_block(
             self.ctx.device_snapshot, active_pending_free_block
         ):
-            allocator_logger.error(
-                f"{_error}: the found active pending block's segment is none."
-            )
+            allocator_logger.error(f"{_error}: the found active pending block's segment is none.")
             return False
         return True
 
@@ -150,16 +138,12 @@ class SimulatedCachingAllocator:
         """
         _error = "Failed to alloc or map segment"
         segments = self.ctx.device_snapshot.segments
-        self.dispatcher.pre_replay_map_or_alloc_segment(
-            new_segment, self.ctx.device_snapshot
-        )
+        self.dispatcher.pre_replay_map_or_alloc_segment(new_segment, self.ctx.device_snapshot)
         if self.ctx.current_undo_event:
             new_segment.free_or_unmap_event_idx = self.ctx.current_undo_event.idx
         if not merge:
             snapshot_mutator.insert_segment(self.ctx.device_snapshot, new_segment)
-            self.dispatcher.post_replay_map_or_alloc_segment(
-                new_segment, self.ctx.device_snapshot
-            )
+            self.dispatcher.post_replay_map_or_alloc_segment(new_segment, self.ctx.device_snapshot)
             return True
         new_seg_start = new_segment.address
         new_seg_end = new_seg_start + new_segment.total_size
@@ -174,9 +158,7 @@ class SimulatedCachingAllocator:
                 right_adjacent_idx = i
         if left_adjacent_idx == -1 and right_adjacent_idx == -1:
             snapshot_mutator.insert_segment(self.ctx.device_snapshot, new_segment)
-            self.dispatcher.post_replay_map_or_alloc_segment(
-                new_segment, self.ctx.device_snapshot
-            )
+            self.dispatcher.post_replay_map_or_alloc_segment(new_segment, self.ctx.device_snapshot)
             return True
         virtual_map_segment = copy.deepcopy(new_segment)
         if not snapshot_mutator.merge_mapped_segment(
@@ -187,9 +169,7 @@ class SimulatedCachingAllocator:
         ):
             allocator_logger.error(f"{_error}: failed to merge adjacent segments")
             return False
-        snapshot_mutator.increase_reserved(
-            self.ctx.device_snapshot, virtual_map_segment.total_size
-        )
+        snapshot_mutator.increase_reserved(self.ctx.device_snapshot, virtual_map_segment.total_size)
         self.dispatcher.post_replay_map_or_alloc_segment(
             virtual_map_segment, self.ctx.device_snapshot
         )
@@ -223,13 +203,9 @@ class SimulatedCachingAllocator:
             return False
 
         exist_seg.alloc_or_map_event_idx = alloc_seg_event.idx
-        self.dispatcher.pre_replay_unmap_or_free_segment(
-            exist_seg, self.ctx.device_snapshot
-        )
+        self.dispatcher.pre_replay_unmap_or_free_segment(exist_seg, self.ctx.device_snapshot)
         snapshot_mutator.remove_segment(self.ctx.device_snapshot, exist_seg)
-        self.dispatcher.post_replay_unmap_or_free_segment(
-            exist_seg, self.ctx.device_snapshot
-        )
+        self.dispatcher.post_replay_unmap_or_free_segment(exist_seg, self.ctx.device_snapshot)
         return True
 
     def unmap_segment(self, map_event):

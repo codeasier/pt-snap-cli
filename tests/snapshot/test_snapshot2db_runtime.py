@@ -3,14 +3,14 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.vendor.memsnapdump.tools.adaptors import snapshot2db
-from pt_snap_cli.vendor.memsnapdump.tools.adaptors.database import (
+from pt_snap_cli.snapshot.tools.adaptors import snapshot2db
+from pt_snap_cli.snapshot.tools.adaptors.database import (
     BLOCK_STATE_VALUE_MAP as RUNTIME_BLOCK_STATE_VALUE_MAP,
 )
-from pt_snap_cli.vendor.memsnapdump.tools.adaptors.database import (
+from pt_snap_cli.snapshot.tools.adaptors.database import (
     TRACE_ENTRY_ACTION_VALUE_MAP as RUNTIME_ACTION_VALUE_MAP,
 )
-from pt_snap_cli.vendor.memsnapdump.util.logger import restore_logs, suppress_logs
+from pt_snap_cli.snapshot.util.logger import restore_logs, suppress_logs
 
 from .golden_observations import (
     ACTION_VALUE_MAP,
@@ -51,6 +51,27 @@ def test_snapshot2db(dump_database):
     with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT COUNT(*) FROM trace_entry_0").fetchone()[0] == 8189
         assert connection.execute("SELECT COUNT(*) FROM block_0").fetchone()[0] == 3219
+
+
+def test_snapshot2db_uses_shared_load_and_replay_entrypoints(monkeypatch, tmp_path):
+    database = tmp_path / "shared-entrypoints.db"
+    original_load = snapshot2db.load_snapshot_representation
+    original_replay = snapshot2db.replay_snapshot
+    calls = {"load": 0, "replay": 0}
+
+    def load(snapshot_file):
+        calls["load"] += 1
+        return original_load(snapshot_file)
+
+    def replay(representation, device, **kwargs):
+        calls["replay"] += 1
+        return original_replay(representation, device, **kwargs)
+
+    monkeypatch.setattr(snapshot2db, "load_snapshot_representation", load)
+    monkeypatch.setattr(snapshot2db, "replay_snapshot", replay)
+
+    assert snapshot2db.dump(FIXTURE_DIR / "snapshot_with_empty_cache.pkl", database, 0)
+    assert calls == {"load": 1, "replay": 1}
 
 
 def test_expandable_snapshot2db(dump_database):

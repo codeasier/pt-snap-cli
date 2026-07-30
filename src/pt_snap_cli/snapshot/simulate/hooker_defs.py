@@ -1,12 +1,14 @@
+# The allocator callbacks are intentionally optional no-ops for partial hook implementations.
+# ruff: noqa: B024, B027
+
 from abc import ABC, abstractmethod
-from ..base import DeviceSnapshot, Segment, Block, TraceEntry
+
+from ..base import Block, DeviceSnapshot, Segment, TraceEntry
 
 
 class SimulateHooker(ABC):
     @abstractmethod
-    def pre_undo_event(
-        self, wait4undo_event: TraceEntry, current_snapshot: DeviceSnapshot
-    ) -> bool:
+    def pre_undo_event(self, wait4undo_event: TraceEntry, current_snapshot: DeviceSnapshot) -> bool:
         """
             【READONLY】在回放事件前回调，此时事件列表**并未POP**出该事件
         :param wait4undo_event: 【只读】待回放的事件（仍在事件列表中）
@@ -29,9 +31,7 @@ class SimulateHooker(ABC):
 
 
 class AllocatorHooker(ABC):
-    def pre_replay_alloc_block(
-        self, wait4alloc_block: Block, current_snapshot: DeviceSnapshot
-    ):
+    def pre_replay_alloc_block(self, wait4alloc_block: Block, current_snapshot: DeviceSnapshot):
         """
             在**回放时**分配一个内存块**前**回调，对应一个内存块释放事件回滚前
         :param wait4alloc_block: 待分配的block
@@ -39,9 +39,7 @@ class AllocatorHooker(ABC):
         """
         ...
 
-    def post_replay_alloc_block(
-        self, allocated_block: Block, current_snapshot: DeviceSnapshot
-    ):
+    def post_replay_alloc_block(self, allocated_block: Block, current_snapshot: DeviceSnapshot):
         """
             在**回放时**分配一个内存块**后**回调，对应一个内存块释放事件回滚后
         :param allocated_block: 【只读】新分配的block
@@ -49,9 +47,7 @@ class AllocatorHooker(ABC):
         """
         ...
 
-    def pre_replay_free_block(
-        self, wait4free_block: Block, current_snapshot: DeviceSnapshot
-    ):
+    def pre_replay_free_block(self, wait4free_block: Block, current_snapshot: DeviceSnapshot):
         """
             在**回放时**释放一个内存块**前**回调，对应一个内存块申请事件回滚前
         :param wait4free_block: 【只读】待释放的block
@@ -59,9 +55,7 @@ class AllocatorHooker(ABC):
         """
         ...
 
-    def post_replay_free_block(
-        self, released_block: Block, current_snapshot: DeviceSnapshot
-    ):
+    def post_replay_free_block(self, released_block: Block, current_snapshot: DeviceSnapshot):
         """
             在回放时，释放一个内存块**后**回调，对应一个内存块申请事件回滚后
         :param released_block: 【副本】已释放的block（副本）
