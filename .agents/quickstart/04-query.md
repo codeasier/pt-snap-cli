@@ -57,47 +57,25 @@ Fluent API 构建 SQL 查询。
 
 位于 `query/templates/` 目录，按分类组织：
 
-- **Basic**: `active_blocks.yaml`, `blocks_by_size.yaml`, `events_by_action.yaml`, `memory_timeline.yaml`
-- **Statistical**: `memory_peak.yaml`, `callstack_analysis.yaml`
-- **Business**: `leak_detection.yaml`
+- **Basic**: `allocation`, `block`, `event`
+- **Statistical**: `active_blocks_at_event`, `allocator_gap`, `callstack_analysis`, `memory_peak`
+- **Business**: `active_memory_callstack_at_event`, `leak_detection`
 
 ## 使用示例
 
-```python
-from pt_snap_analyzer.query import QueryExecutor
-from pt_snap_analyzer.context import Context
-from pathlib import Path
-
-# 初始化
-ctx = Context("snapshot.pkl.db")
-executor = QueryExecutor(ctx, template_dir=Path("query/templates"))
-
-# 执行模板查询
-results = executor.execute_template(
-    "leak_detection",
-    params={"min_size": 1024},
-    device_id=0
-)
-
-# 使用 QueryBuilder
-from pt_snap_analyzer.query import QueryBuilder, Condition
-
-builder = QueryBuilder()
-sql = (builder
-    .from_table("trace_entry_0")
-    .columns("address", "size", "start_ns")
-    .where(Condition("size").gt(1024))
-    .order_by("start_ns")
-    .limit(100)
-    .build())
+```bash
+pt-snap query snapshot.pkl.db --template-use leak_detection \
+  --params '{"min_size": 1024}' --device 0
+pt-snap query --list
+pt-snap query --template-info leak_detection
 ```
 
 ## 相关文件
 
-- [query/__init__.py](../../pt_snap_analyzer/query/__init__.py) - 模块导出
-- [query/executor.py](../../pt_snap_analyzer/query/executor.py) - 执行器
-- [query/builder.py](../../pt_snap_analyzer/query/builder.py) - 构建器
-- [query/condition.py](../../pt_snap_analyzer/query/condition.py) - 条件
-- [query/mapper.py](../../pt_snap_analyzer/query/mapper.py) - 映射器
-- [query/registry.py](../../pt_snap_analyzer/query/registry.py) - 注册表
-- [query/templates/](../../pt_snap_analyzer/query/templates/) - 查询模板
+- [query/__init__.py](../../src/pt_snap_cli/query/__init__.py) - 模块导出
+- [query/executor.py](../../src/pt_snap_cli/query/executor.py) - 执行器
+- [query/builder.py](../../src/pt_snap_cli/query/builder.py) - 构建器
+- [query/condition.py](../../src/pt_snap_cli/query/condition.py) - 条件
+- [query/mapper.py](../../src/pt_snap_cli/query/mapper.py) - 映射器
+- [query/registry.py](../../src/pt_snap_cli/query/registry.py) - 注册表
+- [query/templates/](../../src/pt_snap_cli/query/templates/) - 查询模板

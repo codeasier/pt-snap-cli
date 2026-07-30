@@ -41,7 +41,7 @@
 ## 使用示例
 
 ```python
-from pt_snap_analyzer.context import Context
+from pt_snap_cli.context import Context
 
 # 初始化并验证
 ctx = Context("snapshot.pkl.db")
@@ -59,5 +59,5 @@ with ctx.connect() as conn:
 
 ## 相关文件
 
-- [context.py](../../pt_snap_analyzer/context.py) - 完整实现
-- [cli.py](../../pt_snap_analyzer/cli.py) - 使用 Context 的 CLI 命令
+- [context.py](../../src/pt_snap_cli/context.py) - 完整实现
+- [cli.py](../../src/pt_snap_cli/cli.py) - 使用 Context 的 CLI 命令

@@ -6,7 +6,7 @@
 
 ### 新增
 
-- 集成 MemSnapDump dump2db 后端，支持将 PyTorch memory snapshot pickle 转换为 SnapshotDB，补齐从快照到 SQLite 分析库的导入链路。
+- 集成内建快照导入能力，支持将 PyTorch memory snapshot pickle 转换为 SnapshotDB，补齐从快照到 SQLite 分析库的导入链路。
 - 新增 MCP server 与共享核心服务，使 CLI 能力可被 Agent 通过 MCP 调用，并补充 CLI/MCP 合约覆盖。
 - 新增峰值内存归因相关报告与查询模板，帮助定位内存峰值来源。
 - 增强 query template 体系，支持按目录组织、动态分类发现、分类过滤，以及更完整的查询构建能力。

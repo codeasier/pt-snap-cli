@@ -1,4 +1,4 @@
-"""Normalized observations captured from MemSnapDump v0.1.0 before relocation."""
+"""Normalized observations captured before the first-party runtime relocation."""
 
 FIXTURE_REPLAY_GOLDEN = {
     ("snapshot_1768383987920985470.pkl", 0): {

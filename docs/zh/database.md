@@ -15,6 +15,9 @@ SnapshotDB 是内存快照数据的 SQLite 数据库存储格式，用于持久�
 
 如果输入是 PyTorch 原始 `.pkl` 内存快照，可以直接导入：
 
+> **安全警告：** 只能导入可信的 pickle 文件。反序列化 pickle 可能执行任意代码；
+> `pt-snap import` 不是沙箱。
+
 ```bash
 pt-snap import snapshot.pkl
 ```
@@ -31,6 +34,20 @@ pt-snap import snapshot.pkl --force
 
 旧版或外部生成且结构兼容的 DB 仍可正常查询。若没有 metadata，查询会返回 unavailable，
 下一次执行对应 pickle 导入时会重建一次。
+
+### 查询工作流
+
+导入过程会回放分配器事件，并将其规范化为逐设备的 `trace_entry_<device>` 和
+`block_<device>` 表。Focus 用于选择数据库和可选设备，查询模板再解析对应的设备表名：
+
+```bash
+pt-snap focus snapshot.pkl.db --device 0
+pt-snap query --template-use memory_peak
+pt-snap query --template-use block --params '{"state": 1}'
+```
+
+使用 `pt-snap query --list` 和 `pt-snap query --template-info <name>` 查看受支持的
+查询入口。完整流程见[运行查询](querying.md)。
 
 ---
 

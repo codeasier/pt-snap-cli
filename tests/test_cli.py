@@ -940,7 +940,6 @@ class TestImportCommand:
         assert result.exit_code != 0
         assert "snapshot import backend" in result.output.lower()
         assert "reinstall pt-snap-cli" in result.output.lower()
-        assert "memsnapdump" not in result.output.lower()
 
     def test_import_invalid_path(self) -> None:
         """Test import rejects missing snapshot paths."""

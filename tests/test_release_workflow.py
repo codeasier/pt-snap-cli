@@ -50,4 +50,4 @@ def test_release_notes_regex_extracts_current_changelog_entry() -> None:
     assert match is not None
     notes = match.group(1).strip()
     assert notes
-    assert "MemSnapDump" in notes
+    assert "SnapshotDB" in notes
