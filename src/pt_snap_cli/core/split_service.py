@@ -24,7 +24,7 @@ _ENTRY_RANGE = re.compile(r"_entry_(\d+)_(\d+)\.pkl$")
 _AT_FDCWD = -100
 _RENAME_NOREPLACE = 1
 _RENAME_EXCL = 0x00000004
-_StageIdentity = tuple[int, int]
+_StageIdentity = tuple[int, int, int | None]
 
 
 class SplitService:
@@ -83,6 +83,7 @@ class SplitService:
                 published_files.extend(generated)
             self._verify_stage_identity(stage, stage_identity)
             self._publish_directory(stage, output)
+            self._close_stage_identity(stage_identity)
         except SplitError:
             self._cleanup_stage(stage, stage_identity)
             raise
@@ -196,12 +197,37 @@ class SplitService:
         status = stage.lstat()
         if S_ISLNK(status.st_mode) or not S_ISDIR(status.st_mode):
             raise OSError(errno.EINVAL, "staging path is not an owned directory", stage)
-        return status.st_dev, status.st_ino
+        descriptor: int | None = None
+        if os.name != "nt":
+            descriptor = os.open(stage, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            held_status = os.fstat(descriptor)
+            if (held_status.st_dev, held_status.st_ino) != (status.st_dev, status.st_ino):
+                os.close(descriptor)
+                raise OSError(errno.ESTALE, "staging directory identity changed", stage)
+        return status.st_dev, status.st_ino, descriptor
 
     @classmethod
     def _verify_stage_identity(cls, stage: Path, identity: _StageIdentity) -> None:
-        if cls._stage_identity(stage) != identity:
+        status = stage.lstat()
+        if S_ISLNK(status.st_mode) or not S_ISDIR(status.st_mode):
+            raise OSError(errno.EINVAL, "staging path is not an owned directory", stage)
+        expected = identity[:2]
+        if (status.st_dev, status.st_ino) != expected:
             raise OSError(errno.ESTALE, "staging directory identity changed", stage)
+        descriptor = identity[2]
+        if descriptor is not None:
+            held_status = os.fstat(descriptor)
+            if (held_status.st_dev, held_status.st_ino) != expected:
+                raise OSError(errno.ESTALE, "staging directory identity changed", stage)
+
+    @staticmethod
+    def _close_stage_identity(identity: _StageIdentity) -> None:
+        descriptor = identity[2]
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
 
     @classmethod
     def _cleanup_stage(cls, stage: Path, identity: _StageIdentity) -> None:
@@ -210,6 +236,8 @@ class SplitService:
             shutil.rmtree(stage)
         except Exception:
             return
+        finally:
+            cls._close_stage_identity(identity)
 
     @staticmethod
     def _preflight_publication() -> None:
