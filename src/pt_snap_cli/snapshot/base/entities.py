@@ -258,7 +258,7 @@ class DeviceSnapshot:
     def from_dict(cls, snapshot_dict: dict, device: int, ignore_inactive_blocks: bool = False):
         segments_dict = snapshot_dict.get("segments", [])
         device_traces = snapshot_dict.get("device_traces", [])
-        device_trace_list = device_traces[device] if 0 <= device <= len(device_traces) else []
+        device_trace_list = device_traces[device] if 0 <= device < len(device_traces) else []
         snapshot = cls()
         snapshot.segments = []
         snapshot.trace_entries = []

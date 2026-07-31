@@ -64,7 +64,7 @@ class SliceDumpHooker(SimulateHooker):
         return True
 
     def _init_splitting_strategy(self):
-        if self.num_of_slices == -1:
+        if self.num_of_events == -1:
             raise RuntimeError("Cannot init splitting strategy before init total entries")
         if math.ceil(self.num_of_events / self.num_of_slices) > self.max_entries:
             dump_logger.warning(
@@ -105,7 +105,7 @@ class SliceDumpHooker(SimulateHooker):
         if self.dump_type == "pkl":
             save_dict_to_pickle(slice_snapshot_dict, slice_snapshot_name, protocol=4)
         else:
-            with open(slice_snapshot_name, "w") as stream:
+            with open(slice_snapshot_name, "w", encoding="utf-8") as stream:
                 json.dump(slice_snapshot_dict, stream)
         self.dump_count += 1
         dump_logger.info(f"Successfully saved slice to file: {slice_snapshot_name}")

@@ -200,10 +200,16 @@ class SplitService:
         descriptor: int | None = None
         if os.name != "nt":
             descriptor = os.open(stage, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-            held_status = os.fstat(descriptor)
-            if (held_status.st_dev, held_status.st_ino) != (status.st_dev, status.st_ino):
-                os.close(descriptor)
-                raise OSError(errno.ESTALE, "staging directory identity changed", stage)
+            try:
+                held_status = os.fstat(descriptor)
+                if (held_status.st_dev, held_status.st_ino) != (status.st_dev, status.st_ino):
+                    raise OSError(errno.ESTALE, "staging directory identity changed", stage)
+            except Exception:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+                raise
         return status.st_dev, status.st_ino, descriptor
 
     @classmethod

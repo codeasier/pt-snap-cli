@@ -106,6 +106,10 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
 - On 2026-07-31, PR #81 follow-up replaced quadratic front insertion in the
   slice event buffer with append plus reversal at serialization time. This
   preserves trace order while making buffer construction linear.
+- A later PR #81 review follow-up corrected device upper/lower bounds in the
+  retained representation and direct slice entrypoint, made direct JSON output
+  explicitly UTF-8, corrected the slice initialization sentinel, and ensured a
+  failed staging identity probe closes its newly opened descriptor.
 
 ## Migration toolchain
 

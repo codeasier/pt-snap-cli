@@ -391,3 +391,9 @@ class TestDeviceSnapshot(unittest.TestCase):
         result = DeviceSnapshot.from_dict({"segments": [], "device_traces": [[]]}, 0).to_dict()
         self.assertIn("segments", result)
         self.assertIn("device_traces", result)
+
+    def test_from_dict_device_equal_to_trace_count_is_empty(self):
+        snapshot = DeviceSnapshot.from_dict({"segments": [], "device_traces": [[]]}, 1)
+
+        self.assertEqual(snapshot.device, 1)
+        self.assertEqual(snapshot.trace_entries, [])

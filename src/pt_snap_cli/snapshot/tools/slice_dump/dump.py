@@ -25,7 +25,7 @@ def run_slice_dump(
             "history event recoding during collection."
         )
         return
-    if len(df["device_traces"]) <= device or not df["device_traces"][device]:
+    if device < 0 or len(df["device_traces"]) <= device or not df["device_traces"][device]:
         dump_logger.warning(
             f"The snapshot file did not record any event data for the specified device {device}."
         )

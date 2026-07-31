@@ -584,6 +584,35 @@ def test_stage_substitution_is_not_cleaned_and_primary_error_survives(
     assert (substituted / "other-owner.txt").read_text(encoding="utf-8") == "preserve"
 
 
+def test_stage_identity_closes_descriptor_when_fstat_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if split_module.os.name == "nt":
+        pytest.skip("Windows does not open a staging directory descriptor")
+    real_open = split_module.os.open
+    real_fstat = split_module.os.fstat
+    descriptors: list[int] = []
+
+    def recording_open(*args: object) -> int:
+        descriptor = real_open(*args)  # type: ignore[arg-type]
+        descriptors.append(descriptor)
+        return descriptor
+
+    monkeypatch.setattr(split_module.os, "open", recording_open)
+    monkeypatch.setattr(
+        split_module.os,
+        "fstat",
+        lambda descriptor: (_ for _ in ()).throw(OSError("fstat failed")),
+    )
+
+    with pytest.raises(OSError, match="fstat failed"):
+        SplitService._stage_identity(tmp_path)
+
+    assert len(descriptors) == 1
+    with pytest.raises(OSError):
+        real_fstat(descriptors[0])
+
+
 @pytest.mark.parametrize("nonempty", [False, True])
 def test_publication_race_does_not_replace_or_merge_destination(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nonempty: bool

@@ -69,18 +69,37 @@ def test_slice_dump_hooker_strategy_and_warning_match_upstream(
     assert "single snapshot file exceeds the max_entries limit" in caplog.text
 
 
-def test_slice_dump_hooker_json_dump_matches_upstream(tmp_path: Path) -> None:
+def test_slice_dump_hooker_rejects_strategy_init_before_event_count(tmp_path: Path) -> None:
+    hooker = SliceDumpHooker(str(tmp_path), num_of_slices=2, max_entries=3)
+
+    with pytest.raises(RuntimeError, match="before init total entries"):
+        hooker._init_splitting_strategy()
+
+
+def test_slice_dump_hooker_json_dump_uses_utf8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     hooker = SliceDumpHooker(str(tmp_path), num_of_slices=2, max_entries=2, dump_type="json")
     hooker.num_of_events = 4
     hooker.prev_segments = []
-    hooker.events_buffer = [TraceEntry(action="alloc", addr=1, size=2, stream=0, idx=1)]
+    hooker.events_buffer = [TraceEntry(action="内存", addr=1, size=2, stream=0, idx=1)]
+    real_open = open
+    encodings: list[str | None] = []
+
+    def recording_open(*args, **kwargs):
+        encodings.append(kwargs.get("encoding"))
+        return real_open(*args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", recording_open)
 
     hooker.dump(device=0)
 
+    assert encodings == ["utf-8"]
     outputs = list(tmp_path.glob("*.json"))
     assert len(outputs) == 1
     payload = json.loads(outputs[0].read_text(encoding="utf-8"))
     assert payload["device_traces"][0][0]["id"] == 1
+    assert payload["device_traces"][0][0]["action"] == "内存"
 
 
 def test_slice_dump_ids_do_not_mutate_origin_and_loading_honors_them(tmp_path: Path) -> None:
@@ -141,3 +160,29 @@ def test_run_slice_dump_retains_upstream_empty_trace_warning_and_return(
 
     assert result is None
     assert "no event records cannot be replayed or split" in caplog.text
+
+
+def test_run_slice_dump_rejects_negative_device(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "snapshot.pkl"
+    source.write_bytes(
+        pickle.dumps(
+            {
+                "segments": [],
+                "device_traces": [
+                    [{"action": "alloc", "addr": 1, "size": 1, "stream": 0, "frames": []}]
+                ],
+            }
+        )
+    )
+    monkeypatch.setattr(
+        "pt_snap_cli.snapshot.tools.slice_dump.dump.replay_snapshot",
+        lambda *args, **kwargs: pytest.fail("negative device must not replay"),
+    )
+
+    result = run_slice_dump(str(source), device=-1, dump_dir=str(tmp_path))
+
+    assert result is None
+    assert "specified device -1" in caplog.text
+    assert not list(tmp_path.glob("slice_*"))
