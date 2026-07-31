@@ -103,6 +103,9 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
   observations remain unchanged. Upstream comparisons therefore treat IDs and
   product filenames as intentional required differences while continuing to
   compare selected devices, event ranges, allocator state, and slice counts.
+- On 2026-07-31, PR #81 follow-up replaced quadratic front insertion in the
+  slice event buffer with append plus reversal at serialization time. This
+  preserves trace order while making buffer construction linear.
 
 ## Migration toolchain
 

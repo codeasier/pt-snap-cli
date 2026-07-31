@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Literal
 
@@ -97,13 +98,14 @@ SplitPhase = Literal[
 ]
 
 
-@dataclass(frozen=True)
 class SplitError(PtSnapCoreError):
     """A phase-identifying split failure suitable for CLI presentation."""
 
-    phase: SplitPhase
-    source_path: Path
-    detail: str
+    def __init__(self, phase: SplitPhase, source_path: Path, detail: str) -> None:
+        self.phase = phase
+        self.source_path = source_path
+        self.detail = detail
+        super().__init__(f"Split {phase} failed for '{source_path}': {detail}")
 
-    def __str__(self) -> str:
-        return f"Split {self.phase} failed for '{self.source_path}': {self.detail}"
+    def __reduce__(self) -> tuple[type[SplitError], tuple[SplitPhase, Path, str]]:
+        return type(self), (self.phase, self.source_path, self.detail)

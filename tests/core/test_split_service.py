@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pickle
 import shutil
+from contextlib import contextmanager
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,7 @@ from typing import Any
 import pytest
 
 import pt_snap_cli.core.split_service as split_module
+from pt_snap_cli.core import SplitResult as ExportedSplitResult
 from pt_snap_cli.core.errors import SplitError
 from pt_snap_cli.core.models import SplitOptions
 from pt_snap_cli.core.split_service import SplitService
@@ -156,19 +158,35 @@ def _database_observation(
     return normalized_trace, normalized_blocks, peaks
 
 
-def test_split_models_and_errors_are_frozen(tmp_path: Path) -> None:
+def test_split_options_are_frozen_and_error_has_exception_semantics(tmp_path: Path) -> None:
     options = _options(tmp_path)
     error = SplitError("argument", MULTI_DEVICE, "invalid")
 
     with pytest.raises(FrozenInstanceError):
         options.slices = 3  # type: ignore[misc]
-    with pytest.raises(FrozenInstanceError):
-        error.detail = "changed"  # type: ignore[misc]
+
+    assert error.args == (str(error),)
+    restored = pickle.loads(pickle.dumps(error))
+    assert (restored.phase, restored.source_path, restored.detail) == (
+        error.phase,
+        error.source_path,
+        error.detail,
+    )
+
+    @contextmanager
+    def passthrough():
+        yield
+
+    with pytest.raises(SplitError) as caught:
+        with passthrough():
+            raise error
+    assert caught.value is error
 
 
 def test_split_all_devices_independently_with_deterministic_names(tmp_path: Path) -> None:
     result = SplitService().split(_options(tmp_path))
 
+    assert isinstance(result, ExportedSplitResult)
     assert result.devices == (0, 1)
     assert [path.name for path in result.files] == [
         "snapshot_with_multi_devices__device-0__slice-0.pkl",
@@ -406,12 +424,52 @@ def test_workspace_marker_splits_and_replays(tmp_path: Path) -> None:
 def test_generated_validation_failure_cleans_owned_stage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def fail_validation(*args: object, **kwargs: object) -> None:
-        raise ValueError("generated invalid")
+    real_replay = split_module.replay_snapshot
+    calls = 0
 
-    monkeypatch.setattr("pt_snap_cli.core.split_service.load_and_replay_snapshot", fail_validation)
+    def fail_generated_replay(*args: object, **kwargs: object):
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            raise ValueError("generated invalid")
+        return real_replay(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(split_module, "replay_snapshot", fail_generated_replay)
     with pytest.raises(SplitError, match="generated-validation"):
         SplitService().split(_options(tmp_path, device=0))
+    assert not (tmp_path / "split").exists()
+    assert not list(tmp_path.glob(".split.pt-snap-*"))
+
+
+@pytest.mark.parametrize("missing_device", [False, True])
+def test_generated_slice_requires_nonempty_target_device_before_replay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, missing_device: bool
+) -> None:
+    real_save = split_module.save_snapshot_representation
+    real_replay = split_module.replay_snapshot
+    replay_calls = 0
+
+    def save_without_target_events(
+        representation: dict[str, Any], path: Path, snapshot_format: str
+    ) -> None:
+        damaged = pickle.loads(pickle.dumps(representation))
+        damaged["device_traces"] = [] if missing_device else [[]]
+        real_save(damaged, path, snapshot_format)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(split_module, "save_snapshot_representation", save_without_target_events)
+
+    def track_replay(*args: object, **kwargs: object):
+        nonlocal replay_calls
+        replay_calls += 1
+        if replay_calls > 1:
+            pytest.fail("generated slice must not replay")
+        return real_replay(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(split_module, "replay_snapshot", track_replay)
+
+    with pytest.raises(SplitError, match="generated slice has no trace entries for device 0"):
+        SplitService().split(_options(tmp_path, device=0))
+    assert replay_calls == 1
     assert not (tmp_path / "split").exists()
     assert not list(tmp_path.glob(".split.pt-snap-*"))
 
@@ -463,10 +521,17 @@ def test_cleanup_failure_never_masks_primary_error(
             lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError(detail)),
         )
     elif failure == "generated":
-        monkeypatch.setattr(
-            "pt_snap_cli.core.split_service.load_and_replay_snapshot",
-            lambda *args, **kwargs: (_ for _ in ()).throw(ValueError(detail)),
-        )
+        real_replay = split_module.replay_snapshot
+        replay_calls = 0
+
+        def fail_generated_replay(*args: object, **kwargs: object):
+            nonlocal replay_calls
+            replay_calls += 1
+            if replay_calls > 1:
+                raise ValueError(detail)
+            return real_replay(*args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(split_module, "replay_snapshot", fail_generated_replay)
     else:
         monkeypatch.setattr(
             SplitService,

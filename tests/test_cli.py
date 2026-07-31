@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from click import unstyle
 from typer.testing import CliRunner
 
 from pt_snap_cli.cli import app
@@ -203,18 +204,19 @@ class TestCLI:
     def test_split_help_contract(self) -> None:
         result = runner.invoke(app, ["split", "--help"])
         assert result.exit_code == 0
-        normalized_help = " ".join(result.stdout.split())
-        assert "SNAPSHOT_PATH" in result.stdout
-        assert "SNAPSHOT_FILE" not in result.stdout
+        output = unstyle(result.stdout)
+        normalized_help = " ".join(output.split())
+        assert "SNAPSHOT_PATH" in output
+        assert "SNAPSHOT_FILE" not in output
         assert "--format {pickle,json}" in normalized_help
-        assert "[default: pickle]" in result.stdout
+        assert "[default: pickle]" in output
         for option in ("--device", "--slices", "--max-entries", "--output"):
-            assert option in result.stdout
+            assert option in output
 
     def test_split_output_is_required(self) -> None:
         result = runner.invoke(app, ["split", "snapshot.pkl", "--slices", "1"])
         assert result.exit_code != 0
-        assert "--output" in result.stderr
+        assert "--output" in unstyle(result.stderr)
 
     def test_split_error_uses_domain_presentation_without_traceback(self, tmp_path: Path) -> None:
         source = tmp_path / "missing.pkl"

@@ -14,7 +14,6 @@ from typing import NoReturn, cast
 from pt_snap_cli.core.errors import SplitError, SplitPhase
 from pt_snap_cli.core.models import SplitFormat, SplitOptions, SplitResult
 from pt_snap_cli.snapshot.representation import (
-    load_and_replay_snapshot,
     load_snapshot_representation,
     replay_snapshot,
     save_snapshot_representation,
@@ -162,7 +161,16 @@ class SplitService:
                 slice_representation = load_snapshot_representation(raw_file, "pickle")
                 output_file = stage / (f"{source.stem}__device-{device}__slice-{index}.{extension}")
                 save_snapshot_representation(slice_representation, output_file, output_format)
-                _, _, replayed = load_and_replay_snapshot(output_file, output_format, device)
+                generated = load_snapshot_representation(output_file, output_format)
+                traces = generated.get("device_traces")
+                if (
+                    not isinstance(traces, list)
+                    or device >= len(traces)
+                    or not isinstance(traces[device], list)
+                    or not traces[device]
+                ):
+                    raise ValueError(f"generated slice has no trace entries for device {device}")
+                _, replayed = replay_snapshot(generated, device)
                 if not replayed:
                     raise ValueError("replay returned false")
             except Exception as exc:
