@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.snapshot.base import DeviceSnapshot, TraceEntry
+from pt_snap_cli.snapshot.base import DeviceSnapshot, Segment, TraceEntry
 from pt_snap_cli.snapshot.representation import load_snapshot_representation, replay_snapshot
 from pt_snap_cli.snapshot.simulate import SimulateDeviceSnapshot
 from pt_snap_cli.snapshot.tools.slice_dump.dump import run_slice_dump
@@ -148,6 +148,28 @@ def test_slice_dump_hooker_resets_buffers_after_dump(tmp_path: Path) -> None:
 
     assert hooker.events_buffer == []
     assert hooker.dump_count == 1
+
+
+def test_slice_dump_hooker_preserves_state_when_write_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hooker = SliceDumpHooker(str(tmp_path), num_of_slices=1, max_entries=1)
+    hooker.num_of_events = 1
+    segments: list[Segment] = []
+    event = TraceEntry(action="alloc", addr=1, size=2, stream=0, idx=1)
+    hooker.prev_segments = segments
+    hooker.events_buffer = [event]
+    monkeypatch.setattr(
+        "pt_snap_cli.snapshot.tools.slice_dump.hooker.save_dict_to_pickle",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("disk full")),
+    )
+
+    with pytest.raises(OSError, match="disk full"):
+        hooker.dump(device=0)
+
+    assert hooker.prev_segments is segments
+    assert hooker.events_buffer == [event]
+    assert hooker.dump_count == 0
 
 
 def test_run_slice_dump_retains_upstream_empty_trace_warning_and_return(

@@ -110,6 +110,9 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
   retained representation and direct slice entrypoint, made direct JSON output
   explicitly UTF-8, corrected the slice initialization sentinel, and ensured a
   failed staging identity probe closes its newly opened descriptor.
+- On 2026-08-01, PR #81 follow-up deferred slice buffer and boundary-state
+  cleanup until serialization succeeds, preserving retryable state on I/O
+  failure.
 
 ## Migration toolchain
 

@@ -99,14 +99,14 @@ class SliceDumpHooker(SimulateHooker):
         slice_snapshot.segments = self.prev_segments
         slice_snapshot.trace_entries = list(reversed(self.events_buffer))
         slice_snapshot_dict = slice_snapshot.to_dict(include_trace_ids=True)
-        del self.prev_segments
-        self.events_buffer.clear()
         dump_logger.info(f"Start to dump snapshot slice: {slice_snapshot_name}")
         if self.dump_type == "pkl":
             save_dict_to_pickle(slice_snapshot_dict, slice_snapshot_name, protocol=4)
         else:
             with open(slice_snapshot_name, "w", encoding="utf-8") as stream:
                 json.dump(slice_snapshot_dict, stream)
+        del self.prev_segments
+        self.events_buffer.clear()
         self.dump_count += 1
         dump_logger.info(f"Successfully saved slice to file: {slice_snapshot_name}")
 
