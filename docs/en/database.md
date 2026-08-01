@@ -16,11 +16,14 @@ SnapshotDB is the SQLite database format for persisting PyTorch memory profiling
 
 `pt-snap` analyzes SQLite SnapshotDB files. If you start with a raw PyTorch memory snapshot pickle, import the snapshot with the built-in backend:
 
+> **Security warning:** Import trusted pickle files only. Pickle deserialization
+> can execute arbitrary code. `pt-snap import` is not a sandbox.
+
 ```bash
 pt-snap import snapshot.pkl
 ```
 
-The import command uses a vendored MemSnapDump backend to produce `snapshot.pkl.db` next to the input file by default, then updates project focus so subsequent commands can use it directly:
+The import command uses pt-snap-cli's first-party snapshot runtime to produce `snapshot.pkl.db` next to the input file by default, then updates project focus so subsequent commands can use it directly:
 
 ```bash
 pt-snap query --list
@@ -46,6 +49,21 @@ pt-snap import snapshot.pkl --force
 
 Legacy or externally generated compatible databases without this table remain queryable. Their
 metadata status is reported as unavailable, and a later import rebuilds them once before reuse.
+
+### Query workflow
+
+Import replays allocator events and normalizes them into per-device
+`trace_entry_<device>` and `block_<device>` tables. Focus chooses a database and
+optional device; query templates then resolve those device-specific table names:
+
+```bash
+pt-snap focus snapshot.pkl.db --device 0
+pt-snap query --template-use memory_peak
+pt-snap query --template-use block --params '{"state": 1}'
+```
+
+Use `pt-snap query --list` and `pt-snap query --template-info <name>` to inspect
+the supported query surface. See [Querying](querying.md) for the complete workflow.
 
 ---
 

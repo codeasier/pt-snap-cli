@@ -17,6 +17,7 @@ CacheMissReason = Literal[
     "forced",
 ]
 MetadataStatus = Literal["available", "unavailable", "invalid"]
+SplitFormat = Literal["pickle", "json"]
 
 
 @dataclass(frozen=True)
@@ -149,3 +150,21 @@ class ImportResult:
     reused: bool
     metadata: ImportMetadata
     cache_miss_reason: CacheMissReason | None
+
+
+@dataclass(frozen=True)
+class SplitOptions:
+    snapshot_file: Path
+    output: Path
+    device: int | None = None
+    slices: int | None = None
+    max_entries: int | None = None
+    format: str = "pickle"
+
+
+@dataclass(frozen=True)
+class SplitResult:
+    output: Path
+    files: tuple[Path, ...]
+    devices: tuple[int, ...]
+    format: SplitFormat

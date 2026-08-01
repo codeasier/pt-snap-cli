@@ -1,0 +1,2 @@
+tests/fixtures/snapshots/snapshot_import_131k_sanitized.pickle filter=lfs diff=lfs merge=lfs -text
+tests/fixtures/snapshots/snapshot_import_628k_sanitized.pickle filter=lfs diff=lfs merge=lfs -text

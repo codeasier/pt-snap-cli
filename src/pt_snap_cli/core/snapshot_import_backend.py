@@ -11,7 +11,7 @@ from pt_snap_cli.core.errors import ImportExecutionError, ImportToolMissingError
 
 
 class SnapshotImportBackend:
-    """Stable adapter over the vendored snapshot-to-database implementation."""
+    """Stable adapter over the first-party snapshot-to-database implementation."""
 
     def dump_to_db(
         self,
@@ -34,12 +34,10 @@ class SnapshotImportBackend:
                     device=device,
                 )
             except (OSError, sqlite3.DatabaseError, pickle.UnpicklingError, ValueError) as exc:
-                raise ImportExecutionError(
-                    f"Vendored snapshot import backend failed: {exc}"
-                ) from exc
+                raise ImportExecutionError(f"Snapshot import backend failed: {exc}") from exc
 
             if not ok:
-                raise ImportExecutionError("Vendored snapshot import backend reported failure.")
+                raise ImportExecutionError("Snapshot import backend reported failure.")
             if not tmp_db_path.is_file():
                 raise ImportExecutionError(f"Expected database not produced: {tmp_db_path}")
 
@@ -49,9 +47,7 @@ class SnapshotImportBackend:
             try:
                 os.replace(tmp_db_path, db_path)
             except OSError as exc:
-                raise ImportExecutionError(
-                    f"Vendored snapshot import backend failed: {exc}"
-                ) from exc
+                raise ImportExecutionError(f"Snapshot import backend failed: {exc}") from exc
 
         return db_path
 
@@ -62,10 +58,10 @@ class SnapshotImportBackend:
     @staticmethod
     def _load_run_dump_to_db():
         try:
-            from pt_snap_cli.vendor.memsnapdump.tools.adaptors.snapshot2db import run_dump_to_db
+            from pt_snap_cli.snapshot.tools.adaptors.snapshot2db import run_dump_to_db
         except ImportError as exc:
             raise ImportToolMissingError(
-                "Vendored snapshot import backend is unavailable. Reinstall pt-snap-cli; "
+                "Snapshot import backend is unavailable. Reinstall pt-snap-cli; "
                 "the package may be incomplete."
             ) from exc
         return run_dump_to_db

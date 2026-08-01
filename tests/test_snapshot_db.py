@@ -3,8 +3,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from pt_snap_cli.vendor.memsnapdump.tools.adaptors.database.snapshot_db import SnapshotDb
-from pt_snap_cli.vendor.memsnapdump.util.sqlite_meta import SqliteDB
+from pt_snap_cli.snapshot.tools.adaptors.database.snapshot_db import SnapshotDb
+from pt_snap_cli.snapshot.util.sqlite_meta import SqliteDB
 
 
 def _pragma(conn: sqlite3.Connection, name: str) -> object:

@@ -22,7 +22,7 @@ VALID_SUFFIXES = {".pkl", ".pickle"}
 
 
 class ImportService:
-    """Import PyTorch snapshot pickle files through the vendored backend."""
+    """Import PyTorch snapshot pickle files through the built-in backend."""
 
     def __init__(
         self,

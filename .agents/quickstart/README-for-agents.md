@@ -3,7 +3,7 @@
 ## 📚 文档结构
 
 ```
-docs/agents/
+.agents/quickstart/
 ├── README-for-agents.md        # 本文件 - 导航索引
 ├── ARCHITECTURE.md             # 整体架构概览
 ├── 01-cli.md                   # CLI 模块详情
@@ -66,16 +66,15 @@ ARCHITECTURE.md (5 分钟)
 
 ## 🔗 与现有文档的关系
 
-- `docs/agents/` - **Agent 快速参考**（本文档）
-- `docs/superpowers/` - **设计文档**（PRDs、specs、plans）
+- `.agents/quickstart/` - **Agent 快速参考**（本文档）
 - `README.md` - **用户使用指南**
 
 ## ✨ 最佳实践
 
 ```markdown
 # 新会话开场
-你好！我已阅读 [ARCHITECTURE.md](docs/agents/ARCHITECTURE.md)，
-了解到 pt-snap-analyzer 是一个 PyTorch 内存快照分析工具。
+你好！我已阅读 [ARCHITECTURE.md](ARCHITECTURE.md)，
+了解到 pt-snap-cli 是一个 PyTorch 内存快照分析工具。
 请问需要我帮助你做什么？
 
 # 执行任务时

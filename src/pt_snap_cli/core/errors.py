@@ -1,3 +1,9 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Literal
+
+
 class PtSnapCoreError(Exception):
     pass
 
@@ -39,12 +45,10 @@ class QueryExecutionError(PtSnapCoreError):
 
 
 class ImportToolMissingError(PtSnapCoreError):
-    """Raised when the vendored snapshot import backend is unavailable.
+    """Raised when the built-in snapshot import backend is unavailable.
 
-    In the vendored model, this no longer means "the user forgot to install
-    memsnapdump" — the dump2db backend is built in. It means the vendored
-    backend could not be imported or initialized, which is a packaging
-    or installation problem.
+    The backend is part of pt-snap-cli, so this indicates a packaging or
+    installation problem rather than a missing optional tool.
     """
 
     pass
@@ -64,7 +68,7 @@ class SnapshotFileInvalidError(PtSnapCoreError):
 class ImportExecutionError(PtSnapCoreError):
     """Raised when the import backend itself fails to produce a database.
 
-    Covers upstream dump2db returning False, raising an exception,
+    Covers the snapshot adaptor returning False, raising an exception,
     or producing no .db artifact where one was expected.
     """
 
@@ -81,3 +85,27 @@ class SourceChangedError(ImportExecutionError):
     """Raised when the source snapshot changes while an import is running."""
 
     pass
+
+
+SplitPhase = Literal[
+    "argument",
+    "path",
+    "device",
+    "conflict",
+    "load/engine",
+    "generated-validation",
+    "publication",
+]
+
+
+class SplitError(PtSnapCoreError):
+    """A phase-identifying split failure suitable for CLI presentation."""
+
+    def __init__(self, phase: SplitPhase, source_path: Path, detail: str) -> None:
+        self.phase = phase
+        self.source_path = source_path
+        self.detail = detail
+        super().__init__(f"Split {phase} failed for '{source_path}': {detail}")
+
+    def __reduce__(self) -> tuple[type[SplitError], tuple[SplitPhase, Path, str]]:
+        return type(self), (self.phase, self.source_path, self.detail)

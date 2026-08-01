@@ -16,6 +16,9 @@ pip install -e .
 
 If you have a raw `.pkl` memory snapshot, import it first with the built-in backend:
 
+> **Security warning:** Use trusted pickle input only. Deserializing a pickle can
+> execute arbitrary code. `pt-snap import` is not a sandbox.
+
 ```bash
 pt-snap import snapshot.pkl
 pt-snap metadata snapshot.pkl.db
@@ -35,6 +38,25 @@ roughly 3-10 times the pickle file size in available memory; the exact peak depe
 number of frame objects. Run the import on a machine with sufficient memory. `--device`
 limits subsequent replay and database writes, but does not reduce the initial pickle-loading
 memory peak.
+
+During import, pt-snap replays the selected device's allocator history instead of
+copying raw events directly. The resulting SnapshotDB records event-by-event
+`allocated`, `active`, and `reserved` totals plus block lifecycles, which makes it
+the supported input for `pt-snap query` and `pt-snap report`. This replay behavior
+is part of the command workflow; snapshot runtime Python modules are not a public API.
+
+### Optional: Split a Snapshot
+
+Use `pt-snap split` when you need smaller, independently replayable files. Split
+does not read or change focus:
+
+```bash
+pt-snap split snapshot.pkl --max-entries 50000 --output snapshot-slices
+```
+
+Use exactly one of `--slices` and `--max-entries`. See
+[Splitting Snapshots](splitting.md) for all-device behavior, formats, names, and
+atomic publication guarantees.
 
 ### Step 1: Set the Snapshot Database and Device
 
@@ -78,5 +100,6 @@ pt-snap query --template-use block --device 1 --state 1
 
 - [Focus Management](focus-management.md) — Learn how to manage database and device focus across projects and sessions
 - [Querying](querying.md) — Full guide to all query templates, parameters, and output
+- [Splitting Snapshots](splitting.md) — Create independently replayable per-device slices
 - [MCP Server](mcp.md) — Use the MCP server for AI agent integration
 - [Database Schema](database.md) — Understand the SnapshotDB format

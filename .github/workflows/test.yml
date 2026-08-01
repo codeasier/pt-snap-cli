@@ -5,12 +5,32 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
 
 concurrency:
   group: test-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  snapshot-provenance:
+    name: Snapshot provenance
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require provenance evaluation for snapshot runtime changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python .github/scripts/check_snapshot_provenance.py --base "$BASE_SHA" --head "$HEAD_SHA"
+
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
@@ -74,15 +94,15 @@ jobs:
           python -m pip install --upgrade build
           python -m build --wheel
 
-      - name: Wheel smoke test (verify vendored backend is packaged)
+      - name: Wheel smoke test (verify snapshot runtime is packaged)
         if: matrix.python-version == '3.13'
         run: |
           set -euo pipefail
           python -m pip install --force-reinstall dist/*.whl
-          # Confirm the vendored closure was actually packaged into the wheel.
-          python -c "import pt_snap_cli.vendor.memsnapdump.tools.adaptors.snapshot2db as m; assert hasattr(m, 'run_dump_to_db'), 'vendored run_dump_to_db missing in installed wheel'"
+          # Confirm the first-party runtime was actually packaged into the wheel.
+          python -c "import pt_snap_cli.snapshot.tools.adaptors.snapshot2db as m; assert hasattr(m, 'run_dump_to_db'), 'snapshot run_dump_to_db missing in installed wheel'"
           # End-to-end import against a real fixture — catches any packaging
-          # regression where setuptools drops src/pt_snap_cli/vendor/.
+          # regression where setuptools drops src/pt_snap_cli/snapshot/.
           FIXTURE=tests/fixtures/snapshots/snapshot_with_empty_cache.pkl
           rm -rf /tmp/pt-snap-wheel-smoke
           mkdir -p /tmp/pt-snap-wheel-smoke

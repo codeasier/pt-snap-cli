@@ -1,4 +1,4 @@
-"""Tests for vendoring-era import error types."""
+"""Tests for snapshot import error types."""
 
 from __future__ import annotations
 

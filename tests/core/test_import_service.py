@@ -79,7 +79,7 @@ def test_import_snapshot_file_invalid_missing(tmp_path: Path) -> None:
 
 
 def test_import_snapshot_file_invalid_suffix(tmp_path: Path) -> None:
-    """Wrong suffix is rejected before the vendor backend is invoked."""
+    """Wrong suffix is rejected before the snapshot backend is invoked."""
     import_service_cls = _import_service_type()
     service = import_service_cls()
     snapshot_file = tmp_path / "foo.txt"
@@ -93,14 +93,14 @@ def test_import_snapshot_file_invalid_corrupt_pickle(tmp_path: Path) -> None:
     """A .pkl file that cannot be unpickled surfaces as an import execution error.
 
     After removing the redundant upfront pickle.load, the suffix check passes
-    for ``.pkl`` and the failure is reported by the vendored backend, which
+    for ``.pkl`` and the failure is reported by the snapshot backend, which
     surfaces as :class:`ImportExecutionError`.
     """
     import_service_cls = _import_service_type()
     service = import_service_cls()
     snapshot_file = tmp_path / "corrupt.pkl"
     # Real pickle protocol header followed by garbage: passes suffix check,
-    # fails inside the vendor's load_pickle_to_dict.
+    # fails inside the shared first-party representation loader.
     snapshot_file.write_bytes(b"\x80\x04not a valid pickle stream")
 
     with pytest.raises(ImportExecutionError, match=r"backend (failed|reported failure)"):
@@ -147,14 +147,14 @@ def test_import_replaces_destination_errors_are_wrapped(
         )
 
 
-def test_snapshot_import_backend_lazy_loads_vendor_module() -> None:
+def test_snapshot_import_backend_lazy_loads_exact_runtime_module() -> None:
     sys.modules.pop("pt_snap_cli.core.snapshot_import_backend", None)
-    vendor_module = "pt_snap_cli.vendor.memsnapdump.tools.adaptors.snapshot2db"
-    sys.modules.pop(vendor_module, None)
+    runtime_module = "pt_snap_cli.snapshot.tools.adaptors.snapshot2db"
+    sys.modules.pop(runtime_module, None)
 
     importlib.import_module("pt_snap_cli.core.snapshot_import_backend")
 
-    assert vendor_module not in sys.modules
+    assert runtime_module not in sys.modules
 
 
 def test_import_raises_on_missing_tool(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -163,13 +163,13 @@ def test_import_raises_on_missing_tool(monkeypatch: pytest.MonkeyPatch, tmp_path
 
     def raise_missing_tool(*args: object, **kwargs: object) -> Path:
         raise ImportToolMissingError(
-            "Vendored snapshot import backend is unavailable. Reinstall pt-snap-cli; "
+            "Snapshot import backend is unavailable. Reinstall pt-snap-cli; "
             "the package may be incomplete."
         )
 
     monkeypatch.setattr(service._backend, "dump_to_db", raise_missing_tool)
 
-    with pytest.raises(ImportToolMissingError, match="Vendored snapshot import backend"):
+    with pytest.raises(ImportToolMissingError, match="Snapshot import backend"):
         service.import_snapshot(
             ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path)
         )
@@ -186,7 +186,7 @@ def test_import_raises_on_upstream_failure(monkeypatch: pytest.MonkeyPatch, tmp_
         device: int | None,
         finalize_temp_db=None,
     ) -> Path:
-        raise ImportExecutionError("Vendored snapshot import backend failed: upstream failed")
+        raise ImportExecutionError("Snapshot import backend failed: runtime failed")
 
     monkeypatch.setattr(service._backend, "dump_to_db", fail_dump_to_db)
 

@@ -1,1 +1,7 @@
 **/superpowers/
+.claude/worktrees/
+
+# Sensitive test data - do not commit
+tests/fixtures/snapshots/*.pickle
+!tests/fixtures/snapshots/snapshot_import_131k_sanitized.pickle
+!tests/fixtures/snapshots/snapshot_import_628k_sanitized.pickle

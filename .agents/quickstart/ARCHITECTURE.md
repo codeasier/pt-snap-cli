@@ -1,4 +1,4 @@
-# pt-snap-analyzer 架构概览
+# pt-snap-cli 架构概览
 
 ## 项目定位
 
@@ -7,11 +7,13 @@ PyTorch Memory Snapshot Analysis Tool - 用于分析 PyTorch 内存快照的命�
 ## 核心架构
 
 ```
-pt_snap_analyzer/
+src/pt_snap_cli/
 ├── cli.py          # CLI 入口，提供 pt-snap 命令
-├── context.py      # 数据库上下文管理
+├── core/           # 共享服务与产品错误
+├── context.py      # 只读数据库上下文
+├── snapshot/       # 内建快照导入与回放运行时
 ├── models/         # 数据模型定义
-└── query/          # 查询引擎
+└── query/          # 查询引擎与模板
 ```
 
 ## 模块依赖关系
@@ -58,13 +60,13 @@ Models 模块
 
 ```bash
 # 1. 设置数据库
-pt-snap use snapshot.pkl.db
+pt-snap focus snapshot.pkl.db
 
 # 2. 执行泄漏检测
-pt-snap query snapshot.pkl.db --template leak_detection
+pt-snap query snapshot.pkl.db --template-use leak_detection
 
 # 3. 调用栈分析
-pt-snap query snapshot.pkl.db --template callstack_analysis
+pt-snap query snapshot.pkl.db --template-use callstack_analysis
 ```
 
 ## 相关文件

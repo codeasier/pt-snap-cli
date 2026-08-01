@@ -12,6 +12,7 @@ from pt_snap_cli.core.errors import (
     QueryExecutionError,
     SnapshotFileInvalidError,
     SourceChangedError,
+    SplitError,
     TemplateNotFoundError,
     TemplateRenderError,
 )
@@ -27,12 +28,15 @@ from pt_snap_cli.core.models import (
     PeakMemoryReport,
     QueryResult,
     ResolvedFocus,
+    SplitOptions,
+    SplitResult,
     TemplateInfo,
     TemplateParameter,
     TemplateSummary,
 )
 from pt_snap_cli.core.query_service import QueryService
 from pt_snap_cli.core.report_service import ReportService
+from pt_snap_cli.core.split_service import SplitService
 
 __all__ = [
     "PtSnapCoreError",
@@ -50,6 +54,7 @@ __all__ = [
     "ImportExecutionError",
     "ImportMetadataError",
     "SourceChangedError",
+    "SplitError",
     "ResolvedFocus",
     "FocusState",
     "ImportMetadata",
@@ -61,9 +66,12 @@ __all__ = [
     "PeakMemoryReport",
     "ImportOptions",
     "ImportResult",
+    "SplitOptions",
+    "SplitResult",
     "FocusService",
     "ImportMetadataService",
     "QueryService",
     "ReportService",
     "ImportService",
+    "SplitService",
 ]
