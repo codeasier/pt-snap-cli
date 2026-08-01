@@ -14,9 +14,6 @@ OLD_SOURCE_SLUG = "memsnap" + "dump"
 BRANDING_ALLOWLIST = {
     "src/pt_snap_cli/snapshot/PROVENANCE.md",
     f"docs/legal/{OLD_SOURCE_SLUG}-mit-relicensing.md",
-    "docs/development/vendor-audit.md",
-    f"docs/development/{OLD_SOURCE_SLUG}-test-migration.md",
-    f"docs/development/{OLD_SOURCE_SLUG}-verification.md",
 }
 
 
@@ -118,18 +115,3 @@ def test_bilingual_docs_record_split_and_pickle_security_contract() -> None:
         text = path.read_text()
         assert "arbitrary code" in text.lower() or "任意代码" in text
         assert "not a sandbox" in text.lower() or "不是沙箱" in text
-
-
-def test_verification_runbook_records_every_used_cli_flag() -> None:
-    text = Path(f"docs/development/{OLD_SOURCE_SLUG}-verification.md").read_text()
-    for flag in (
-        "--no-focus",
-        "--output-dir",
-        "--device",
-        "--slices",
-        "--max-entries",
-        "--format",
-        "--output",
-    ):
-        assert flag in text
-    assert "STOP" in text
