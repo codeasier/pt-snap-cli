@@ -30,8 +30,8 @@ FIXTURES = Path("tests/fixtures/snapshots")
 
 SAMPLES = {
     "8k": FIXTURES / "snapshot_with_multi_devices.pkl",
-    "131k": FIXTURES / "snapshot_16k_94layers.pickle",
-    "628k": FIXTURES / "memory0.pickle",
+    "131k": FIXTURES / "snapshot_import_131k_sanitized.pickle",
+    "628k": FIXTURES / "snapshot_import_628k_sanitized.pickle",
 }
 
 DEVICE = 0
