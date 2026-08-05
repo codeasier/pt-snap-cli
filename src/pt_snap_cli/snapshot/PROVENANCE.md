@@ -113,6 +113,10 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
 - On 2026-08-01, PR #81 follow-up deferred slice buffer and boundary-state
   cleanup until serialization succeeds, preserving retryable state on I/O
   failure.
+- On 2026-08-06, PR #82 optimized snapshot replay mutation and adjacent
+  segment lookup by reusing discovered indices and standard-library keyed
+  binary search. This is a local performance change against the first-party
+  runtime; audited upstream source mappings and license terms are unchanged.
 
 ## Migration toolchain
 
