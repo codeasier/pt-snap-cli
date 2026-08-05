@@ -68,6 +68,18 @@ def test_detach_block_returns_false_when_block_has_no_segment():
     assert_valid_segments(snapshot.segments)
 
 
+def test_detach_block_uses_supplied_index():
+    first = make_block(0x1000, 0x100)
+    second = make_block(0x1200, 0x100)
+    segment = make_segment(0x1000, 0x1000, blocks=[first, second])
+    snapshot = make_snapshot([segment])
+
+    assert snapshot_mutator.detach_block(snapshot, second, 1) is True
+    assert segment.blocks == [first]
+    assert second.segment_ptr is None
+    assert_valid_snapshot(snapshot)
+
+
 def test_promote_pending_free_block_returns_false_without_segment():
     snapshot = make_snapshot()
     block = make_block(state=BlockState.ACTIVE_PENDING_FREE)
@@ -276,6 +288,25 @@ class TestSnapshotMutatorState(unittest.TestCase):
         self.assertEqual(1, len(allocator.ctx.device_snapshot.segments))
         self.assertEqual(0x180, allocator.ctx.device_snapshot.total_reserved)
         assert_valid_snapshot(allocator.ctx.device_snapshot)
+
+    def test_alloc_or_map_segment_merge_finds_neighbors_across_streams(self):
+        left = make_segment(0x1000, 0x100, stream=0)
+        same_start_other_stream = make_segment(0x1000, 0x100, stream=1)
+        right = make_segment(0x1200, 0x100, stream=0)
+        same_end_other_stream = make_segment(0x1200, 0x100, stream=1)
+        allocator = make_allocator([left, same_start_other_stream, right, same_end_other_stream])
+        new_segment = make_segment(0x1100, 0x100, stream=0)
+
+        assert allocator.alloc_or_map_segment(new_segment, merge=True) is True
+
+        stream_zero_segments = [
+            segment for segment in allocator.ctx.device_snapshot.segments if segment.stream == 0
+        ]
+        assert len(stream_zero_segments) == 1
+        assert stream_zero_segments[0].address == 0x1000
+        assert stream_zero_segments[0].total_size == 0x300
+        assert len(allocator.ctx.device_snapshot.segments) == 3
+        assert allocator.ctx.device_snapshot.total_reserved == 0x500
 
     def test_unmap_segment_keeps_snapshot_invariants(self):
         segment = make_segment(0x1000, 0x200)
