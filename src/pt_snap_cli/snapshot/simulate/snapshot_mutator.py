@@ -126,7 +126,7 @@ def merge_mapped_segment(
         return True
 
     new_idx = _insert_segment_sorted(snapshot, new_segment)
-    corrected_right_idx = new_idx + 1
+    corrected_right_idx = right_adjacent_idx + (new_idx <= right_adjacent_idx)
     if corrected_right_idx >= len(segments):
         snapshot_mutator_logger.error(f"{_error}: right adjacent segment missing after insert")
         segments.remove(new_segment)

@@ -80,6 +80,19 @@ def test_detach_block_uses_supplied_index():
     assert_valid_snapshot(snapshot)
 
 
+def test_remove_segment_uses_supplied_index():
+    first = make_segment(0x1000, 0x100)
+    second_block = make_block(0x1200, 0x40)
+    second = make_segment(0x1200, 0x100, blocks=[second_block])
+    snapshot = make_snapshot([first, second])
+
+    snapshot_mutator.remove_segment(snapshot, second, 1)
+
+    assert snapshot.segments == [first]
+    assert second_block.segment_ptr is None
+    assert snapshot.total_reserved == 0x100
+
+
 def test_promote_pending_free_block_returns_false_without_segment():
     snapshot = make_snapshot()
     block = make_block(state=BlockState.ACTIVE_PENDING_FREE)
@@ -323,17 +336,41 @@ class TestSnapshotMutatorState(unittest.TestCase):
         assert stream_zero_segments[0].address == 0x1000
         assert stream_zero_segments[0].total_size == 0x200
 
+    def test_alloc_or_map_segment_merge_scans_shared_right_endpoint_group(self):
+        other_stream = make_segment(0x1200, 0x100, stream=0)
+        right = make_segment(0x1200, 0x100, stream=1)
+        allocator = make_allocator([other_stream, right])
+        new_segment = make_segment(0x1100, 0x100, stream=1)
+
+        assert allocator.alloc_or_map_segment(new_segment, merge=True) is True
+
+        stream_one_segments = [
+            segment for segment in allocator.ctx.device_snapshot.segments if segment.stream == 1
+        ]
+        assert len(stream_one_segments) == 1
+        assert stream_one_segments[0].address == 0x1100
+        assert stream_one_segments[0].total_size == 0x200
+
     def test_left_shrink_reinserts_segment_in_address_order(self):
         segment = make_segment(0x1000, 0x1000, stream=0)
-        later_overlapping_segment = make_segment(0x1800, 0x100, stream=1)
-        snapshot = make_snapshot([segment, later_overlapping_segment])
+        first_later_segment = make_segment(0x1800, 0x100, stream=1)
+        second_later_segment = make_segment(0x1850, 0x100, stream=2)
+        snapshot = make_snapshot([segment, first_later_segment, second_later_segment])
 
         assert snapshot_mutator.split_or_shrink_segment(snapshot, 0, 0x1000, 0x900) is True
 
         assert [(item.address, item.stream) for item in snapshot.segments] == [
             (0x1800, 1),
+            (0x1850, 2),
             (0x1900, 0),
         ]
+
+    def test_left_shrink_removes_segment_when_fully_consumed(self):
+        segment = make_segment(0x1000, 0x100)
+        snapshot = make_snapshot([segment])
+
+        assert snapshot_mutator.split_or_shrink_segment(snapshot, 0, 0x1000, 0x100) is True
+        assert snapshot.segments == []
 
     def test_unmap_segment_keeps_snapshot_invariants(self):
         segment = make_segment(0x1000, 0x200)
