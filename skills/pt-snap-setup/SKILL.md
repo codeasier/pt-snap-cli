@@ -23,76 +23,98 @@ Optional inputs:
 - Install source preference: `editable` or `pypi`.
 - Whether dev extras are wanted for a local editable install.
 
-Before running commands, substitute placeholders such as `<pt_snap_cli_source_dir>` with actual values.
+Before running commands, substitute placeholders such as `<python_executable>`, `<pt_snap_executable>`, and `<pt_snap_cli_source_dir>` with actual values.
 
 ## Mandatory Prerequisite Phase
 Run these checks in order and report what you found.
 
 ### 1. Identify the active Python environment
-Run:
+Select one interpreter once, preferring `python` and falling back to `python3`:
 ```bash
-python -V
-python -m pip --version
-python -c "import sys; print(sys.executable)"
+if command -v python >/dev/null 2>&1; then command -v python; else command -v python3; fi
 ```
-Record the active Python version, the pip target environment, and the Python executable path. If any of these commands fails, stop and report the exact failure; do not attempt installation with an unverified interpreter.
+If neither command exists, stop and report that no Python interpreter is available. Save the selected command path as `<python_candidate>`, then resolve the interpreter itself:
+```bash
+"<python_candidate>" -c "import os, sys; print(os.path.realpath(sys.executable))"
+```
+Use this canonical path as `<python_executable>` for every later Python and pip command; do not switch between `python` and `python3`.
 
-### 2. Check whether the CLI already works
 Run:
 ```bash
+"<python_executable>" -V
+"<python_executable>" -m pip --version
+"<python_executable>" -c "import sys; print(sys.executable)"
+```
+Record the active Python version, the pip target environment, and the canonical Python executable path. If any of these commands fails, stop and report the exact failure; do not attempt installation with an unverified interpreter.
+
+### 2. Check whether the CLI works and belongs to the selected Python
+Run:
+```bash
+command -v pt-snap
 pt-snap --help
 ```
-If this succeeds, report that `pt-snap` is available in the current shell.
-
-### 3. If the CLI is unavailable, check package importability and installation metadata
-Run this check only if `pt-snap --help` failed in Step 2:
+If both commands succeed, save the first command's output as `<pt_snap_executable>` and inspect its shebang:
 ```bash
-python -c "import pt_snap_cli; print(pt_snap_cli.__file__)"
+"<python_executable>" -c "from pathlib import Path; import sys; print(Path(sys.argv[1]).open(encoding='utf-8').readline().strip())" "<pt_snap_executable>"
+```
+Resolve the shebang interpreter and compare its canonical path with `<python_executable>`. For an `/usr/bin/env <name>` shebang, resolve `<name>` in the current `PATH` before comparing. Report `ready` only when `pt-snap --help` succeeds and both paths identify the same interpreter.
+
+If the shebang is missing or cannot be resolved, report `CLI ownership unverified`. If it points to another interpreter, report `CLI belongs to another Python environment`. Do not report the selected Python environment as ready and do not reinstall automatically.
+
+### 3. If the CLI is unavailable or belongs elsewhere, check package availability
+Run this check if `pt-snap --help` failed or Step 2 did not verify ownership:
+```bash
+"<python_executable>" -c "import pt_snap_cli; print(pt_snap_cli.__file__)"
 ```
 If the import succeeds, also run:
 ```bash
-python -m pip show pt-snap-cli
+"<python_executable>" -m pip show pt-snap-cli
 ```
 This distinguishes between:
 - CLI available and ready.
+- CLI resolves to another Python environment while the selected Python may or may not have the package.
 - Package import works but `pt-snap` is not on the current shell `PATH`.
 - Package import works from a source path, but the distribution is not installed in the active environment.
 - Neither the CLI nor the package is available in the active Python environment.
 
-### 4. If both checks fail, ask for install source and confirm first
-If `pt-snap --help` fails and the import check fails, stop and ask the user which install source they prefer. Confirm before running any install command.
+### 4. If no matching CLI or package is available, ask before installing
+If CLI ownership is not verified and the import check fails, report `not installed`, then ask which install source the user prefers. Confirm before running any install command. If the user declines, report `installation declined` and stop.
 
 If the import succeeds but the CLI is missing, do not reinstall automatically. Report that the package is importable but the `pt-snap` entry point is unavailable, including whether `pip show pt-snap-cli` found an installed distribution. Ask whether the user wants to repair the installation or update `PATH`.
 
 Install choices:
 - Editable install from this repository or another local checkout:
-  - Standard: `python -m pip install -e "<pt_snap_cli_source_dir>"`
-  - With dev extras if requested: `python -m pip install -e "<pt_snap_cli_source_dir>[dev]"`
+  - Standard: `"<python_executable>" -m pip install -e "<pt_snap_cli_source_dir>"`
+  - With dev extras if requested: `"<python_executable>" -m pip install -e "<pt_snap_cli_source_dir>[dev]"`
 - PyPI install:
-  - `python -m pip install pt-snap-cli`
+  - `"<python_executable>" -m pip install pt-snap-cli`
 
 If the user wants a local editable install but has not provided `<pt_snap_cli_source_dir>`, ask for it first.
 
 ### 5. Run the chosen install into the active Python environment
-Always use `python -m pip install ...` so the install targets the active Python environment.
+Always use `"<python_executable>" -m pip install ...` so the install targets the selected Python environment.
 
 Examples:
 ```bash
-python -m pip install -e "<pt_snap_cli_source_dir>"
-python -m pip install -e "<pt_snap_cli_source_dir>[dev]"
-python -m pip install pt-snap-cli
+"<python_executable>" -m pip install -e "<pt_snap_cli_source_dir>"
+"<python_executable>" -m pip install -e "<pt_snap_cli_source_dir>[dev]"
+"<python_executable>" -m pip install pt-snap-cli
 ```
-Do not switch environments silently. Do not replace `python -m pip` with plain `pip` unless the user explicitly asks for that behavior.
+Do not switch environments silently. Do not replace `"<python_executable>" -m pip` with plain `pip` unless the user explicitly asks for that behavior.
 
 ### 6. Re-verify after install
-Run both checks again after any confirmed install command, even if Step 3 was the only check that failed earlier. Step 6 always re-runs both checks post-install by design:
+Run the CLI path, help, ownership, import, and distribution checks again after any confirmed install command. Step 6 always re-runs all checks post-install by design:
 ```bash
+command -v pt-snap
 pt-snap --help
-python -c "import pt_snap_cli; print(pt_snap_cli.__file__)"
+"<python_executable>" -c "import pt_snap_cli; print(pt_snap_cli.__file__)"
+"<python_executable>" -m pip show pt-snap-cli
 ```
-Then report the final state using the same result categories as the output template: `ready`, `CLI missing but import works`, or `install failed`.
+Repeat the shebang comparison from Step 2 when `command -v pt-snap` and `pt-snap --help` succeed. Then report the final state using the result categories in the output template.
 
 If installation succeeds but `pt-snap --help` still fails while the import succeeds, report `CLI missing but import works` and explain that the executable directory is not on the current shell `PATH`. Do not run another install automatically.
+
+If `pt-snap` still resolves to another interpreter, report `CLI belongs to another Python environment`, even when the selected Python can import the package. Do not report `ready` until CLI ownership matches.
 
 ### 7. Stop if verification still fails
 If verification still fails after the confirmed install command, stop and report the exact failure. Do not guess another environment, do not try a different interpreter automatically, and do not keep running more install commands without user confirmation.
@@ -101,34 +123,51 @@ If verification still fails after the confirmed install command, stop and report
 Report results in this structure:
 
 - Active Python info:
-  - `python -V`: `<version output>`
-  - `python -m pip --version`: `<pip output>`
-  - `python -c "import sys; print(sys.executable)"`: `<python path>`
+  - Selected command: `<python or python3>`
+  - `<python_executable> -V`: `<version output>`
+  - `<python_executable> -m pip --version`: `<pip output>`
+  - `<python_executable> -c "import sys; print(sys.executable)"`: `<canonical python path>`
 - Detected availability:
+  - `command -v pt-snap`: `<executable path, failed, or not run>`
   - `pt-snap --help`: `<worked or failed>`
-  - `python -c "import pt_snap_cli; print(pt_snap_cli.__file__)"`: `<worked, failed, or not run>`
-  - `python -m pip show pt-snap-cli`: `<found, not found, failed, or not run>`
+  - CLI shebang interpreter: `<canonical interpreter path, unresolved, or not run>`
+  - CLI ownership: `<matches selected Python, belongs elsewhere, unresolved, or not run>`
+  - `<python_executable> -c "import pt_snap_cli; print(pt_snap_cli.__file__)"`: `<worked, failed, or not run>`
+  - `<python_executable> -m pip show pt-snap-cli`: `<found, not found, failed, or not run>`
 - Install command used:
-  - `<none, or exact python -m pip install ... command>`
+  - `<none, or exact <python_executable> -m pip install ... command>`
 - Install outcome:
   - `<success, declined, or failure summary>`
 - Final verification result:
-  - `<ready / CLI missing but import works / install failed>`
+  - `<ready / CLI belongs to another Python environment / CLI ownership unverified / CLI missing but import works / not installed / installation declined / install failed>`
+
+Use these categories consistently before and after installation:
+- `ready`: CLI help succeeds and the CLI shebang resolves to the selected Python.
+- `CLI belongs to another Python environment`: CLI help succeeds, but its shebang resolves to a different interpreter.
+- `CLI ownership unverified`: CLI help succeeds, but its shebang is missing or cannot be resolved.
+- `CLI missing but import works`: the selected Python imports the package, but no matching CLI is available.
+- `not installed`: neither a matching CLI nor a package import is available and no install was attempted.
+- `installation declined`: installation was offered and the user declined it.
+- `install failed`: a confirmed install command or its post-install package verification failed.
 
 ## Guardrails
 - Do not assume conda or any fixed environment name.
 - Do not silently switch the user's environment.
 - Confirm with the user before any `pip install`.
-- Use `python -m pip` so install targets the active Python environment.
+- Select `python` or `python3` once and use its absolute path for every Python and pip command.
+- Verify that the resolved `pt-snap` shebang belongs to the selected Python before reporting `ready`.
 - Do not write report files.
 - Do not modify user config beyond what `pip install` requires.
 
 ## Verification Checklist
-- Active Python environment identified with `python -V`, `python -m pip --version`, and `python -c "import sys; print(sys.executable)"`.
-- `pt-snap --help` checked in the current shell.
-- `python -c "import pt_snap_cli; print(pt_snap_cli.__file__)"` checked if needed.
-- `python -m pip show pt-snap-cli` checked when the package import succeeds but the CLI is unavailable.
-- User confirmation obtained before any `python -m pip install ...` command.
+- `python` or `python3` selected once and its absolute path used consistently.
+- Active Python environment identified with `<python_executable> -V`, `<python_executable> -m pip --version`, and `sys.executable`.
+- `command -v pt-snap` and `pt-snap --help` checked in the current shell.
+- Resolved CLI shebang interpreter compared with the selected Python before reporting `ready`.
+- Package import checked if the CLI is unavailable or its ownership is not verified.
+- `<python_executable> -m pip show pt-snap-cli` checked when the package import succeeds but the CLI is unavailable or belongs elsewhere.
+- User confirmation obtained before any `<python_executable> -m pip install ...` command.
 - Exact install command recorded if one was run.
 - Post-install verification re-run.
+- `not installed`, `installation declined`, and `install failed` reported as distinct states.
 - If verification failed, failure reported without guessing another environment.
