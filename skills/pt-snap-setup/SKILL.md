@@ -35,9 +35,9 @@ if command -v python >/dev/null 2>&1; then command -v python; else command -v py
 ```
 If neither command exists, stop and report that no Python interpreter is available. Save the selected command path as `<python_candidate>`, then resolve the interpreter itself:
 ```bash
-"<python_candidate>" -c "import os, sys; print(os.path.realpath(sys.executable))"
+"<python_candidate>" -c "import sys; print(sys.executable)"
 ```
-Use this canonical path as `<python_executable>` for every later Python and pip command; do not switch between `python` and `python3`.
+Preserve this path exactly as `<python_executable>` for every later Python and pip command; do not pass it through `realpath` or switch between `python` and `python3`. A virtual environment may use a symlink whose location is required for Python to discover that environment.
 
 Run:
 ```bash
@@ -45,7 +45,7 @@ Run:
 "<python_executable>" -m pip --version
 "<python_executable>" -c "import sys; print(sys.executable)"
 ```
-Record the active Python version, the pip target environment, and the canonical Python executable path. If any of these commands fails, stop and report the exact failure; do not attempt installation with an unverified interpreter.
+Record the active Python version, the pip target environment, and the Python executable path. If any of these commands fails, stop and report the exact failure; do not attempt installation with an unverified interpreter.
 
 ### 2. Check whether the CLI works and belongs to the selected Python
 Run:
@@ -57,7 +57,7 @@ If both commands succeed, save the first command's output as `<pt_snap_executabl
 ```bash
 "<python_executable>" -c "from pathlib import Path; import sys; print(Path(sys.argv[1]).open(encoding='utf-8').readline().strip())" "<pt_snap_executable>"
 ```
-Resolve the shebang interpreter and compare its canonical path with `<python_executable>`. For an `/usr/bin/env <name>` shebang, resolve `<name>` in the current `PATH` before comparing. Report `ready` only when `pt-snap --help` succeeds and both paths identify the same interpreter.
+Resolve the shebang interpreter and compare `realpath` values computed temporarily for the shebang interpreter and `<python_executable>`. For an `/usr/bin/env <name>` shebang, resolve `<name>` in the current `PATH` before comparing. Never replace `<python_executable>` with its `realpath`; canonicalization is only for this ownership comparison. Report `ready` only when `pt-snap --help` succeeds and both comparison paths identify the same interpreter.
 
 If the shebang is missing or cannot be resolved, report `CLI ownership unverified`. If it points to another interpreter, report `CLI belongs to another Python environment`. Do not report the selected Python environment as ready and do not reinstall automatically.
 
@@ -126,7 +126,7 @@ Report results in this structure:
   - Selected command: `<python or python3>`
   - `<python_executable> -V`: `<version output>`
   - `<python_executable> -m pip --version`: `<pip output>`
-  - `<python_executable> -c "import sys; print(sys.executable)"`: `<canonical python path>`
+  - `<python_executable> -c "import sys; print(sys.executable)"`: `<preserved python path>`
 - Detected availability:
   - `command -v pt-snap`: `<executable path, failed, or not run>`
   - `pt-snap --help`: `<worked or failed>`
@@ -154,13 +154,14 @@ Use these categories consistently before and after installation:
 - Do not assume conda or any fixed environment name.
 - Do not silently switch the user's environment.
 - Confirm with the user before any `pip install`.
-- Select `python` or `python3` once and use its absolute path for every Python and pip command.
+- Select `python` or `python3` once and preserve its `sys.executable` path for every Python and pip command.
+- Use canonical paths only for CLI ownership comparison, never to execute Python or pip.
 - Verify that the resolved `pt-snap` shebang belongs to the selected Python before reporting `ready`.
 - Do not write report files.
 - Do not modify user config beyond what `pip install` requires.
 
 ## Verification Checklist
-- `python` or `python3` selected once and its absolute path used consistently.
+- `python` or `python3` selected once and its uncanonicalized `sys.executable` path used consistently.
 - Active Python environment identified with `<python_executable> -V`, `<python_executable> -m pip --version`, and `sys.executable`.
 - `command -v pt-snap` and `pt-snap --help` checked in the current shell.
 - Resolved CLI shebang interpreter compared with the selected Python before reporting `ready`.
