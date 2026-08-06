@@ -308,6 +308,33 @@ class TestSnapshotMutatorState(unittest.TestCase):
         assert len(allocator.ctx.device_snapshot.segments) == 3
         assert allocator.ctx.device_snapshot.total_reserved == 0x500
 
+    def test_alloc_or_map_segment_merge_scans_past_shorter_cross_stream_segment(self):
+        left = make_segment(0x1000, 0x100, stream=0)
+        shorter_other_stream = make_segment(0x1000, 0x80, stream=1)
+        allocator = make_allocator([left, shorter_other_stream])
+        new_segment = make_segment(0x1100, 0x100, stream=0)
+
+        assert allocator.alloc_or_map_segment(new_segment, merge=True) is True
+
+        stream_zero_segments = [
+            segment for segment in allocator.ctx.device_snapshot.segments if segment.stream == 0
+        ]
+        assert len(stream_zero_segments) == 1
+        assert stream_zero_segments[0].address == 0x1000
+        assert stream_zero_segments[0].total_size == 0x200
+
+    def test_left_shrink_reinserts_segment_in_address_order(self):
+        segment = make_segment(0x1000, 0x1000, stream=0)
+        later_overlapping_segment = make_segment(0x1800, 0x100, stream=1)
+        snapshot = make_snapshot([segment, later_overlapping_segment])
+
+        assert snapshot_mutator.split_or_shrink_segment(snapshot, 0, 0x1000, 0x900) is True
+
+        assert [(item.address, item.stream) for item in snapshot.segments] == [
+            (0x1800, 1),
+            (0x1900, 0),
+        ]
+
     def test_unmap_segment_keeps_snapshot_invariants(self):
         segment = make_segment(0x1000, 0x200)
         allocator = make_allocator([segment])

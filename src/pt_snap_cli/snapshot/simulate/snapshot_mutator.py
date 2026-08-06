@@ -342,6 +342,7 @@ def _shrink_segment(
         )
         return False
     segment = segments[seg_idx]
+    repositioned = False
     seg_start = segment.address
     seg_end = seg_start + segment.total_size
     shrink_end = shrink_addr + shrink_size
@@ -364,6 +365,8 @@ def _shrink_segment(
                     f"{_error}: active block [{block_start}, {block_end}) in shrink range [{shrink_addr}, {shrink_end})"
                 )
                 return False
+        del segments[seg_idx]
+        repositioned = True
         segment.address = new_start
         segment.total_size = new_size
         segment.blocks = [block for block in segment.blocks if block.address >= new_start]
@@ -394,5 +397,8 @@ def _shrink_segment(
     )
     segment.active_size = sum(b.size for b in segment.blocks)
     if segment.total_size == 0:
-        del segments[seg_idx]
+        if not repositioned:
+            del segments[seg_idx]
+    elif repositioned:
+        _insert_segment_sorted(snapshot, segment)
     return True

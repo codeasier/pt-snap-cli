@@ -32,7 +32,7 @@ def _find_adjacent_segment_indices(
     for idx in range(start_idx - 1, -1, -1):
         segment = segments[idx]
         segment_end = segment.address + segment.total_size
-        if segment_end < new_start:
+        if segment.stream == stream and segment_end < new_start:
             break
         if segment_end == new_start and segment.stream == stream:
             left_adjacent_idx = idx
