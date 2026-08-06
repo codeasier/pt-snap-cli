@@ -6,6 +6,10 @@ from ..util import get_logger
 snapshot_mutator_logger = get_logger("ALLOCATOR")
 
 
+def _segment_sort_key(segment: Segment) -> tuple[int, int]:
+    return segment.address, segment.stream
+
+
 # Public API: block mutation helpers
 
 
@@ -24,11 +28,13 @@ def attach_block(snapshot: DeviceSnapshot, segment: Segment, block: Block, inser
         snapshot.total_allocated += block.size
 
 
-def detach_block(snapshot: DeviceSnapshot, block: Block) -> bool:
+def detach_block(snapshot: DeviceSnapshot, block: Block, block_idx: int | None = None) -> bool:
     """Detach a block from its owning segment.
 
     Mutates the block, its segment, and snapshot totals in place.
     Returns `True` on success, otherwise `False` when the block has no segment.
+    ``block_idx`` can be supplied by callers that already searched for the block
+    to avoid a second linear lookup.
     """
     segment = block.segment_ptr
     if segment is None:
@@ -38,7 +44,9 @@ def detach_block(snapshot: DeviceSnapshot, block: Block) -> bool:
     if block.state == BlockState.ACTIVE_ALLOCATED:
         segment.allocated_size -= block.size
         snapshot.total_allocated -= block.size
-    segment.blocks.remove(block)
+    if block_idx is None:
+        block_idx = segment.blocks.index(block)
+    del segment.blocks[block_idx]
     block.segment_ptr = None
     return True
 
@@ -70,14 +78,16 @@ def insert_segment(snapshot: DeviceSnapshot, segment: Segment):
     snapshot.total_reserved += segment.total_size
 
 
-def remove_segment(snapshot: DeviceSnapshot, segment: Segment):
+def remove_segment(snapshot: DeviceSnapshot, segment: Segment, segment_idx: int | None = None):
     """Remove a segment from the snapshot and decrease reserved memory.
 
     Clears every block's `segment_ptr` and mutates `snapshot.total_reserved`
     in place.
     """
     snapshot.total_reserved -= segment.total_size
-    snapshot.segments.remove(segment)
+    if segment_idx is None:
+        segment_idx = snapshot.segments.index(segment)
+    del snapshot.segments[segment_idx]
     for block in segment.blocks:
         block.segment_ptr = None
 
@@ -115,9 +125,8 @@ def merge_mapped_segment(
             return _merge_segments(snapshot, left_adjacent_idx, right_adjacent_idx)
         return True
 
-    _insert_segment_sorted(snapshot, new_segment)
-    new_idx = segments.index(new_segment)
-    corrected_right_idx = new_idx + 1
+    new_idx = _insert_segment_sorted(snapshot, new_segment)
+    corrected_right_idx = right_adjacent_idx + (new_idx <= right_adjacent_idx)
     if corrected_right_idx >= len(segments):
         snapshot_mutator_logger.error(f"{_error}: right adjacent segment missing after insert")
         segments.remove(new_segment)
@@ -171,12 +180,16 @@ def decrease_reserved(snapshot: DeviceSnapshot, size: int):
 # Private helpers
 
 
-def _insert_segment_sorted(snapshot: DeviceSnapshot, segment: Segment):
+def _insert_segment_sorted(snapshot: DeviceSnapshot, segment: Segment) -> int:
     """Insert a segment into `snapshot.segments` while preserving sort order."""
     segments = snapshot.segments
-    keys = [(seg.address, seg.stream) for seg in segments]
-    idx = bisect.bisect_left(keys, (segment.address, segment.stream))
+    idx = bisect.bisect_left(
+        segments,
+        (segment.address, segment.stream),
+        key=_segment_sort_key,
+    )
     segments.insert(idx, segment)
+    return idx
 
 
 def _merge_segments(snapshot: DeviceSnapshot, target_idx: int, source_idx: int) -> bool:
@@ -329,6 +342,7 @@ def _shrink_segment(
         )
         return False
     segment = segments[seg_idx]
+    repositioned = False
     seg_start = segment.address
     seg_end = seg_start + segment.total_size
     shrink_end = shrink_addr + shrink_size
@@ -351,6 +365,8 @@ def _shrink_segment(
                     f"{_error}: active block [{block_start}, {block_end}) in shrink range [{shrink_addr}, {shrink_end})"
                 )
                 return False
+        del segments[seg_idx]
+        repositioned = True
         segment.address = new_start
         segment.total_size = new_size
         segment.blocks = [block for block in segment.blocks if block.address >= new_start]
@@ -381,5 +397,8 @@ def _shrink_segment(
     )
     segment.active_size = sum(b.size for b in segment.blocks)
     if segment.total_size == 0:
-        del segments[seg_idx]
+        if not repositioned:
+            del segments[seg_idx]
+    elif repositioned:
+        _insert_segment_sorted(snapshot, segment)
     return True

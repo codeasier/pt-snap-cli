@@ -1,3 +1,4 @@
+import bisect
 import copy
 
 from ..base import Block, BlockState, Segment, TraceEntry
@@ -7,6 +8,46 @@ from .allocator_context import AllocatorContext
 from .allocator_hook_dispatcher import AllocatorHookDispatcher
 
 allocator_logger = get_logger("ALLOCATOR")
+
+
+def _segment_address_key(segment: Segment) -> int:
+    return segment.address
+
+
+def _find_adjacent_segment_indices(
+    segments: list[Segment], new_segment: Segment
+) -> tuple[int, int]:
+    """Find same-stream segments immediately adjacent to ``new_segment``.
+
+    Segment starts are sorted, so binary-search each endpoint and only inspect
+    neighboring ranges. Multiple streams can share an endpoint, which requires
+    scanning that small address group instead of assuming one fixed neighbor.
+    """
+    new_start = new_segment.address
+    new_end = new_start + new_segment.total_size
+    stream = new_segment.stream
+
+    start_idx = bisect.bisect_left(segments, new_start, key=_segment_address_key)
+    left_adjacent_idx = -1
+    for idx in range(start_idx - 1, -1, -1):
+        segment = segments[idx]
+        segment_end = segment.address + segment.total_size
+        if segment.stream == stream and segment_end < new_start:
+            break
+        if segment_end == new_start and segment.stream == stream:
+            left_adjacent_idx = idx
+            break
+
+    end_idx = bisect.bisect_left(segments, new_end, key=_segment_address_key)
+    right_adjacent_idx = -1
+    for idx in range(end_idx, len(segments)):
+        segment = segments[idx]
+        if segment.address > new_end:
+            break
+        if segment.address == new_end and segment.stream == stream:
+            right_adjacent_idx = idx
+
+    return left_adjacent_idx, right_adjacent_idx
 
 
 class SimulatedCachingAllocator:
@@ -80,7 +121,7 @@ class SimulatedCachingAllocator:
             return False
         exist_block.alloc_event_idx = alloc_event.idx
         self.dispatcher.pre_replay_free_block(exist_block, self.ctx.device_snapshot)
-        if not snapshot_mutator.detach_block(self.ctx.device_snapshot, exist_block):
+        if not snapshot_mutator.detach_block(self.ctx.device_snapshot, exist_block, block_idx):
             allocator_logger.error(f"{_error}: block has no segment_ptr")
             return False
         self.dispatcher.post_replay_free_block(exist_block, self.ctx.device_snapshot, use_copy=True)
@@ -145,17 +186,9 @@ class SimulatedCachingAllocator:
             snapshot_mutator.insert_segment(self.ctx.device_snapshot, new_segment)
             self.dispatcher.post_replay_map_or_alloc_segment(new_segment, self.ctx.device_snapshot)
             return True
-        new_seg_start = new_segment.address
-        new_seg_end = new_seg_start + new_segment.total_size
-        left_adjacent_idx = -1
-        right_adjacent_idx = -1
-        for i, seg in enumerate(segments):
-            if seg.stream != new_segment.stream:
-                continue
-            if seg.address + seg.total_size == new_seg_start:
-                left_adjacent_idx = i
-            elif new_seg_end == seg.address:
-                right_adjacent_idx = i
+        left_adjacent_idx, right_adjacent_idx = _find_adjacent_segment_indices(
+            segments, new_segment
+        )
         if left_adjacent_idx == -1 and right_adjacent_idx == -1:
             snapshot_mutator.insert_segment(self.ctx.device_snapshot, new_segment)
             self.dispatcher.post_replay_map_or_alloc_segment(new_segment, self.ctx.device_snapshot)
@@ -204,7 +237,7 @@ class SimulatedCachingAllocator:
 
         exist_seg.alloc_or_map_event_idx = alloc_seg_event.idx
         self.dispatcher.pre_replay_unmap_or_free_segment(exist_seg, self.ctx.device_snapshot)
-        snapshot_mutator.remove_segment(self.ctx.device_snapshot, exist_seg)
+        snapshot_mutator.remove_segment(self.ctx.device_snapshot, exist_seg, exist_seg_idx)
         self.dispatcher.post_replay_unmap_or_free_segment(exist_seg, self.ctx.device_snapshot)
         return True
 
