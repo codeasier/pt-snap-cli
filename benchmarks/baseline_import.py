@@ -47,11 +47,20 @@ class RunResult:
 
 
 @dataclass
+class FrameMetrics:
+    events: int
+    total_frames: int
+    average_depth: float
+    max_depth: int
+
+
+@dataclass
 class SampleReport:
     name: str
     path: Path
     formal_runs: int = 0
     runs: list[RunResult] = field(default_factory=list)
+    frames: FrameMetrics | None = None
 
     @property
     def median_wall(self) -> float:
@@ -62,6 +71,13 @@ class SampleReport:
             f"### {self.name} ({self.path.name})",
             "",
             f"正式测量 {self.formal_runs} 次，另有 1 次 warmup",
+            "",
+            (
+                f"Events: {self.frames.events}; frame references: {self.frames.total_frames}; "
+                f"average/max depth: {self.frames.average_depth:.1f}/{self.frames.max_depth}"
+                if self.frames
+                else "Frame depth metrics unavailable"
+            ),
             "",
             "| Run | Wall (s) | User (s) | Sys (s) | Max RSS (MB) | DB (MB) |",
             "|-----|----------|----------|---------|--------------|---------|",
@@ -77,16 +93,16 @@ class SampleReport:
 
 
 def _parse_time_output(stderr: str) -> dict[str, float]:
-    wall_match = re.search(r"(\d+\.\d+) real", stderr)
-    user_match = re.search(r"(\d+\.\d+) user", stderr)
-    sys_match = re.search(r"(\d+\.\d+) sys", stderr)
-    rss_match = re.search(r"(\d+)\s+maximum resident set size", stderr)
+    wall_match = re.search(r"PT_SNAP_TIME wall=(\d+\.\d+)", stderr)
+    user_match = re.search(r"\buser=(\d+\.\d+)", stderr)
+    sys_match = re.search(r"\bsys=(\d+\.\d+)", stderr)
+    rss_match = re.search(r"\bmax_rss_kb=(\d+)", stderr)
 
     return {
         "wall_s": float(wall_match.group(1)) if wall_match else 0.0,
         "user_s": float(user_match.group(1)) if user_match else 0.0,
         "sys_s": float(sys_match.group(1)) if sys_match else 0.0,
-        "max_rss_bytes": int(rss_match.group(1)) if rss_match else 0,
+        "max_rss_kb": int(rss_match.group(1)) if rss_match else 0,
     }
 
 
@@ -95,13 +111,17 @@ def _run_import_once(snapshot: Path, output_dir: Path, device: int) -> RunResult
     result = subprocess.run(
         [
             "/usr/bin/time",
-            "-l",
+            "-f",
+            "PT_SNAP_TIME wall=%e user=%U sys=%S max_rss_kb=%M",
             sys.executable,
             "-c",
             f"""
 import logging; logging.disable(logging.CRITICAL)
+import pt_snap_cli.core.import_metadata as import_metadata
 from pt_snap_cli.core.import_service import ImportOptions, ImportService
 from pathlib import Path
+if not import_metadata.__version__:
+    import_metadata.__version__ = "benchmark"
 options = ImportOptions(
     snapshot_file=Path({str(snapshot)!r}),
     output_dir=Path({str(output_dir)!r}),
@@ -131,7 +151,7 @@ ImportService().import_snapshot(options)
         wall_s=metrics["wall_s"],
         user_s=metrics["user_s"],
         sys_s=metrics["sys_s"],
-        max_rss_mb=metrics["max_rss_bytes"] / (1024 * 1024),
+        max_rss_mb=metrics["max_rss_kb"] / 1024,
         db_size_mb=db_size / (1024 * 1024),
     )
 
@@ -182,6 +202,22 @@ def _representative_queries(db_path: Path, device: int) -> dict:
 
     conn.close()
     return results
+
+
+def _frame_metrics(snapshot: Path, device: int) -> FrameMetrics:
+    from pt_snap_cli.snapshot.representation import load_snapshot_representation
+
+    representation = load_snapshot_representation(snapshot)
+    device_traces = representation.get("device_traces", [])
+    traces = device_traces[device] if 0 <= device < len(device_traces) else []
+    depths = [len(trace.get("frames", [])) for trace in traces]
+    total = sum(depths)
+    return FrameMetrics(
+        events=len(depths),
+        total_frames=total,
+        average_depth=total / len(depths) if depths else 0.0,
+        max_depth=max(depths, default=0),
+    )
 
 
 def _correctness_summary(output_dir: Path, device: int) -> dict:
@@ -239,6 +275,7 @@ def _profile_import(snapshot: Path, output_dir: Path, device: int, top_n: int = 
     stats = pstats.Stats(profiler, stream=stream)
     stats.sort_stats("cumulative")
     stats.print_stats(top_n)
+    stats.print_stats("from_dict|get_callstack|replay|_do_insert")
     return stream.getvalue()
 
 
@@ -270,11 +307,20 @@ def main() -> None:
             continue
 
         n_runs = run_counts.get(name, 3)
-        report = SampleReport(name=name, path=snapshot, formal_runs=n_runs)
+        report = SampleReport(
+            name=name,
+            path=snapshot,
+            formal_runs=n_runs,
+            frames=_frame_metrics(snapshot, DEVICE),
+        )
 
         print(f"\n{'='*60}")
         print(f"Sample: {name} ({snapshot.name})")
         print(f"{'='*60}")
+        print(
+            f"  Frames: total={report.frames.total_frames} "
+            f"avg_depth={report.frames.average_depth:.1f} max_depth={report.frames.max_depth}"
+        )
 
         print("  Warmup run...")
         with tempfile.TemporaryDirectory(prefix=f"baseline_{name}_warmup_") as tmp:

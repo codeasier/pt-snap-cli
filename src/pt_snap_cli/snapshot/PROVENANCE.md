@@ -117,6 +117,12 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
   segment lookup by reusing discovered indices and standard-library keyed
   binary search. This is a local performance change against the first-party
   runtime; audited upstream source mappings and license terms are unchanged.
+- On 2026-08-07, issue #84 added an internal database-import-only raw frame
+  path and generator-based callstack formatting. Public snapshot construction
+  remains eager, while database replay avoids reconstructing per-event `Frame`
+  objects and preserves source frame dictionaries through synthetic segments.
+  This is a local performance change; audited upstream mappings and licensing
+  evidence are unchanged.
 
 ## Migration toolchain
 

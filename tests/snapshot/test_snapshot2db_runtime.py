@@ -1,3 +1,4 @@
+import pickle
 import sqlite3
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from pt_snap_cli.snapshot.tools.adaptors.database import (
 from pt_snap_cli.snapshot.tools.adaptors.database import (
     TRACE_ENTRY_ACTION_VALUE_MAP as RUNTIME_ACTION_VALUE_MAP,
 )
+from pt_snap_cli.snapshot.tools.adaptors.database import entity2record
 from pt_snap_cli.snapshot.util.logger import restore_logs, suppress_logs
 
 from .golden_observations import (
@@ -57,7 +59,7 @@ def test_snapshot2db_uses_shared_load_and_replay_entrypoints(monkeypatch, tmp_pa
     database = tmp_path / "shared-entrypoints.db"
     original_load = snapshot2db.load_snapshot_representation
     original_replay = snapshot2db.replay_snapshot
-    calls = {"load": 0, "replay": 0}
+    calls = {"load": 0, "replay": 0, "raw_frames": False}
 
     def load(snapshot_file):
         calls["load"] += 1
@@ -65,13 +67,83 @@ def test_snapshot2db_uses_shared_load_and_replay_entrypoints(monkeypatch, tmp_pa
 
     def replay(representation, device, **kwargs):
         calls["replay"] += 1
+        calls["raw_frames"] = kwargs.get("_raw_frames", False)
         return original_replay(representation, device, **kwargs)
 
     monkeypatch.setattr(snapshot2db, "load_snapshot_representation", load)
     monkeypatch.setattr(snapshot2db, "replay_snapshot", replay)
 
     assert snapshot2db.dump(FIXTURE_DIR / "snapshot_with_empty_cache.pkl", database, 0)
-    assert calls == {"load": 1, "replay": 1}
+    assert calls == {"load": 1, "replay": 1, "raw_frames": True}
+
+
+def test_fast_frame_import_matches_eager_database_exactly(monkeypatch, tmp_path):
+    representation = {
+        "segments": [],
+        "device_traces": [
+            [
+                {
+                    "action": "segment_free",
+                    "addr": 0x1000,
+                    "size": 64,
+                    "stream": 3,
+                    "id": 17,
+                    "frames": [
+                        {"filename": "inner.py", "line": 10, "name": "inner"},
+                        {"filename": "outer.py", "line": 20, "name": "outer"},
+                    ],
+                },
+                {
+                    "action": "segment_free",
+                    "addr": 0x2000,
+                    "size": 32,
+                    "stream": 3,
+                    "frames": [],
+                },
+            ]
+        ],
+    }
+    snapshot = tmp_path / "frames.pkl"
+    with snapshot.open("wb") as stream:
+        pickle.dump(representation, stream)
+
+    original_replay = snapshot2db.replay_snapshot
+
+    def dump_rows(database, *, eager):
+        entity2record.next_default_event_id = entity2record.make_default_id_counter()
+        entity2record.next_default_block_id = entity2record.make_default_id_counter()
+        if eager:
+            monkeypatch.setattr(
+                snapshot2db,
+                "replay_snapshot",
+                lambda data, device, **kwargs: original_replay(
+                    data,
+                    device,
+                    hooker=kwargs["hooker"],
+                    allocator_hooker=kwargs["allocator_hooker"],
+                ),
+            )
+        else:
+            monkeypatch.setattr(snapshot2db, "replay_snapshot", original_replay)
+        assert snapshot2db.dump(snapshot, database, 0)
+        with sqlite3.connect(database) as connection:
+            return connection.execute(
+                "SELECT id, action, address, size, stream, allocated, active, reserved, callstack "
+                "FROM trace_entry_0 ORDER BY id"
+            ).fetchall()
+
+    eager_rows = dump_rows(tmp_path / "eager.db", eager=True)
+    fast_rows = dump_rows(tmp_path / "fast.db", eager=False)
+
+    assert fast_rows == eager_rows
+    explicit = next(row for row in fast_rows if row[0] == 17)
+    assert explicit[1:5] == (3, 0x1000, 64, 3)
+    assert explicit[-1] == "outer.py:20 outer\ninner.py:10 inner"
+    assert any(row[0] == 1 and row[2] == 0x2000 for row in fast_rows)
+    assert sum(row[-1] == "" for row in fast_rows) == 2
+    synthetic = [row for row in fast_rows if row[0] < 0]
+    assert len(synthetic) == 2
+    assert any(row[-1] == "outer.py:20 outer\ninner.py:10 inner" for row in synthetic)
 
 
 def test_expandable_snapshot2db(dump_database):

@@ -85,6 +85,7 @@ class DumpEventHooker(SimulateHooker, AllocatorHooker):
                     action="segment_map" if seg.is_expandable else "segment_alloc",
                     addr=seg.address,
                     frames=seg.frames,
+                    _raw_frames=seg._raw_frames,
                     size=seg.total_size,
                     stream=seg.stream,
                 )
@@ -145,6 +146,7 @@ def dump(pickle_file: str, dump_file: str, device=None) -> bool:
             device,
             hooker=hooker,
             allocator_hooker=hooker,
+            _raw_frames=True,
         )
         if not replayed:
             dump_logger.error(f"Failed to dump the snapshot to database for device {device}.")

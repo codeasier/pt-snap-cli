@@ -19,7 +19,7 @@ class SimulateDeviceSnapshot:
     _loading_logger: Logger
     _replay_logger: Logger
 
-    def __init__(self, snapshot_dict: dict, device: int):
+    def __init__(self, snapshot_dict: dict, device: int, *, _raw_frames: bool = False):
         # 基于device初始化logger
         self._loading_logger = loading_logger.getChild(f"{device}")
         self._replay_logger = replay_logger.getChild(f"{device}")
@@ -27,7 +27,10 @@ class SimulateDeviceSnapshot:
             raise RuntimeError("Cannot init snapshot from empty data.")
         self._loading_logger.info("Loading snapshot data...")
         self.device_snapshot = DeviceSnapshot.from_dict(
-            snapshot_dict, device, ignore_inactive_blocks=True
+            snapshot_dict,
+            device,
+            ignore_inactive_blocks=True,
+            _raw_frames=_raw_frames,
         )
         self._loading_logger.info(
             f"Finished to load snapshot data: total of {len(self.device_snapshot.trace_entries)} "
