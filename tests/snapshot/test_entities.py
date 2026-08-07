@@ -397,7 +397,11 @@ class TestDeviceSnapshot(unittest.TestCase):
         self.assertEqual(snapshot.trace_entries[1].idx, 1)
 
         self.assertTrue(
-            all(isinstance(frame, Frame) for trace in snapshot.trace_entries for frame in trace.frames)
+            all(
+                isinstance(frame, Frame)
+                for trace in snapshot.trace_entries
+                for frame in trace.frames
+            )
         )
 
     def test_find_overlapping_segment_returns_idx_and_matches_containing_segment(self):
