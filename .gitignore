@@ -1,7 +1,39 @@
-**/superpowers/
-.claude/worktrees/
+# --- Python / packaging ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+*.egg
+.eggs/
 
-# Sensitive test data - do not commit
+# --- Tooling / test coverage ---
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+
+# --- Local agent/tool scratch (not project source) ---
+.agents/*
+.claude/*
+.codex/*
+.opencode/*
+.tmp/*
+openspec/
+specs/
+
+# --- OS cruft ---
+.DS_Store
+
+# --- superpowers / git worktrees (project-local convention) ---
+**/superpowers/
+.worktrees/
+
+# --- Sensitive test data - do not commit ---
 tests/fixtures/snapshots/*.pickle
 !tests/fixtures/snapshots/snapshot_import_131k_sanitized.pickle
 !tests/fixtures/snapshots/snapshot_import_628k_sanitized.pickle
