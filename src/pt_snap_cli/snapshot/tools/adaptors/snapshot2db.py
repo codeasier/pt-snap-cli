@@ -1,3 +1,5 @@
+import os
+import tempfile
 from pathlib import Path
 
 from ...base import Block, BlockState, DeviceSnapshot, TraceEntry
@@ -11,6 +13,7 @@ dump_logger = get_logger("DatabaseDump")
 
 class SnapshotDbHandler:
     def __init__(self, db_path: str, devices: list[int], insert_cache_size: int = 1000):
+        self._closed = False
         self.db_path = db_path
         self.db = SnapshotDb(db_path)
         self._device_event_cache = {}
@@ -61,9 +64,18 @@ class SnapshotDbHandler:
         self.db.conn.commit()
         self._device_block_cache[device].clear()
 
-    def __del__(self):
-        self.db.conn.commit()
+    def close(self, *, commit: bool = True):
+        if getattr(self, "_closed", True):
+            return
+        if commit:
+            self.db.conn.commit()
+        else:
+            self.db.conn.rollback()
         self.db.conn.close()
+        self._closed = True
+
+    def __del__(self):
+        self.close()
 
 
 class DumpEventHooker(SimulateHooker, AllocatorHooker):
@@ -119,6 +131,9 @@ class DumpEventHooker(SimulateHooker, AllocatorHooker):
     def flush(self, device: int = 0):
         self.db_handler.flush(device)
 
+    def close(self, *, commit: bool = True):
+        self.db_handler.close(commit=commit)
+
 
 def dump(pickle_file: str, dump_file: str, device=None) -> bool:
     try:
@@ -138,23 +153,41 @@ def dump(pickle_file: str, dump_file: str, device=None) -> bool:
     if device is not None:
         need_dump_devices = [device]
     dump_logger.info(f"Recognized need to dump devices {need_dump_devices}.")
-    hooker = DumpEventHooker(dump_file, need_dump_devices)
-    for device in need_dump_devices:
-        dump_logger.info(f"Start to dump the snapshot to database for device {device}.")
-        _, replayed = replay_snapshot(
-            data,
-            device,
-            hooker=hooker,
-            allocator_hooker=hooker,
-            _raw_frames=True,
+    dump_path = Path(dump_file)
+    dump_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{dump_path.name}.", suffix=".tmp", dir=dump_path.parent
+    )
+    os.close(fd)
+    temporary_path = Path(temporary_name)
+    temporary_path.unlink()
+    hooker = DumpEventHooker(str(temporary_path), need_dump_devices)
+    try:
+        for device in need_dump_devices:
+            dump_logger.info(f"Start to dump the snapshot to database for device {device}.")
+            _, replayed = replay_snapshot(
+                data,
+                device,
+                hooker=hooker,
+                allocator_hooker=hooker,
+                _raw_frames=True,
+            )
+            if not replayed:
+                dump_logger.error(f"Failed to dump the snapshot to database for device {device}.")
+                return False
+            dump_logger.info(f"Finished dump the snapshot to database for device {device}.")
+            hooker.flush(device)
+        dump_logger.info(
+            f"Successfully dump the snapshot to database for devices {need_dump_devices}."
         )
-        if not replayed:
-            dump_logger.error(f"Failed to dump the snapshot to database for device {device}.")
-            return False
-        dump_logger.info(f"Finished dump the snapshot to database for device {device}.")
-        hooker.flush(device)
-    dump_logger.info(f"Successfully dump the snapshot to database for devices {need_dump_devices}.")
-    return True
+        hooker.close()
+        os.replace(temporary_path, dump_path)
+        return True
+    finally:
+        try:
+            hooker.close(commit=False)
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
 
 def run_dump_to_db(

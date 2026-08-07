@@ -17,12 +17,12 @@ import json
 import logging
 import os
 import pstats
-import re
 import sqlite3
 import statistics
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -92,32 +92,42 @@ class SampleReport:
         return "\n".join(lines)
 
 
-def _parse_time_output(stderr: str) -> dict[str, float]:
-    wall_match = re.search(r"PT_SNAP_TIME wall=(\d+\.\d+)", stderr)
-    user_match = re.search(r"\buser=(\d+\.\d+)", stderr)
-    sys_match = re.search(r"\bsys=(\d+\.\d+)", stderr)
-    rss_match = re.search(r"\bmax_rss_kb=(\d+)", stderr)
+def _parse_resource_output(stderr: str) -> dict[str, float]:
+    prefix = "PT_SNAP_RESOURCE "
+    line = next((line for line in stderr.splitlines() if line.startswith(prefix)), None)
+    if line is None:
+        raise RuntimeError("benchmark subprocess did not report resource usage")
+    try:
+        values = {
+            key: float(value)
+            for key, value in (part.split("=", 1) for part in line.removeprefix(prefix).split())
+        }
+        return {
+            "user_s": values["user"],
+            "sys_s": values["sys"],
+            "max_rss_kb": values["max_rss_kb"],
+        }
+    except (KeyError, ValueError) as exc:
+        raise RuntimeError(f"invalid benchmark resource output: {line}") from exc
 
-    return {
-        "wall_s": float(wall_match.group(1)) if wall_match else 0.0,
-        "user_s": float(user_match.group(1)) if user_match else 0.0,
-        "sys_s": float(sys_match.group(1)) if sys_match else 0.0,
-        "max_rss_kb": int(rss_match.group(1)) if rss_match else 0,
-    }
+
+def _max_rss_kb(max_rss: float, platform: str) -> float:
+    return max_rss / 1024 if platform == "darwin" else max_rss
 
 
 def _run_import_once(snapshot: Path, output_dir: Path, device: int) -> RunResult:
     env = {**os.environ, "PYTHONPATH": "src"}
+    started_at = time.perf_counter()
     result = subprocess.run(
         [
-            "/usr/bin/time",
-            "-f",
-            "PT_SNAP_TIME wall=%e user=%U sys=%S max_rss_kb=%M",
             sys.executable,
             "-c",
             f"""
 import logging; logging.disable(logging.CRITICAL)
 import pt_snap_cli.core.import_metadata as import_metadata
+import resource
+import sys
+from benchmarks.baseline_import import _max_rss_kb
 from pt_snap_cli.core.import_service import ImportOptions, ImportService
 from pathlib import Path
 if not import_metadata.__version__:
@@ -130,25 +140,33 @@ options = ImportOptions(
     force=True,
 )
 ImportService().import_snapshot(options)
+usage = resource.getrusage(resource.RUSAGE_SELF)
+max_rss_kb = _max_rss_kb(usage.ru_maxrss, sys.platform)
+print(
+    f"PT_SNAP_RESOURCE user={{usage.ru_utime}} sys={{usage.ru_stime}} "
+    f"max_rss_kb={{max_rss_kb}}",
+    file=sys.stderr,
+)
 """,
         ],
         capture_output=True,
         text=True,
         env=env,
     )
+    wall_s = time.perf_counter() - started_at
 
     if result.returncode != 0:
         print(f"STDOUT: {result.stdout}", file=sys.stderr)
         print(f"STDERR: {result.stderr}", file=sys.stderr)
         raise RuntimeError(f"import failed: {result.returncode}")
 
-    metrics = _parse_time_output(result.stderr)
+    metrics = _parse_resource_output(result.stderr)
 
     db_files = list(output_dir.glob("*.db"))
     db_size = sum(f.stat().st_size for f in db_files) if db_files else 0
 
     return RunResult(
-        wall_s=metrics["wall_s"],
+        wall_s=wall_s,
         user_s=metrics["user_s"],
         sys_s=metrics["sys_s"],
         max_rss_mb=metrics["max_rss_kb"] / 1024,

@@ -146,6 +146,123 @@ def test_fast_frame_import_matches_eager_database_exactly(monkeypatch, tmp_path)
     assert any(row[-1] == "outer.py:20 outer\ninner.py:10 inner" for row in synthetic)
 
 
+def test_fast_frame_import_rejects_malformed_frames_before_replay(monkeypatch, tmp_path):
+    representation = {
+        "segments": [],
+        "device_traces": [
+            [
+                {
+                    "action": "segment_free",
+                    "addr": 0x1000,
+                    "size": 64,
+                    "stream": 0,
+                    "frames": [],
+                },
+                {
+                    "action": "segment_free",
+                    "addr": 0x2000,
+                    "size": 32,
+                    "stream": 0,
+                    "frames": [{"filename": "broken.py", "line": 3}],
+                },
+            ]
+        ],
+    }
+    snapshot = tmp_path / "malformed.pkl"
+    database = tmp_path / "malformed.db"
+    with snapshot.open("wb") as stream:
+        pickle.dump(representation, stream)
+
+    replayed_events = 0
+    original_pre_undo_event = snapshot2db.DumpEventHooker.pre_undo_event
+
+    def pre_undo_event(self, event, current_snapshot):
+        nonlocal replayed_events
+        replayed_events += 1
+        return original_pre_undo_event(self, event, current_snapshot)
+
+    monkeypatch.setattr(snapshot2db.DumpEventHooker, "pre_undo_event", pre_undo_event)
+
+    with pytest.raises(KeyError, match="name"):
+        snapshot2db.dump(snapshot, database, 0)
+
+    assert replayed_events == 0
+    assert not database.exists()
+
+
+def test_dump_all_removes_committed_devices_when_later_device_is_malformed(tmp_path):
+    representation = {
+        "segments": [],
+        "device_traces": [
+            [
+                {
+                    "action": "segment_free",
+                    "addr": 0x1000,
+                    "size": 64,
+                    "stream": 0,
+                    "frames": [],
+                }
+            ],
+            [
+                {
+                    "action": "segment_free",
+                    "addr": 0x2000,
+                    "size": 32,
+                    "stream": 0,
+                    "frames": [{"filename": "broken.py", "line": 3}],
+                }
+            ],
+        ],
+    }
+    snapshot = tmp_path / "malformed-multi.pkl"
+    database = tmp_path / "malformed-multi.db"
+    with snapshot.open("wb") as stream:
+        pickle.dump(representation, stream)
+
+    with pytest.raises(KeyError, match="name"):
+        snapshot2db.dump(snapshot, database)
+
+    assert not database.exists()
+
+
+def test_failed_dump_preserves_existing_database(tmp_path):
+    representation = {
+        "segments": [],
+        "device_traces": [
+            [
+                {
+                    "action": "segment_free",
+                    "addr": 0x1000,
+                    "size": 64,
+                    "stream": 0,
+                    "frames": [{"filename": "broken.py", "line": 3}],
+                }
+            ]
+        ],
+    }
+    snapshot = tmp_path / "malformed-existing.pkl"
+    database = tmp_path / "existing.db"
+    with snapshot.open("wb") as stream:
+        pickle.dump(representation, stream)
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE marker (value TEXT)")
+        connection.execute("INSERT INTO marker VALUES ('preserved')")
+        connection.commit()
+
+    with pytest.raises(KeyError, match="name"):
+        snapshot2db.dump(snapshot, database, 0)
+
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT value FROM marker").fetchone() == ("preserved",)
+
+
+def test_dump_creates_missing_destination_directories(tmp_path):
+    database = tmp_path / "missing" / "nested" / "snapshot.db"
+
+    assert snapshot2db.dump(FIXTURE_DIR / "snapshot_with_empty_cache.pkl", database, 0)
+    assert database.is_file()
+
+
 def test_expandable_snapshot2db(dump_database):
     result, database = dump_database("snapshot_with_empty_cache_expandable.pkl", 0)
 

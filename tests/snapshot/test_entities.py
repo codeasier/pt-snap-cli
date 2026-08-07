@@ -134,7 +134,7 @@ class TestTraceEntry(unittest.TestCase):
         with self.assertRaises(KeyError):
             TraceEntry.from_dict(incomplete)
         with self.assertRaises(KeyError):
-            TraceEntry.from_dict(incomplete, _raw_frames=True).get_callstack()
+            TraceEntry.from_dict(incomplete, _raw_frames=True)
         with self.assertRaises(TypeError):
             TraceEntry.from_dict({**base, "frames": None}, _raw_frames=True)
 

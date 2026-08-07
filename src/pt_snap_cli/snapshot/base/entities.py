@@ -38,6 +38,13 @@ def _format_callstack(frames: list[Frame] | list[dict]) -> str:
     )
 
 
+def _validate_raw_frames(frames: list[dict]) -> None:
+    for frame in frames:
+        _ = frame["filename"]
+        _ = frame["line"]
+        _ = frame["name"]
+
+
 @dataclass
 class TraceEntry:
     # When `torch.npu.memory._record_memory_history()` is enabled,
@@ -77,7 +84,7 @@ class TraceEntry:
     def from_dict(cls, trace_dict: dict, _raw_frames: bool = False):
         frame_dicts = trace_dict.get("frames", [])
         if _raw_frames:
-            iter(frame_dicts)
+            _validate_raw_frames(frame_dicts)
         trace_entry = cls(
             action=trace_dict["action"],
             addr=int(trace_dict["addr"]),
@@ -149,7 +156,7 @@ class Block:
     def from_dict(cls, block_dict: dict, _raw_frames: bool = False):
         frame_dicts = block_dict.get("frames", [])
         if _raw_frames:
-            iter(frame_dicts)
+            _validate_raw_frames(frame_dicts)
         block = cls(
             size=block_dict["size"],
             requested_size=block_dict["requested_size"],
@@ -214,7 +221,7 @@ class Segment:
     ):
         frame_dicts = segment_dict.get("frames", [])
         if _raw_frames:
-            iter(frame_dicts)
+            _validate_raw_frames(frame_dicts)
         segment = cls(
             address=segment_dict["address"],
             total_size=segment_dict["total_size"],
