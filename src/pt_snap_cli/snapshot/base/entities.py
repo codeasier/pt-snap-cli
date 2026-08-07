@@ -26,6 +26,25 @@ class Frame:
         )
 
 
+def _format_callstack(frames: list[Frame] | list[dict]) -> str:
+    if not frames:
+        return ""
+    if isinstance(frames[0], Frame):
+        return "\n".join(
+            [f"{frame.filename}:{frame.line} {frame.name}" for frame in reversed(frames)]
+        )
+    return "\n".join(
+        [f"{frame['filename']}:{frame['line']} {frame['name']}" for frame in reversed(frames)]
+    )
+
+
+def _validate_raw_frames(frames: list[dict]) -> None:
+    for frame in frames:
+        _ = frame["filename"]
+        _ = frame["line"]
+        _ = frame["name"]
+
+
 @dataclass
 class TraceEntry:
     # When `torch.npu.memory._record_memory_history()` is enabled,
@@ -59,26 +78,27 @@ class TraceEntry:
 
     _origin: dict = None  # Readonly
     idx: int = -1  # 索引，全局唯一
+    _raw_frames: list[dict] | None = field(default=None, repr=False)
 
     @classmethod
-    def from_dict(cls, trace_dict: dict):
+    def from_dict(cls, trace_dict: dict, _raw_frames: bool = False):
+        frame_dicts = trace_dict.get("frames", [])
+        if _raw_frames:
+            _validate_raw_frames(frame_dicts)
         trace_entry = cls(
             action=trace_dict["action"],
             addr=int(trace_dict["addr"]),
             size=int(trace_dict["size"]),
             stream=int(trace_dict["stream"]),
             _origin=trace_dict,
-            frames=[Frame.from_dict(_frame_dict) for _frame_dict in trace_dict.get("frames", [])],
+            frames=[] if _raw_frames else [Frame.from_dict(frame) for frame in frame_dicts],
+            _raw_frames=frame_dicts if _raw_frames else None,
             idx=int(trace_dict["id"]) if "id" in trace_dict else -1,
         )
         return trace_entry
 
     def get_callstack(self):
-        if not self.frames:
-            return ""
-        return "\n".join(
-            [f"{frame.filename}:{frame.line} {frame.name}" for frame in self.frames[::-1]]
-        )
+        return _format_callstack(self._raw_frames if self._raw_frames is not None else self.frames)
 
     def to_dict(self, include_id: bool = False):
         if self._origin and not include_id:
@@ -91,7 +111,11 @@ class TraceEntry:
                 "addr": self.addr,
                 "size": self.size,
                 "stream": self.stream,
-                "frames": [frame.to_dict() for frame in self.frames],
+                "frames": (
+                    self._raw_frames
+                    if self._raw_frames is not None
+                    else [frame.to_dict() for frame in self.frames]
+                ),
             }
         )
         if include_id:
@@ -126,15 +150,20 @@ class Block:
     segment_ptr: Any = None
     free_event_idx: int = None
     alloc_event_idx: int = None
+    _raw_frames: list[dict] | None = field(default=None, repr=False)
 
     @classmethod
-    def from_dict(cls, block_dict: dict):
+    def from_dict(cls, block_dict: dict, _raw_frames: bool = False):
+        frame_dicts = block_dict.get("frames", [])
+        if _raw_frames:
+            _validate_raw_frames(frame_dicts)
         block = cls(
             size=block_dict["size"],
             requested_size=block_dict["requested_size"],
             address=block_dict["address"],
             state=block_dict["state"],
-            frames=[Frame.from_dict(frame) for frame in block_dict.get("frames", [])],
+            frames=[] if _raw_frames else [Frame.from_dict(frame) for frame in frame_dicts],
+            _raw_frames=frame_dicts if _raw_frames else None,
         )
         return block
 
@@ -145,6 +174,7 @@ class Block:
             requested_size=event.size,
             address=event.addr,
             frames=event.frames,
+            _raw_frames=event._raw_frames,
         )
         return block
 
@@ -154,7 +184,11 @@ class Block:
             "requested_size": self.requested_size,
             "address": self.address,
             "state": self.state,
-            "frames": [frame.to_dict() for frame in self.frames],
+            "frames": (
+                self._raw_frames
+                if self._raw_frames is not None
+                else [frame.to_dict() for frame in self.frames]
+            ),
         }
 
 
@@ -179,9 +213,15 @@ class Segment:
     _origin: dict = None  # Readonly
     free_or_unmap_event_idx: int = None
     alloc_or_map_event_idx: int = None
+    _raw_frames: list[dict] | None = field(default=None, repr=False)
 
     @classmethod
-    def from_dict(cls, segment_dict: dict, ignore_inactive_blocks: bool = False):
+    def from_dict(
+        cls, segment_dict: dict, ignore_inactive_blocks: bool = False, _raw_frames: bool = False
+    ):
+        frame_dicts = segment_dict.get("frames", [])
+        if _raw_frames:
+            _validate_raw_frames(frame_dicts)
         segment = cls(
             address=segment_dict["address"],
             total_size=segment_dict["total_size"],
@@ -189,7 +229,8 @@ class Segment:
             segment_type=segment_dict["segment_type"],
             allocated_size=segment_dict["allocated_size"],
             active_size=segment_dict["active_size"],
-            frames=[Frame.from_dict(_frame) for _frame in segment_dict.get("frames", [])],
+            frames=[] if _raw_frames else [Frame.from_dict(frame) for frame in frame_dicts],
+            _raw_frames=frame_dicts if _raw_frames else None,
             device=segment_dict.get("device", 0),
             _origin=segment_dict,
             is_expandable=segment_dict.get("is_expandable", False),
@@ -197,7 +238,7 @@ class Segment:
         for block in segment_dict["blocks"]:
             if ignore_inactive_blocks and block["state"] == BlockState.INACTIVE:
                 continue
-            _block = Block.from_dict(block)
+            _block = Block.from_dict(block, _raw_frames=_raw_frames)
             _block.segment_ptr = segment
             segment.blocks.append(_block)
         return segment
@@ -209,6 +250,7 @@ class Segment:
             total_size=event.size,
             stream=event.stream,
             frames=event.frames,
+            _raw_frames=event._raw_frames,
             device=event.device if hasattr(event, "device") else 0,
             allocated_size=0,
             active_size=0,
@@ -239,7 +281,11 @@ class Segment:
             "active_size": self.active_size,
             "device": self.device,
             "is_expandable": self.is_expandable,
-            "frames": [frame.to_dict() for frame in self.frames],
+            "frames": (
+                self._raw_frames
+                if self._raw_frames is not None
+                else [frame.to_dict() for frame in self.frames]
+            ),
             "blocks": [block.to_dict() for block in self.blocks],
         }
 
@@ -255,7 +301,13 @@ class DeviceSnapshot:
     device: int
 
     @classmethod
-    def from_dict(cls, snapshot_dict: dict, device: int, ignore_inactive_blocks: bool = False):
+    def from_dict(
+        cls,
+        snapshot_dict: dict,
+        device: int,
+        ignore_inactive_blocks: bool = False,
+        _raw_frames: bool = False,
+    ):
         segments_dict = snapshot_dict.get("segments", [])
         device_traces = snapshot_dict.get("device_traces", [])
         device_trace_list = device_traces[device] if 0 <= device < len(device_traces) else []
@@ -272,7 +324,9 @@ class DeviceSnapshot:
             if segment_dict.get("device", 0) != device:
                 continue
             _segment = Segment.from_dict(
-                segment_dict, ignore_inactive_blocks=ignore_inactive_blocks
+                segment_dict,
+                ignore_inactive_blocks=ignore_inactive_blocks,
+                _raw_frames=_raw_frames,
             )
             snapshot.segments.append(_segment)
             snapshot.total_allocated += _segment.allocated_size
@@ -281,7 +335,7 @@ class DeviceSnapshot:
         snapshot.segments.sort(key=lambda segment: (segment.address, segment.stream))
         # 读取事件序列
         for idx, trace_entry_dict in enumerate(device_trace_list):
-            trace_entry = TraceEntry.from_dict(trace_entry_dict)
+            trace_entry = TraceEntry.from_dict(trace_entry_dict, _raw_frames=_raw_frames)
             if "id" not in trace_entry_dict:
                 trace_entry.idx = idx
             snapshot.trace_entries.append(trace_entry)

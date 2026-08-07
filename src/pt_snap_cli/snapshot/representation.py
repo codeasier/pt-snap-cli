@@ -127,9 +127,10 @@ def replay_snapshot(
     *,
     hooker: SimulateHooker | None = None,
     allocator_hooker: AllocatorHooker | None = None,
+    _raw_frames: bool = False,
 ) -> tuple[SimulateDeviceSnapshot, bool]:
     """Construct and replay one device through the shared snapshot runtime."""
-    snapshot = SimulateDeviceSnapshot(representation, device)
+    snapshot = SimulateDeviceSnapshot(representation, device, _raw_frames=_raw_frames)
     if hooker is not None:
         snapshot.register_hooker(hooker)
     if allocator_hooker is not None:

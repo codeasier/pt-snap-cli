@@ -96,6 +96,59 @@ class TestTraceEntry(unittest.TestCase):
         trace = TraceEntry(action="alloc")
         self.assertEqual(trace.get_callstack(), "")
 
+    def test_raw_frames_match_eager_format_without_mutating_source(self):
+        trace_dict = {
+            "action": "alloc",
+            "addr": 0x1000,
+            "size": "1024",
+            "stream": "0",
+            "id": 27,
+            "frames": [
+                {"filename": "inner.py", "line": 10, "name": "inner"},
+                {"filename": "outer.py", "line": 20, "name": "outer"},
+            ],
+        }
+        original = {**trace_dict, "frames": [dict(frame) for frame in trace_dict["frames"]]}
+
+        eager = TraceEntry.from_dict(trace_dict)
+        raw = TraceEntry.from_dict(trace_dict, _raw_frames=True)
+
+        self.assertTrue(all(isinstance(frame, Frame) for frame in eager.frames))
+        self.assertEqual(raw.frames, [])
+        self.assertIs(raw._raw_frames, trace_dict["frames"])
+        self.assertEqual(raw.get_callstack(), eager.get_callstack())
+        self.assertEqual(raw.get_callstack(), "outer.py:20 outer\ninner.py:10 inner")
+        self.assertEqual(raw.to_dict(include_id=True), eager.to_dict(include_id=True))
+        self.assertEqual(raw.idx, 27)
+        self.assertEqual(trace_dict, original)
+
+    def test_raw_frames_preserve_empty_missing_and_incomplete_behavior(self):
+        base = {"action": "alloc", "addr": 1, "size": 2, "stream": 0}
+
+        self.assertEqual(TraceEntry.from_dict(base, _raw_frames=True).get_callstack(), "")
+        self.assertEqual(
+            TraceEntry.from_dict({**base, "frames": []}, _raw_frames=True).get_callstack(),
+            "",
+        )
+        incomplete = {**base, "frames": [{"filename": "broken.py", "line": 3}]}
+        with self.assertRaises(KeyError):
+            TraceEntry.from_dict(incomplete)
+        with self.assertRaises(KeyError):
+            TraceEntry.from_dict(incomplete, _raw_frames=True)
+        with self.assertRaises(TypeError):
+            TraceEntry.from_dict({**base, "frames": None}, _raw_frames=True)
+
+    def test_raw_frames_preserve_positional_constructor_and_synthetic_serialization(self):
+        origin = {"action": "alloc"}
+        trace = TraceEntry("alloc", 1, [], 2, 3, 4, origin, 5)
+        raw_frames = [{"filename": "raw.py", "line": 6, "name": "run"}]
+        synthetic = TraceEntry(action="alloc", _raw_frames=raw_frames)
+
+        self.assertIs(trace._origin, origin)
+        self.assertEqual(trace.idx, 5)
+        self.assertIsNone(trace._raw_frames)
+        self.assertIs(synthetic.to_dict()["frames"], raw_frames)
+
     def test_to_dict(self):
         trace_dict = {
             "action": "alloc",
@@ -342,6 +395,14 @@ class TestDeviceSnapshot(unittest.TestCase):
         self.assertEqual(snapshot.total_activated, 2048)
         self.assertEqual(snapshot.trace_entries[0].idx, 0)
         self.assertEqual(snapshot.trace_entries[1].idx, 1)
+
+        self.assertTrue(
+            all(
+                isinstance(frame, Frame)
+                for trace in snapshot.trace_entries
+                for frame in trace.frames
+            )
+        )
 
     def test_find_overlapping_segment_returns_idx_and_matches_containing_segment(self):
         snapshot = DeviceSnapshot()

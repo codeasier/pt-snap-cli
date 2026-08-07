@@ -4,6 +4,7 @@ from pt_snap_cli.snapshot.base import (
     Block,
     BlockState,
     DeviceSnapshot,
+    Frame,
     Segment,
     TraceEntry,
 )
@@ -150,6 +151,7 @@ def test_merge_mapped_segment_returns_false_when_no_adjacent_segments_exist():
 
 def test_split_or_shrink_segment_uses_middle_split_branch():
     segment = make_segment(0x1000, 0x1000)
+    segment.frames = [Frame.from_dict({"filename": "alloc.py", "line": 4, "name": "run"})]
     left_block = make_block(0x1000, 0x100)
     right_block = make_block(0x1800, 0x100)
     left_block.segment_ptr = segment
@@ -161,7 +163,21 @@ def test_split_or_shrink_segment_uses_middle_split_branch():
 
     assert snapshot_mutator.split_or_shrink_segment(snapshot, 0, 0x1400, 0x100) is True
     assert len(snapshot.segments) == 2
+    assert all(part.frames is segment.frames for part in snapshot.segments)
+    assert all(isinstance(part.frames[0], Frame) for part in snapshot.segments)
     assert_valid_segments(snapshot.segments)
+
+
+def test_split_or_shrink_segment_preserves_raw_frames():
+    raw_frames = [{"filename": "alloc.py", "line": 4, "name": "run"}]
+    segment = make_segment(0x1000, 0x1000)
+    segment._raw_frames = raw_frames
+    snapshot = make_snapshot([segment])
+
+    assert snapshot_mutator.split_or_shrink_segment(snapshot, 0, 0x1400, 0x100) is True
+    assert len(snapshot.segments) == 2
+    assert all(part._raw_frames is raw_frames for part in snapshot.segments)
+    assert all(part.to_dict()["frames"] is raw_frames for part in snapshot.segments)
 
 
 def test_increase_and_decrease_reserved_update_snapshot_totals():
