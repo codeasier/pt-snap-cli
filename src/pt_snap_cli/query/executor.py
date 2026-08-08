@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
+import re
 import warnings
 from pathlib import Path
 from typing import Any
 
-from jinja2 import Environment, StrictUndefined, TemplateSyntaxError
+from jinja2 import Environment, StrictUndefined, Template, TemplateSyntaxError
 
 from pt_snap_cli.context import Context
 from pt_snap_cli.query.config import QueryConfig, QueryTemplate
+
+# Match a trailing LIMIT clause (with optional OFFSET) at the end of a SQL string.
+# Accepts numeric literals (including negative ones) so the cached ``LIMIT -1``
+# default renders as "already limited" and we don't append a second LIMIT.
+_TRAILING_LIMIT_RE = re.compile(
+    r"\bLIMIT\s+-?\d+(?:\s+OFFSET\s+\d+)?\s*;?\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 class QueryExecutionError(Exception):
@@ -45,9 +54,40 @@ class QueryExecutor:
             undefined=StrictUndefined,
             autoescape=False,
         )
+        # Cache of compiled Jinja templates keyed by template name so that
+        # long-lived executors (e.g. the MCP server) avoid re-parsing
+        # identical template bodies on every query.
+        self._compiled_cache: dict[str, Template] = {}
 
         if self._template_dir and self._template_dir.exists():
             self._load_templates()
+
+    def _compiled_template(self, template: QueryTemplate) -> Template:
+        """Return the cached compiled Jinja template for ``template``.
+
+        Compiles and caches on first access so repeat renders skip the
+        ``Environment.from_string`` parse step.
+        """
+        cached = self._compiled_cache.get(template.name)
+        if cached is not None:
+            return cached
+        try:
+            compiled = self._env.from_string(template.query)
+        except TemplateSyntaxError as e:
+            raise TemplateRenderError(f"Template syntax error in '{template.name}': {e}") from e
+        self._compiled_cache[template.name] = compiled
+        return compiled
+
+    def _has_trailing_limit(self, sql: str) -> bool:
+        """Return True when ``sql`` already ends with a LIMIT clause."""
+        return bool(_TRAILING_LIMIT_RE.search(sql))
+
+    def _append_limit(self, sql: str, limit: int) -> str:
+        """Append a ``LIMIT`` clause to ``sql`` when one is not present."""
+        trimmed = sql.rstrip()
+        if trimmed.endswith(";"):
+            trimmed = trimmed[:-1].rstrip()
+        return f"{trimmed} LIMIT {int(limit)}"
 
     def _load_templates(self) -> None:
         """Load all YAML templates from template directory."""
@@ -66,6 +106,7 @@ class QueryExecutor:
         template: QueryTemplate,
         params: dict[str, Any],
         device_id: int | None = None,
+        max_rows: int | None = None,
     ) -> str:
         """Render SQL template with parameters.
 
@@ -73,6 +114,13 @@ class QueryExecutor:
             template: Query template to render.
             params: Parameters for template rendering.
             device_id: Optional device ID for device-specific tables.
+            max_rows: Optional upper bound on returned rows. When positive,
+                the value is pushed down to SQL as a ``LIMIT`` clause and
+                also injected as the ``limit`` template variable so
+                templates that already expose a ``LIMIT {{ limit }}``
+                parameter stay consistent. When the rendered SQL already
+                ends with a ``LIMIT`` (e.g. from ``top_n`` or another
+                template-defined cap), no second ``LIMIT`` is appended.
 
         Returns:
             Rendered SQL string.
@@ -88,13 +136,25 @@ class QueryExecutor:
             render_context["device_trace_table"] = f"trace_entry_{device_id}"
             render_context["device_block_table"] = f"block_{device_id}"
 
+        effective_limit: int | None = None
+        if max_rows is not None and max_rows > 0:
+            template_limit = render_context.get("limit")
+            if isinstance(template_limit, int) and template_limit > 0:
+                effective_limit = min(template_limit, max_rows)
+            else:
+                effective_limit = max_rows
+            render_context["limit"] = effective_limit
+
+        jinja_template = self._compiled_template(template)
         try:
-            jinja_template = self._env.from_string(template.query)
-            return jinja_template.render(render_context)
-        except TemplateSyntaxError as e:
-            raise TemplateRenderError(f"Template syntax error in '{template.name}': {e}") from e
+            rendered_sql = jinja_template.render(render_context)
         except Exception as e:
             raise TemplateRenderError(f"Failed to render template '{template.name}': {e}") from e
+
+        if effective_limit is not None and not self._has_trailing_limit(rendered_sql):
+            rendered_sql = self._append_limit(rendered_sql, effective_limit)
+
+        return rendered_sql
 
     def execute(
         self,
@@ -131,6 +191,7 @@ class QueryExecutor:
         params: dict[str, Any] | None = None,
         device_id: int | None = None,
         config_name: str | None = None,
+        max_rows: int | None = None,
     ) -> list[dict[str, Any]]:
         """Execute a named template query.
 
@@ -139,6 +200,7 @@ class QueryExecutor:
             params: Parameters for template rendering.
             device_id: Optional device ID to filter results.
             config_name: Optional config name if multiple configs loaded.
+            max_rows: Optional row limit pushed down to SQL when positive.
 
         Returns:
             List of result rows as dictionaries.
@@ -151,7 +213,7 @@ class QueryExecutor:
         if template is None:
             raise QueryExecutionError(f"Template not found: {name}")
 
-        sql = self.render(template, params or {}, device_id)
+        sql = self.render(template, params or {}, device_id, max_rows=max_rows)
 
         if device_id is not None and device_id not in self._context.device_ids:
             return []

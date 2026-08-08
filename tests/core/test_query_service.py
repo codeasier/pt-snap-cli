@@ -106,7 +106,10 @@ class TestQueryService:
 
         result = QueryService().execute_query("size_query", max_rows=1)
 
-        assert result.total == 2
+        # ``max_rows`` is pushed down to SQL as a ``LIMIT`` clause, so the
+        # executor returns exactly ``max_rows`` rows and Python never slices
+        # the result set.
+        assert result.total == 1
         assert result.returned == 1
         assert len(result.rows) == 1
 

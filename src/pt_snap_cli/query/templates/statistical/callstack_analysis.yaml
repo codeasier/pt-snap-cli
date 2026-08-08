@@ -17,6 +17,11 @@ queries:
         default: 0
         required: false
         description: Minimum total size in bytes
+      limit:
+        type: int
+        default: -1
+        required: false
+        description: Maximum rows to return (-1 for unlimited). Mirrored from the caller-side ``max_rows`` for SQL pushdown.
     query: |
       SELECT
         callstack,
@@ -30,6 +35,7 @@ queries:
       HAVING alloc_count >= {{ min_count }}
         AND total_size >= {{ min_size }}
       ORDER BY total_size DESC
+      LIMIT {{ limit|int }}
     output_schema:
       - column: callstack
         type: str
