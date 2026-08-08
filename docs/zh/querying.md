@@ -7,20 +7,23 @@
 ## Query 命令
 
 ```bash
-pt-snap query [--template-use <template_name>] [--params <json>] [--device <id>] [--list] [--template-info <template>]
+pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
+  [--device <id>] [--list] [--category <category>] \
+  [--template-info <template>] [-n <rows>]
 ```
 
 **参数说明：**
 
 | 参数 | 说明 |
 |------|------|
-| `db_path` | SQLite 数据库文件路径（已配置 context 时可选） |
+| `db_path` | SQLite 数据库文件路径（已配置 focus 时可选） |
 | `--template-use` | 查询模板名称（除非使用 `--list` 或 `--template-info`，否则必需） |
 | `--params` | JSON 格式的查询参数 |
 | `--device` | 设备 ID |
 | `--list` | 列出可用的查询模板 |
 | `--category` | 按分类过滤模板：`basic`、`statistical`、`business` |
 | `--template-info` | 显示模板详情（参数和输出 schema） |
+| `-n` | 最大显示行数；零或负数表示不限制 |
 
 ## 查询模板
 
@@ -55,6 +58,15 @@ pt-snap query [--template-use <template_name>] [--params <json>] [--device <id>]
 |------|------|
 | `leak_detection` | 查找未匹配释放事件的分配 |
 | `active_memory_callstack_at_event` | 对某个事件时刻的活跃内存块按分配调用栈做聚合，并单独标识静态内存 |
+
+## 泄漏检测
+
+```bash
+pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
+```
+
+`min_size` 表示候选泄漏的最小字节数，默认值为 `0`。目标设备应通过命令级
+`--device` 选项指定，而不是放进 `--params`。
 
 ## 峰值内存归因工作流
 
@@ -137,15 +149,6 @@ pt-snap report peak-memory /path/to/snapshot.db --json
 
 并输出人类可读摘要或 JSON。
 
-**示例：**
-```bash
-pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
-```
-
-参数：
-- `min_size`: 最小泄漏大小（字节），默认 0
-- `device_id`: 设备 ID
-
 ## 输出格式
 
 默认情况下显示所有结果。使用 `-n` 限制显示行数：
@@ -165,10 +168,14 @@ pt-snap query --template-use leak_detection -n 0
 
 ```
 Found 150 results, showing 2:
-  {'id': 1, 'address': '0x1000', 'size': 2048, ...}
-  {'id': 2, 'address': '0x2000', 'size': 4096, ...}
+  {'id': 1, 'address': 4096, 'size': 2048, ...}
+  {'id': 2, 'address': 8192, 'size': 4096, ...}
   ... and 148 more (use -n to show more)
 ```
+
+CLI、Python API 和 MCP 的查询结果包含原始 SQLite 值。模板的 `output_schema`
+只是 metadata，查询执行时不会自动应用。需要十六进制地址字符串等转换值时，
+应显式调用 `ResultMapper`。
 
 ## 模板架构
 
@@ -176,8 +183,11 @@ Found 150 results, showing 2:
 - `version`: 模板版本
 - `queries`: 查询定义，包含描述、支持的设备、参数、SQL（Jinja2 模板语法）和输出 schema
 
-**支持的类型转换器：** `int`、`float`、`str`、`bool`、`hex`、`datetime`
+显式传给 `ResultMapper` 时，可识别的映射类型包括 `int`、`float`、`str`、
+`bool`、`hex` 和 `datetime`；当前 `datetime` 只是透传声明，不执行解析。
 
-## Python API
+## 可选结果映射
 
-编程式使用方式见 [ResultMapper API](result-mapper-api.md)。
+可选的行转换和模型映射方式见 [ResultMapper API](result-mapper-api.md)。
+
+高层编程式 focus 和查询门面见 [SnapshotAnalyzer API](snapshot-analyzer-api.md)。

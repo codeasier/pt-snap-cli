@@ -26,6 +26,15 @@ Run these commands from the repository root.
 coverage reports under `test_reports/`; use direct `pytest` commands unless
 that local environment is intentionally available.
 
+## Scoped Guidance
+
+| Scope | Guide | Responsibility |
+| --- | --- | --- |
+| GitHub automation | [.github/AGENTS.md](.github/AGENTS.md) | Issue/PR templates, provenance guard, CI, and release workflows |
+| User documentation | [docs/AGENTS.md](docs/AGENTS.md) | English/Chinese guides, API docs, navigation, and legal evidence |
+| Package source | [src/AGENTS.md](src/AGENTS.md) | Installable package boundaries and source-layout rules |
+| Tests | [tests/AGENTS.md](tests/AGENTS.md) | Cross-surface contracts, service/query/runtime suites, and trusted fixtures |
+
 ## Runtime Topology
 
 | Surface | Entry point | Responsibility |

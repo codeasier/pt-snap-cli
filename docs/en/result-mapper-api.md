@@ -1,6 +1,6 @@
 # ResultMapper API
 
-[English](result-mapper-api.md) | [中文](../zh/result-mapper-api.md)
+[中文](../zh/result-mapper-api.md) | English
 
 The `ResultMapper` provides type conversion and model mapping for query results. Use it when embedding or extending the query module programmatically.
 
@@ -68,4 +68,4 @@ results = mapper.map_all(rows, schema)
 | `str` | String |
 | `bool` | Boolean |
 | `hex` | Hexadecimal (integer to hex string) |
-| `datetime` | Datetime |
+| `datetime` | Pass through the original value without parsing |

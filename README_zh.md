@@ -6,6 +6,8 @@
 
 ## 安装
 
+从源码 checkout 安装：
+
 ```bash
 pip install -e .
 ```
@@ -21,7 +23,7 @@ pt-snap import snapshot.pkl
 pt-snap metadata snapshot.pkl.db
 
 # 设置快照数据库和设备
-pt-snap focus examples/snapshot_expandable.pkl.db --device 0
+pt-snap focus snapshot.pkl.db --device 0
 
 # 列出可用查询
 pt-snap query --list
@@ -67,20 +69,11 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 pt-snap-mcp
 ```
 
-服务器暴露以下工具：
-
-| 工具 | 说明 |
-|------|------|
-| `get_focus` | 获取当前分析焦点 |
-| `set_focus` | 设置焦点到指定数据库和设备 |
-| `list_templates` | 列出可用的查询模板 |
-| `get_template_info` | 获取模板详情和参数 |
-| `execute_query` | 对焦点数据库执行查询模板 |
-| `get_database_metadata` | 查看焦点或指定数据库的导入 metadata |
-
 详见 [MCP 指南](docs/zh/mcp.md)。
 
 ## 文档
+
+全部中英文指南见[文档索引](docs/README.md)。
 
 | 主题 | 指南 |
 |------|------|
@@ -90,48 +83,14 @@ pt-snap-mcp
 | 拆分快照 | [拆分快照](docs/zh/splitting.md) |
 | MCP 服务器 | [MCP 指南](docs/zh/mcp.md) |
 | 数据库格式 | [SnapshotDB Schema](docs/zh/database.md) |
-| Python API | [ResultMapper API](docs/zh/result-mapper-api.md) |
-
-## 查询模板
-
-9 个内置模板，3 个分类：
-
-- **Basic**: `block`, `event`, `allocation`
-- **Statistical**: `active_blocks_at_event`, `allocator_gap`, `callstack_analysis`, `memory_peak`
-- **Business**: `active_memory_callstack_at_event`, `leak_detection`
-
-详见 [Querying](docs/zh/querying.md)。
-
-## 项目结构
-
-```
-pt-snap-cli/
-├── src/
-│   └── pt_snap_cli/
-│       ├── cli.py              # CLI 入口
-│       ├── context.py          # 数据库连接管理器
-│       ├── config.py           # 焦点管理
-│       ├── api.py              # Python API 层
-│       ├── query/
-│       │   ├── builder.py      # 查询构建器
-│       │   ├── executor.py     # 查询执行器
-│       │   ├── mapper.py       # 结果映射器
-│       │   ├── registry.py     # 查询注册表
-│       │   ├── condition.py    # 查询条件
-│       │   ├── config.py       # 查询配置
-│       │   └── templates/      # 查询模板
-│       ├── models/             # 数据模型
-│       └── mcp/                # MCP 服务器（Agent 集成）
-├── tests/                  # 测试文件
-├── examples/               # 示例数据
-└── docs/                   # 文档
-```
+| Python API | [SnapshotAnalyzer API](docs/zh/snapshot-analyzer-api.md) |
+| 结果映射工具 | [ResultMapper API](docs/zh/result-mapper-api.md) |
 
 ## 开发
 
 ```bash
+pip install -e ".[dev]"         # 安装开发依赖
 pytest                           # 运行所有测试
-./tests/run_tests.sh             # 完整测试（含覆盖率）
-black . && ruff check .          # 格式化和 lint
+black --check . && ruff check .  # 检查格式和 lint
 python -m build                  # 构建 sdist 和 wheel
 ```
