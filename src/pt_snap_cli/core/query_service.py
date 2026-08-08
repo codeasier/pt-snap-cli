@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionError
+from pt_snap_cli.core.context_cache import ContextCache
 from pt_snap_cli.core.errors import (
     DatabaseMissingError,
     DatabaseSchemaError,
@@ -30,8 +31,29 @@ from pt_snap_cli.query.registry import (
 
 
 class QueryService:
-    def __init__(self, focus_service: FocusService | None = None) -> None:
+    def __init__(
+        self,
+        focus_service: FocusService | None = None,
+        *,
+        context_cache: ContextCache | None = None,
+    ) -> None:
         self._focus_service = focus_service or FocusService()
+        # Cache Context instances across calls so long-lived owners (MCP
+        # server, SnapshotAnalyzer) skip the per-call schema validation and
+        # SQLite connect/close handshake. See ContextCache for the LRU and
+        # mtime invalidation semantics.
+        self._context_cache = context_cache if context_cache is not None else ContextCache()
+        self._executor: QueryExecutor | None = None
+        self._executor_context: Context | None = None
+
+    @property
+    def context_cache(self) -> ContextCache:
+        """Return the :class:`ContextCache` backing this service."""
+        return self._context_cache
+
+    def invalidate_context_cache(self, db_path: Path | str | None = None) -> None:
+        """Drop a cached context (or all of them when ``db_path`` is None)."""
+        self._context_cache.invalidate(db_path)
 
     def list_templates(
         self,
@@ -112,12 +134,15 @@ class QueryService:
 
         ctx = self._validated_context(resolved.db_path)
         target_device = self._resolve_device_id(ctx, resolved.device_id, device_id)
-        executor = QueryExecutor(
-            ctx, template_dir=Path(__file__).parent.parent / "query" / "templates"
-        )
+        executor = self._get_executor(ctx)
 
         try:
-            rows = executor.execute_template(template, params or {}, device_id=target_device)
+            rows = executor.execute_template(
+                template, params or {}, device_id=target_device, max_rows=max_rows
+            )
+            total = len(rows)
+            if max_rows is not None and max_rows > 0 and len(rows) == max_rows:
+                total = executor.count_template(template, params or {}, device_id=target_device)
         except ExecutorTemplateRenderError as exc:
             raise TemplateRenderError(str(exc)) from exc
         except ExecutorQueryExecutionError as exc:
@@ -125,17 +150,21 @@ class QueryService:
                 raise TemplateNotFoundError(f"Template '{template}' not found") from exc
             raise QueryExecutionError(str(exc)) from exc
 
-        if max_rows is None or max_rows <= 0:
-            limited_rows = rows
-        else:
-            limited_rows = rows[:max_rows]
-
         return QueryResult(
-            total=len(rows),
-            returned=len(limited_rows),
+            total=total,
+            returned=len(rows),
             device_id=target_device,
-            rows=limited_rows,
+            rows=rows,
         )
+
+    def _get_executor(self, ctx: Context) -> QueryExecutor:
+        """Reuse the executor while its cached database context remains valid."""
+        if self._executor is None or self._executor_context is not ctx:
+            self._executor = QueryExecutor(
+                ctx, template_dir=Path(__file__).parent.parent / "query" / "templates"
+            )
+            self._executor_context = ctx
+        return self._executor
 
     def _resolve_device_id(
         self,
@@ -163,7 +192,7 @@ class QueryService:
 
     def _validated_context(self, db_path: Path) -> Context:
         try:
-            return Context(db_path)
+            return self._context_cache.get(db_path)
         except DatabaseNotFoundError as exc:
             raise DatabaseMissingError(str(exc)) from exc
         except (SchemaVersionError, sqlite3.DatabaseError) as exc:

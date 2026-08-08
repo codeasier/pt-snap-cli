@@ -17,6 +17,7 @@ class TestQueryExecutor:
         )
         executor = QueryExecutor.__new__(QueryExecutor)
         executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
 
         sql = executor.render(template, {"min_size": 1024})
         assert "SELECT * FROM table WHERE size >= 1024" == sql
@@ -29,6 +30,7 @@ class TestQueryExecutor:
         )
         executor = QueryExecutor.__new__(QueryExecutor)
         executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
 
         sql = executor.render(template, {}, device_id=0)
         assert "SELECT * FROM trace_entry_0 WHERE id = 1" == sql
@@ -41,6 +43,7 @@ class TestQueryExecutor:
         )
         executor = QueryExecutor.__new__(QueryExecutor)
         executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
 
         sql = executor.render(template, {}, device_id=0)
         assert "SELECT * FROM block_0 WHERE id = 1" == sql
@@ -55,6 +58,7 @@ class TestQueryExecutor:
         )
         executor = QueryExecutor.__new__(QueryExecutor)
         executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
 
         sql_with_filter = executor.render(template, {"filter": "alloc"})
         assert "WHERE type = 'alloc'" in sql_with_filter
@@ -70,6 +74,7 @@ class TestQueryExecutor:
         )
         executor = QueryExecutor.__new__(QueryExecutor)
         executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
 
         with pytest.raises(TemplateRenderError, match="Template syntax error"):
             executor.render(template, {})
@@ -84,6 +89,7 @@ class TestQueryExecutor:
         )
         executor = QueryExecutor.__new__(QueryExecutor)
         executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
 
         with pytest.raises(ValueError, match="Required parameter"):
             executor.render(template, {})
@@ -125,6 +131,151 @@ class TestQueryExecutor:
         ]
 
         assert executor.validate_output([], schema) is True
+
+    def test_max_rows_appends_limit_when_template_has_none(self) -> None:
+        """A positive max_rows must be pushed down as LIMIT for templates
+        that don't already declare one (e.g. ``leak_detection``)."""
+        template = QueryTemplate(
+            name="no_limit",
+            query="SELECT id FROM t ORDER BY id",
+            parameters={},
+        )
+        executor = QueryExecutor.__new__(QueryExecutor)
+        executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
+
+        sql = executor.render(template, {}, max_rows=5)
+        assert sql.endswith("LIMIT 5"), sql
+
+    def test_max_rows_uses_template_limit_when_template_owns_one(self) -> None:
+        """When the template already exposes ``limit`` via ``LIMIT {{ limit }}``
+        the executor must inject the effective limit into that variable
+        instead of appending a second LIMIT clause."""
+        template = QueryTemplate(
+            name="with_limit",
+            query="SELECT id FROM t ORDER BY id LIMIT {{ limit|int }}",
+            parameters={
+                "limit": QueryParameter(name="limit", type="int", default=-1),
+            },
+        )
+        executor = QueryExecutor.__new__(QueryExecutor)
+        executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
+
+        sql = executor.render(template, {}, max_rows=5)
+        # Exactly one LIMIT and it carries the pushed-down value.
+        upper = sql.upper()
+        assert upper.count("LIMIT") == 1
+        assert sql.endswith("LIMIT 5"), sql
+
+    def test_max_rows_zero_or_none_keeps_template_default(self) -> None:
+        """``max_rows <= 0`` (including None) must not override the
+        template's default LIMIT, so a template with ``LIMIT -1`` stays
+        unlimited."""
+        template = QueryTemplate(
+            name="with_limit",
+            query="SELECT id FROM t LIMIT {{ limit|int }}",
+            parameters={
+                "limit": QueryParameter(name="limit", type="int", default=-1),
+            },
+        )
+        executor = QueryExecutor.__new__(QueryExecutor)
+        executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
+
+        assert executor.render(template, {}, max_rows=None).endswith("LIMIT -1")
+        assert executor.render(template, {}, max_rows=0).endswith("LIMIT -1")
+        assert executor.render(template, {}, max_rows=-1).endswith("LIMIT -1")
+
+    def test_max_rows_min_of_template_and_caller(self) -> None:
+        """If the user also passes ``params={'limit': 3}``, the effective
+        limit pushed to SQL is min(template_limit, max_rows)."""
+        template = QueryTemplate(
+            name="with_limit",
+            query="SELECT id FROM t LIMIT {{ limit|int }}",
+            parameters={
+                "limit": QueryParameter(name="limit", type="int", default=-1),
+            },
+        )
+        executor = QueryExecutor.__new__(QueryExecutor)
+        executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
+
+        # Template limit (3) is smaller than max_rows (10): use 3.
+        assert executor.render(template, {"limit": 3}, max_rows=10).endswith("LIMIT 3")
+        # max_rows (10) is smaller than template limit (50): use 10.
+        assert executor.render(template, {"limit": 50}, max_rows=10).endswith("LIMIT 10")
+        # Zero is an explicit empty result, not an unlimited value.
+        assert executor.render(template, {"limit": 0}, max_rows=10).endswith("LIMIT 0")
+
+    def test_max_rows_does_not_double_limit(self) -> None:
+        """Templates that cap rows with a non-``limit`` variable (e.g.
+        ``top_n``) keep their own LIMIT and the executor must not append
+        a second one."""
+        template = QueryTemplate(
+            name="with_top_n",
+            query="SELECT callstack FROM t GROUP BY callstack LIMIT {{ top_n|int }}",
+            parameters={
+                "top_n": QueryParameter(name="top_n", type="int", default=20),
+            },
+        )
+        executor = QueryExecutor.__new__(QueryExecutor)
+        executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
+
+        sql = executor.render(template, {}, max_rows=100)
+        # ``LIMIT`` appears exactly once and reflects the template's own
+        # ``top_n`` default, not the caller's ``max_rows``.
+        assert sql.upper().count("LIMIT") == 1
+        assert sql.endswith("LIMIT 20"), sql
+
+    def test_max_rows_tightens_non_limit_template_cap(self) -> None:
+        """A caller cap must also tighten templates that use ``top_n``."""
+        template = QueryTemplate(
+            name="with_top_n",
+            query="SELECT callstack FROM t GROUP BY callstack LIMIT {{ top_n|int }}",
+            parameters={
+                "top_n": QueryParameter(name="top_n", type="int", default=20),
+            },
+        )
+        executor = QueryExecutor.__new__(QueryExecutor)
+        executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
+
+        sql = executor.render(template, {}, max_rows=5)
+
+        assert sql.upper().count("LIMIT") == 1
+        assert sql.endswith("LIMIT 5"), sql
+
+    def test_jinja_template_compiled_once_per_template(self) -> None:
+        """Long-lived executors (MCP server) must avoid re-parsing the
+        same template body on every render call."""
+        template = QueryTemplate(
+            name="cached",
+            query="SELECT {{ device_id }}",
+            parameters={},
+        )
+        executor = QueryExecutor.__new__(QueryExecutor)
+        executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
+
+        first = executor._compiled_template(template)
+        second = executor._compiled_template(template)
+        assert first is second
+        assert ("cached", template.query) in executor._compiled_cache
+
+    def test_jinja_cache_distinguishes_same_name_with_new_query(self) -> None:
+        first_template = QueryTemplate(name="cached", query="SELECT 1")
+        second_template = QueryTemplate(name="cached", query="SELECT 2")
+        executor = QueryExecutor.__new__(QueryExecutor)
+        executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
+
+        first = executor._compiled_template(first_template)
+        second = executor._compiled_template(second_template)
+
+        assert first is not second
+        assert len(executor._compiled_cache) == 2
 
     def test_list_templates(self):
         executor = QueryExecutor.__new__(QueryExecutor)

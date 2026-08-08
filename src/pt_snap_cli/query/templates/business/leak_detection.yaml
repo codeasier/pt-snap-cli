@@ -12,12 +12,18 @@ queries:
         default: 0
         required: false
         description: Minimum leak size in bytes
+      limit:
+        type: int
+        default: -1
+        required: false
+        description: Maximum rows to return (-1 for unlimited). Mirrored from the caller-side ``max_rows`` for SQL pushdown.
     query: |
       SELECT id, address, size, allocEventId
       FROM {{ device_block_table }}
       WHERE size >= {{ min_size }}
         AND (allocEventId >= 0 AND (freeEventId IS NULL OR freeEventId < 0))
       ORDER BY size DESC
+      LIMIT {{ limit|int }}
     output_schema:
       - column: id
         type: int

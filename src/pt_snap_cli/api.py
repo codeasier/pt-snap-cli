@@ -15,6 +15,7 @@ from pt_snap_cli.core import (
     ImportMetadataService,
     QueryService,
 )
+from pt_snap_cli.core.context_cache import ContextCache
 
 
 @dataclass
@@ -34,13 +35,30 @@ class SnapshotAnalyzer:
         self,
         db_path: Path | None = None,
         device_id: int | None = None,
+        *,
+        context_cache: ContextCache | None = None,
     ) -> None:
         self._config = Config()
         self._db_path = db_path
         self._device_id = device_id
         self._focus_service = FocusService(self._config)
-        self._query_service = QueryService(self._focus_service)
+        # Share one context cache across the analyzer so that long-lived
+        # analyzers (e.g. the MCP server singleton) reuse a single
+        # SQLite connection and skip schema validation on every query.
+        # Explicit ``is not None`` because an empty cache is falsy via
+        # ``__len__`` and would be silently replaced otherwise.
+        self._context_cache = context_cache if context_cache is not None else ContextCache()
+        self._query_service = QueryService(self._focus_service, context_cache=self._context_cache)
         self._metadata_service = ImportMetadataService()
+
+    @property
+    def context_cache(self) -> ContextCache:
+        """Return the :class:`ContextCache` this analyzer uses."""
+        return self._context_cache
+
+    def invalidate_context_cache(self, db_path: Path | str | None = None) -> None:
+        """Drop a cached context (or every cached context when ``db_path`` is None)."""
+        self._context_cache.invalidate(db_path)
 
     def get_focus(self) -> FocusState:
         state = self._focus_service.get_focus(

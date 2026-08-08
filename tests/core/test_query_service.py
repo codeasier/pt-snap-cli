@@ -12,7 +12,7 @@ from pt_snap_cli.core import (
     QueryService,
     TemplateNotFoundError,
 )
-from pt_snap_cli.query.config import QueryTemplate
+from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.registry import QueryRegistry, register_query
 
 
@@ -106,9 +106,52 @@ class TestQueryService:
 
         result = QueryService().execute_query("size_query", max_rows=1)
 
+        # ``max_rows`` is pushed down to SQL as a ``LIMIT`` clause, so the
+        # executor returns exactly ``max_rows`` rows and Python never slices
+        # the result set.
         assert result.total == 2
         assert result.returned == 1
         assert len(result.rows) == 1
+
+    def test_execute_query_explicit_zero_limit_is_not_relaxed(self, sample_db: Path) -> None:
+        config = Config()
+        config.write_project_focus(sample_db)
+        register_query(
+            QueryTemplate(
+                name="size_query_with_limit",
+                description="Test",
+                query="SELECT size FROM trace_entry_0 LIMIT {{ limit|int }}",
+                parameters={
+                    "limit": QueryParameter(name="limit", type="int", default=-1),
+                },
+            )
+        )
+
+        result = QueryService().execute_query(
+            "size_query_with_limit", params={"limit": 0}, max_rows=5
+        )
+
+        assert result.total == 0
+        assert result.returned == 0
+        assert result.rows == []
+
+    def test_execute_query_reuses_executor_for_cached_context(self, sample_db: Path) -> None:
+        config = Config()
+        config.write_project_focus(sample_db)
+        register_query(
+            QueryTemplate(
+                name="size_query",
+                description="Test",
+                query="SELECT size FROM trace_entry_0",
+            )
+        )
+        service = QueryService()
+
+        service.execute_query("size_query")
+        first_executor = service._executor
+        service.execute_query("size_query")
+
+        assert service._executor is first_executor
 
     def test_execute_query_invalid_device(self, sample_db: Path) -> None:
         config = Config()

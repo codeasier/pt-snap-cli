@@ -25,14 +25,30 @@ class Context:
     """Database context manager for PyTorch memory snapshot analysis.
 
     Manages SQLite database connections in read-only mode with schema validation.
+
+    By default the underlying SQLite connection is opened and closed for every
+    ``connect()`` context. Pass ``persistent=True`` to keep the connection
+    alive across calls so that long-lived owners (e.g. a ``ContextCache``
+    shared by an MCP server) can avoid the per-query open/close cost.
+    Persistent contexts still close their connection when ``close()`` is
+    invoked explicitly.
     """
 
-    def __init__(self, db_path: str | Path, devices: list[int] | None = None):
+    def __init__(
+        self,
+        db_path: str | Path,
+        devices: list[int] | None = None,
+        *,
+        persistent: bool = False,
+    ):
         """Initialize context with database path.
 
         Args:
             db_path: Path to the SQLite database file.
             devices: Optional list of device IDs to filter.
+            persistent: When True, the connection stays open after each
+                ``connect()`` call so it can be reused. The caller is
+                responsible for invoking ``close()`` to release it.
 
         Raises:
             DatabaseNotFoundError: If database file does not exist.
@@ -40,7 +56,9 @@ class Context:
         """
         self.db_path = Path(db_path)
         self._devices = devices
+        self._persistent = persistent
         self._conn: sqlite3.Connection | None = None
+        self._connect_depth = 0
         self._device_ids: list[int] | None = None
 
         if not self.db_path.exists():
@@ -108,27 +126,37 @@ class Context:
     def connect(self) -> Generator[sqlite3.Connection, None, None]:
         """Context manager for database connection.
 
-        Opens database in read-only mode for safe analysis.
+        Opens database in read-only mode for safe analysis. When the
+        context was constructed with ``persistent=True`` the underlying
+        SQLite connection remains open after the context exits and is
+        reused by subsequent ``connect()`` calls until ``close()`` is
+        invoked explicitly.
 
         Yields:
             SQLite connection object.
         """
-        if self._conn is not None:
-            yield self._conn
-            return
+        if self._conn is None:
+            # Keep the colon in Windows drive prefixes while encoding SQLite URI metacharacters.
+            encoded_path = quote(self.db_path.as_posix(), safe="/:")
+            uri = f"file:{encoded_path}?mode=ro"
+            self._conn = sqlite3.connect(uri, uri=True)
+            self._conn.row_factory = sqlite3.Row
 
-        # Keep the colon in Windows drive prefixes while encoding SQLite URI metacharacters.
-        encoded_path = quote(self.db_path.as_posix(), safe="/:")
-        uri = f"file:{encoded_path}?mode=ro"
-        self._conn = sqlite3.connect(uri, uri=True)
-        self._conn.row_factory = sqlite3.Row
+        self._connect_depth += 1
         try:
             yield self._conn
         finally:
-            self.close()
+            if self._connect_depth > 0:
+                self._connect_depth -= 1
+            if not self._persistent and self._connect_depth == 0:
+                self.close()
 
     def close(self) -> None:
-        """Close the database connection."""
+        """Close the database connection.
+
+        Safe to call multiple times and on already-closed contexts.
+        """
         if self._conn is not None:
             self._conn.close()
             self._conn = None
+        self._connect_depth = 0
