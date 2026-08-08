@@ -1,6 +1,6 @@
 # Splitting Snapshots
 
-[English](splitting.md) | [中文](../zh/splitting.md)
+[中文](../zh/splitting.md) | English
 
 `pt-snap split` divides an original PyTorch memory snapshot into smaller files
 that can each reconstruct the allocator state at its boundary and replay its own
@@ -30,10 +30,15 @@ Exactly one strategy is required:
 
 | Option | Meaning |
 | --- | --- |
-| `--slices COUNT` | Request a positive number of slices for each selected device |
+| `--slices COUNT` | Request up to a positive target number of slices for each selected device; partitioning may emit fewer |
 | `--max-entries COUNT` | Limit each slice to a positive maximum event count |
 
 `--format` accepts exactly `pickle` or `json` and defaults to `pickle`.
+
+Exclusive atomic directory publication requires `renamex_np(RENAME_EXCL)` on
+Darwin, `renameat2(RENAME_NOREPLACE)` on Linux, or Windows rename semantics.
+Unsupported platforms or missing libc symbols fail publication preflight before
+the source pickle is loaded.
 
 ## Devices And Names
 
@@ -55,7 +60,7 @@ Identical input and options produce the same ordered names.
 Examples:
 
 ```bash
-# Split every nonempty device independently into four slices
+# Target up to four slices for each nonempty device
 pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 
 # Split only device 1, with at most 50000 events in each normalized JSON file
@@ -86,10 +91,12 @@ Only after every device and slice passes validation does pt-snap atomically rena
 the whole staging directory to `--output` with no-replace semantics.
 
 Failures identify one of the argument, path, conflict, device, load/engine,
-generated-validation, or publication phases. On any failure, pt-snap removes only
-the staging directory it created and leaves no partial destination. If another
-process creates the destination during the run, publication fails without
-replacing or merging that path, and owned staging output is cleaned up.
+generated-validation, or publication phases. On failure, pt-snap makes a
+best-effort attempt to remove only the staging directory it created and leaves no
+partial destination. It verifies staging identity immediately before path-based
+removal; if identity verification or cleanup fails, the hidden staging directory
+can remain for manual inspection. If another process creates the destination
+during the run, publication fails without replacing or merging that path.
 
 After a successful pickle split, import and query one slice normally:
 

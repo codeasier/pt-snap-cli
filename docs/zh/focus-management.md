@@ -2,7 +2,9 @@
 
 [English](../en/focus-management.md) | 中文
 
-`pt-snap` 支持项目级焦点设置，避免不同终端、Agent 或工作目录分析不同数据库/设备时互相干扰。
+`pt-snap` 支持项目级 focus。解析到同一个最近 `.pt-snap/focus.json` 的进程会共享
+该 focus，不同项目目录则可以选择不同数据库和设备。同一项目内的终端或 Agent 需要
+相互隔离时，应使用 session 覆盖。
 
 ## 解析优先级
 
@@ -84,8 +86,11 @@ pt-snap config --clear  # 清除全局配置
 
 | 范围 | 文件 |
 |------|------|
-| 项目 | `.pt-snap/focus.json`（git-ignored，项目级） |
+| 项目 | `.pt-snap/focus.json`（项目作用域内的进程共享） |
 | 全局 | `~/.config/pt-snap-cli/config.json` |
+
+项目 focus 可能包含本地数据库的绝对路径。需要保持为本地文件时，请将 `.pt-snap/`
+加入项目的 `.gitignore`；pt-snap 不会自动修改忽略规则。
 
 ### Focus 文件格式
 

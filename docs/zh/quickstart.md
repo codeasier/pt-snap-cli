@@ -6,6 +6,8 @@
 
 ## 安装
 
+从源码 checkout 安装：
+
 ```bash
 pip install -e .
 ```
@@ -32,10 +34,9 @@ pt-snap query --list
 pt-snap import snapshot.pkl --force
 ```
 
-当前导入流程会先完整加载 pickle，再开始处理。导入大型快照时，请预留约为 pickle
-文件大小 3-10 倍的可用内存；实际峰值取决于 frame 对象的数量。建议在内存充足的机器上
-执行导入。`--device` 只能减少后续回放和数据库写入量，无法降低最初加载 pickle 时的
-内存峰值。
+当前导入流程会先完整加载 pickle，再开始处理，因此内存峰值可能明显高于输入文件大小，
+具体取决于对象图和 frame 数量。导入大型快照时请预留充足内存。`--device` 只能减少
+后续回放和数据库写入量，无法降低最初加载 pickle 时的内存峰值。
 
 导入时，pt-snap 会回放所选设备的分配器历史，而不是直接复制原始事件。生成的
 SnapshotDB 会记录每个事件后的 `allocated`、`active`、`reserved` 总量和 block
@@ -58,7 +59,7 @@ pt-snap split snapshot.pkl --max-entries 50000 --output snapshot-slices
 将 `pt-snap` 指向你的 SQLite 快照数据库文件：
 
 ```bash
-pt-snap focus examples/snapshot_expandable.pkl.db --device 0
+pt-snap focus snapshot.pkl.db --device 0
 ```
 
 该命令会验证数据库，并将路径和设备 ID 保存到当前目录的 `.pt-snap/focus.json`，之后无需重复指定。
@@ -66,7 +67,7 @@ pt-snap focus examples/snapshot_expandable.pkl.db --device 0
 如果只需设置数据库（暂不指定设备）：
 
 ```bash
-pt-snap focus examples/snapshot_expandable.pkl.db
+pt-snap focus snapshot.pkl.db
 ```
 
 ### 第二步：列出可用查询
@@ -88,13 +89,14 @@ pt-snap query --template-use memory_peak
 pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 
 # 查询自动使用 focus 中设置的设备，也可以显式覆盖
-pt-snap query --template-use block --device 1 --state 1
+pt-snap query --template-use block --device 0 --params '{"min_size": 1048576}'
 ```
 
 ## 下一步
 
 - [Focus 管理](focus-management.md) — 学习如何在多个项目和会话之间管理数据库和设备焦点
-- [运行查询](querying.md) — 所有查询模板、参数和输出的完整指南
+- [运行查询](querying.md) — 查询流程、模板发现、参数和输出说明
 - [拆分快照](splitting.md) — 创建可独立回放的逐设备切片
 - [MCP 服务器](mcp.md) — 使用 MCP 服务器进行 AI Agent 集成
 - [数据库格式](database.md) — 了解 SnapshotDB 格式
+- [SnapshotAnalyzer API](snapshot-analyzer-api.md) — 从 Python 查询 SnapshotDB 文件

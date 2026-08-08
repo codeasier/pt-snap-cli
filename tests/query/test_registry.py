@@ -209,6 +209,16 @@ class TestListByCategory:
         assert "test_biz" in result
         assert "leak_detection" in result
 
+    def test_leak_detection_template_exposes_only_min_size(self):
+        """Regression for issue #90: ``leak_detection`` must not advertise
+        ``device_id`` as a parameter because device selection is owned by the
+        top-level ``--device`` flag, Python ``device_id`` argument, and focus.
+        """
+        info = get_template_info("leak_detection")
+        assert info is not None
+        assert "min_size" in info["parameters"]
+        assert "device_id" not in info["parameters"]
+
     def test_list_by_category_with_details(self):
         register_query(
             QueryTemplate(

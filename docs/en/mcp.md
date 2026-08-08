@@ -6,6 +6,8 @@
 
 ## Installation
 
+From a source checkout:
+
 ```bash
 pip install -e .
 ```
@@ -45,7 +47,7 @@ This starts a FastMCP server that exposes tools for analyzing PyTorch memory sna
 
 ## Typical Workflow
 
-1. Call `set_focus` with `db_path` to point to a snapshot file
+1. Call `set_focus` with `db_path` to point to a SnapshotDB `.db` file
 2. Call `list_templates` to discover available queries
 3. Call `get_template_info` with a template name to see its parameters
 4. Call `execute_query` with the template name and parameters
@@ -54,7 +56,7 @@ This starts a FastMCP server that exposes tools for analyzing PyTorch memory sna
 ## Example Usage
 
 ```python
-# Set focus to a snapshot
+# Set focus to a SnapshotDB file
 set_focus(db_path="/path/to/snapshot.db", device_id=0)
 
 # List templates
@@ -63,7 +65,7 @@ list_templates()
 
 # Get template details
 get_template_info("leak_detection")
-# Returns: {"name": "leak_detection", "parameters": [...], ...}
+# Returns: {"name": "leak_detection", "parameters": {"min_size": {...}}, ...}
 
 # Run a query
 execute_query("leak_detection", params={"min_size": 1024})

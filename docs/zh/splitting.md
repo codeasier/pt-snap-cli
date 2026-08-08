@@ -26,10 +26,14 @@ pt-snap split SNAPSHOT_PATH \
 
 | 参数 | 含义 |
 | --- | --- |
-| `--slices COUNT` | 为每个选中设备请求正数个切片 |
+| `--slices COUNT` | 为每个选中设备请求最多为正数 `COUNT` 的目标切片数；分区结果可能更少 |
 | `--max-entries COUNT` | 将每个切片的最大事件数限制为正数 `COUNT` |
 
 `--format` 只接受 `pickle` 或 `json`，默认值为 `pickle`。
+
+排他原子目录发布在 Darwin 上依赖 `renamex_np(RENAME_EXCL)`，在 Linux 上依赖
+`renameat2(RENAME_NOREPLACE)`，Windows 使用其重命名语义。不支持的平台或缺少所需
+libc 符号时，会在加载源 pickle 前的发布预检阶段失败。
 
 ## 设备与命名
 
@@ -49,7 +53,7 @@ pt-snap split SNAPSHOT_PATH \
 示例：
 
 ```bash
-# 将所有非空设备分别拆成四片
+# 以每个非空设备最多四片为目标进行拆分
 pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 
 # 只拆分设备 1，每个规范化 JSON 文件最多包含 50000 个事件
@@ -75,8 +79,10 @@ pt-snap split snapshot.pkl --device 1 --max-entries 50000 \
 为 `--output`。
 
 失败信息会标明 argument、path、conflict、device、load/engine、generated-validation
-或 publication 阶段。任何失败都只清理本次创建的暂存目录，不留下部分目标目录。如果其他
-进程在执行期间创建了目标路径，发布会失败，不替换也不合并该路径，并清理自有暂存输出。
+或 publication 阶段。失败时，pt-snap 会尽力只清理本次创建的暂存目录，不留下部分目标
+目录。执行基于路径的删除前会立即验证暂存目录身份；身份验证或清理失败时，隐藏暂存目录
+可能保留以供人工检查。如果其他进程在执行期间创建了目标路径，发布会失败，不替换也不
+合并该路径。
 
 成功生成 pickle 切片后，可按常规方式导入并查询其中一个切片：
 

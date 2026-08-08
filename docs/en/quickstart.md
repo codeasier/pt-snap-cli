@@ -6,6 +6,8 @@ Get up and running with `pt-snap-cli` in a few minutes.
 
 ## Installation
 
+From a source checkout:
+
 ```bash
 pip install -e .
 ```
@@ -33,11 +35,10 @@ Use `--force` when you intentionally need to rebuild it:
 pt-snap import snapshot.pkl --force
 ```
 
-Import currently loads the entire pickle before processing it. For large snapshots, allow
-roughly 3-10 times the pickle file size in available memory; the exact peak depends on the
-number of frame objects. Run the import on a machine with sufficient memory. `--device`
-limits subsequent replay and database writes, but does not reduce the initial pickle-loading
-memory peak.
+Import currently loads the entire pickle before processing it, so peak memory can be
+substantially larger than the input file depending on its object graph and frame count.
+Run large imports with sufficient memory headroom. `--device` limits subsequent replay
+and database writes, but does not reduce the initial pickle-loading memory peak.
 
 During import, pt-snap replays the selected device's allocator history instead of
 copying raw events directly. The resulting SnapshotDB records event-by-event
@@ -63,7 +64,7 @@ atomic publication guarantees.
 Point `pt-snap` to your SQLite snapshot database file:
 
 ```bash
-pt-snap focus examples/snapshot_expandable.pkl.db --device 0
+pt-snap focus snapshot.pkl.db --device 0
 ```
 
 This validates the database and saves the path and device ID to `.pt-snap/focus.json` in your current directory, so you don't need to repeat it.
@@ -71,7 +72,7 @@ This validates the database and saves the path and device ID to `.pt-snap/focus.
 If you only want to set the database (no device yet):
 
 ```bash
-pt-snap focus examples/snapshot_expandable.pkl.db
+pt-snap focus snapshot.pkl.db
 ```
 
 ### Step 2: List Available Queries
@@ -93,13 +94,14 @@ pt-snap query --template-use memory_peak
 pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 
 # Query automatically uses the focused device, or you can override it
-pt-snap query --template-use block --device 1 --state 1
+pt-snap query --template-use block --device 0 --params '{"min_size": 1048576}'
 ```
 
 ## What's Next
 
 - [Focus Management](focus-management.md) — Learn how to manage database and device focus across projects and sessions
-- [Querying](querying.md) — Full guide to all query templates, parameters, and output
+- [Querying](querying.md) — Query workflows, template discovery, parameters, and output
 - [Splitting Snapshots](splitting.md) — Create independently replayable per-device slices
 - [MCP Server](mcp.md) — Use the MCP server for AI agent integration
 - [Database Schema](database.md) — Understand the SnapshotDB format
+- [SnapshotAnalyzer API](snapshot-analyzer-api.md) — Query SnapshotDB files from Python

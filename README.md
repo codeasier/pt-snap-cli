@@ -6,6 +6,8 @@ A command-line tool for analyzing PyTorch memory snapshots. Set a snapshot datab
 
 ## Installation
 
+From a source checkout:
+
 ```bash
 pip install -e .
 ```
@@ -25,7 +27,7 @@ pt-snap query --list
 
 ```bash
 # Set the snapshot database and device
-pt-snap focus examples/snapshot_expandable.pkl.db --device 0
+pt-snap focus snapshot.pkl.db --device 0
 
 # List available queries
 pt-snap query --list
@@ -71,20 +73,11 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 pt-snap-mcp
 ```
 
-The server exposes the following tools:
-
-| Tool | Description |
-|------|-------------|
-| `get_focus` | Get the current analysis focus |
-| `set_focus` | Set focus to a database and optional device |
-| `list_templates` | List available query templates |
-| `get_template_info` | Get template details and parameters |
-| `execute_query` | Run a query template against the focused database |
-| `get_database_metadata` | Inspect import metadata for the focused or specified database |
-
 See the [MCP guide](docs/en/mcp.md) for setup and usage details.
 
 ## Documentation
+
+See the [documentation index](docs/README.md) for all English and Chinese guides.
 
 | Topic | Guide |
 |-------|-------|
@@ -94,61 +87,14 @@ See the [MCP guide](docs/en/mcp.md) for setup and usage details.
 | Splitting snapshots | [Splitting Snapshots](docs/en/splitting.md) |
 | MCP server | [MCP Guide](docs/en/mcp.md) |
 | Database format | [SnapshotDB Schema](docs/en/database.md) |
-| Python API | [ResultMapper API](docs/en/result-mapper-api.md) |
-
-## Query Templates
-
-9 built-in templates across 3 categories:
-
-- **Basic**: `block`, `event`, `allocation`
-- **Statistical**: `active_blocks_at_event`, `allocator_gap`, `callstack_analysis`, `memory_peak`
-- **Business**: `active_memory_callstack_at_event`, `leak_detection`
-
-See [Querying](docs/en/querying.md) for details.
-
-## Project Structure
-
-```
-pt-snap-cli/
-├── src/
-│   └── pt_snap_cli/
-│       ├── cli.py              # CLI entry point
-│       ├── context.py          # Database context manager
-│       ├── config.py           # Focus management
-│       ├── api.py              # Python API layer
-│       ├── query/
-│       │   ├── builder.py      # Query builder
-│       │   ├── executor.py     # Query executor
-│       │   ├── mapper.py       # Result mapper
-│       │   ├── registry.py     # Query registry
-│       │   ├── condition.py    # Query conditions
-│       │   ├── config.py       # Query configuration
-│       │   └── templates/      # Query templates
-│       ├── models/             # Data models
-│       └── mcp/                # MCP server for agent integration
-├── tests/                  # Test files
-├── examples/               # Example data
-└── docs/                   # Documentation
-```
+| Python API | [SnapshotAnalyzer API](docs/en/snapshot-analyzer-api.md) |
+| Result mapping utility | [ResultMapper API](docs/en/result-mapper-api.md) |
 
 ## Development
 
 ```bash
+pip install -e ".[dev]"         # Install development dependencies
 pytest                           # Run all tests
-./tests/run_tests.sh             # Full test run with coverage
-black . && ruff check .          # Format and lint
+black --check . && ruff check .  # Check formatting and lint
 python -m build                  # Build sdist and wheel
 ```
-
-### CLI/MCP semantic contract
-
-The CLI and MCP server must keep using the shared API/core services as the single
-semantic source of truth. The CLI may render results as terminal text and the MCP
-server may return JSON-like tool payloads, but normalized meanings must stay in
-sync for focus handling, query template listing, template metadata, query
-execution, and shared error cases.
-
-`tests/test_contract_cli_mcp.py` compares normalized CLI output with MCP tool
-results on the same inputs and fixtures. When adding a new shared CLI/MCP capability,
-update or add a contract case in that file so CI fails if either adapter drifts
-from the shared behavior.

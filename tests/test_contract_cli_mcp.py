@@ -262,6 +262,32 @@ def test_template_info_contract_matches_cli_and_mcp_semantics(
     assert cli_info == mcp_info
 
 
+def test_leak_detection_template_does_not_advertise_device_id(
+    contract_db: Path, mcp_server: ModuleType
+) -> None:
+    """Regression for issue #90: ``device_id`` is resolved from focus / --device,
+    not from template parameters, so the template metadata must not expose it.
+    """
+    cli_result = runner.invoke(
+        app,
+        ["query", str(contract_db), "--template-info", "leak_detection"],
+    )
+    assert cli_result.exit_code == 0
+
+    server = _set_mcp_focus(mcp_server, contract_db)
+    cli_info = _normalize_cli_template_info(cli_result.stdout)
+    mcp_info = server.get_template_info("leak_detection")
+
+    for info in (cli_info, mcp_info):
+        assert info is not None
+        assert "parameters" in info
+        assert "device_id" not in info["parameters"], (
+            "leak_detection must not advertise device_id; use --device / "
+            "API device_id / focus selection instead."
+        )
+        assert "min_size" in info["parameters"]
+
+
 def test_query_execution_contract_matches_cli_and_mcp_semantics(
     contract_db: Path, mcp_server: ModuleType
 ) -> None:
