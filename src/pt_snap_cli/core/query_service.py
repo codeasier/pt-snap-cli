@@ -43,6 +43,8 @@ class QueryService:
         # SQLite connect/close handshake. See ContextCache for the LRU and
         # mtime invalidation semantics.
         self._context_cache = context_cache if context_cache is not None else ContextCache()
+        self._executor: QueryExecutor | None = None
+        self._executor_context: Context | None = None
 
     @property
     def context_cache(self) -> ContextCache:
@@ -132,14 +134,15 @@ class QueryService:
 
         ctx = self._validated_context(resolved.db_path)
         target_device = self._resolve_device_id(ctx, resolved.device_id, device_id)
-        executor = QueryExecutor(
-            ctx, template_dir=Path(__file__).parent.parent / "query" / "templates"
-        )
+        executor = self._get_executor(ctx)
 
         try:
             rows = executor.execute_template(
                 template, params or {}, device_id=target_device, max_rows=max_rows
             )
+            total = len(rows)
+            if max_rows is not None and max_rows > 0 and len(rows) == max_rows:
+                total = executor.count_template(template, params or {}, device_id=target_device)
         except ExecutorTemplateRenderError as exc:
             raise TemplateRenderError(str(exc)) from exc
         except ExecutorQueryExecutionError as exc:
@@ -147,15 +150,21 @@ class QueryService:
                 raise TemplateNotFoundError(f"Template '{template}' not found") from exc
             raise QueryExecutionError(str(exc)) from exc
 
-        # ``max_rows`` is pushed down to SQL inside the executor, so no
-        # Python-level slicing happens here. ``total`` reflects the rows
-        # actually returned by the query, matching what the CLI displays.
         return QueryResult(
-            total=len(rows),
+            total=total,
             returned=len(rows),
             device_id=target_device,
             rows=rows,
         )
+
+    def _get_executor(self, ctx: Context) -> QueryExecutor:
+        """Reuse the executor while its cached database context remains valid."""
+        if self._executor is None or self._executor_context is not ctx:
+            self._executor = QueryExecutor(
+                ctx, template_dir=Path(__file__).parent.parent / "query" / "templates"
+            )
+            self._executor_context = ctx
+        return self._executor
 
     def _resolve_device_id(
         self,

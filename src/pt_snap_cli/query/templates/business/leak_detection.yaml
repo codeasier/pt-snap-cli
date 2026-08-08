@@ -12,11 +12,6 @@ queries:
         default: 0
         required: false
         description: Minimum leak size in bytes
-      device_id:
-        type: int
-        default: null
-        required: false
-        description: Device ID to query
       limit:
         type: int
         default: -1

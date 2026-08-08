@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -70,37 +71,28 @@ class TestContextCache:
         with pytest.raises(SchemaVersionError):
             cache.get(bad_db)
 
-    def test_get_invalidates_on_mtime_change(self, tmp_path: Path) -> None:
-        """Replacing the database file (e.g. via ``pt-snap import``) bumps
-        ``st_mtime``; the cache must reopen the file so the new contents
-        are picked up."""
+    def test_same_mtime_replacement_refreshes_cached_context(self, tmp_path: Path) -> None:
+        """Replacing a database with the same mtime must refresh its context."""
         db_path = _make_db(tmp_path)
         cache = ContextCache(maxsize=4)
-
         first = cache.get(db_path)
-        # Append a row and force a fresh mtime by removing then rewriting
-        # the file. ``Path.touch`` and the underlying ``sqlite3.connect``
-        # keep ``st_mtime`` coarse-grained on some filesystems, so use a
-        # measurable delay to make the new mtime strictly larger.
-        import os
-        import time
+        original_stat = db_path.stat()
 
-        new_path = tmp_path / "replaced.db"
-        conn = sqlite3.connect(str(new_path))
+        replacement = tmp_path / "same-mtime.db"
+        conn = sqlite3.connect(str(replacement))
         conn.execute(
             "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
         )
-        conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY, size INTEGER)")
-        conn.execute("INSERT INTO trace_entry_0 (size) VALUES (99)")
+        conn.execute("CREATE TABLE trace_entry_1 (id INTEGER PRIMARY KEY, size INTEGER)")
         conn.commit()
         conn.close()
-        time.sleep(0.05)
-        os.replace(new_path, db_path)
+        os.utime(replacement, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+        os.replace(replacement, db_path)
 
         second = cache.get(db_path)
+
         assert second is not first
-        # ``device_ids`` reflects the replaced file.
-        assert second.device_ids == [0]
+        assert second.device_ids == [1]
 
     def test_invalidate_path_drops_entry(self, tmp_path: Path) -> None:
         db_path = _make_db(tmp_path)
@@ -182,4 +174,17 @@ class TestPersistentContext:
 
         with ctx.connect():
             assert ctx._conn is not None
+        assert ctx._conn is None
+
+    def test_nested_non_persistent_connect_closes_after_outer_block(self, tmp_path: Path) -> None:
+        db_path = _make_db(tmp_path)
+        ctx = Context(db_path)
+
+        with ctx.connect() as outer:
+            with ctx.connect() as inner:
+                assert inner is outer
+                inner.execute("SELECT 1")
+            outer.execute("SELECT 1")
+            assert ctx._conn is not None
+
         assert ctx._conn is None

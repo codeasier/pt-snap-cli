@@ -8,11 +8,12 @@ validation, device discovery, and a fresh ``sqlite3.connect`` URI handshake on
 every query.
 
 Entries are keyed by the resolved absolute path of the database file and
-stamped with the file's ``st_mtime`` at the time of insertion. On lookup the
-cache compares the current ``st_mtime`` to the cached value and evicts the
-entry on mismatch, so a database that is replaced on disk (for example, by
-``pt-snap import``) is re-opened automatically. Callers can also force a
-refresh with :meth:`ContextCache.invalidate`.
+stamped with a file signature at the time of insertion. On lookup the cache
+compares the current signature to the cached value and evicts the entry on
+mismatch, so a database that is replaced on disk (for example, by
+``pt-snap import``) is re-opened automatically even when the replacement has
+the same mtime. Callers can also force a refresh with
+:meth:`ContextCache.invalidate`.
 """
 
 from __future__ import annotations
@@ -27,6 +28,8 @@ from pt_snap_cli.context import Context, DatabaseNotFoundError
 if TYPE_CHECKING:
     pass
 
+FileSignature = tuple[int, int, int]
+
 
 class ContextCache:
     """LRU cache of :class:`Context` instances keyed by absolute db path."""
@@ -36,7 +39,7 @@ class ContextCache:
             raise ValueError("maxsize must be positive")
         self._maxsize = maxsize
         # Insertion order doubles as LRU recency (oldest first).
-        self._entries: OrderedDict[Path, tuple[Context, float]] = OrderedDict()
+        self._entries: OrderedDict[Path, tuple[Context, FileSignature]] = OrderedDict()
 
     @property
     def maxsize(self) -> int:
@@ -49,7 +52,7 @@ class ContextCache:
         """Return a cached or freshly opened :class:`Context` for ``db_path``.
 
         On a hit the cached entry is promoted to most-recently-used. On a
-        miss -- or when the file's mtime has changed -- a new persistent
+        miss -- or when the file's signature has changed -- a new persistent
         context is created and stored, evicting the oldest entry once the
         cache is full.
 
@@ -60,21 +63,21 @@ class ContextCache:
         if not key.exists():
             raise DatabaseNotFoundError(f"Database not found: {key}")
 
-        # Probe mtime first so a missing/inaccessible file raises consistently
-        # whether the cache is hit or missed.
-        current_mtime = key.stat().st_mtime
+        # Probe metadata first so a missing/inaccessible file raises
+        # consistently whether the cache is hit or missed.
+        current_signature = self._file_signature(key)
 
         cached = self._entries.get(key)
         if cached is not None:
-            ctx, cached_mtime = cached
-            if cached_mtime == current_mtime:
+            ctx, cached_signature = cached
+            if cached_signature == current_signature:
                 self._entries.move_to_end(key)
                 return ctx
             self._safe_close(ctx)
             del self._entries[key]
 
         ctx = Context(key, persistent=True)
-        self._entries[key] = (ctx, current_mtime)
+        self._entries[key] = (ctx, current_signature)
         self._evict_if_needed()
         return ctx
 
@@ -107,6 +110,12 @@ class ContextCache:
             # Already-closed connections are fine; other sqlite errors are
             # best-effort cleanup, never worth masking the real exception.
             pass
+
+    @staticmethod
+    def _file_signature(path: Path) -> FileSignature:
+        """Return metadata that changes when a database is replaced in place."""
+        stat = path.stat()
+        return (stat.st_mtime_ns, stat.st_ino, stat.st_size)
 
 
 __all__ = ["ContextCache"]

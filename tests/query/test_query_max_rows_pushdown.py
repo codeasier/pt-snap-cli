@@ -129,7 +129,7 @@ class TestLeakDetectionMaxRowsPushdown:
         config.write_project_focus(leak_db, device_id=0)
 
         result = QueryService().execute_query("leak_detection", max_rows=3)
-        assert result.total == 3
+        assert result.total == 10
         assert result.returned == 3
         assert len(result.rows) == 3
 
@@ -156,7 +156,7 @@ class TestCallstackAnalysisMaxRowsPushdown:
         config = Config()
         config.write_project_focus(callstack_db, device_id=0)
         result = QueryService().execute_query("callstack_analysis", max_rows=2)
-        assert result.total == 2
+        assert result.total == 4
         assert result.returned == 2
 
     def test_min_size_filter_combines_with_limit(self, callstack_db: Path) -> None:

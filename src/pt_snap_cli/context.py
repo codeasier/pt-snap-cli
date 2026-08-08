@@ -58,6 +58,7 @@ class Context:
         self._devices = devices
         self._persistent = persistent
         self._conn: sqlite3.Connection | None = None
+        self._connect_depth = 0
         self._device_ids: list[int] | None = None
 
         if not self.db_path.exists():
@@ -134,23 +135,20 @@ class Context:
         Yields:
             SQLite connection object.
         """
-        if self._conn is not None:
-            try:
-                yield self._conn
-            finally:
-                if not self._persistent:
-                    self.close()
-            return
+        if self._conn is None:
+            # Keep the colon in Windows drive prefixes while encoding SQLite URI metacharacters.
+            encoded_path = quote(self.db_path.as_posix(), safe="/:")
+            uri = f"file:{encoded_path}?mode=ro"
+            self._conn = sqlite3.connect(uri, uri=True)
+            self._conn.row_factory = sqlite3.Row
 
-        # Keep the colon in Windows drive prefixes while encoding SQLite URI metacharacters.
-        encoded_path = quote(self.db_path.as_posix(), safe="/:")
-        uri = f"file:{encoded_path}?mode=ro"
-        self._conn = sqlite3.connect(uri, uri=True)
-        self._conn.row_factory = sqlite3.Row
+        self._connect_depth += 1
         try:
             yield self._conn
         finally:
-            if not self._persistent:
+            if self._connect_depth > 0:
+                self._connect_depth -= 1
+            if not self._persistent and self._connect_depth == 0:
                 self.close()
 
     def close(self) -> None:
@@ -161,3 +159,4 @@ class Context:
         if self._conn is not None:
             self._conn.close()
             self._conn = None
+        self._connect_depth = 0

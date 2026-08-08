@@ -12,11 +12,11 @@ from jinja2 import Environment, StrictUndefined, Template, TemplateSyntaxError
 from pt_snap_cli.context import Context
 from pt_snap_cli.query.config import QueryConfig, QueryTemplate
 
-# Match a trailing LIMIT clause (with optional OFFSET) at the end of a SQL string.
-# Accepts numeric literals (including negative ones) so the cached ``LIMIT -1``
-# default renders as "already limited" and we don't append a second LIMIT.
+# Match a trailing numeric LIMIT clause (with optional OFFSET) at the end of a SQL string.
+# Numeric limits let the executor tighten template-owned caps when the caller provides
+# a smaller max_rows value.
 _TRAILING_LIMIT_RE = re.compile(
-    r"\bLIMIT\s+-?\d+(?:\s+OFFSET\s+\d+)?\s*;?\s*$",
+    r"\bLIMIT\s+(?P<limit>-?\d+)(?P<offset>\s+OFFSET\s+\d+)?(?P<suffix>\s*;?\s*)$",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -57,7 +57,7 @@ class QueryExecutor:
         # Cache of compiled Jinja templates keyed by template name so that
         # long-lived executors (e.g. the MCP server) avoid re-parsing
         # identical template bodies on every query.
-        self._compiled_cache: dict[str, Template] = {}
+        self._compiled_cache: dict[tuple[str, str], Template] = {}
 
         if self._template_dir and self._template_dir.exists():
             self._load_templates()
@@ -68,19 +68,31 @@ class QueryExecutor:
         Compiles and caches on first access so repeat renders skip the
         ``Environment.from_string`` parse step.
         """
-        cached = self._compiled_cache.get(template.name)
+        cache_key = (template.name, template.query)
+        cached = self._compiled_cache.get(cache_key)
         if cached is not None:
             return cached
         try:
             compiled = self._env.from_string(template.query)
         except TemplateSyntaxError as e:
             raise TemplateRenderError(f"Template syntax error in '{template.name}': {e}") from e
-        self._compiled_cache[template.name] = compiled
+        self._compiled_cache[cache_key] = compiled
         return compiled
 
-    def _has_trailing_limit(self, sql: str) -> bool:
-        """Return True when ``sql`` already ends with a LIMIT clause."""
-        return bool(_TRAILING_LIMIT_RE.search(sql))
+    def _apply_limit(self, sql: str, limit: int) -> str:
+        """Tighten a trailing numeric LIMIT or append one when absent."""
+        match = _TRAILING_LIMIT_RE.search(sql)
+        if match is None:
+            return self._append_limit(sql, limit)
+
+        existing_limit = int(match.group("limit"))
+        effective_limit = limit if existing_limit < 0 else min(existing_limit, limit)
+        if effective_limit == existing_limit:
+            return sql
+
+        offset = match.group("offset") or ""
+        suffix = match.group("suffix") or ""
+        return f"{sql[:match.start()]}LIMIT {effective_limit}{offset}{suffix}"
 
     def _append_limit(self, sql: str, limit: int) -> str:
         """Append a ``LIMIT`` clause to ``sql`` when one is not present."""
@@ -139,7 +151,7 @@ class QueryExecutor:
         effective_limit: int | None = None
         if max_rows is not None and max_rows > 0:
             template_limit = render_context.get("limit")
-            if isinstance(template_limit, int) and template_limit > 0:
+            if isinstance(template_limit, int) and template_limit >= 0:
                 effective_limit = min(template_limit, max_rows)
             else:
                 effective_limit = max_rows
@@ -151,8 +163,8 @@ class QueryExecutor:
         except Exception as e:
             raise TemplateRenderError(f"Failed to render template '{template.name}': {e}") from e
 
-        if effective_limit is not None and not self._has_trailing_limit(rendered_sql):
-            rendered_sql = self._append_limit(rendered_sql, effective_limit)
+        if effective_limit is not None:
+            rendered_sql = self._apply_limit(rendered_sql, effective_limit)
 
         return rendered_sql
 
@@ -182,6 +194,19 @@ class QueryExecutor:
                     cursor.execute(sql)
                 columns = [desc[0] for desc in cursor.description]
                 return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+        except Exception as e:
+            raise QueryExecutionError(f"Query execution failed: {e}") from e
+
+    def count(self, sql: str) -> int:
+        """Count the rows produced by a rendered query without materializing them."""
+        query = sql.strip().rstrip(";").rstrip()
+        count_sql = f"SELECT COUNT(*) FROM ({query}) AS pt_snap_count"
+        try:
+            with self._context.connect() as conn:
+                cursor = conn.cursor()
+                cursor.execute(count_sql)
+                row = cursor.fetchone()
+                return int(row[0]) if row is not None else 0
         except Exception as e:
             raise QueryExecutionError(f"Query execution failed: {e}") from e
 
@@ -219,6 +244,24 @@ class QueryExecutor:
             return []
 
         return self.execute(sql)
+
+    def count_template(
+        self,
+        name: str,
+        params: dict[str, Any] | None = None,
+        device_id: int | None = None,
+        config_name: str | None = None,
+    ) -> int:
+        """Count rows returned by a named template without materializing them."""
+        template = self._find_template(name, config_name)
+        if template is None:
+            raise QueryExecutionError(f"Template not found: {name}")
+
+        if device_id is not None and device_id not in self._context.device_ids:
+            return 0
+
+        sql = self.render(template, params or {}, device_id)
+        return self.count(sql)
 
     def execute_on_all_devices(
         self,
