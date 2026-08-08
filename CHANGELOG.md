@@ -28,7 +28,7 @@
 
 - 旧版或外部生成且没有 `pt_snap_metadata` 的兼容 SnapshotDB 仍可查询；再次导入时会重建一次后再参与缓存复用。
 - `pt-snap import` 在缓存命中时输出 `Reused:`，重建时可能额外输出 `Cache miss:`；依赖精确终端文本的调用方需要相应调整。
-- MCP 依赖范围收窄为 `mcp>=1.0.0,<2`。原内部 `pt_snap_cli.vendor.memsnapdump` 命名空间已随首方 runtime 迁移移除。
+- MCP 依赖范围收窄为 `mcp>=1.0.0,<2`。原内部 vendor 命名空间已随首方 runtime 迁移移除。
 
 ## [0.1.1] - 2026-06-22
 
