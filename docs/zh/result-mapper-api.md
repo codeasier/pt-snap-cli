@@ -68,4 +68,4 @@ results = mapper.map_all(rows, schema)
 | `str` | 字符串 |
 | `bool` | 布尔值 |
 | `hex` | 十六进制（整数转 hex 字符串） |
-| `datetime` | 日期时间 |
+| `datetime` | 原值透传，不执行日期时间解析 |

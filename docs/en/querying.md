@@ -1,26 +1,29 @@
 # Querying
 
-[English](querying.md) | [中文](../zh/querying.md)
+[中文](../zh/querying.md) | English
 
 Run memory analysis queries against your snapshot database.
 
 ## The Query Command
 
 ```bash
-pt-snap query [--template-use <template_name>] [--params <json>] [--device <id>] [--list] [--template-info <template>]
+pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
+  [--device <id>] [--list] [--category <category>] \
+  [--template-info <template>] [-n <rows>]
 ```
 
 **Parameters:**
 
 | Flag | Description |
 |------|-------------|
-| `db_path` | SQLite database file path (optional if context is configured) |
+| `db_path` | SQLite database file path (optional if focus is configured) |
 | `--template-use` | Query template name (required unless using `--list` or `--template-info`) |
 | `--params` | Query parameters in JSON format |
 | `--device` | Device ID |
 | `--list` | List available query templates |
 | `--category` | Filter templates by category: `basic`, `statistical`, `business` |
 | `--template-info` | Show template details (parameters and output schema) |
+| `-n` | Maximum displayed rows; zero or a negative value means unlimited |
 
 ## Query Templates
 
@@ -55,6 +58,15 @@ Domain-specific analysis.
 |----------|-------------|
 | `leak_detection` | Find allocations without matching free events |
 | `active_memory_callstack_at_event` | Aggregate blocks active at a specific event by allocation callstack, with static memory classified separately |
+
+## Leak Detection
+
+```bash
+pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
+```
+
+`min_size` is the minimum candidate size in bytes and defaults to `0`. Select
+the target device with the command-level `--device` option, not inside `--params`.
 
 ## Peak Memory Attribution Workflow
 
@@ -137,15 +149,6 @@ The report command combines:
 
 and prints either a human-readable summary or JSON.
 
-**Example:**
-```bash
-pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
-```
-
-Parameters:
-- `min_size`: Minimum leak size in bytes (default: 0)
-- `device_id`: Device ID
-
 ## Output Format
 
 All results are displayed by default. Use `-n` to limit the number of rows shown:
@@ -165,10 +168,15 @@ Example output (with `-n 2`):
 
 ```
 Found 150 results, showing 2:
-  {'id': 1, 'address': '0x1000', 'size': 2048, ...}
-  {'id': 2, 'address': '0x2000', 'size': 4096, ...}
+  {'id': 1, 'address': 4096, 'size': 2048, ...}
+  {'id': 2, 'address': 8192, 'size': 4096, ...}
   ... and 148 more (use -n to show more)
 ```
+
+CLI, Python API, and MCP query results contain raw SQLite values. A template's
+`output_schema` is metadata and is not applied automatically during query
+execution. Use `ResultMapper` explicitly when converted values such as
+hexadecimal address strings are required.
 
 ## Template Architecture
 
@@ -176,8 +184,14 @@ Query templates are defined in YAML format with:
 - `version`: Template version
 - `queries`: Query definitions with description, supported devices, parameters, SQL (Jinja2 templated), and output schema
 
-**Supported type converters:** `int`, `float`, `str`, `bool`, `hex`, `datetime`
+When passed explicitly to `ResultMapper`, recognized mapping types are `int`,
+`float`, `str`, `bool`, `hex`, and `datetime`; `datetime` is currently a
+pass-through declaration rather than a parser.
 
-## Python API
+## Optional Result Mapping
 
-For programmatic usage, see [ResultMapper API](result-mapper-api.md).
+For optional row conversion and model mapping, see
+[ResultMapper API](result-mapper-api.md).
+
+For the high-level programmatic focus and query facade, see
+[SnapshotAnalyzer API](snapshot-analyzer-api.md).

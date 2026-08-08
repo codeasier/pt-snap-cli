@@ -1,6 +1,6 @@
 # SnapshotDB Schema
 
-[English](database.md) | [中文](../zh/database.md)
+[中文](../zh/database.md) | English
 
 ## Overview
 
@@ -8,7 +8,7 @@ SnapshotDB is the SQLite database format for persisting PyTorch memory profiling
 1. The total memory pool size and total allocated block size after any event;
 2. The complete lifecycle of all memory blocks during the collection period (which event allocated them, which event freed them).
 
-**Example database file**: `snapshot_expandable.pkl.db`
+**Example database file**: `snapshot.pkl.db`
 
 ---
 
@@ -59,7 +59,7 @@ optional device; query templates then resolve those device-specific table names:
 ```bash
 pt-snap focus snapshot.pkl.db --device 0
 pt-snap query --template-use memory_peak
-pt-snap query --template-use block --params '{"state": 1}'
+pt-snap query --template-use block --params '{"min_size": 1048576}'
 ```
 
 Use `pt-snap query --list` and `pt-snap query --template-info <name>` to inspect
@@ -76,6 +76,7 @@ the supported query surface. See [Querying](querying.md) for the complete workfl
 | `dictionary` | Enum mapping dictionary | - |
 | `trace_entry_0` | Device 0 event trace table | 8,094 |
 | `block_0` | Device 0 memory block table | - |
+| `pt_snap_metadata` | First-party import provenance and cache metadata | 1 |
 
 > **Naming convention**: For multi-device scenarios, table names are suffixed with the device ID, e.g., `trace_entry_1` and `block_1` for device 1.
 
@@ -92,13 +93,13 @@ Records complete trace information for memory management events.
 ```sql
 CREATE TABLE trace_entry_0 (
     `id` INTEGER PRIMARY KEY,
-    `action` INTEGER NOT NULL,
-    `address` INTEGER NOT NULL,
-    `size` INTEGER NOT NULL,
-    `stream` INTEGER NOT NULL,
-    `allocated` INTEGER NOT NULL,
-    `active` INTEGER NOT NULL,
-    `reserved` INTEGER NOT NULL,
+    `action` INTEGER,
+    `address` INTEGER,
+    `size` INTEGER,
+    `stream` INTEGER,
+    `allocated` INTEGER,
+    `active` INTEGER,
+    `reserved` INTEGER,
     `callstack` TEXT
 );
 ```
@@ -108,13 +109,13 @@ CREATE TABLE trace_entry_0 (
 | Column | Type | Constraints | Description | Example |
 |--------|------|-------------|-------------|---------|
 | id | INTEGER | PRIMARY KEY | Unique event ID; negative values indicate system-generated events | `1`, `-100` |
-| action | INTEGER | NOT NULL | Action type code (see below) | `4` |
-| address | INTEGER | NOT NULL | Memory address | `20697535234048` |
-| size | INTEGER | NOT NULL | Allocation size in bytes | `41943040` |
-| stream | INTEGER | NOT NULL | CUDA/CANN stream ID | `1276474240` |
-| allocated | INTEGER | NOT NULL | Total allocated bytes | `136426496` |
-| active | INTEGER | NOT NULL | Total active bytes | `136426496` |
-| reserved | INTEGER | NOT NULL | Memory pool reserved bytes | `155189248` |
+| action | INTEGER | — | Action type code (see below) | `4` |
+| address | INTEGER | — | Memory address | `20697535234048` |
+| size | INTEGER | — | Allocation size in bytes | `41943040` |
+| stream | INTEGER | — | CUDA/CANN stream ID | `1276474240` |
+| allocated | INTEGER | — | Total allocated bytes | `136426496` |
+| active | INTEGER | — | Total active bytes | `136426496` |
+| reserved | INTEGER | — | Memory pool reserved bytes | `155189248` |
 | callstack | TEXT | NULL | Callstack information (multi-line text) | See example |
 
 #### Action Type Codes
@@ -160,26 +161,26 @@ Records detailed information about memory blocks and their lifecycle state.
 ```sql
 CREATE TABLE block_0 (
     `id` INTEGER PRIMARY KEY,
-    `address` INTEGER NOT NULL,
-    `size` INTEGER NOT NULL,
-    `requestedSize` INTEGER NOT NULL DEFAULT 99,
-    `state` INTEGER NOT NULL DEFAULT 99,
-    `allocEventId` INTEGER DEFAULT -1,
-    `freeEventId` INTEGER DEFAULT -1
+    `address` INTEGER,
+    `size` INTEGER,
+    `requestedSize` INTEGER,
+    `state` INTEGER DEFAULT 99,
+    `allocEventId` INTEGER,
+    `freeEventId` INTEGER
 );
 ```
 
 #### Columns
 
-| Column | Type | Default | Description |
+| Column | Type | SQL default | Description |
 |--------|------|---------|-------------|
-| id | INTEGER | — | Unique block ID, typically negative |
+| id | INTEGER | — | Unique block ID; dynamic blocks use their allocation event ID, while preexisting blocks use a negative ID |
 | address | INTEGER | — | Memory address |
 | size | INTEGER | — | Actual allocated size (includes alignment overhead) |
-| requestedSize | INTEGER | 99 | User-requested allocation size |
+| requestedSize | INTEGER | — | User-requested allocation size |
 | state | INTEGER | 99 | State code (see below) |
-| allocEventId | INTEGER | -1 | Associated allocation event ID |
-| freeEventId | INTEGER | -1 | Associated free event ID |
+| allocEventId | INTEGER | — | Associated allocation event ID; the producer writes `-1` when it was not captured |
+| freeEventId | INTEGER | — | Associated free-completion event ID; the producer writes `-1` when it was not captured |
 
 #### State Codes
 
@@ -208,7 +209,7 @@ CREATE TABLE block_0 (
 
 | Condition | Constraint |
 |-----------|------------|
-| `freeEventId >= 0` | `block.id` matches `freeEventId`, pointing to the same-ID free event in `trace_entry` |
+| `freeEventId >= 0` | Points to the corresponding free-completion event in `trace_entry`; it is independent of `block.id` |
 | `freeEventId == -1` | The free completion event for this block was not captured during snapshot collection (the block was not freed when collection ended) |
 
 #### State Usage
@@ -217,11 +218,10 @@ CREATE TABLE block_0 (
 
 #### Size Calculation
 
-`block.size` is the actual allocated size (including alignment overhead), while `block.requestedSize` is the user-requested size. The calculation is:
-
-```
-size = math.ceil((requestedSize + 32) / 512) * 512
-```
+`block.size` is the actual allocated size, while `block.requestedSize` is the
+user-requested size. Both values come from the snapshot producer or replayed
+allocator state. Their relationship depends on allocator configuration and must
+not be inferred with one universal alignment formula.
 
 #### Data Example
 
@@ -242,8 +242,8 @@ Stores enum value mappings used to decode fields like `action` and `state`.
 CREATE TABLE dictionary (
     `table` TEXT,     -- Table name
     `column` TEXT,    -- Column name
-    `key` TEXT,       -- Original string value
-    `value` TEXT      -- Encoded integer value (as string)
+    `key` TEXT,       -- Encoded integer value (as string)
+    `value` TEXT      -- Original string value
 );
 ```
 
@@ -253,12 +253,35 @@ CREATE TABLE dictionary (
 |--------|------|-------------|
 | table | TEXT | Parent table name, e.g., `trace_entry_0`, `block_0` |
 | column | TEXT | Column name, e.g., `action`, `state` |
-| key | TEXT | Original string value, e.g., `alloc`, `active_allocated` |
-| value | TEXT | Encoded integer value as string, e.g., `4`, `1` |
+| key | TEXT | Encoded integer value as string, e.g., `4`, `1` |
+| value | TEXT | Original string value, e.g., `alloc`, `active_allocated` |
 
 #### Data Example
 
 ```
-table=trace_entry_0, column=action, key=alloc, value=4
-table=block_0, column=state, key=active_allocated, value=1
+table=trace_entry_0, column=action, key=4, value=alloc
+table=block_0, column=state, key=1, value=active_allocated
 ```
+
+### 4. pt_snap_metadata — Import Metadata Table
+
+First-party imports create one metadata row for provenance and cache
+compatibility checks:
+
+```sql
+CREATE TABLE pt_snap_metadata (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    metadata_schema_version INTEGER NOT NULL,
+    import_format_version INTEGER NOT NULL,
+    source_sha256 TEXT NOT NULL,
+    source_size INTEGER NOT NULL,
+    source_name TEXT NOT NULL,
+    requested_device INTEGER,
+    importer_name TEXT NOT NULL,
+    importer_version TEXT NOT NULL,
+    completed_at TEXT NOT NULL
+);
+```
+
+Legacy and externally produced compatible databases may omit this table. They
+remain queryable, but `pt-snap metadata` reports their metadata as unavailable.

@@ -2,7 +2,10 @@
 
 [中文](../zh/focus-management.md) | English
 
-`pt-snap` supports project-scoped focus so different terminals, agents, or working directories can analyze different databases and devices without interfering with each other.
+`pt-snap` supports project-scoped focus. Processes that resolve the same nearest
+`.pt-snap/focus.json` share that focus, while different project directories can
+select different databases and devices. Use a session override when terminals or
+agents in the same project must remain isolated.
 
 ## Resolution Priority
 
@@ -84,8 +87,12 @@ pt-snap config --clear  # Clear global configuration
 
 | Scope | File |
 |-------|------|
-| Project | `.pt-snap/focus.json` (git-ignored, per-project) |
+| Project | `.pt-snap/focus.json` (shared by processes in the project scope) |
 | Global | `~/.config/pt-snap-cli/config.json` |
+
+Project focus can contain an absolute local database path. Add `.pt-snap/` to the
+project's `.gitignore` when the file should remain local; pt-snap does not modify
+ignore rules automatically.
 
 ### Focus File Format
 

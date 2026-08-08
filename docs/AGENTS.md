@@ -1,10 +1,10 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-05-26 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
 
 # docs
 
 ## Purpose
-`docs` contains end-user and API documentation for the CLI, focus management, query templates, MCP integration, snapshot database format, and result mapping API. It is split into English and Chinese language trees with a top-level README for navigation.
+`docs` contains end-user and API documentation for the CLI, focus management, query templates, MCP integration, snapshot database format, high-level and result mapping Python APIs, and retained legal evidence. It is split into English and Chinese language trees with a top-level README for navigation.
 
 ## Key Files
 | File | Description |
@@ -16,6 +16,7 @@
 |-----------|---------|
 | `en/` | English documentation guides (see `en/AGENTS.md`). |
 | `zh/` | Chinese documentation guides (see `zh/AGENTS.md`). |
+| `legal/` | Governance evidence referenced by the documentation index and snapshot provenance record. |
 
 ## For AI Agents
 
@@ -29,7 +30,7 @@
 - If examples depend on behavior changes, run the matching CLI or service tests.
 
 ### Common Patterns
-- The two language trees mirror the same topics: quick start, focus management, querying, MCP, database schema, and result mapper API.
+- The two language trees mirror the same topics: quick start, focus management, querying, snapshot splitting, MCP, database schema, SnapshotAnalyzer API, and result mapper API.
 
 ## Dependencies
 

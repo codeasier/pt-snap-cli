@@ -6,6 +6,8 @@
 
 ## 安装
 
+从源码 checkout 安装：
+
 ```bash
 pip install -e .
 ```
@@ -45,7 +47,7 @@ pt-snap-mcp
 
 ## 典型工作流
 
-1. 调用 `set_focus` 并传入 `db_path` 指向快照文件
+1. 调用 `set_focus` 并传入 `db_path` 指向 SnapshotDB `.db` 文件
 2. 调用 `list_templates` 发现可用查询
 3. 调用 `get_template_info` 查看模板参数
 4. 调用 `execute_query` 执行查询
@@ -54,7 +56,7 @@ pt-snap-mcp
 ## 使用示例
 
 ```python
-# 设置焦点到快照文件
+# 设置焦点到 SnapshotDB 文件
 set_focus(db_path="/path/to/snapshot.db", device_id=0)
 
 # 列出模板
@@ -63,7 +65,7 @@ list_templates()
 
 # 获取模板详情
 get_template_info("leak_detection")
-# 返回: {"name": "leak_detection", "parameters": [...], ...}
+# 返回: {"name": "leak_detection", "parameters": {"min_size": {...}}, ...}
 
 # 运行查询
 execute_query("leak_detection", params={"min_size": 1024})
