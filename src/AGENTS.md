@@ -1,10 +1,10 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-05-26 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
 
 # src
 
 ## Purpose
-`src` contains the installable Python package for `pt-snap-cli`. Its only package subtree, `pt_snap_cli`, holds the CLI, MCP server, focus and database services, query system, and domain models shipped in the distribution.
+`src` contains the installable Python package for `pt-snap-cli`. Its only package subtree, `pt_snap_cli`, holds the CLI, MCP server, product services, query system, first-party snapshot runtime, and domain models shipped in the distribution.
 
 ## Key Files
 | File | Description |

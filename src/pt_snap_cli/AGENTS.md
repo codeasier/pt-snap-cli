@@ -1,17 +1,17 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-05-26 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
 
 # pt_snap_cli
 
 ## Purpose
-`pt_snap_cli` is the main Python package. It exposes the Typer CLI, programmatic `SnapshotAnalyzer` API, read-only SQLite context, focus configuration, completion helpers, service layer, MCP server, domain models, and YAML-driven query execution pipeline.
+`pt_snap_cli` is the main Python package. It exposes the Typer CLI, programmatic `SnapshotAnalyzer` API, read-only SQLite context, focus configuration, product service layer, MCP server, domain models, YAML-driven query execution pipeline, and first-party snapshot runtime.
 
 ## Key Files
 | File | Description |
 |------|-------------|
 | `__init__.py` | Package exports and version wiring. |
 | `api.py` | High-level `SnapshotAnalyzer` API used by MCP and library callers. |
-| `cli.py` | Typer CLI entrypoint for `pt-snap focus`, `pt-snap query`, and `pt-snap config`. |
+| `cli.py` | Typer CLI entrypoint for focus, import, split, metadata, query, report, and config commands. |
 | `completion.py` | Shell completion helpers for templates, categories, and device IDs. |
 | `config.py` | Focus persistence and resolution across explicit paths, environment, project focus, and legacy global config. |
 | `context.py` | Read-only SQLite context with schema validation and device discovery. |
@@ -20,10 +20,11 @@
 ## Subdirectories
 | Directory | Purpose |
 |-----------|---------|
-| `core/` | Service-layer models and typed domain errors (see `core/AGENTS.md`). |
+| `core/` | Shared focus, import, split, metadata, query, and report services (see `core/AGENTS.md`). |
 | `mcp/` | FastMCP server entrypoint and tools (see `mcp/AGENTS.md`). |
 | `models/` | Domain models for snapshot blocks, events, and enums (see `models/AGENTS.md`). |
 | `query/` | Query builders, config loading, execution, mapping, registry, and templates (see `query/AGENTS.md`). |
+| `snapshot/` | Trusted snapshot representation, replay, database adaptors, and slicing (see `snapshot/AGENTS.md`). |
 
 ## For AI Agents
 
@@ -36,6 +37,7 @@
 - CLI changes should update/run `tests/test_cli.py` and any affected config/focus tests.
 - API or MCP changes should update/run `tests/test_api.py` and `tests/test_mcp_server.py`.
 - Context or config changes should update/run `tests/test_context.py` and `tests/test_config.py`.
+- Import, split, and report changes should run their focused `tests/core/` suites; add `tests/snapshot/` when import/split changes cross into the runtime.
 
 ### Common Patterns
 - Exceptions from lower-level modules are translated into `core.errors` before reaching CLI/service callers.
@@ -47,6 +49,7 @@
 - `core/` coordinates focus and query behavior for CLI/API callers.
 - `query/` provides template discovery and execution.
 - `models/` contains library-facing snapshot structures.
+- `snapshot/` provides trusted pickle/JSON loading, replay, database generation, and slicing engines consumed through `core/`.
 
 ### External
 - `typer` for CLI commands and output.

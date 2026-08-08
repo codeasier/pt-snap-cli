@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-05-26 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
 
 # business templates
 
@@ -9,6 +9,7 @@
 ## Key Files
 | File | Description |
 |------|-------------|
+| `active_memory_callstack_at_event.yaml` | Aggregate memory active at one event by allocation callstack, with static memory separated. |
 | `leak_detection.yaml` | Template for identifying potential memory leaks using allocation-size thresholds. |
 
 ## Subdirectories

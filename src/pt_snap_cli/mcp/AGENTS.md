@@ -1,10 +1,10 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-05-26 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
 
 # mcp
 
 ## Purpose
-`mcp` exposes `pt-snap-cli` functionality as a FastMCP server so agents and MCP clients can inspect or set focus, list templates, fetch template metadata, execute queries, and use a memory-leak analysis prompt.
+`mcp` exposes `pt-snap-cli` functionality as a FastMCP server so agents and MCP clients can inspect or set focus, list templates, fetch template metadata, execute queries, inspect database import metadata, and use a memory-leak analysis prompt.
 
 ## Key Files
 | File | Description |
@@ -27,6 +27,7 @@
 ### Testing Requirements
 - Run `pytest tests/test_mcp_server.py` for MCP changes.
 - Run API tests if MCP changes require `SnapshotAnalyzer` changes.
+- Run `pytest tests/test_contract_cli_mcp.py` when normalized shared behavior or errors change.
 
 ### Common Patterns
 - A module-level `SnapshotAnalyzer` backs all MCP tools.

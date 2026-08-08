@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-05-26 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
 
 # query tests
 
@@ -15,6 +15,7 @@
 | `test_config.py` | Tests YAML loading and query parameter validation. |
 | `test_executor.py` | Tests template rendering and execution against SQLite fixtures. |
 | `test_mapper.py` | Tests result type conversion and model factory mapping. |
+| `test_peak_memory_templates.py` | Tests active-at-event, allocator-gap, and callstack attribution template semantics. |
 | `test_registry.py` | Tests template registration, lookup, category listing, and registry reset behavior. |
 
 ## Subdirectories
@@ -40,7 +41,7 @@
 
 ### Internal
 - `src/pt_snap_cli/query/` and packaged YAML templates are the primary code under test.
-- Shared database fixtures may come from `tests/conftest.py`.
+- Tests define minimal local SQLite fixtures for the query behavior they exercise.
 
 ### External
 - `pytest`.
