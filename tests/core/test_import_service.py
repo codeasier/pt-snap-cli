@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.context import Context
 from pt_snap_cli.core.errors import (
     ImportExecutionError,
@@ -619,3 +620,79 @@ def test_invalid_focus_device_is_normalized_as_import_error(
 
     with pytest.raises(ImportExecutionError, match="Device 99 not found"):
         service._set_focus_if_requested(tmp_path / "snapshot.db", options)
+
+
+def test_rollback_backup_writes_through_secure_mkstemp_fd(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Backup uses the secure mkstemp fd so a symlink race cannot redirect the write."""
+    import os
+    import tempfile
+
+    import pt_snap_cli.core.snapshot_import_backend as backend_module
+
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    first = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+    original_database = first.db_path.read_bytes()
+
+    victim = tmp_path / "victim.txt"
+    victim.write_text("safe")
+
+    real_mkstemp = tempfile.mkstemp
+
+    def racing_mkstemp(*args, **kwargs):
+        fd, name = real_mkstemp(*args, **kwargs)
+        # Simulate an attacker that swaps the secure temp file for a symlink
+        # pointing at a victim file before the backend starts writing.
+        try:
+            os.unlink(name)
+        except FileNotFoundError:
+            pass
+        os.symlink(victim, name)
+        return fd, name
+
+    monkeypatch.setattr(backend_module.tempfile, "mkstemp", racing_mkstemp)
+
+    def fail_focus_write(*args, **kwargs):
+        raise OSError("focus write failed")
+
+    from pt_snap_cli.core.focus_service import FocusService
+
+    focus_service = FocusService()
+    monkeypatch.setattr(focus_service._config, "write_project_focus", fail_focus_write)
+    service._focus_service = focus_service
+
+    with pytest.raises(ImportExecutionError, match="focus write failed"):
+        service.import_snapshot(
+            ImportOptions(
+                snapshot_file=EMPTY_CACHE_SNAPSHOT,
+                output_dir=tmp_path,
+                force=True,
+            )
+        )
+
+    # Victim must remain untouched; the secure fd prevented a symlink redirect.
+    assert victim.read_text() == "safe"
+    # The destination database must be restored from the safe rollback copy.
+    assert first.db_path.read_bytes() == original_database
+
+
+def test_set_focus_no_args_returns_current_focus_without_revalidation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """set_focus() with no arguments is a no-op that returns the current focus."""
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    first = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+    analyzer = SnapshotAnalyzer(db_path=str(first.db_path))
+
+    # Removing the database after construction must not cause set_focus() to fail.
+    first.db_path.unlink()
+
+    state = analyzer.set_focus()
+    assert state.db_path == str(first.db_path)

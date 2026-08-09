@@ -68,9 +68,7 @@ class Config:
         try:
             mode = path.stat().st_mode & 0o777
         except FileNotFoundError:
-            current_umask = os.umask(0)
-            os.umask(current_umask)
-            mode = 0o666 & ~current_umask
+            mode = 0o600
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, temp_name = tempfile.mkstemp(
             dir=path.parent,

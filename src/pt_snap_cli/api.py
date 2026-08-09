@@ -74,6 +74,8 @@ class SnapshotAnalyzer:
         )
 
     def set_focus(self, db_path: str | None = None, device_id: int | None = None) -> FocusState:
+        if db_path is None and device_id is None:
+            return self.get_focus()
         candidate_db = Path(db_path) if db_path is not None else self._db_path
         candidate_device = (
             device_id if db_path is not None or device_id is not None else self._device_id

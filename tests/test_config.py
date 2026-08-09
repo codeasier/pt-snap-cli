@@ -455,3 +455,16 @@ class TestDbFocusResolver:
         config.write_project_focus(tmp_path / "second.db", base_dir=tmp_path)
 
         assert focus_file.stat().st_mode & 0o777 == 0o640
+
+    def test_atomic_write_new_file_uses_private_mode(self, monkeypatch, tmp_path: Path) -> None:
+        config = Config()
+        config_path = config.write_project_focus(tmp_path / "first.db", base_dir=tmp_path)
+        config_path.unlink()
+
+        monkeypatch.setattr(
+            os, "umask", lambda mode: (_ for _ in ()).throw(AssertionError("umask touched"))
+        )
+
+        config.write_project_focus(tmp_path / "second.db", base_dir=tmp_path)
+
+        assert config_path.stat().st_mode & 0o777 == 0o600
