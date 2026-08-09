@@ -41,21 +41,24 @@ state = analyzer.set_focus(
 
 `set_focus()` validates a supplied database and updates only the current
 `SnapshotAnalyzer` object. It does not write `.pt-snap/focus.json`, change
-`PT_SNAP_DB_PATH`, or update global config. A supplied device is validated when
-a query resolves its target device.
+`PT_SNAP_DB_PATH`, or update global config. A supplied device is validated
+immediately against the supplied or currently resolved database; a failed update
+leaves the analyzer unchanged.
+
+Supplying a new `db_path` without `device_id` clears the analyzer's previous
+device override, matching a CLI focus change that omits `--device`.
 
 When the analyzer has an explicit `db_path`, `get_focus()` reports its analyzer
 device and does not inherit a device from project or global focus. With no
-explicit `db_path`, a device-only analyzer override is applied during query
-execution, while `get_focus()` continues to report the device attached to the
-resolved project or global focus.
+explicit `db_path`, a validated device-only analyzer override is reported by
+`get_focus()` and applied during query execution.
 
 `get_focus()` returns a `FocusState` with these fields:
 
 | Field | Meaning |
 | --- | --- |
 | `db_path` | Resolved database path, or `None` |
-| `device_id` | Device attached to the resolved focus; see the device-only analyzer override note above |
+| `device_id` | Analyzer device override, or the device attached to the resolved focus |
 | `source` | Resolution source such as `explicit`, `env`, `project`, `global`, or `none` |
 | `available_devices` | Device IDs discovered from `trace_entry_<device>` tables |
 
@@ -75,8 +78,8 @@ if info is not None:
 ```
 
 `list_templates()` returns dictionaries containing `name`, `description`, and
-`category`. `get_template_info()` returns full template metadata or `None` when
-the template cannot be resolved.
+`category`. `get_template_info()` returns full template metadata or `None` only
+when the named template does not exist; registry failures are propagated.
 
 ## Execute Queries
 
@@ -131,7 +134,9 @@ metadata schema version returns `status="invalid"`.
 ## Errors and Scope
 
 - `set_focus()` raises `FileNotFoundError` for a missing database and
-  `ValueError` for an invalid SnapshotDB schema.
+  `ValueError` for an invalid SnapshotDB schema. Device validation uses the shared
+  `InvalidDeviceError`; selecting a device without any resolvable database raises
+  `RuntimeError`.
 - `execute_query()` raises `RuntimeError` when no database can be resolved;
   query, parameter, device, and database errors otherwise follow the shared
   service-layer exceptions.

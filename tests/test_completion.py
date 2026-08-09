@@ -13,6 +13,7 @@ from pt_snap_cli.completion import (
 )
 from pt_snap_cli.config import (
     DB_PATH_KEY,
+    ENV_DB_PATH,
     PROJECT_FOCUS_DIR,
     PROJECT_FOCUS_FILE,
 )
@@ -21,8 +22,15 @@ from pt_snap_cli.query.registry import QueryRegistry, register_query
 
 
 @pytest.fixture(autouse=True)
-def reset_registry():
-    """Reset query registry before each test."""
+def isolate_completion_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    """Reset registries and isolate focus resolution from the host machine."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv(ENV_DB_PATH, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
     QueryRegistry.reset()
     yield
     QueryRegistry.reset()
@@ -81,20 +89,12 @@ class TestCompleteCategories:
 
 
 class TestCompleteDeviceIds:
-    def test_returns_device_ids_from_db(self, tmp_path: Path):
+    def test_returns_device_ids_from_db(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         db_path = _create_sample_db(tmp_path / "test.db")
-        import os
+        monkeypatch.setenv(ENV_DB_PATH, str(db_path))
 
-        old_env = os.environ.get("PT_SNAP_DB_PATH")
-        os.environ["PT_SNAP_DB_PATH"] = str(db_path)
-        try:
-            result = complete_device_ids()
-            assert result == ["0", "1"]
-        finally:
-            if old_env is None:
-                os.environ.pop("PT_SNAP_DB_PATH", None)
-            else:
-                os.environ["PT_SNAP_DB_PATH"] = old_env
+        result = complete_device_ids()
+        assert result == ["0", "1"]
 
     def test_returns_empty_for_no_db(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.chdir(tmp_path)
@@ -102,21 +102,13 @@ class TestCompleteDeviceIds:
         # Without any DB configured, should return empty list
         assert result == []
 
-    def test_returns_empty_for_invalid_db(self, tmp_path: Path):
-        import os
-
+    def test_returns_empty_for_invalid_db(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         invalid_file = tmp_path / "not_a_db.txt"
         invalid_file.write_text("not a database")
-        old_env = os.environ.get("PT_SNAP_DB_PATH")
-        os.environ["PT_SNAP_DB_PATH"] = str(invalid_file)
-        try:
-            result = complete_device_ids()
-            assert result == []
-        finally:
-            if old_env is None:
-                os.environ.pop("PT_SNAP_DB_PATH", None)
-            else:
-                os.environ["PT_SNAP_DB_PATH"] = old_env
+        monkeypatch.setenv(ENV_DB_PATH, str(invalid_file))
+
+        result = complete_device_ids()
+        assert result == []
 
     def test_uses_project_focus(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         db_path = _create_sample_db(tmp_path / "test.db")
@@ -131,8 +123,6 @@ class TestCompleteDeviceIds:
 
     def test_sorted_by_integer_value(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """Device IDs should be sorted numerically, not lexicographically."""
-        import os
-
         db_path = tmp_path / "test.db"
         conn = sqlite3.connect(str(db_path))
         conn.execute("CREATE TABLE dictionary (k TEXT, v TEXT)")
@@ -141,13 +131,7 @@ class TestCompleteDeviceIds:
         conn.commit()
         conn.close()
 
-        old_env = os.environ.get("PT_SNAP_DB_PATH")
-        os.environ["PT_SNAP_DB_PATH"] = str(db_path)
-        try:
-            result = complete_device_ids()
-            assert result == ["0", "1", "2", "10"]
-        finally:
-            if old_env is None:
-                os.environ.pop("PT_SNAP_DB_PATH", None)
-            else:
-                os.environ["PT_SNAP_DB_PATH"] = old_env
+        monkeypatch.setenv(ENV_DB_PATH, str(db_path))
+
+        result = complete_device_ids()
+        assert result == ["0", "1", "2", "10"]

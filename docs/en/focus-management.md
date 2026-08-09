@@ -46,6 +46,10 @@ Or validate and print the export command in one step:
 pt-snap focus /path/to/agent-specific/snapshot.db --session
 ```
 
+Session focus exports only `PT_SNAP_DB_PATH`; combine `--session` with neither
+`--device` nor `--global`. Pass the device to each query; project focus, including
+its device, becomes effective again only after the session override is unset.
+
 ## View Current Focus
 
 ```bash

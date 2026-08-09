@@ -1,6 +1,7 @@
 """Tests for configuration management."""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -408,3 +409,62 @@ class TestDbFocusResolver:
         assert resolved.db_path == db_path
         assert resolved.device_id == 2
         assert resolved.source == "explicit"
+
+    def test_failed_project_focus_replace_preserves_existing_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        config = Config()
+        first_db = tmp_path / "first.db"
+        second_db = tmp_path / "second.db"
+        focus_file = config.write_project_focus(first_db, base_dir=tmp_path, device_id=1)
+        original = focus_file.read_bytes()
+
+        monkeypatch.setattr(os, "replace", lambda *args: (_ for _ in ()).throw(OSError("full")))
+
+        with pytest.raises(OSError, match="full"):
+            config.write_project_focus(second_db, base_dir=tmp_path, device_id=2)
+
+        assert focus_file.read_bytes() == original
+        assert list(focus_file.parent.glob(".focus.json.*.tmp")) == []
+
+    def test_failed_global_config_replace_preserves_file_and_memory(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        config = Config()
+        config.set("status", "before")
+        original = config.config_file.read_bytes()
+
+        monkeypatch.setattr(os, "replace", lambda *args: (_ for _ in ()).throw(OSError("full")))
+
+        with pytest.raises(OSError, match="full"):
+            config.set("status", "after")
+
+        assert config.show() == {"status": "before"}
+        assert config.config_file.read_bytes() == original
+        assert list(config.config_dir.glob(".config.json.*.tmp")) == []
+
+    def test_atomic_project_focus_write_preserves_existing_mode(self, tmp_path: Path) -> None:
+        config = Config()
+        focus_file = config.write_project_focus(tmp_path / "first.db", base_dir=tmp_path)
+        focus_file.chmod(0o640)
+
+        config.write_project_focus(tmp_path / "second.db", base_dir=tmp_path)
+
+        assert focus_file.stat().st_mode & 0o777 == 0o640
+
+    def test_atomic_write_new_file_uses_private_mode(self, monkeypatch, tmp_path: Path) -> None:
+        config = Config()
+        config_path = config.write_project_focus(tmp_path / "first.db", base_dir=tmp_path)
+        config_path.unlink()
+
+        monkeypatch.setattr(
+            os, "umask", lambda mode: (_ for _ in ()).throw(AssertionError("umask touched"))
+        )
+
+        config.write_project_focus(tmp_path / "second.db", base_dir=tmp_path)
+
+        assert config_path.stat().st_mode & 0o777 == 0o600

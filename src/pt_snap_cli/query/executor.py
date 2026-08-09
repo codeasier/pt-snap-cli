@@ -140,7 +140,12 @@ class QueryExecutor:
         Raises:
             TemplateRenderError: If template rendering fails.
         """
-        validated_params = template.validate_params(params)
+        try:
+            validated_params = template.validate_params(params)
+        except (TypeError, ValueError) as e:
+            raise TemplateRenderError(
+                f"Failed to validate parameters for template '{template.name}': {e}"
+            ) from e
 
         render_context = dict(validated_params)
         if device_id is not None:

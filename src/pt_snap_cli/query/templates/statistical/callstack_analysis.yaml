@@ -34,7 +34,7 @@ queries:
       GROUP BY callstack
       HAVING alloc_count >= {{ min_count }}
         AND total_size >= {{ min_size }}
-      ORDER BY total_size DESC
+      ORDER BY total_size DESC, callstack ASC
       LIMIT {{ limit|int }}
     output_schema:
       - column: callstack

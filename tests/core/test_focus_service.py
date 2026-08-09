@@ -97,8 +97,13 @@ class TestFocusService:
             FocusService(config).set_device(99)
 
     def test_validate_session_db_returns_devices(self, sample_db: Path) -> None:
-        state = FocusService().validate_session_db(sample_db)
+        state = FocusService().validate_session_db(sample_db, device_id=1)
 
         assert state.db_path == sample_db.resolve()
+        assert state.device_id == 1
         assert state.available_devices == [0, 1]
         assert not (Path.cwd() / ".pt-snap" / "focus.json").exists()
+
+    def test_validate_session_db_rejects_invalid_device(self, sample_db: Path) -> None:
+        with pytest.raises(InvalidDeviceError, match="Device 99 not found"):
+            FocusService().validate_session_db(sample_db, device_id=99)

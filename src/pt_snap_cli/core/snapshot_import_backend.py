@@ -19,6 +19,7 @@ class SnapshotImportBackend:
         output_dir: Path,
         device: int | None = None,
         finalize_temp_db: Callable[[Path], None] | None = None,
+        post_publish: Callable[[Path], None] | None = None,
     ) -> Path:
         db_path = self.target_db_path(snapshot_file, output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -44,10 +45,94 @@ class SnapshotImportBackend:
             if finalize_temp_db is not None:
                 finalize_temp_db(tmp_db_path)
 
+            had_destination = db_path.exists()
+            backup_path: Path | None = None
+            backup_fd: int | None = None
             try:
+                if had_destination and post_publish is not None:
+                    backup_fd, backup_name = tempfile.mkstemp(
+                        dir=output_dir,
+                        prefix=f".{db_path.name}.",
+                        suffix=".rollback",
+                    )
+                    backup_path = Path(backup_name)
+                    try:
+                        try:
+                            source_mode = db_path.stat().st_mode & 0o777
+                        except OSError:
+                            source_mode = 0o600
+                        with open(db_path, "rb") as src:
+                            while True:
+                                chunk = src.read(1024 * 1024)
+                                if not chunk:
+                                    break
+                                os.write(backup_fd, chunk)
+                        os.fchmod(backup_fd, source_mode or 0o600)
+                    except BaseException:
+                        try:
+                            os.close(backup_fd)
+                        except OSError:
+                            pass
+                        backup_path.unlink(missing_ok=True)
+                        backup_path = None
+                        backup_fd = None
+                        raise
                 os.replace(tmp_db_path, db_path)
             except OSError as exc:
+                if backup_path is not None:
+                    try:
+                        backup_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
                 raise ImportExecutionError(f"Snapshot import backend failed: {exc}") from exc
+
+            try:
+                if post_publish is not None:
+                    post_publish(db_path)
+            except BaseException as publish_exc:
+                try:
+                    if backup_fd is not None and backup_path is not None:
+                        # Restore by writing through the secure fd; never go
+                        # through the path name, which a concurrent attacker
+                        # may have replaced with a symlink.
+                        os.lseek(backup_fd, 0, os.SEEK_SET)
+                        with open(db_path, "wb") as dst:
+                            while True:
+                                chunk = os.read(backup_fd, 1024 * 1024)
+                                if not chunk:
+                                    break
+                                dst.write(chunk)
+                        os.close(backup_fd)
+                        backup_fd = None
+                        backup_path.unlink(missing_ok=True)
+                        backup_path = None
+                    else:
+                        db_path.unlink(missing_ok=True)
+                except OSError as rollback_exc:
+                    recovery = (
+                        f" Recovery backup: {backup_path}."
+                        if backup_path is not None and backup_path.exists()
+                        else ""
+                    )
+                    raise ImportExecutionError(
+                        "Snapshot import post-publication action failed and database rollback "
+                        f"also failed: {rollback_exc}.{recovery}"
+                    ) from publish_exc
+                raise
+
+            if backup_fd is not None:
+                try:
+                    os.close(backup_fd)
+                except OSError:
+                    pass
+                backup_fd = None
+            if backup_path is not None:
+                try:
+                    backup_path.unlink(missing_ok=True)
+                except OSError:
+                    # Publication and focus are committed; an orphan backup is safer
+                    # than reporting a failure after the transaction succeeded.
+                    pass
 
         return db_path
 

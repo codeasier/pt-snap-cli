@@ -87,8 +87,7 @@ class FocusService:
         db_path = Path(db_path).expanduser().resolve()
         ctx = self._validated_context(db_path)
         self._validate_device(ctx, device_id)
-        self._config.current_db_path = db_path
-        self._config.current_device_id = device_id
+        self._config.write_global_focus(db_path, device_id=device_id)
         return FocusState(
             db_path=db_path,
             device_id=device_id,
@@ -142,12 +141,17 @@ class FocusService:
     def get_global_config_path(self) -> Path:
         return self._config.config_file
 
-    def validate_session_db(self, db_path: Path | str) -> FocusState:
+    def validate_session_db(
+        self,
+        db_path: Path | str,
+        device_id: int | None = None,
+    ) -> FocusState:
         db_path = Path(db_path).expanduser().resolve()
         ctx = self._validated_context(db_path)
+        self._validate_device(ctx, device_id)
         return FocusState(
             db_path=db_path,
-            device_id=None,
+            device_id=device_id,
             available_devices=ctx.device_ids,
             source="explicit",
             focus_file=None,

@@ -219,6 +219,20 @@ class TestListByCategory:
         assert "min_size" in info["parameters"]
         assert "device_id" not in info["parameters"]
 
+    def test_block_template_schema_includes_every_selected_column(self):
+        info = get_template_info("block")
+        assert info is not None
+
+        assert [column["column"] for column in info["output_schema"]] == [
+            "id",
+            "address",
+            "size",
+            "requestedSize",
+            "state",
+            "allocEventId",
+            "freeEventId",
+        ]
+
     def test_list_by_category_with_details(self):
         register_query(
             QueryTemplate(

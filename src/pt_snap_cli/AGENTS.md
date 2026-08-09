@@ -13,7 +13,7 @@
 | `api.py` | High-level `SnapshotAnalyzer` API used by MCP and library callers. |
 | `cli.py` | Typer CLI entrypoint for focus, import, split, metadata, query, report, and config commands. |
 | `completion.py` | Shell completion helpers for templates, categories, and device IDs. |
-| `config.py` | Focus persistence and resolution across explicit paths, environment, project focus, and legacy global config. |
+| `config.py` | Atomic focus persistence and resolution across explicit paths, environment, project focus, and legacy global config. |
 | `context.py` | Read-only SQLite context with schema validation and device discovery. |
 | `version.py` | Package version constant. |
 
@@ -24,7 +24,7 @@
 | `mcp/` | FastMCP server entrypoint and tools (see `mcp/AGENTS.md`). |
 | `models/` | Domain models for snapshot blocks, events, and enums (see `models/AGENTS.md`). |
 | `query/` | Query builders, config loading, execution, mapping, registry, and templates (see `query/AGENTS.md`). |
-| `snapshot/` | Trusted snapshot representation, replay, database adaptors, and slicing (see `snapshot/AGENTS.md`). |
+| `snapshot/` | Snapshot representation, replay, database adaptors, and slicing for explicitly trusted inputs (see `snapshot/AGENTS.md`). |
 
 ## For AI Agents
 
@@ -35,12 +35,12 @@
 
 ### Testing Requirements
 - CLI changes should update/run `tests/test_cli.py` and any affected config/focus tests.
-- API or MCP changes should update/run `tests/test_api.py` and `tests/test_mcp_server.py`.
+- API or MCP changes should update/run `tests/test_api.py`, `tests/test_mcp_server.py`, and `tests/test_contract_cli_mcp.py` when shared semantics change.
 - Context or config changes should update/run `tests/test_context.py` and `tests/test_config.py`.
 - Import, split, and report changes should run their focused `tests/core/` suites; add `tests/snapshot/` when import/split changes cross into the runtime.
 
 ### Common Patterns
-- Exceptions from lower-level modules are translated into `core.errors` before reaching CLI/service callers.
+- Exceptions from lower-level modules are translated into `core.errors` before reaching CLI/service callers; parameter validation errors become `TemplateRenderError`.
 - Query template metadata shown to users comes from the registry/config pipeline, not hardcoded CLI text.
 
 ## Dependencies
@@ -49,7 +49,7 @@
 - `core/` coordinates focus and query behavior for CLI/API callers.
 - `query/` provides template discovery and execution.
 - `models/` contains library-facing snapshot structures.
-- `snapshot/` provides trusted pickle/JSON loading, replay, database generation, and slicing engines consumed through `core/`.
+- `snapshot/` provides pickle/JSON loading, replay, database generation, and slicing engines consumed through `core/`; callers own the trust decision.
 
 ### External
 - `typer` for CLI commands and output.

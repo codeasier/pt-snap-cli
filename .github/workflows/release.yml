@@ -8,8 +8,13 @@ permissions:
   contents: read
 
 jobs:
+  quality:
+    name: Verify tagged commit
+    uses: ./.github/workflows/test.yml
+
   build:
     name: Build distribution
+    needs: quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,11 +44,37 @@ jobs:
       - name: Verify package runs
         run: pt-snap --version
 
+      - name: Extract release notes from changelog
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          tag = os.environ["GITHUB_REF"].removeprefix("refs/tags/v")
+          text = Path("CHANGELOG.md").read_text()
+          pattern = rf"^## \[{re.escape(tag)}\].*?$(.*?)(?=^## \[|\Z)"
+          match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
+          if not match:
+            raise SystemExit(f"CHANGELOG.md does not contain release notes for ## [{tag}]")
+          notes = match.group(1).strip()
+          if not notes:
+            raise SystemExit(f"CHANGELOG.md release notes for ## [{tag}] are empty")
+          Path("release-notes.md").write_text(notes + "\n")
+          PY
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
+          retention-days: 90
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
           retention-days: 90
 
   publish:
@@ -88,25 +119,10 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Extract release notes from changelog
-        run: |
-          TAG=${GITHUB_REF#refs/tags/v}
-          python - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          tag = os.environ["GITHUB_REF"].removeprefix("refs/tags/v")
-          text = Path("CHANGELOG.md").read_text()
-          pattern = rf"^## \[{re.escape(tag)}\].*?$(.*?)(?=^## \[|\Z)"
-          match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
-          if not match:
-              raise SystemExit(f"CHANGELOG.md does not contain release notes for ## [{tag}]")
-          notes = match.group(1).strip()
-          if not notes:
-              raise SystemExit(f"CHANGELOG.md release notes for ## [{tag}] are empty")
-          Path("release-notes.md").write_text(notes + "\n")
-          PY
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
 
       - name: Create GitHub Release
         run: |

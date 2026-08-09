@@ -45,6 +45,10 @@ pt-snap query --template-use memory_peak
 pt-snap focus /path/to/agent-specific/snapshot.db --session
 ```
 
+Session focus 只导出 `PT_SNAP_DB_PATH`，因此 `--session` 不能与 `--device` 或
+`--global` 组合。设备应在每次查询时传入；只有取消 session 覆盖后，项目 focus 及其设备
+设置才会重新生效。
+
 ## 查看当前焦点
 
 ```bash

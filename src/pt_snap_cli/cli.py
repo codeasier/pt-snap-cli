@@ -114,6 +114,10 @@ def focus_database(
 
     if session and global_focus:
         _error("--session and --global cannot be used together.")
+    if session and device is not None:
+        _error(
+            "--device cannot be used with --session; session focus exports only a database path."
+        )
 
     if db_path is None and device is not None:
         try:
@@ -426,7 +430,7 @@ def query_database(
             json.loads(params) if params else {}
         )
         if not isinstance(loaded_params, dict):
-            raise ValueError("Query parameters must be a JSON object.")
+            raise TemplateRenderError("Query parameters must be a JSON object.")
         query_params = cast(dict[str, object], loaded_params)
         result = query_service.execute_query(
             template=template_use,

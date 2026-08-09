@@ -38,19 +38,22 @@ state = analyzer.set_focus(
 ```
 
 `set_focus()` 会验证传入的数据库，但只更新当前 `SnapshotAnalyzer` 对象。它不会写入
-`.pt-snap/focus.json`，不会修改 `PT_SNAP_DB_PATH`，也不会更新全局配置。传入的设备会在
-查询解析目标设备时进行验证。
+`.pt-snap/focus.json`，不会修改 `PT_SNAP_DB_PATH`，也不会更新全局配置。传入的设备会立即
+针对新传入或当前解析出的数据库进行验证；验证失败不会改变 analyzer 状态。
+
+传入新的 `db_path` 但省略 `device_id` 时，会清除 analyzer 之前的设备覆盖；这与 CLI
+切换 focus 时省略 `--device` 的行为一致。
 
 analyzer 有显式 `db_path` 时，`get_focus()` 会报告 analyzer 的设备，不会继承项目或全局
-focus 中的设备。没有显式 `db_path` 时，只设置在 analyzer 上的设备覆盖会在执行查询时
-生效，而 `get_focus()` 仍报告已解析项目或全局 focus 所附带的设备。
+focus 中的设备。没有显式 `db_path` 时，已验证的 analyzer 设备覆盖会由 `get_focus()`
+报告，并在执行查询时生效。
 
 `get_focus()` 返回包含以下字段的 `FocusState`：
 
 | 字段 | 含义 |
 | --- | --- |
 | `db_path` | 解析后的数据库路径，或 `None` |
-| `device_id` | 已解析 focus 所附带的设备；仅设置 analyzer 设备时的差异见上文 |
+| `device_id` | analyzer 设备覆盖；未设置覆盖时为已解析 focus 所附带的设备 |
 | `source` | `explicit`、`env`、`project`、`global`、`none` 等解析来源 |
 | `available_devices` | 从 `trace_entry_<device>` 表发现的设备 ID |
 
@@ -69,7 +72,8 @@ if info is not None:
 ```
 
 `list_templates()` 返回包含 `name`、`description` 和 `category` 的字典。
-`get_template_info()` 返回完整模板 metadata；无法解析模板时返回 `None`。
+`get_template_info()` 返回完整模板 metadata；仅当指定模板不存在时返回 `None`，registry
+内部错误会继续向调用方抛出。
 
 ## 执行查询
 
@@ -120,7 +124,8 @@ other_metadata = analyzer.get_database_metadata("/path/to/other.db")
 ## 错误与范围
 
 - `set_focus()` 在数据库不存在时抛出 `FileNotFoundError`，在 SnapshotDB schema 无效时
-  抛出 `ValueError`。
+  抛出 `ValueError`。设备校验使用共享的 `InvalidDeviceError`；没有任何可解析数据库时只
+  设置设备会抛出 `RuntimeError`。
 - `execute_query()` 在无法解析数据库时抛出 `RuntimeError`；其他查询、参数、设备和数据库
   错误遵循共享 service 层异常。
 - `get_database_metadata()` 在没有已解析数据库时抛出 `RuntimeError`，文件不存在时抛出

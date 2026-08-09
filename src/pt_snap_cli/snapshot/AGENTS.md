@@ -28,10 +28,10 @@
 - Treat every pickle load as trusted-code execution; never inspect an untrusted snapshot by deserializing it.
 - Keep user-facing import/split validation and publication semantics in `core/`; this subtree provides runtime mechanisms.
 - Preserve representation compatibility, original event IDs across slices, and replay-valid allocator state.
-- `PROVENANCE.md` is append-only. Every runtime change requires the PR provenance decision enforced by `.github/scripts/check_snapshot_provenance.py`.
+- `PROVENANCE.md` is append-only. The guard compares old/new Git blobs on PRs, main pushes, and releases; runtime PRs also require the exact decision/reason labels from `.github/pull_request_template.md`.
 
 ### Testing Requirements
-- Run `pytest tests/snapshot` for runtime changes.
+- Run `pytest tests/test_fixture_provenance.py` before any runtime suite that deserializes committed fixtures, then run `pytest tests/snapshot` for runtime changes.
 - Run affected import/split tests under `tests/core/` and `pytest tests/test_governance.py` when runtime or provenance changes.
 
 ### Change Together
@@ -43,7 +43,7 @@
 
 ### Internal
 - Core import services use the snapshot import backend; `SplitService` calls representation and slicing APIs directly.
-- `tests/snapshot/` owns focused representation, replay, adaptor, and slice coverage.
+- `tests/snapshot/` owns focused representation, replay, adaptor, and slice coverage; `tests/fixtures/AGENTS.md` owns executable fixture acceptance.
 
 ### External
 - Python pickle and SQLite standard-library behavior; pickle input is never sandboxed.

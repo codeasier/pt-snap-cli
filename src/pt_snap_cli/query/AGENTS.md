@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-05-26 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-09 -->
 
 # query
 
@@ -28,15 +28,17 @@
 - When changing template behavior, check YAML templates, `config.py`, `registry.py`, `executor.py`, and CLI template metadata output together.
 - Keep SQL value filters parameterized where using builder/condition APIs.
 - Device-specific template SQL should use injected table names such as `device_trace_table` and `device_block_table`.
+- Keep direct `QueryParameter` validation errors local; `QueryExecutor` must normalize them to its `TemplateRenderError` before the core boundary.
 
 ### Testing Requirements
-- Run `pytest tests/query` for query subsystem changes.
+- Run `pytest tests/query` for query subsystem changes; real SQLite template semantics live in `test_peak_memory_templates.py` and `test_query_max_rows_pushdown.py`.
 - Run `pytest tests/test_cli.py` when template listing/info/output behavior changes.
 
 ### Common Patterns
 - Registry lookup is global and package templates load at import time.
 - `StrictUndefined` is used during template rendering so missing template variables fail loudly.
 - Template categories are inferred from directory structure when not explicitly declared in YAML.
+- `QueryService` translates executor errors to `core.errors` and owns cached Context/QueryExecutor reuse.
 
 ## Dependencies
 

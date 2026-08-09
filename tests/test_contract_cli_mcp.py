@@ -19,7 +19,9 @@ from typer.testing import CliRunner
 
 from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import app
-from pt_snap_cli.query.registry import QueryRegistry
+from pt_snap_cli.core import InvalidDeviceError, TemplateRenderError
+from pt_snap_cli.query.config import QueryParameter, QueryTemplate
+from pt_snap_cli.query.registry import QueryRegistry, register_query
 
 runner = CliRunner()
 
@@ -231,6 +233,18 @@ def test_focus_contract_matches_cli_and_mcp_semantics(
     }
 
 
+def test_invalid_focus_device_contract_matches_cli_and_mcp_semantics(
+    contract_db: Path, mcp_server: ModuleType
+) -> None:
+    cli_result = runner.invoke(app, ["focus", str(contract_db), "--device", "99"])
+    assert cli_result.exit_code == 1
+
+    with pytest.raises(InvalidDeviceError) as exc_info:
+        mcp_server.set_focus(str(contract_db), device_id=99)
+
+    assert str(exc_info.value) in cli_result.stdout
+
+
 def test_template_list_contract_matches_cli_and_mcp_semantics(mcp_server: ModuleType) -> None:
     cli_result = runner.invoke(app, ["query", "--category", "basic"])
     assert cli_result.exit_code == 0
@@ -317,6 +331,31 @@ def test_query_execution_contract_matches_cli_and_mcp_semantics(
     )
 
     assert cli_query == mcp_query
+
+
+def test_query_parameter_error_contract_matches_cli_and_mcp_semantics(
+    contract_db: Path, mcp_server: ModuleType
+) -> None:
+    register_query(
+        QueryTemplate(
+            name="required_query",
+            query="SELECT {{ count }}",
+            parameters={
+                "count": QueryParameter(name="count", type="int", required=True),
+            },
+        )
+    )
+    cli_result = runner.invoke(
+        app,
+        ["query", str(contract_db), "--template-use", "required_query"],
+    )
+    assert cli_result.exit_code == 1
+    server = _set_mcp_focus(mcp_server, contract_db)
+
+    with pytest.raises(TemplateRenderError) as exc_info:
+        server.execute_query("required_query")
+
+    assert str(exc_info.value) in cli_result.stdout
 
 
 def test_missing_focus_error_contract_matches_cli_and_mcp_semantics(
