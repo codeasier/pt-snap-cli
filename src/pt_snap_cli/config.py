@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -61,11 +62,38 @@ class Config:
         else:
             self._config = {}
 
-    def _save(self) -> None:
-        """Save configuration to file."""
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.config_file, "w") as f:
-            json.dump(self._config, f, indent=2)
+    @staticmethod
+    def _write_json_atomic(path: Path, data: dict[str, Any]) -> None:
+        """Publish JSON without truncating an existing file on failure."""
+        try:
+            mode = path.stat().st_mode & 0o777
+        except FileNotFoundError:
+            current_umask = os.umask(0)
+            os.umask(current_umask)
+            mode = 0o666 & ~current_umask
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temp_name = tempfile.mkstemp(
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            text=True,
+        )
+        temp_path = Path(temp_name)
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(temp_path, mode)
+            os.replace(temp_path, path)
+        except BaseException:
+            temp_path.unlink(missing_ok=True)
+            raise
+
+    def _save(self, updated: dict[str, Any]) -> None:
+        """Persist and then commit an updated in-memory configuration."""
+        self._write_json_atomic(self.config_file, updated)
+        self._config = updated
 
     @property
     def current_db_path(self) -> Path | None:
@@ -78,13 +106,15 @@ class Config:
     @current_db_path.setter
     def current_db_path(self, db_path: Path | str) -> None:
         """Set current database path in configuration."""
-        self._config[DB_PATH_KEY] = str(Path(db_path).expanduser().resolve())
-        self._save()
+        updated = self._config.copy()
+        updated[DB_PATH_KEY] = str(Path(db_path).expanduser().resolve())
+        self._save(updated)
 
     def clear_current_db_path(self) -> None:
         """Clear current database path from configuration."""
-        self._config.pop(DB_PATH_KEY, None)
-        self._save()
+        updated = self._config.copy()
+        updated.pop(DB_PATH_KEY, None)
+        self._save(updated)
 
     @property
     def current_device_id(self) -> int | None:
@@ -94,11 +124,12 @@ class Config:
     @current_device_id.setter
     def current_device_id(self, device_id: int | None) -> None:
         """Set current device ID in configuration."""
+        updated = self._config.copy()
         if device_id is not None:
-            self._config[DEVICE_ID_KEY] = device_id
+            updated[DEVICE_ID_KEY] = device_id
         else:
-            self._config.pop(DEVICE_ID_KEY, None)
-        self._save()
+            updated.pop(DEVICE_ID_KEY, None)
+        self._save(updated)
 
     def validate_db_path(self) -> bool:
         """Validate that the current database path exists."""
@@ -115,13 +146,13 @@ class Config:
 
     def set(self, key: str, value: Any) -> None:
         """Set a configuration value."""
-        self._config[key] = value
-        self._save()
+        updated = self._config.copy()
+        updated[key] = value
+        self._save(updated)
 
     def clear(self) -> None:
         """Clear all configuration."""
-        self._config = {}
-        self._save()
+        self._save({})
 
     def show(self) -> dict[str, Any]:
         """Show current configuration."""
@@ -155,9 +186,19 @@ class Config:
         data: dict[str, Any] = {DB_PATH_KEY: str(Path(db_path).expanduser().resolve())}
         if device_id is not None:
             data[DEVICE_ID_KEY] = device_id
-        with open(focus_file, "w") as f:
-            json.dump(data, f, indent=2)
+        self._write_json_atomic(focus_file, data)
         return focus_file
+
+    def write_global_focus(self, db_path: Path | str, device_id: int | None = None) -> Path:
+        """Write the database and optional device as one global config update."""
+        updated = self._config.copy()
+        updated[DB_PATH_KEY] = str(Path(db_path).expanduser().resolve())
+        if device_id is None:
+            updated.pop(DEVICE_ID_KEY, None)
+        else:
+            updated[DEVICE_ID_KEY] = device_id
+        self._save(updated)
+        return self.config_file
 
     def get_project_focus(
         self, start_dir: Path | None = None

@@ -11,6 +11,7 @@ from pt_snap_cli.context import Context
 from pt_snap_cli.core.errors import (
     ImportExecutionError,
     ImportToolMissingError,
+    InvalidDeviceError,
     SnapshotFileInvalidError,
 )
 from pt_snap_cli.core.models import ImportOptions
@@ -18,6 +19,17 @@ from pt_snap_cli.core.models import ImportOptions
 FIXTURE_DIR = Path(__file__).parents[1] / "fixtures" / "snapshots"
 EMPTY_CACHE_SNAPSHOT = FIXTURE_DIR / "snapshot_with_empty_cache.pkl"
 MULTI_DEVICE_SNAPSHOT = FIXTURE_DIR / "snapshot_with_multi_devices.pkl"
+
+
+@pytest.fixture(autouse=True)
+def isolate_focus_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PT_SNAP_DB_PATH", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
 
 def _import_service_type():
@@ -185,6 +197,7 @@ def test_import_raises_on_upstream_failure(monkeypatch: pytest.MonkeyPatch, tmp_
         dump_dir: Path,
         device: int | None,
         finalize_temp_db=None,
+        post_publish=None,
     ) -> Path:
         raise ImportExecutionError("Snapshot import backend failed: runtime failed")
 
@@ -502,3 +515,107 @@ def test_source_change_during_import_preserves_existing_database(
 
     assert first.db_path.stat().st_size == original_size
     assert sorted(path.name for path in tmp_path.iterdir()) == [first.db_path.name]
+
+
+def test_focus_failure_after_publish_restores_existing_database(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    first = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+    original_database = first.db_path.read_bytes()
+    focus_file = tmp_path / ".pt-snap" / "focus.json"
+    focus_file.parent.mkdir()
+    focus_file.write_text('{"db_path": "previous.db"}')
+    original_focus = focus_file.read_bytes()
+
+    def fail_focus_write(*args: object, **kwargs: object) -> Path:
+        raise OSError("focus write failed")
+
+    from pt_snap_cli.core.focus_service import FocusService
+
+    focus_service = FocusService()
+    monkeypatch.setattr(focus_service._config, "write_project_focus", fail_focus_write)
+    service._focus_service = focus_service
+
+    with pytest.raises(ImportExecutionError, match="focus write failed"):
+        service.import_snapshot(
+            ImportOptions(
+                snapshot_file=EMPTY_CACHE_SNAPSHOT,
+                output_dir=tmp_path,
+                force=True,
+            )
+        )
+
+    assert first.db_path.read_bytes() == original_database
+    assert focus_file.read_bytes() == original_focus
+    assert sorted(path.name for path in tmp_path.iterdir()) == [".pt-snap", first.db_path.name]
+
+
+def test_focus_failure_after_first_publish_removes_database(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from pt_snap_cli.core.focus_service import FocusService
+
+    import_service_cls = _import_service_type()
+    focus_service = FocusService()
+    monkeypatch.setattr(
+        focus_service._config,
+        "write_project_focus",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("focus write failed")),
+    )
+    service = import_service_cls(focus_service=focus_service)
+    destination = tmp_path / f"{EMPTY_CACHE_SNAPSHOT.name}.db"
+
+    with pytest.raises(ImportExecutionError, match="focus write failed"):
+        service.import_snapshot(
+            ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path)
+        )
+
+    assert not destination.exists()
+    assert not (tmp_path / ".pt-snap" / "focus.json").exists()
+
+
+def test_focus_transaction_falls_back_when_hard_links_are_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
+    )
+    monkeypatch.setattr(
+        "pt_snap_cli.core.snapshot_import_backend.os.link",
+        lambda *args: (_ for _ in ()).throw(OSError("hard links unavailable")),
+    )
+
+    result = service.import_snapshot(
+        ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, force=True)
+    )
+
+    assert result.db_path.exists()
+    assert result.focus_state is not None
+    assert not list(tmp_path.glob("*.rollback"))
+
+
+def test_invalid_focus_device_is_normalized_as_import_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from pt_snap_cli.core.focus_service import FocusService
+
+    focus_service = FocusService()
+    monkeypatch.setattr(
+        focus_service,
+        "set_project_focus",
+        lambda *args, **kwargs: (_ for _ in ()).throw(InvalidDeviceError("Device 99 not found")),
+    )
+    service = _import_service_type()(focus_service=focus_service)
+    options = ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, device=99)
+
+    with pytest.raises(ImportExecutionError, match="Device 99 not found"):
+        service._set_focus_if_requested(tmp_path / "snapshot.db", options)

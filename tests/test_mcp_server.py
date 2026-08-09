@@ -1,8 +1,11 @@
 """Tests for the MCP server module."""
 
+import asyncio
+import json
 import sqlite3
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -45,14 +48,20 @@ def _reset_registry():
 
 
 @pytest.fixture(autouse=True)
-def _fresh_analyzer():
-    """Reset the module-level _analyzer for each test."""
+def _fresh_analyzer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Reset the module analyzer and isolate focus from the host machine."""
     import pt_snap_cli.mcp.server as server_mod
+    from pt_snap_cli.api import SnapshotAnalyzer
 
-    yield
-
-    # Reset the analyzer so it doesn't hold stale state
-    server_mod._analyzer = type(server_mod._analyzer)()
+    original_analyzer = server_mod._analyzer
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PT_SNAP_DB_PATH", raising=False)
+    with patch.object(Path, "home", return_value=tmp_path):
+        server_mod._analyzer = SnapshotAnalyzer()
+        try:
+            yield
+        finally:
+            server_mod._analyzer = original_analyzer
 
 
 class TestMCPServerStructure:
@@ -72,65 +81,78 @@ class TestMCPServerStructure:
 
         assert mcp.name == "pt-snap"
 
-    def test_mcp_server_has_tool_decorator(self) -> None:
-        """Verify MCP server has tool decorator."""
+    def test_mcp_server_registers_tools_resource_and_prompt(self) -> None:
         from pt_snap_cli.mcp.server import mcp
 
-        assert hasattr(mcp, "tool")
+        tools = {tool.name for tool in asyncio.run(mcp.list_tools())}
+        resources = {str(resource.uri) for resource in asyncio.run(mcp.list_resources())}
+        prompts = {prompt.name for prompt in asyncio.run(mcp.list_prompts())}
 
-    def test_mcp_server_has_resource_decorator(self) -> None:
-        """Verify MCP server has resource decorator."""
-        from pt_snap_cli.mcp.server import mcp
+        assert tools == {
+            "get_focus",
+            "set_focus",
+            "list_templates",
+            "get_template_info",
+            "execute_query",
+            "get_database_metadata",
+        }
+        assert resources == {"focus://current"}
+        assert prompts == {"analyze_memory_leaks"}
 
-        assert hasattr(mcp, "resource")
+    def test_mcp_resource_and_prompt_behavior(self, valid_db: Path) -> None:
+        import pt_snap_cli.mcp.server as server_mod
+        from pt_snap_cli.api import SnapshotAnalyzer
 
-    def test_mcp_server_has_prompt_decorator(self) -> None:
-        """Verify MCP server has prompt decorator."""
-        from pt_snap_cli.mcp.server import mcp
+        async def read_capabilities():
+            resource = await server_mod.mcp.read_resource("focus://current")
+            prompt = await server_mod.mcp.get_prompt(
+                "analyze_memory_leaks",
+                {"db_path": str(valid_db), "device_id": "0"},
+            )
+            return resource, prompt
 
-        assert hasattr(mcp, "prompt")
+        server_mod._analyzer = SnapshotAnalyzer(db_path=valid_db, device_id=0)
+        resource, prompt = asyncio.run(read_capabilities())
+
+        assert json.loads(resource[0].content)["db_path"] == str(valid_db)
+        assert "run the leak_detection template" in prompt.messages[0].content.text
 
 
 class TestMCPToolFunctions:
-    """Test MCP tool functions through the analyzer layer."""
+    """Test MCP wrapper functions against the shared analyzer."""
 
     def test_get_focus_returns_dict(self, valid_db: Path) -> None:
         """Test get_focus returns proper dict structure."""
+        import pt_snap_cli.mcp.server as server_mod
         from pt_snap_cli.api import SnapshotAnalyzer
 
-        analyzer = SnapshotAnalyzer(db_path=valid_db)
-        state = analyzer.get_focus()
-        # MCP wrapper converts to dict
-        result = {
-            "db_path": state.db_path,
-            "device_id": state.device_id,
-            "source": state.source,
-            "available_devices": state.available_devices,
-        }
+        server_mod._analyzer = SnapshotAnalyzer(db_path=valid_db)
+        result = server_mod.get_focus()
         assert isinstance(result, dict)
         assert result["db_path"] == str(valid_db)
         assert result["source"] == "explicit"
 
     def test_set_focus_returns_dict(self, valid_db: Path) -> None:
         """Test set_focus returns proper dict structure."""
-        from pt_snap_cli.api import SnapshotAnalyzer
+        import pt_snap_cli.mcp.server as server_mod
 
-        analyzer = SnapshotAnalyzer()
-        state = analyzer.set_focus(db_path=str(valid_db))
-        result = {
-            "db_path": state.db_path,
-            "device_id": state.device_id,
-            "available_devices": state.available_devices,
-        }
+        result = server_mod.set_focus(db_path=str(valid_db), device_id=0)
         assert isinstance(result, dict)
         assert result["db_path"] == str(valid_db)
+        assert result["device_id"] == 0
+
+    def test_set_focus_rejects_invalid_device(self, valid_db: Path) -> None:
+        import pt_snap_cli.mcp.server as server_mod
+        from pt_snap_cli.core import InvalidDeviceError
+
+        with pytest.raises(InvalidDeviceError, match="Device 99 not found"):
+            server_mod.set_focus(db_path=str(valid_db), device_id=99)
 
     def test_list_templates_returns_list(self) -> None:
         """Test list_templates returns a list of dicts."""
-        from pt_snap_cli.api import SnapshotAnalyzer
+        import pt_snap_cli.mcp.server as server_mod
 
-        analyzer = SnapshotAnalyzer()
-        result = analyzer.list_templates()
+        result = server_mod.list_templates()
         assert isinstance(result, list)
         if result:
             assert "name" in result[0]
@@ -138,28 +160,26 @@ class TestMCPToolFunctions:
 
     def test_get_template_info(self) -> None:
         """Test get_template_info returns template details."""
-        from pt_snap_cli.api import SnapshotAnalyzer
+        import pt_snap_cli.mcp.server as server_mod
 
-        analyzer = SnapshotAnalyzer()
-        info = analyzer.get_template_info("leak_detection")
-        assert info is not None
+        info = server_mod.get_template_info("leak_detection")
         assert "name" in info
         assert "parameters" in info
 
     def test_get_template_info_not_found(self) -> None:
         """Test get_template_info handles missing template."""
-        from pt_snap_cli.api import SnapshotAnalyzer
+        import pt_snap_cli.mcp.server as server_mod
 
-        analyzer = SnapshotAnalyzer()
-        info = analyzer.get_template_info("does_not_exist")
-        assert info is None
+        info = server_mod.get_template_info("does_not_exist")
+        assert info == {"error": "Template 'does_not_exist' not found"}
 
     def test_execute_query_returns_dict(self, valid_db: Path) -> None:
         """Test execute_query returns proper dict structure."""
+        import pt_snap_cli.mcp.server as server_mod
         from pt_snap_cli.api import SnapshotAnalyzer
 
-        analyzer = SnapshotAnalyzer(db_path=valid_db)
-        result = analyzer.execute_query("leak_detection", max_rows=10)
+        server_mod._analyzer = SnapshotAnalyzer(db_path=valid_db)
+        result = server_mod.execute_query("leak_detection", max_rows=10)
         assert isinstance(result, dict)
         assert "total" in result
         assert "returned" in result

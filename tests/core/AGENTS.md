@@ -10,6 +10,7 @@
 | File | Description |
 |------|-------------|
 | `test_focus_service.py` | Tests focus service resolution, validation, project/global writes, and device handling. |
+| `test_context_cache.py` | Tests bounded Context reuse, invalidation, close behavior, and file replacement detection. |
 | `test_import_*.py` | Tests import models/errors, metadata/cache decisions, safe publication, reuse, and failure handling. |
 | `test_query_service.py` | Tests query service template listing/info, focus resolution, execution, row limiting, and error translation. |
 | `test_report_service.py` | Tests higher-level report composition and normalized results. |
@@ -28,10 +29,12 @@
 
 ### Testing Requirements
 - Run `pytest tests/core` for service-layer changes.
+- Run `pytest tests/test_fixture_provenance.py` first when selected import/split tests deserialize committed fixtures.
 
 ### Common Patterns
-- Tests isolate services from persistent user config and use temporary files/directories.
+- Focus-writing tests isolate CWD, `PT_SNAP_DB_PATH`, and home from persistent user config.
 - Import and split tests assert that failures do not replace existing destinations or publish partial output.
+- Import publication tests cover focus-write rollback as part of the reported import transaction.
 
 ## Dependencies
 

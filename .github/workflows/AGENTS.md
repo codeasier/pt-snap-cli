@@ -9,8 +9,8 @@
 ## Key Files
 | File | Description |
 |------|-------------|
-| `test.yml` | PR provenance gate plus lint, type, test-matrix, coverage, build, and wheel smoke checks. |
-| `release.yml` | Release workflow for building and publishing package artifacts. |
+| `test.yml` | Reusable provenance, lint, type, test-matrix, coverage, build, and wheel smoke checks. |
+| `release.yml` | Tag workflow that gates build and publication on the tagged commit's reusable quality workflow. |
 
 ## Subdirectories
 | Directory | Purpose |
@@ -24,6 +24,7 @@
 - Treat release workflow edits as high-impact and verify syntax carefully.
 - Do not bypass tests, lint, type checks, or publishing safeguards without explicit instruction.
 - Keep snapshot provenance inputs and declaration parsing aligned with `.github/scripts/check_snapshot_provenance.py` and the PR template.
+- Keep release validation before PyPI publication; release notes and package version must be validated in `build`.
 
 ### Testing Requirements
 - Validate YAML syntax.
@@ -33,6 +34,7 @@
 ### Common Patterns
 - Workflows install the package with development extras before verification.
 - The test workflow defines independent provenance, lint, and Python-version test jobs that may run concurrently.
+- Release ordering is `quality` -> `build` -> `publish` -> `github-release`; the local reusable workflow is resolved from the tag commit.
 
 ## Dependencies
 

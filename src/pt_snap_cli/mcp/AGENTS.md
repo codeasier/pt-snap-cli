@@ -25,13 +25,14 @@
 - Update docs in `docs/*/mcp.md` and tests when adding or changing MCP tools.
 
 ### Testing Requirements
-- Run `pytest tests/test_mcp_server.py` for MCP changes.
+- Run `pytest tests/test_mcp_server.py` for wrapper behavior and FastMCP tool/resource/prompt registration.
 - Run API tests if MCP changes require `SnapshotAnalyzer` changes.
 - Run `pytest tests/test_contract_cli_mcp.py` when normalized shared behavior or errors change.
 
 ### Common Patterns
 - A module-level `SnapshotAnalyzer` backs all MCP tools.
 - `focus://current` mirrors the current focus tool response.
+- `set_focus` delegates immediate database/device validation to `SnapshotAnalyzer`; do not accept values that the CLI focus service rejects.
 
 ## Dependencies
 

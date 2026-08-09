@@ -112,6 +112,8 @@ queries:
         type: int
       - column: requestedSize
         type: int
+      - column: state
+        type: int
       - column: allocEventId
         type: int
       - column: freeEventId

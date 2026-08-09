@@ -14,6 +14,7 @@ from pt_snap_cli.core import (
     FocusService,
     ImportMetadataService,
     QueryService,
+    TemplateNotFoundError,
 )
 from pt_snap_cli.core.context_cache import ContextCache
 
@@ -67,21 +68,34 @@ class SnapshotAnalyzer:
         )
         return FocusState(
             db_path=str(state.db_path) if state.db_path is not None else None,
-            device_id=state.device_id,
+            device_id=self._device_id if self._device_id is not None else state.device_id,
             source=state.source,
             available_devices=state.available_devices,
         )
 
     def set_focus(self, db_path: str | None = None, device_id: int | None = None) -> FocusState:
-        if db_path is not None:
+        candidate_db = Path(db_path) if db_path is not None else self._db_path
+        candidate_device = (
+            device_id if db_path is not None or device_id is not None else self._device_id
+        )
+        if candidate_db is None and candidate_device is not None:
+            resolved = self._focus_service.resolve_focus()
+            if resolved.db_path is None:
+                raise RuntimeError("No database configured. Set db_path before selecting a device.")
+            candidate_db = resolved.db_path
+
+        if candidate_db is not None:
             try:
-                self._focus_service.validate_session_db(db_path)
+                self._focus_service.validate_session_db(candidate_db, candidate_device)
             except DatabaseMissingError as exc:
                 raise FileNotFoundError(str(exc)) from exc
             except DatabaseSchemaError as exc:
                 raise ValueError(str(exc)) from exc
+
+        if db_path is not None:
             self._db_path = Path(db_path)
-        if device_id is not None:
+            self._device_id = device_id
+        elif device_id is not None:
             self._device_id = device_id
         return self.get_focus()
 
@@ -98,7 +112,7 @@ class SnapshotAnalyzer:
     def get_template_info(self, name: str) -> dict[str, Any] | None:
         try:
             info = self._query_service.get_template_info(name)
-        except Exception:
+        except TemplateNotFoundError:
             return None
 
         return {

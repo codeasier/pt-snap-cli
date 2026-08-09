@@ -150,7 +150,12 @@ class TestCallstackAnalysisMaxRowsPushdown:
     def test_default_min_count_filters_noise(self, callstack_db: Path) -> None:
         rows = _execute_template(callstack_db, "callstack_analysis", {})
         # Default min_count=5 leaves the four real callstacks.
-        assert len(rows) == 4
+        assert [row["callstack"] for row in rows] == [
+            "train.py:10",
+            "train.py:20",
+            "model.py:30",
+            "model.py:40",
+        ]
 
     def test_max_rows_pushes_down_to_limit(self, callstack_db: Path) -> None:
         config = Config()

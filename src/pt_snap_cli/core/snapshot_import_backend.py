@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import pickle
+import shutil
 import sqlite3
 import tempfile
 from collections.abc import Callable
@@ -19,6 +20,7 @@ class SnapshotImportBackend:
         output_dir: Path,
         device: int | None = None,
         finalize_temp_db: Callable[[Path], None] | None = None,
+        post_publish: Callable[[Path], None] | None = None,
     ) -> Path:
         db_path = self.target_db_path(snapshot_file, output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -44,10 +46,59 @@ class SnapshotImportBackend:
             if finalize_temp_db is not None:
                 finalize_temp_db(tmp_db_path)
 
+            had_destination = db_path.exists()
+            backup_path: Path | None = None
             try:
+                if had_destination and post_publish is not None:
+                    fd, backup_name = tempfile.mkstemp(
+                        dir=output_dir,
+                        prefix=f".{db_path.name}.",
+                        suffix=".rollback",
+                    )
+                    os.close(fd)
+                    backup_path = Path(backup_name)
+                    backup_path.unlink()
+                    try:
+                        os.link(db_path, backup_path)
+                    except OSError:
+                        shutil.copy2(db_path, backup_path)
                 os.replace(tmp_db_path, db_path)
             except OSError as exc:
+                if backup_path is not None:
+                    try:
+                        backup_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
                 raise ImportExecutionError(f"Snapshot import backend failed: {exc}") from exc
+
+            try:
+                if post_publish is not None:
+                    post_publish(db_path)
+            except BaseException as publish_exc:
+                try:
+                    if backup_path is not None:
+                        os.replace(backup_path, db_path)
+                    else:
+                        db_path.unlink(missing_ok=True)
+                except OSError as rollback_exc:
+                    recovery = (
+                        f" Recovery backup: {backup_path}."
+                        if backup_path is not None and backup_path.exists()
+                        else ""
+                    )
+                    raise ImportExecutionError(
+                        "Snapshot import post-publication action failed and database rollback "
+                        f"also failed: {rollback_exc}.{recovery}"
+                    ) from publish_exc
+                raise
+
+            if backup_path is not None:
+                try:
+                    backup_path.unlink(missing_ok=True)
+                except OSError:
+                    # Publication and focus are committed; an orphan backup is safer
+                    # than reporting a failure after the transaction succeeded.
+                    pass
 
         return db_path
 

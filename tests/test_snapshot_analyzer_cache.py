@@ -6,9 +6,7 @@ against the same database. We assert that:
 
 * the analyzer reuses a single cached :class:`Context` across calls,
 * ``invalidate_context_cache`` forces a fresh context,
-* a database file replaced on disk is detected through the mtime probe,
-* a fresh schema invalidation surfaces the standard ``DatabaseSchemaError``-
-  equivalent error to callers.
+* a database file replaced on disk is detected through the file-signature probe.
 """
 
 from __future__ import annotations

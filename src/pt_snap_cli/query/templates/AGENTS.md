@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-05-26 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-09 -->
 
 # templates
 
@@ -14,9 +14,9 @@
 ## Subdirectories
 | Directory | Purpose |
 |-----------|---------|
-| `basic/` | Core allocation/block/event inspection templates (see `basic/AGENTS.md`). |
-| `business/` | Higher-level analysis templates such as leak detection (see `business/AGENTS.md`). |
-| `statistical/` | Aggregation and statistical analysis templates (see `statistical/AGENTS.md`). |
+| `basic/` | Core allocation, block, and event inspection templates. |
+| `business/` | Higher-level analysis templates such as leak detection. |
+| `statistical/` | Point-in-time, aggregation, gap, callstack, and peak templates. |
 
 ## For AI Agents
 
@@ -24,9 +24,10 @@
 - Keep each YAML template's `queries` entry name aligned with the file/topic and documented template name.
 - Include accurate parameter defaults, required flags, descriptions, and output schema entries.
 - Use Jinja variables provided by `QueryExecutor`, especially device-specific table names.
+- Make ranked/grouped results deterministic with explicit tie-breakers and keep every selected result column in `output_schema`.
 
 ### Testing Requirements
-- Run `pytest tests/query/test_registry.py tests/query/test_config.py tests/query/test_executor.py` after template changes.
+- Run `pytest tests/query/test_registry.py tests/query/test_config.py tests/query/test_executor.py` after metadata/rendering changes; add the owning SQLite integration suite for SQL semantics.
 - Run `pytest tests/test_cli.py` if list or template-info output changes.
 
 ### Common Patterns

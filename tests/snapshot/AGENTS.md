@@ -4,7 +4,7 @@
 # snapshot tests
 
 ## Purpose
-`tests/snapshot` verifies the first-party snapshot representation, entities, allocator simulation/replay, SQLite adaptors, and slice runtime using synthetic objects and repository-trusted fixtures.
+`tests/snapshot` verifies the first-party snapshot representation, entities, allocator simulation/replay, SQLite adaptors, and slice runtime using synthetic objects and checksum-verified fixtures.
 
 ## Key Files
 | File | Description |
@@ -24,12 +24,12 @@
 ## For AI Agents
 
 ### Working In This Directory
-- Deserialize only committed trusted fixtures or temporary pickles generated inside the test itself; never load external untrusted pickle data.
+- Deserialize only objects accepted by `tests/fixtures/snapshots/PROVENANCE.md` and `SHA256SUMS`, or temporary pickles generated inside the test itself.
 - Keep synthetic fixtures minimal and preserve explicit event IDs when testing slice boundaries.
 - Update golden observations only for intentional, reviewed runtime changes; do not regenerate them to hide regressions.
 
 ### Testing Requirements
-- Run `pytest tests/snapshot` for runtime changes.
+- Run `pytest tests/test_fixture_provenance.py` before `pytest tests/snapshot` for runtime changes.
 - Run affected `tests/core/test_import_*.py` or `tests/core/test_split_service.py` when behavior crosses the product boundary.
 - Run `pytest tests/test_governance.py` for changes under `src/pt_snap_cli/snapshot/` or its provenance declaration.
 
@@ -41,7 +41,7 @@
 
 ### Internal
 - `src/pt_snap_cli/snapshot/` is the primary runtime under test.
-- `tests/fixtures/snapshots/` contains trusted snapshot inputs used by runtime and import baselines.
+- `tests/fixtures/AGENTS.md` defines acceptance for snapshot inputs used by runtime and import baselines.
 
 ### External
 - `pytest` and Python standard-library pickle/SQLite behavior.

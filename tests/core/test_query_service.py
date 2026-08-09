@@ -11,6 +11,7 @@ from pt_snap_cli.core import (
     InvalidDeviceError,
     QueryService,
     TemplateNotFoundError,
+    TemplateRenderError,
 )
 from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.registry import QueryRegistry, register_query
@@ -164,3 +165,18 @@ class TestQueryService:
 
         with pytest.raises(InvalidDeviceError):
             QueryService().execute_query("size_query", device_id=99)
+
+    def test_execute_query_normalizes_parameter_validation(self, sample_db: Path) -> None:
+        Config().write_project_focus(sample_db)
+        register_query(
+            QueryTemplate(
+                name="required_query",
+                query="SELECT {{ count }}",
+                parameters={
+                    "count": QueryParameter(name="count", type="int", required=True),
+                },
+            )
+        )
+
+        with pytest.raises(TemplateRenderError, match="Required parameter 'count'"):
+            QueryService().execute_query("required_query")

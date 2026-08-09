@@ -13,9 +13,11 @@
 | `test_builder.py` | Tests `QueryBuilder` SQL and parameter generation. |
 | `test_condition.py` | Tests condition objects and composite boolean conditions. |
 | `test_config.py` | Tests YAML loading and query parameter validation. |
-| `test_executor.py` | Tests template rendering and execution against SQLite fixtures. |
+| `test_executor.py` | Tests Jinja rendering, parameter-error normalization, limits, output validation, and mocked executor behavior. |
+| `test_memory_peak_cte.py` | Tests generated memory-peak SQL CTE structure and semantics. |
 | `test_mapper.py` | Tests result type conversion and model factory mapping. |
 | `test_peak_memory_templates.py` | Tests active-at-event, allocator-gap, and callstack attribution template semantics. |
+| `test_query_max_rows_pushdown.py` | Executes packaged leak/callstack templates against SQLite and tests SQL limit pushdown and stable ordering. |
 | `test_registry.py` | Tests template registration, lookup, category listing, and registry reset behavior. |
 
 ## Subdirectories
@@ -27,7 +29,7 @@
 
 ### Working In This Directory
 - Add coverage in the most specific test file for any query subsystem change.
-- Use minimal SQLite fixtures for executor tests rather than external databases.
+- Use minimal SQLite fixtures in the integration suites rather than external databases; `test_executor.py` is primarily render/unit coverage.
 
 ### Testing Requirements
 - Run `pytest tests/query` for query subsystem changes.
@@ -35,7 +37,7 @@
 
 ### Common Patterns
 - Registry tests reset singleton state to avoid cross-test contamination.
-- Executor tests exercise rendered SQL and device-specific table names.
+- Executor tests exercise rendered SQL and device-specific table names; packaged-template SQLite behavior lives in the dedicated integration files.
 
 ## Dependencies
 

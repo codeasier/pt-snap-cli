@@ -91,8 +91,21 @@ class TestQueryExecutor:
         executor._env = QueryExecutor(context=None)._env
         executor._compiled_cache = {}
 
-        with pytest.raises(ValueError, match="Required parameter"):
+        with pytest.raises(TemplateRenderError, match="Required parameter"):
             executor.render(template, {})
+
+    def test_render_invalid_parameter_type_is_normalized(self):
+        template = QueryTemplate(
+            name="test",
+            query="SELECT {{ count }}",
+            parameters={
+                "count": QueryParameter(name="count", type="int", required=True),
+            },
+        )
+        executor = QueryExecutor(context=None)
+
+        with pytest.raises(TemplateRenderError, match="cannot be converted to int"):
+            executor.render(template, {"count": "invalid"})
 
     def test_validate_output(self):
         executor = QueryExecutor.__new__(QueryExecutor)

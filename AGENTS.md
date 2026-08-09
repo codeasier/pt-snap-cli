@@ -14,7 +14,7 @@ and an MCP server over shared service-layer behavior.
 Run these commands from the repository root.
 
 - Install for local development: `pip install -e .`
-- Install development dependencies: `pip install -e .[dev]`
+- Install development dependencies: `pip install -e ".[dev]"`
 - Run all tests: `pytest`
 - Run one file: `pytest tests/test_cli.py`
 - Run one test: `pytest tests/test_cli.py -k test_version_flag`
@@ -33,7 +33,9 @@ that local environment is intentionally available.
 | GitHub automation | [.github/AGENTS.md](.github/AGENTS.md) | Issue/PR templates, provenance guard, CI, and release workflows |
 | User documentation | [docs/AGENTS.md](docs/AGENTS.md) | English/Chinese guides, API docs, navigation, and legal evidence |
 | Package source | [src/AGENTS.md](src/AGENTS.md) | Installable package boundaries and source-layout rules |
-| Tests | [tests/AGENTS.md](tests/AGENTS.md) | Cross-surface contracts, service/query/runtime suites, and trusted fixtures |
+| Tests | [tests/AGENTS.md](tests/AGENTS.md) | Cross-surface contracts, service/query/runtime suites, and reviewed executable fixtures |
+| Benchmarks | [benchmarks/AGENTS.md](benchmarks/AGENTS.md) | Import and SQLite performance measurement with temporary outputs |
+| Setup skill | [skills/AGENTS.md](skills/AGENTS.md) | Installation skill approval and active-interpreter safety boundary |
 
 ## Runtime Topology
 
@@ -88,14 +90,15 @@ templates under category subdirectories are included by
 - Pickle input is trusted-code execution, not a sandbox. Never load an
   untrusted fixture or snapshot merely to inspect it.
 - Import writes and validates metadata on a temporary database before
-  `os.replace()` publishes it. Preserve the existing destination on failure.
+  publication. When focus update is requested, publication retains a rollback
+  link until the atomic focus write succeeds; reported failure preserves the
+  previous destination.
 - Split requires exactly one positive strategy (`--slices` or
   `--max-entries`), an absent destination, replay-validates generated slices,
   and publishes the staged directory without replacement.
-- `src/pt_snap_cli/snapshot/PROVENANCE.md` is append-only. Changes below the
-  snapshot runtime require the provenance decision enforced by
-  `.github/scripts/check_snapshot_provenance.py` and covered by
-  `tests/test_governance.py`.
+- `src/pt_snap_cli/snapshot/PROVENANCE.md` is append-only. The guard compares
+  base/head Git blobs on PRs, main pushes, and releases; snapshot-runtime PRs
+  additionally require the exact provenance decision in the default PR template.
 
 ## Change Routing
 
@@ -103,12 +106,14 @@ templates under category subdirectories are included by
 | --- | --- | --- |
 | CLI options or terminal rendering | `src/pt_snap_cli/cli.py` and the owning core service | `tests/test_cli.py`, `tests/test_completion.py` |
 | Focus precedence or persistence | `src/pt_snap_cli/config.py`, `src/pt_snap_cli/core/focus_service.py`, `src/pt_snap_cli/context.py` | `tests/test_config.py`, `tests/test_context.py`, `tests/core/test_focus_service.py` |
+| Context/executor caching | `src/pt_snap_cli/core/context_cache.py`, `src/pt_snap_cli/api.py`, `src/pt_snap_cli/core/query_service.py` | `tests/core/test_context_cache.py`, `tests/test_snapshot_analyzer_cache.py`, `tests/test_query_cache_perf.py` |
 | Query schema, SQL, or categories | `src/pt_snap_cli/query/`, `src/pt_snap_cli/core/query_service.py` | `tests/query/`, `tests/core/test_query_service.py` |
 | MCP or Python API behavior | `src/pt_snap_cli/api.py`, `src/pt_snap_cli/mcp/server.py` | `tests/test_api.py`, `tests/test_mcp_server.py`, `tests/test_contract_cli_mcp.py` |
 | Snapshot import or metadata | `src/pt_snap_cli/core/import_service.py`, `src/pt_snap_cli/core/import_metadata.py`, `src/pt_snap_cli/core/snapshot_import_backend.py` | `tests/core/test_import_*.py`, `tests/test_snapshot_db.py` |
 | Snapshot splitting or replay | `src/pt_snap_cli/core/split_service.py`, `src/pt_snap_cli/snapshot/` | `tests/core/test_split_service.py`, `tests/snapshot/` |
 | Reports | `src/pt_snap_cli/core/report_service.py`, report commands in `src/pt_snap_cli/cli.py` | `tests/core/test_report_service.py`, report cases in `tests/test_cli.py` |
 | Packaging or release | `pyproject.toml`, `.github/workflows/` | `tests/test_package.py`, `tests/test_release_workflow.py` |
+| Executable fixtures | `tests/fixtures/snapshots/` | `tests/test_fixture_provenance.py` before any deserializing suite |
 
 ## Documentation Boundaries
 

@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from pt_snap_cli.api import FocusState, SnapshotAnalyzer
+from pt_snap_cli.core import InvalidDeviceError
 
 
 @pytest.fixture
@@ -111,6 +112,48 @@ class TestSnapshotAnalyzerWithDB:
         with pytest.raises(FileNotFoundError):
             analyzer.set_focus(db_path="/nonexistent/path/db.sqlite")
 
+    def test_set_focus_rejects_invalid_device_without_mutating_state(self, valid_db: Path) -> None:
+        analyzer = SnapshotAnalyzer(db_path=valid_db, device_id=0)
+
+        with pytest.raises(InvalidDeviceError, match="Device 99 not found"):
+            analyzer.set_focus(db_path=str(valid_db), device_id=99)
+
+        state = analyzer.get_focus()
+        assert state.db_path == str(valid_db)
+        assert state.device_id == 0
+
+    def test_set_focus_validates_device_only_update(self, valid_db: Path) -> None:
+        analyzer = SnapshotAnalyzer(db_path=valid_db)
+
+        state = analyzer.set_focus(device_id=0)
+
+        assert state.device_id == 0
+        with pytest.raises(InvalidDeviceError, match="Device 1 not found"):
+            analyzer.set_focus(device_id=1)
+
+    def test_set_focus_new_database_clears_unspecified_device(
+        self, valid_db: Path, tmp_path: Path
+    ) -> None:
+        second_db = tmp_path / "device-one.db"
+        with sqlite3.connect(second_db) as conn:
+            conn.execute(
+                "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+            )
+            conn.execute("CREATE TABLE trace_entry_1 (id INTEGER PRIMARY KEY)")
+        analyzer = SnapshotAnalyzer(db_path=valid_db, device_id=0)
+
+        state = analyzer.set_focus(db_path=str(second_db))
+
+        assert state.db_path == str(second_db)
+        assert state.device_id is None
+        assert state.available_devices == [1]
+
+    def test_set_focus_device_requires_database(self) -> None:
+        analyzer = SnapshotAnalyzer()
+
+        with pytest.raises(RuntimeError, match="Set db_path"):
+            analyzer.set_focus(device_id=0)
+
     def test_list_templates(self) -> None:
         analyzer = SnapshotAnalyzer()
         templates = analyzer.list_templates()
@@ -133,6 +176,17 @@ class TestSnapshotAnalyzerWithDB:
         analyzer = SnapshotAnalyzer()
         info = analyzer.get_template_info("nonexistent_template_xyz")
         assert info is None
+
+    def test_get_template_info_propagates_unexpected_failure(self) -> None:
+        analyzer = SnapshotAnalyzer()
+
+        with patch.object(
+            analyzer._query_service,
+            "get_template_info",
+            side_effect=RuntimeError("registry failed"),
+        ):
+            with pytest.raises(RuntimeError, match="registry failed"):
+                analyzer.get_template_info("leak_detection")
 
     def test_execute_query_requires_focus(self) -> None:
         analyzer = SnapshotAnalyzer()

@@ -512,6 +512,15 @@ class TestQueryTemplateInfo:
         assert result.exit_code == 1
         assert "cannot be used together" in result.stdout
 
+    def test_focus_database_session_rejects_device(self, sample_db: Path) -> None:
+        result = runner.invoke(
+            app,
+            ["focus", str(sample_db), "--session", "--device", "0"],
+        )
+
+        assert result.exit_code == 1
+        assert "session focus exports only a database path" in result.stdout
+
     def test_focus_show_current(self, tmp_path: Path, sample_db: Path) -> None:
         """Test 'focus' command without arguments shows effective focus."""
         focus_dir = tmp_path / ".pt-snap"
@@ -837,6 +846,46 @@ class TestQueryCommand:
         )
         assert result.exit_code == 1
         assert "Error" in result.stdout
+
+    def test_query_non_object_json_params(self, sample_db: Path) -> None:
+        register_query(QueryTemplate(name="test", description="Test", query="SELECT 1"))
+
+        result = runner.invoke(
+            app,
+            ["query", str(sample_db), "--template-use", "test", "--params", "[]"],
+        )
+
+        assert result.exit_code == 1
+        assert "Error executing query: Query parameters must be a JSON object" in result.stdout
+
+    def test_query_invalid_parameter_type_is_controlled(self, sample_db: Path) -> None:
+        from pt_snap_cli.query.config import QueryParameter
+
+        register_query(
+            QueryTemplate(
+                name="typed_query",
+                query="SELECT {{ count }}",
+                parameters={
+                    "count": QueryParameter(name="count", type="int", required=True),
+                },
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            [
+                "query",
+                str(sample_db),
+                "--template-use",
+                "typed_query",
+                "--params",
+                '{"count": "invalid"}',
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "Error executing query" in result.stdout
+        assert "cannot be converted to int" in result.stdout
 
     def test_query_list_by_category(self, sample_db: Path) -> None:
         """Test 'query --list --category basic' filters by category."""

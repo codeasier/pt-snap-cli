@@ -8,6 +8,7 @@ from pt_snap_cli.core.errors import (
     FocusFileInvalidError,
     ImportExecutionError,
     ImportMetadataError,
+    InvalidDeviceError,
     SnapshotFileInvalidError,
     SourceChangedError,
 )
@@ -91,16 +92,22 @@ class ImportService:
                 raise ImportExecutionError("Imported database metadata validation failed.")
             completed_metadata = metadata
 
+        focus_state: FocusState | None = None
+
+        def set_focus_after_publish(published_db_path: Path) -> None:
+            nonlocal focus_state
+            focus_state = self._set_focus_if_requested(published_db_path, options)
+
         db_path = self._backend.dump_to_db(
             options.snapshot_file,
             output_dir,
             options.device,
             finalize_temp_db=finalize_temp_db,
+            post_publish=set_focus_after_publish if options.set_focus else None,
         )
         if completed_metadata is None:
             raise ImportExecutionError("Imported database metadata was not produced.")
 
-        focus_state = self._set_focus_if_requested(db_path, options)
         return ImportResult(
             db_path=db_path,
             device_id=options.device,
@@ -124,7 +131,7 @@ class ImportService:
                 db_path=db_path,
                 device_id=options.device,
             )
-        except (FocusFileInvalidError, DatabaseSchemaError) as exc:
+        except (FocusFileInvalidError, DatabaseSchemaError, InvalidDeviceError, OSError) as exc:
             raise ImportExecutionError(
                 f"Imported database cannot be registered as focus: {exc}"
             ) from exc
