@@ -146,6 +146,9 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
   `representation.load_pickle_representation`. The change tightens the
   deserialization allowlist; pickle loading remains not a sandbox. Corrupt
   streams still map to the established generic `UnpicklingError` wrapper.
+- On 2026-08-19, PR #102 follow-up kept that wrapper prefix and path, and chained
+  the original `UnpicklingError` so allowlist rejections keep the rejected
+  `module.name` in the message and `__cause__`.
 
 ## Migration toolchain
 

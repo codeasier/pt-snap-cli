@@ -1,9 +1,11 @@
+import io
 import pickle
 from pathlib import Path
 
 import pytest
 
 from pt_snap_cli.snapshot.util.file_util import (
+    SafeUnpickler,
     check_dir_valid,
     check_file_valid,
     load_pickle_to_dict,
@@ -57,18 +59,34 @@ def test_load_pickle_to_dict_rejects_missing_file(tmp_path: Path):
 def test_load_pickle_to_dict_rejects_unsafe_global_without_running_payload(tmp_path: Path):
     target = write_unsafe_reduce_pickle(tmp_path / "evil.pkl")
 
-    with pytest.raises(pickle.UnpicklingError):
+    with pytest.raises(
+        pickle.UnpicklingError,
+        match=r"Unsafe pickle: global 'tests\.snapshot\.test_file_util\.unsafe_pickle_payload'",
+    ):
         load_pickle_to_dict(target)
 
     assert UNSAFE_PICKLE_PAYLOAD["executed"] is False
+
+
+@pytest.mark.parametrize("name", ("eval", "exec", "open"))
+def test_safe_unpickler_rejects_disallowed_builtin_names(name: str):
+    unpickler = SafeUnpickler(io.BytesIO(b""))
+
+    with pytest.raises(pickle.UnpicklingError, match=rf"Unsafe pickle: global 'builtins\.{name}'"):
+        unpickler.find_class("builtins", name)
 
 
 def test_load_pickle_to_dict_rejects_corrupt_stream(tmp_path: Path):
     target = tmp_path / "corrupt.pkl"
     target.write_bytes(b"\x80\x04not a valid pickle stream")
 
-    with pytest.raises(pickle.UnpicklingError, match="Cannot load pickle file"):
+    with pytest.raises(pickle.UnpicklingError, match="Cannot load pickle file") as caught:
         load_pickle_to_dict(target)
+
+    message = str(caught.value)
+    assert str(target) in message
+    assert "Unsafe pickle" not in message
+    assert isinstance(caught.value.__cause__, pickle.UnpicklingError)
 
 
 @pytest.mark.parametrize(

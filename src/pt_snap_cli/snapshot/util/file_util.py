@@ -58,6 +58,8 @@ def load_pickle_to_dict(pickle_file: Path) -> dict:
     try:
         with open(pickle_file, "rb") as f:
             data = SafeUnpickler(f).load()
+    except pickle.UnpicklingError as exc:
+        raise pickle.UnpicklingError(f"Cannot load pickle file: {pickle_file}: {exc}") from exc
     except Exception:
         # Preserve the established exception context and corrupt-pickle behavior.
         raise pickle.UnpicklingError(f"Cannot load pickle file: {pickle_file}")  # noqa: B904
