@@ -1,7 +1,8 @@
 from logging import Logger
 
-from ..base import DeviceSnapshot
+from ..base import Block, BlockState, DeviceSnapshot
 from ..util import get_logger
+from . import snapshot_lookup, snapshot_mutator
 from .allocator_context import AllocatorContext
 from .hooker_defs import AllocatorHooker, SimulateHooker
 from .replay_executor import ReplayExecutor
@@ -46,6 +47,72 @@ class SimulateDeviceSnapshot:
             and self.device_snapshot.trace_entries[0].action == "workspace_snapshot"
         ):
             self.simulated_allocator_context.workspace_flag = True
+            # 校正 dump 时刻 workspace 池占用，必须在 ignore_inactive_blocks 之后
+            self._adapt_workspace_snapshot()
+
+    def _adapt_workspace_snapshot(self):
+        """Fix dump-time occupancy for torch-npu workspace pools.
+
+        torch-npu prepends consecutive ``workspace_snapshot`` + ``segment_alloc``
+        + ``alloc`` groups for each live workspace pool, but dumps the matching
+        segment as one inactive block with allocated/active size 0. After
+        ``ignore_inactive_blocks=True`` that block is gone, so replay cannot
+        find it and dump-time curves stay at zero.
+
+        Matched groups become a single ``active_allocated`` block covering the
+        segment, with allocated/active/device totals equal to the workspace
+        size. Missing segments or size mismatches warn and stop later groups;
+        ``workspace_flag`` remains the fallback for those cases.
+        """
+        self._loading_logger.info("Recognized workspace events in snapshot, start adapting...")
+        snapshot = self.device_snapshot
+        events = snapshot.trace_entries
+        group_start = 0
+        while group_start + 2 < len(events):
+            group = events[group_start : group_start + 3]
+            if [event.action for event in group] != [
+                "workspace_snapshot",
+                "segment_alloc",
+                "alloc",
+            ]:
+                break
+            workspace_snapshot = group[0]
+            _, existed_seg = snapshot_lookup.find_segment(
+                snapshot, workspace_snapshot.addr, workspace_snapshot.stream
+            )
+            if existed_seg is None:
+                self._loading_logger.warning(
+                    f"Workspace snapshot at addr {workspace_snapshot.addr} "
+                    f"(stream {workspace_snapshot.stream}) not found in device snapshot"
+                )
+                break
+            if existed_seg.total_size != workspace_snapshot.size:
+                self._loading_logger.warning(
+                    f"Workspace snapshot at addr {workspace_snapshot.addr} "
+                    f"(stream {workspace_snapshot.stream}) size {workspace_snapshot.size} "
+                    f"does not match segment total_size {existed_seg.total_size}"
+                )
+                break
+            snapshot.total_allocated -= existed_seg.allocated_size
+            snapshot.total_activated -= existed_seg.active_size
+            existed_seg.allocated_size = 0
+            existed_seg.active_size = 0
+            existed_seg.blocks = []
+            snapshot_mutator.attach_block(
+                snapshot,
+                existed_seg,
+                Block(
+                    size=existed_seg.total_size,
+                    requested_size=existed_seg.total_size,
+                    address=existed_seg.address,
+                    state=BlockState.ACTIVE_ALLOCATED,
+                    frames=existed_seg.frames,
+                    segment_ptr=existed_seg,
+                ),
+                0,
+            )
+            group_start += 3
+        self._loading_logger.info("Finished to adapt workspace snapshot.")
 
     def register_hooker(self, hooker: SimulateHooker) -> int:
         idx = hash(hooker)
