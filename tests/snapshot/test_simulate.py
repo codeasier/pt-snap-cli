@@ -1,3 +1,4 @@
+import logging
 import os
 import unittest
 from collections import Counter
@@ -169,15 +170,99 @@ def make_snapshot_dict(action="alloc", with_segment=False):
     return payload
 
 
+def _inactive_workspace_segment(addr, size, stream):
+    return {
+        "address": addr,
+        "total_size": size,
+        "stream": stream,
+        "segment_type": "small",
+        "allocated_size": 0,
+        "active_size": 0,
+        "device": 0,
+        "is_expandable": False,
+        "frames": [],
+        "blocks": [
+            {
+                "size": size,
+                "requested_size": size,
+                "state": "inactive",
+                "address": addr,
+                "frames": [],
+            }
+        ],
+    }
+
+
+def _workspace_triplet(addr, size, stream):
+    return [
+        {
+            "action": "workspace_snapshot",
+            "addr": addr,
+            "size": size,
+            "stream": stream,
+            "frames": [],
+        },
+        {
+            "action": "segment_alloc",
+            "addr": addr,
+            "size": size,
+            "stream": stream,
+            "frames": [],
+        },
+        {"action": "alloc", "addr": addr, "size": size, "stream": stream, "frames": []},
+    ]
+
+
+def make_torch_npu_workspace_snapshot(
+    *, addr=1000, size=4096, stream=1, segment_size=None, extra_segments=None, extra_events=None
+):
+    segment_size = size if segment_size is None else segment_size
+    segments = [_inactive_workspace_segment(addr, segment_size, stream)]
+    if extra_segments:
+        segments.extend(extra_segments)
+    events = _workspace_triplet(addr, size, stream)
+    if extra_events:
+        events.extend(extra_events)
+    return {"segments": segments, "device_traces": [events]}
+
+
+def _segment_by_addr_stream(snapshot, addr, stream):
+    matches = [
+        segment
+        for segment in snapshot.device_snapshot.segments
+        if segment.address == addr and segment.stream == stream
+    ]
+    assert len(matches) == 1
+    return matches[0]
+
+
+def assert_dump_time_workspace_pool(snapshot, *, addr=1000, size=4096, stream=1):
+    assert snapshot.simulated_allocator_context.workspace_flag is True
+    segment = _segment_by_addr_stream(snapshot, addr, stream)
+    assert segment.allocated_size == size
+    assert segment.active_size == size
+    assert len(segment.blocks) == 1
+    block = segment.blocks[0]
+    assert block.state == BlockState.ACTIVE_ALLOCATED
+    assert block.address == addr
+    assert block.size == size
+    assert_valid_snapshot(snapshot.device_snapshot)
+
+
 def test_simulate_device_snapshot_raises_on_empty_snapshot():
     with pytest.raises(RuntimeError):
         SimulateDeviceSnapshot({}, 0)
 
 
 def test_simulate_device_snapshot_sets_workspace_flag_from_first_event():
-    snapshot = SimulateDeviceSnapshot(make_snapshot_dict("workspace_snapshot"), 0)
+    snapshot = SimulateDeviceSnapshot(make_torch_npu_workspace_snapshot(), 0)
+    device = snapshot.device_snapshot
 
     assert snapshot.simulated_allocator_context.workspace_flag is True
+    assert_dump_time_workspace_pool(snapshot)
+    assert device.total_allocated == 4096
+    assert device.total_activated == 4096
+    assert device.total_reserved == 4096
 
 
 def test_simulate_register_unregister_hookers_and_allocator_hookers():
@@ -253,9 +338,154 @@ def test_multi_device_fixture_keeps_device_state_isolated():
     assert snapshot_observation(device_zero) != snapshot_observation(device_one)
 
 
-def test_minimal_workspace_input_only_establishes_tolerance_flag_and_skip_behavior():
+def test_minimal_workspace_input_corrects_dump_time_state_before_replay(caplog):
+    snapshot = SimulateDeviceSnapshot(make_torch_npu_workspace_snapshot(), 0)
+
+    assert_dump_time_workspace_pool(snapshot)
+    with caplog.at_level(logging.WARNING, logger="ALLOCATOR"):
+        assert snapshot.replay() is True
+    assert "workspace scenario tolerance" not in caplog.text
+    assert snapshot.device_snapshot.trace_entries == []
+    assert snapshot.device_snapshot.segments == []
+    assert snapshot.device_snapshot.total_allocated == 0
+    assert snapshot.device_snapshot.total_activated == 0
+    assert snapshot.device_snapshot.total_reserved == 0
+
+
+def test_incomplete_workspace_marker_keeps_tolerance_flag_and_skip_behavior():
     snapshot = SimulateDeviceSnapshot(make_snapshot_dict("workspace_snapshot"), 0)
 
     assert snapshot.simulated_allocator_context.workspace_flag is True
     assert snapshot.replay() is True
     assert snapshot.device_snapshot.trace_entries == []
+
+
+def test_workspace_adapt_multiple_stream_groups_before_replay():
+    data = {
+        "segments": [
+            _inactive_workspace_segment(1000, 4096, 1),
+            _inactive_workspace_segment(10000, 8192, 2),
+        ],
+        "device_traces": [_workspace_triplet(1000, 4096, 1) + _workspace_triplet(10000, 8192, 2)],
+    }
+    snapshot = SimulateDeviceSnapshot(data, 0)
+
+    assert_dump_time_workspace_pool(snapshot, addr=1000, size=4096, stream=1)
+    assert_dump_time_workspace_pool(snapshot, addr=10000, size=8192, stream=2)
+    assert snapshot.device_snapshot.total_allocated == 12288
+    assert snapshot.device_snapshot.total_activated == 12288
+
+
+def test_workspace_adapt_warns_and_stops_when_segment_missing(caplog):
+    data = {
+        "segments": [_inactive_workspace_segment(2000, 8192, 2)],
+        "device_traces": [_workspace_triplet(1000, 4096, 1) + _workspace_triplet(2000, 8192, 2)],
+    }
+    with caplog.at_level(logging.WARNING, logger="LOAD"):
+        snapshot = SimulateDeviceSnapshot(data, 0)
+
+    assert "Workspace snapshot at addr 1000 (stream 1) not found" in caplog.text
+    later = _segment_by_addr_stream(snapshot, 2000, 2)
+    assert later.allocated_size == 0
+    assert later.active_size == 0
+    assert later.blocks == []
+
+
+def test_workspace_adapt_keeps_earlier_group_when_later_group_is_missing(caplog):
+    data = {
+        "segments": [
+            _inactive_workspace_segment(1000, 4096, 1),
+            _inactive_workspace_segment(10000, 8192, 2),
+        ],
+        "device_traces": [_workspace_triplet(1000, 4096, 1) + _workspace_triplet(2000, 8192, 2)],
+    }
+    with caplog.at_level(logging.WARNING, logger="LOAD"):
+        snapshot = SimulateDeviceSnapshot(data, 0)
+
+    assert_dump_time_workspace_pool(snapshot, addr=1000, size=4096, stream=1)
+    later = _segment_by_addr_stream(snapshot, 10000, 2)
+    assert later.allocated_size == 0
+    assert later.active_size == 0
+    assert later.blocks == []
+    assert snapshot.device_snapshot.total_allocated == 4096
+    assert snapshot.device_snapshot.total_activated == 4096
+    assert snapshot.device_snapshot.total_reserved == 12288
+    warnings = [record for record in caplog.records if record.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "Workspace snapshot at addr 2000 (stream 2) not found" in caplog.text
+
+
+def test_workspace_adapt_warns_and_skips_when_size_mismatches(caplog):
+    data = make_torch_npu_workspace_snapshot(size=4096, segment_size=8192)
+    with caplog.at_level(logging.WARNING, logger="LOAD"):
+        snapshot = SimulateDeviceSnapshot(data, 0)
+
+    assert "does not match segment total_size" in caplog.text
+    segment = _segment_by_addr_stream(snapshot, 1000, 1)
+    assert segment.allocated_size == 0
+    assert segment.active_size == 0
+    assert segment.blocks == []
+    assert snapshot.device_snapshot.total_allocated == 0
+    assert snapshot.simulated_allocator_context.workspace_flag is True
+
+
+def test_workspace_adapt_skips_inconsistent_triplet_so_replay_keeps_tolerance(caplog):
+    data = make_torch_npu_workspace_snapshot()
+    data["device_traces"][0][2]["size"] = 8192
+    with caplog.at_level(logging.WARNING):
+        snapshot = SimulateDeviceSnapshot(data, 0)
+
+    segment = _segment_by_addr_stream(snapshot, 1000, 1)
+    assert segment.allocated_size == 0
+    assert segment.blocks == []
+    assert "internally inconsistent" in caplog.text
+    assert snapshot.replay() is True
+    assert "workspace scenario tolerance" in caplog.text
+
+
+def test_workspace_adapt_skips_when_segment_still_has_live_blocks(caplog):
+    data = {
+        "segments": [
+            {
+                "address": 1000,
+                "total_size": 4096,
+                "stream": 1,
+                "segment_type": "small",
+                "allocated_size": 1024,
+                "active_size": 1024,
+                "device": 0,
+                "is_expandable": False,
+                "frames": [],
+                "blocks": [
+                    {
+                        "size": 1024,
+                        "requested_size": 1024,
+                        "state": "active_allocated",
+                        "address": 1000,
+                        "frames": [],
+                    },
+                    {
+                        "size": 3072,
+                        "requested_size": 3072,
+                        "state": "inactive",
+                        "address": 2048,
+                        "frames": [],
+                    },
+                ],
+            }
+        ],
+        "device_traces": [
+            _workspace_triplet(1000, 4096, 1)
+            + [{"action": "alloc", "addr": 1000, "size": 1024, "stream": 1, "frames": []}]
+        ],
+    }
+    with caplog.at_level(logging.WARNING, logger="LOAD"):
+        snapshot = SimulateDeviceSnapshot(data, 0)
+
+    segment = _segment_by_addr_stream(snapshot, 1000, 1)
+    assert len(segment.blocks) == 1
+    assert segment.blocks[0].size == 1024
+    assert segment.blocks[0].state == BlockState.ACTIVE_ALLOCATED
+    assert segment.allocated_size == 1024
+    assert snapshot.device_snapshot.total_allocated == 1024
+    assert "still has 1 live block" in caplog.text

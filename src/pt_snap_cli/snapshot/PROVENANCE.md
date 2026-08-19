@@ -123,6 +123,17 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
   objects and preserves source frame dictionaries through synthetic segments.
   This is a local performance change; audited upstream mappings and licensing
   evidence are unchanged.
+- On 2026-08-19, issue #98 added a first-party dump-time torch-npu workspace
+  pool correction after inactive-block filtering. `_adapt_workspace_snapshot`
+  is not present in audited MemSnapDump @87ea207; this is a local
+  reimplementation of the grouping behavior specified in #98. Consecutive
+  `workspace_snapshot` + `segment_alloc` + `alloc` groups rewrite the
+  matching dump-time segment to a single `active_allocated` block and
+  update device allocated/active totals. Size mismatches, missing
+  segments, internally inconsistent triplets, and leftover live blocks
+  warn and stop later groups. `workspace_flag` remains a
+  fallback for unmatched workspace traces. Audited upstream source
+  mappings and license terms are unchanged.
 
 ## Migration toolchain
 
