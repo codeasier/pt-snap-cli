@@ -75,6 +75,21 @@ class TestTraceEntry(unittest.TestCase):
         self.assertEqual(trace.size, 2048)
         self.assertEqual(len(trace.frames), 0)
 
+    def test_from_dict_loads_oom_without_addr_or_stream(self):
+        trace = TraceEntry.from_dict(
+            {"action": "oom", "size": 1024, "device_free": 2048, "frames": []}
+        )
+        self.assertEqual(trace.action, "oom")
+        self.assertEqual(trace.addr, -1)
+        self.assertEqual(trace.size, 1024)
+        self.assertEqual(trace.stream, 0)
+        self.assertEqual(trace.device_free, 2048)
+        self.assertEqual(trace.frames, [])
+
+    def test_from_dict_requires_action(self):
+        with self.assertRaises(KeyError):
+            TraceEntry.from_dict({"size": 1024, "frames": []})
+
     def test_get_callstack(self):
         trace = TraceEntry.from_dict(
             {
@@ -395,7 +410,6 @@ class TestDeviceSnapshot(unittest.TestCase):
         self.assertEqual(snapshot.total_activated, 2048)
         self.assertEqual(snapshot.trace_entries[0].idx, 0)
         self.assertEqual(snapshot.trace_entries[1].idx, 1)
-
         self.assertTrue(
             all(
                 isinstance(frame, Frame)
@@ -403,6 +417,21 @@ class TestDeviceSnapshot(unittest.TestCase):
                 for frame in trace.frames
             )
         )
+
+    def test_from_dict_loads_oom_trace_without_addr(self):
+        snapshot = DeviceSnapshot.from_dict(
+            {
+                "segments": [],
+                "device_traces": [
+                    [{"action": "oom", "size": 1024, "device_free": 2048, "frames": []}]
+                ],
+            },
+            0,
+        )
+        self.assertEqual(len(snapshot.trace_entries), 1)
+        self.assertEqual(snapshot.trace_entries[0].action, "oom")
+        self.assertEqual(snapshot.trace_entries[0].addr, -1)
+        self.assertEqual(snapshot.trace_entries[0].device_free, 2048)
 
     def test_find_overlapping_segment_returns_idx_and_matches_containing_segment(self):
         snapshot = DeviceSnapshot()

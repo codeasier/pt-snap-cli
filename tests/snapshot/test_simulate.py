@@ -489,3 +489,18 @@ def test_workspace_adapt_skips_when_segment_still_has_live_blocks(caplog):
     assert segment.allocated_size == 1024
     assert snapshot.device_snapshot.total_allocated == 1024
     assert "still has 1 live block" in caplog.text
+
+
+def test_simulate_replay_skips_oom_event_loaded_without_addr():
+    snapshot = SimulateDeviceSnapshot(
+        {
+            "segments": [],
+            "device_traces": [[{"action": "oom", "size": 1024, "device_free": 2048, "frames": []}]],
+        },
+        0,
+    )
+
+    assert [event.action for event in snapshot.device_snapshot.trace_entries] == ["oom"]
+    assert snapshot.device_snapshot.trace_entries[0].addr == -1
+    assert snapshot.replay() is True
+    assert snapshot.device_snapshot.trace_entries == []

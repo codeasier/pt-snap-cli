@@ -280,6 +280,36 @@ def test_empty_device_snapshot(tmp_path: Path):
     assert not database.exists()
 
 
+def test_snapshot2db_dumps_oom_event_without_addr(tmp_path: Path):
+    snapshot_file = tmp_path / "oom.pkl"
+    snapshot_file.write_bytes(
+        pickle.dumps(
+            {
+                "segments": [],
+                "device_traces": [
+                    [{"action": "oom", "size": 1024, "device_free": 2048, "frames": []}]
+                ],
+            }
+        )
+    )
+    database = tmp_path / "oom.db"
+    suppress_logs()
+    try:
+        result = snapshot2db.dump(snapshot_file, database, 0)
+    finally:
+        restore_logs()
+
+    assert result is True
+    with sqlite3.connect(database) as connection:
+        action, address, size = connection.execute(
+            "SELECT action, address, size FROM trace_entry_0"
+        ).fetchone()
+
+    assert action == RUNTIME_ACTION_VALUE_MAP["oom"]
+    assert address == -1
+    assert size == 1024
+
+
 def test_dump_all_multiple_device_snapshot(dump_database):
     result, database = dump_database("snapshot_with_multi_devices.pkl")
 

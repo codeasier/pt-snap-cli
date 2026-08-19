@@ -10,6 +10,7 @@ TRACE_ENTRY_ACTION_VALUE_MAP = {
     "free_requested": 5,
     "free_completed": 6,
     "workspace_snapshot": 7,
+    "oom": 8,
 }
 
 BLOCK_STATE_VALUE_MAP = {
