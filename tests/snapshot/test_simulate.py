@@ -391,6 +391,30 @@ def test_workspace_adapt_warns_and_stops_when_segment_missing(caplog):
     assert later.blocks == []
 
 
+def test_workspace_adapt_keeps_earlier_group_when_later_group_is_missing(caplog):
+    data = {
+        "segments": [
+            _inactive_workspace_segment(1000, 4096, 1),
+            _inactive_workspace_segment(10000, 8192, 2),
+        ],
+        "device_traces": [_workspace_triplet(1000, 4096, 1) + _workspace_triplet(2000, 8192, 2)],
+    }
+    with caplog.at_level(logging.WARNING, logger="LOAD"):
+        snapshot = SimulateDeviceSnapshot(data, 0)
+
+    assert_dump_time_workspace_pool(snapshot, addr=1000, size=4096, stream=1)
+    later = _segment_by_addr_stream(snapshot, 10000, 2)
+    assert later.allocated_size == 0
+    assert later.active_size == 0
+    assert later.blocks == []
+    assert snapshot.device_snapshot.total_allocated == 4096
+    assert snapshot.device_snapshot.total_activated == 4096
+    assert snapshot.device_snapshot.total_reserved == 12288
+    warnings = [record for record in caplog.records if record.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "Workspace snapshot at addr 2000 (stream 2) not found" in caplog.text
+
+
 def test_workspace_adapt_warns_and_skips_when_size_mismatches(caplog):
     data = make_torch_npu_workspace_snapshot(size=4096, segment_size=8192)
     with caplog.at_level(logging.WARNING, logger="LOAD"):
