@@ -134,6 +134,10 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
   warn and stop later groups. `workspace_flag` remains a
   fallback for unmatched workspace traces. Audited upstream source
   mappings and license terms are unchanged.
+- On 2026-08-19, issue #97 made OOM trace loading tolerate missing `addr`/`stream`,
+  read `device_free`, and mapped `"oom"` to action value `8` so import persists the
+  event as an integer. Replay still skips OOM. This is a local first-party bugfix;
+  audited upstream mappings and licensing evidence are unchanged.
 
 ## Migration toolchain
 
