@@ -19,7 +19,7 @@ pip install -e .
 如果你手上是原始 `.pkl` 内存快照，请先使用内建后端导入：
 
 > **安全警告：** 只能使用可信的 pickle 输入。反序列化 pickle 可能执行任意代码；
-> `pt-snap import` 不是沙箱。
+> 实现会拒绝非 builtins 全局对象，但 `pt-snap import` 不是沙箱。
 
 ```bash
 pt-snap import snapshot.pkl

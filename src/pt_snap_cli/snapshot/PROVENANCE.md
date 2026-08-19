@@ -138,6 +138,26 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
   read `device_free`, and mapped `"oom"` to action value `8` so import persists the
   event as an integer. Replay still skips OOM. This is a local first-party bugfix;
   audited upstream mappings and licensing evidence are unchanged.
+- On 2026-08-19, issue #99 replaced unrestricted `pickle.load()` in
+  `snapshot/util/file_util.py` with `SafeUnpickler`. Unpickling now allows only
+  `builtins` container and scalar types (`dict`/`list`/`tuple`/`set`/`str`/
+  `int`/`float`/`bool`/`bytes`/`NoneType`); any other `module.name` raises
+  `UnpicklingError`. Import and split share this loader via
+  `representation.load_pickle_representation`. The change tightens the
+  deserialization allowlist; pickle loading remains not a sandbox. Corrupt
+  streams still map to the established generic `UnpicklingError` wrapper.
+- On 2026-08-19, PR #102 follow-up kept that wrapper prefix and path, and chained
+  the original `UnpicklingError` so allowlist rejections keep the rejected
+  `module.name` in the message and `__cause__`.
+- On 2026-08-20, PR #102 follow-up removed `NoneType` from `ALLOWED_CLASSES`.
+  `builtins.NoneType` is not an importable builtin (`hasattr(builtins, "NoneType")`
+  is false); `None` is encoded by the `NONE` opcode. A GLOBAL of
+  `builtins.NoneType` is now `UnsafePickleError` rather than an `AttributeError`
+  swallowed as a corrupt-stream wrapper. `UnsafePickleError` subclasses
+  `pickle.UnpicklingError`. Import maps it to `Snapshot pickle rejected:` and
+  split maps it to `unsafe pickle:` so allowlist rejection is distinct from
+  corrupt input. `dump()` re-raises `UnsafePickleError` instead of returning
+  false.
 
 ## Migration toolchain
 

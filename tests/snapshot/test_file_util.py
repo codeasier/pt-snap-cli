@@ -1,14 +1,36 @@
+import io
 import pickle
 from pathlib import Path
 
 import pytest
 
 from pt_snap_cli.snapshot.util.file_util import (
+    SafeUnpickler,
+    UnsafePickleError,
     check_dir_valid,
     check_file_valid,
     load_pickle_to_dict,
     save_dict_to_pickle,
 )
+from tests.snapshot.helpers import FIXTURE_DIR
+
+UNSAFE_PICKLE_PAYLOAD = {"executed": False}
+
+
+def unsafe_pickle_payload() -> dict:
+    UNSAFE_PICKLE_PAYLOAD["executed"] = True
+    return {"pwned": True}
+
+
+class UnsafeReducePayload:
+    def __reduce__(self) -> tuple[object, tuple[()]]:
+        return (unsafe_pickle_payload, ())
+
+
+def write_unsafe_reduce_pickle(path: Path) -> Path:
+    UNSAFE_PICKLE_PAYLOAD["executed"] = False
+    path.write_bytes(pickle.dumps({"payload": UnsafeReducePayload()}))
+    return path
 
 
 def test_save_and_load_pickle_round_trip(tmp_path: Path):
@@ -33,6 +55,53 @@ def test_load_pickle_to_dict_rejects_non_dict_payload(tmp_path: Path):
 def test_load_pickle_to_dict_rejects_missing_file(tmp_path: Path):
     with pytest.raises(FileNotFoundError):
         load_pickle_to_dict(tmp_path / "missing.pkl")
+
+
+def test_load_pickle_to_dict_rejects_unsafe_global_without_running_payload(tmp_path: Path):
+    target = write_unsafe_reduce_pickle(tmp_path / "evil.pkl")
+
+    with pytest.raises(
+        UnsafePickleError,
+        match=r"Unsafe pickle: global 'tests\.snapshot\.test_file_util\.unsafe_pickle_payload'",
+    ):
+        load_pickle_to_dict(target)
+
+    assert UNSAFE_PICKLE_PAYLOAD["executed"] is False
+
+
+@pytest.mark.parametrize("name", ("eval", "exec", "open", "NoneType"))
+def test_safe_unpickler_rejects_disallowed_builtin_names(name: str):
+    unpickler = SafeUnpickler(io.BytesIO(b""))
+
+    with pytest.raises(UnsafePickleError, match=rf"Unsafe pickle: global 'builtins\.{name}'"):
+        unpickler.find_class("builtins", name)
+
+
+def test_load_pickle_to_dict_rejects_corrupt_stream(tmp_path: Path):
+    target = tmp_path / "corrupt.pkl"
+    target.write_bytes(b"\x80\x04not a valid pickle stream")
+
+    with pytest.raises(pickle.UnpicklingError, match="Cannot load pickle file") as caught:
+        load_pickle_to_dict(target)
+
+    message = str(caught.value)
+    assert str(target) in message
+    assert "Unsafe pickle" not in message
+    assert not isinstance(caught.value, UnsafePickleError)
+    assert isinstance(caught.value.__cause__, pickle.UnpicklingError)
+
+
+@pytest.mark.parametrize(
+    "fixture_name",
+    (
+        "snapshot_with_empty_cache.pkl",
+        "snapshot_expandable.pkl",
+        "snapshot_with_multi_devices.pkl",
+    ),
+)
+def test_load_pickle_to_dict_accepts_fixture_snapshots(fixture_name: str):
+    data = load_pickle_to_dict(FIXTURE_DIR / fixture_name)
+    assert isinstance(data, dict)
 
 
 def test_save_dict_to_pickle_rejects_non_dict(tmp_path: Path):

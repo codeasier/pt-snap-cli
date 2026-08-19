@@ -31,6 +31,7 @@ from pt_snap_cli.snapshot.tools.adaptors.snapshot2db import DumpEventHooker
 from pt_snap_cli.snapshot.tools.slice_dump.hooker import SliceDumpHooker
 from tests.snapshot.golden_observations import ACTION_VALUE_MAP
 from tests.snapshot.helpers import FIXTURE_DIR, assert_valid_snapshot
+from tests.snapshot.test_file_util import UNSAFE_PICKLE_PAYLOAD, write_unsafe_reduce_pickle
 
 MULTI_DEVICE = FIXTURE_DIR / "snapshot_with_multi_devices.pkl"
 
@@ -380,6 +381,18 @@ def test_malformed_pickle_is_load_engine_phase(tmp_path: Path) -> None:
     with pytest.raises(SplitError, match="load/engine") as caught:
         SplitService().split(_options(tmp_path, snapshot_file=source))
     assert str(source) in str(caught.value)
+    assert not (tmp_path / "split").exists()
+
+
+def test_unsafe_pickle_global_is_load_engine_phase(tmp_path: Path) -> None:
+    source = write_unsafe_reduce_pickle(tmp_path / "evil.pkl")
+
+    with pytest.raises(SplitError, match="unsafe pickle") as caught:
+        SplitService().split(_options(tmp_path, snapshot_file=source))
+    assert caught.value.phase == "load/engine"
+    assert "Unsafe pickle" in caught.value.detail
+    assert str(source) in str(caught.value)
+    assert UNSAFE_PICKLE_PAYLOAD["executed"] is False
     assert not (tmp_path / "split").exists()
 
 

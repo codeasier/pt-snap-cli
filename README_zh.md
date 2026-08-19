@@ -15,7 +15,7 @@ pip install -e .
 ## 快速开始
 
 > **安全警告：** 只导入来自可信来源的 pickle 快照。反序列化 pickle 可能执行任意代码；
-> `pt-snap import` 不是沙箱。
+> 实现会拒绝非 builtins 全局对象，但 `pt-snap import` 不是沙箱。
 
 ```bash
 # 从原始 pickle 导入；相同内容和配置会自动复用已有 DB
