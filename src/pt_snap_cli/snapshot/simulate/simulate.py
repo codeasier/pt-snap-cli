@@ -61,8 +61,9 @@ class SimulateDeviceSnapshot:
 
         Matched groups become a single ``active_allocated`` block covering the
         segment, with allocated/active/device totals equal to the workspace
-        size. Missing segments or size mismatches warn and stop later groups;
-        ``workspace_flag`` remains the fallback for those cases.
+        size. Missing segments, size mismatches, internally inconsistent
+        triplets, or leftover live blocks warn and stop later groups.
+        ``workspace_flag`` remains the fallback for those skipped cases.
         """
         self._loading_logger.info("Recognized workspace events in snapshot, start adapting...")
         snapshot = self.device_snapshot
@@ -76,7 +77,18 @@ class SimulateDeviceSnapshot:
                 "alloc",
             ]:
                 break
-            workspace_snapshot = group[0]
+            workspace_snapshot, segment_alloc, alloc = group
+            if (
+                segment_alloc.addr != workspace_snapshot.addr
+                or segment_alloc.size != workspace_snapshot.size
+                or alloc.addr != workspace_snapshot.addr
+                or alloc.size != workspace_snapshot.size
+            ):
+                self._loading_logger.warning(
+                    f"Workspace snapshot triplet at addr {workspace_snapshot.addr} "
+                    f"(stream {workspace_snapshot.stream}) is internally inconsistent"
+                )
+                break
             _, existed_seg = snapshot_lookup.find_segment(
                 snapshot, workspace_snapshot.addr, workspace_snapshot.stream
             )
@@ -91,6 +103,14 @@ class SimulateDeviceSnapshot:
                     f"Workspace snapshot at addr {workspace_snapshot.addr} "
                     f"(stream {workspace_snapshot.stream}) size {workspace_snapshot.size} "
                     f"does not match segment total_size {existed_seg.total_size}"
+                )
+                break
+            if existed_seg.blocks:
+                n_live = len(existed_seg.blocks)
+                self._loading_logger.warning(
+                    f"Workspace snapshot at addr {workspace_snapshot.addr} "
+                    f"(stream {workspace_snapshot.stream}) skipped because the matching "
+                    f"segment still has {n_live} live block{'s' if n_live != 1 else ''}"
                 )
                 break
             snapshot.total_allocated -= existed_seg.allocated_size

@@ -427,3 +427,65 @@ def test_workspace_adapt_warns_and_skips_when_size_mismatches(caplog):
     assert segment.blocks == []
     assert snapshot.device_snapshot.total_allocated == 0
     assert snapshot.simulated_allocator_context.workspace_flag is True
+
+
+def test_workspace_adapt_skips_inconsistent_triplet_so_replay_keeps_tolerance(caplog):
+    data = make_torch_npu_workspace_snapshot()
+    data["device_traces"][0][2]["size"] = 8192
+    with caplog.at_level(logging.WARNING):
+        snapshot = SimulateDeviceSnapshot(data, 0)
+
+    segment = _segment_by_addr_stream(snapshot, 1000, 1)
+    assert segment.allocated_size == 0
+    assert segment.blocks == []
+    assert "internally inconsistent" in caplog.text
+    assert snapshot.replay() is True
+    assert "workspace scenario tolerance" in caplog.text
+
+
+def test_workspace_adapt_skips_when_segment_still_has_live_blocks(caplog):
+    data = {
+        "segments": [
+            {
+                "address": 1000,
+                "total_size": 4096,
+                "stream": 1,
+                "segment_type": "small",
+                "allocated_size": 1024,
+                "active_size": 1024,
+                "device": 0,
+                "is_expandable": False,
+                "frames": [],
+                "blocks": [
+                    {
+                        "size": 1024,
+                        "requested_size": 1024,
+                        "state": "active_allocated",
+                        "address": 1000,
+                        "frames": [],
+                    },
+                    {
+                        "size": 3072,
+                        "requested_size": 3072,
+                        "state": "inactive",
+                        "address": 2048,
+                        "frames": [],
+                    },
+                ],
+            }
+        ],
+        "device_traces": [
+            _workspace_triplet(1000, 4096, 1)
+            + [{"action": "alloc", "addr": 1000, "size": 1024, "stream": 1, "frames": []}]
+        ],
+    }
+    with caplog.at_level(logging.WARNING, logger="LOAD"):
+        snapshot = SimulateDeviceSnapshot(data, 0)
+
+    segment = _segment_by_addr_stream(snapshot, 1000, 1)
+    assert len(segment.blocks) == 1
+    assert segment.blocks[0].size == 1024
+    assert segment.blocks[0].state == BlockState.ACTIVE_ALLOCATED
+    assert segment.allocated_size == 1024
+    assert snapshot.device_snapshot.total_allocated == 1024
+    assert "still has 1 live block" in caplog.text

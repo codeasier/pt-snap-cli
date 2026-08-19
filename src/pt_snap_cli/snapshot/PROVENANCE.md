@@ -129,8 +129,9 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
   reimplementation of the grouping behavior specified in #98. Consecutive
   `workspace_snapshot` + `segment_alloc` + `alloc` groups rewrite the
   matching dump-time segment to a single `active_allocated` block and
-  update device allocated/active totals. Size mismatches and missing
-  segments warn and stop later groups. `workspace_flag` remains a
+  update device allocated/active totals. Size mismatches, missing
+  segments, internally inconsistent triplets, and leftover live blocks
+  warn and stop later groups. `workspace_flag` remains a
   fallback for unmatched workspace traces. Audited upstream source
   mappings and license terms are unchanged.
 
