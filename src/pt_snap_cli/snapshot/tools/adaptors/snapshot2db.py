@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 
 from ...base import Block, BlockState, DeviceSnapshot, TraceEntry
-from ...representation import load_snapshot_representation, replay_snapshot
+from ...representation import UnsafePickleError, load_snapshot_representation, replay_snapshot
 from ...simulate import AllocatorHooker, SimulateHooker
 from ...util.logger import get_logger, set_global_log_file
 from .database import SnapshotDb, block2record, event2record
@@ -138,6 +138,8 @@ class DumpEventHooker(SimulateHooker, AllocatorHooker):
 def dump(pickle_file: str, dump_file: str, device=None) -> bool:
     try:
         data = load_snapshot_representation(Path(pickle_file))
+    except UnsafePickleError:
+        raise
     except Exception as e:
         dump_logger.error(f"Failed to load pickle file: {e}")
         return False

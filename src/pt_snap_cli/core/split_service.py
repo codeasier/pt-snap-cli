@@ -14,6 +14,7 @@ from typing import NoReturn, cast
 from pt_snap_cli.core.errors import SplitError, SplitPhase
 from pt_snap_cli.core.models import SplitFormat, SplitOptions, SplitResult
 from pt_snap_cli.snapshot.representation import (
+    UnsafePickleError,
     load_snapshot_representation,
     replay_snapshot,
     save_snapshot_representation,
@@ -40,6 +41,8 @@ class SplitService:
 
         try:
             representation = load_snapshot_representation(source, "pickle")
+        except UnsafePickleError as exc:
+            self._fail("load/engine", source, f"unsafe pickle: {exc}", exc)
         except Exception as exc:
             self._fail("load/engine", source, str(exc), exc)
 

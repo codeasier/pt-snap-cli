@@ -128,7 +128,7 @@ def test_import_rejects_pickle_with_non_allowlisted_global(tmp_path: Path) -> No
     service = import_service_cls()
     snapshot_file = write_unsafe_reduce_pickle(tmp_path / "evil.pkl")
 
-    with pytest.raises(ImportExecutionError, match=r"backend (failed|reported failure)"):
+    with pytest.raises(ImportExecutionError, match=r"Snapshot pickle rejected:.*Unsafe pickle"):
         service.import_snapshot(ImportOptions(snapshot_file=snapshot_file))
 
     assert UNSAFE_PICKLE_PAYLOAD["executed"] is False

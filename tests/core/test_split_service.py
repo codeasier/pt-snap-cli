@@ -387,8 +387,10 @@ def test_malformed_pickle_is_load_engine_phase(tmp_path: Path) -> None:
 def test_unsafe_pickle_global_is_load_engine_phase(tmp_path: Path) -> None:
     source = write_unsafe_reduce_pickle(tmp_path / "evil.pkl")
 
-    with pytest.raises(SplitError, match="load/engine") as caught:
+    with pytest.raises(SplitError, match="unsafe pickle") as caught:
         SplitService().split(_options(tmp_path, snapshot_file=source))
+    assert caught.value.phase == "load/engine"
+    assert "Unsafe pickle" in caught.value.detail
     assert str(source) in str(caught.value)
     assert UNSAFE_PICKLE_PAYLOAD["executed"] is False
     assert not (tmp_path / "split").exists()

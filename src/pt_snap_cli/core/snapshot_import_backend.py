@@ -8,6 +8,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from pt_snap_cli.core.errors import ImportExecutionError, ImportToolMissingError
+from pt_snap_cli.snapshot.representation import UnsafePickleError
 
 
 class SnapshotImportBackend:
@@ -34,6 +35,8 @@ class SnapshotImportBackend:
                     dump_dir=str(tmp_dir),
                     device=device,
                 )
+            except UnsafePickleError as exc:
+                raise ImportExecutionError(f"Snapshot pickle rejected: {exc}") from exc
             except (OSError, sqlite3.DatabaseError, pickle.UnpicklingError, ValueError) as exc:
                 raise ImportExecutionError(f"Snapshot import backend failed: {exc}") from exc
 

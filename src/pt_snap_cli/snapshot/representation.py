@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from .simulate import AllocatorHooker, SimulateDeviceSnapshot, SimulateHooker
+from .util.file_util import UnsafePickleError as UnsafePickleError
 from .util.file_util import load_pickle_to_dict, save_dict_to_pickle
 
 SnapshotFormat = Literal["pickle", "json"]

@@ -20,3 +20,11 @@ def test_snapshot_file_invalid_error_is_pt_snap_core() -> None:
 
 def test_import_execution_error_is_pt_snap_core() -> None:
     assert issubclass(ImportExecutionError, PtSnapCoreError)
+
+
+def test_unsafe_pickle_error_is_unpickling_error() -> None:
+    from pickle import UnpicklingError
+
+    from pt_snap_cli.snapshot.representation import UnsafePickleError
+
+    assert issubclass(UnsafePickleError, UnpicklingError)
