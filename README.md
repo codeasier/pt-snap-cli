@@ -17,7 +17,8 @@ pip install -e .
 To start from a raw PyTorch memory snapshot, import the pickle into a SnapshotDB with pt-snap's built-in snapshot support, then list the available query templates:
 
 > **Security warning:** Import only pickle snapshots from a trusted source. Pickle
-> deserialization can execute arbitrary code. `pt-snap import` is not a sandbox.
+> deserialization can execute arbitrary code. The loader rejects non-`builtins`
+> global objects, but `pt-snap import` is not a sandbox.
 
 ```bash
 pt-snap import snapshot.pkl

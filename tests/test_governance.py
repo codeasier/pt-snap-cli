@@ -225,11 +225,18 @@ def test_bilingual_docs_record_split_and_pickle_security_contract() -> None:
         assert "<source-stem>__device-<id>__slice-<index>.<ext>" in text
         assert "arbitrary code" in text.lower() or "任意代码" in text
         assert "not a sandbox" in text.lower() or "不是沙箱" in text
+        assert "builtins" in text.lower()
 
-    for path in (Path("docs/en/quickstart.md"), Path("docs/zh/quickstart.md")):
+    for path in (
+        Path("docs/en/quickstart.md"),
+        Path("docs/zh/quickstart.md"),
+        Path("docs/en/database.md"),
+        Path("docs/zh/database.md"),
+    ):
         text = path.read_text()
         assert "arbitrary code" in text.lower() or "任意代码" in text
         assert "not a sandbox" in text.lower() or "不是沙箱" in text
+        assert "builtins" in text.lower()
 
 
 def test_github_issue_forms_and_default_pr_template_use_supported_paths() -> None:

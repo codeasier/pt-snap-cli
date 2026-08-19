@@ -7,7 +7,7 @@
 focus，也不会生成 SnapshotDB。如需使用 SQLite 查询，请单独导入生成的 pickle 切片。
 
 > **安全警告：** 只能使用可信的 pickle 输入。反序列化源快照或任意 pickle 切片都可能
-> 执行任意代码；`pt-snap split` 不是沙箱。
+> 执行任意代码；实现会拒绝非 builtins 全局对象，但 `pt-snap split` 不是沙箱。
 
 ## 命令契约
 

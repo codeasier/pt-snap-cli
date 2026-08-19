@@ -8,8 +8,8 @@ event range. It does not truncate trace arrays, read focus, update focus, or cre
 a SnapshotDB. Import a produced pickle separately when you need SQLite queries.
 
 > **Security warning:** Use trusted pickle input only. Deserializing the source
-> snapshot and any pickle slice can execute arbitrary code. `pt-snap split` is
-> not a sandbox.
+> snapshot and any pickle slice can execute arbitrary code. The loader rejects
+> non-`builtins` global objects, but `pt-snap split` is not a sandbox.
 
 ## Command Contract
 

@@ -19,7 +19,8 @@ pip install -e .
 If you have a raw `.pkl` memory snapshot, import it first with the built-in backend:
 
 > **Security warning:** Use trusted pickle input only. Deserializing a pickle can
-> execute arbitrary code. `pt-snap import` is not a sandbox.
+> execute arbitrary code. The loader rejects non-`builtins` global objects, but
+> `pt-snap import` is not a sandbox.
 
 ```bash
 pt-snap import snapshot.pkl

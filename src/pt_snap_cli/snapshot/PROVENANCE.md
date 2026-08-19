@@ -138,6 +138,14 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
   read `device_free`, and mapped `"oom"` to action value `8` so import persists the
   event as an integer. Replay still skips OOM. This is a local first-party bugfix;
   audited upstream mappings and licensing evidence are unchanged.
+- On 2026-08-19, issue #99 replaced unrestricted `pickle.load()` in
+  `snapshot/util/file_util.py` with `SafeUnpickler`. Unpickling now allows only
+  `builtins` container and scalar types (`dict`/`list`/`tuple`/`set`/`str`/
+  `int`/`float`/`bool`/`bytes`/`NoneType`); any other `module.name` raises
+  `UnpicklingError`. Import and split share this loader via
+  `representation.load_pickle_representation`. The change tightens the
+  deserialization allowlist; pickle loading remains not a sandbox. Corrupt
+  streams still map to the established generic `UnpicklingError` wrapper.
 
 ## Migration toolchain
 

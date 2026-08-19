@@ -16,7 +16,7 @@ SnapshotDB 是内存快照数据的 SQLite 数据库存储格式，用于持久�
 如果输入是 PyTorch 原始 `.pkl` 内存快照，可以直接导入：
 
 > **安全警告：** 只能导入可信的 pickle 文件。反序列化 pickle 可能执行任意代码；
-> `pt-snap import` 不是沙箱。
+> 实现会拒绝非 builtins 全局对象，但 `pt-snap import` 不是沙箱。
 
 ```bash
 pt-snap import snapshot.pkl

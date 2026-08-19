@@ -16,6 +16,7 @@ from pt_snap_cli.core.errors import (
     SnapshotFileInvalidError,
 )
 from pt_snap_cli.core.models import ImportOptions
+from tests.snapshot.test_file_util import UNSAFE_PICKLE_PAYLOAD, write_unsafe_reduce_pickle
 
 FIXTURE_DIR = Path(__file__).parents[1] / "fixtures" / "snapshots"
 EMPTY_CACHE_SNAPSHOT = FIXTURE_DIR / "snapshot_with_empty_cache.pkl"
@@ -120,6 +121,18 @@ def test_import_snapshot_file_invalid_corrupt_pickle(tmp_path: Path) -> None:
         service.import_snapshot(ImportOptions(snapshot_file=snapshot_file))
 
     assert not (tmp_path / "corrupt.pkl.db").exists()
+
+
+def test_import_rejects_pickle_with_non_allowlisted_global(tmp_path: Path) -> None:
+    import_service_cls = _import_service_type()
+    service = import_service_cls()
+    snapshot_file = write_unsafe_reduce_pickle(tmp_path / "evil.pkl")
+
+    with pytest.raises(ImportExecutionError, match=r"backend (failed|reported failure)"):
+        service.import_snapshot(ImportOptions(snapshot_file=snapshot_file))
+
+    assert UNSAFE_PICKLE_PAYLOAD["executed"] is False
+    assert not (tmp_path / "evil.pkl.db").exists()
 
 
 def test_failed_reimport_preserves_existing_database(tmp_path: Path) -> None:
