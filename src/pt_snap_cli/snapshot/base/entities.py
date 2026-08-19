@@ -87,9 +87,10 @@ class TraceEntry:
             _validate_raw_frames(frame_dicts)
         trace_entry = cls(
             action=trace_dict["action"],
-            addr=int(trace_dict["addr"]),
-            size=int(trace_dict["size"]),
-            stream=int(trace_dict["stream"]),
+            addr=int(trace_dict.get("addr", -1)),
+            size=int(trace_dict.get("size", 0)),
+            stream=int(trace_dict.get("stream", 0)),
+            device_free=int(trace_dict.get("device_free", -1)),
             _origin=trace_dict,
             frames=[] if _raw_frames else [Frame.from_dict(frame) for frame in frame_dicts],
             _raw_frames=frame_dicts if _raw_frames else None,
