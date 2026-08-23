@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # mcp
+
+Parent scope: [pt_snap_cli package](../AGENTS.md)
 
 ## Purpose
 `mcp` exposes `pt-snap-cli` functionality as a FastMCP server so agents and MCP clients can inspect or set focus, list templates, fetch template metadata, execute queries, inspect database import metadata, and use a memory-leak analysis prompt.

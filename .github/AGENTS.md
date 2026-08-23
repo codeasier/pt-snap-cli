@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # .github
+
+Parent scope: [repository root](../AGENTS.md)
 
 ## Purpose
 `.github` contains GitHub project automation: issue forms, pull request templates, snapshot provenance enforcement, release workflow, and CI verification definitions.

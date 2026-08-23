@@ -21,6 +21,7 @@ Run these commands from the repository root.
 - Lint: `ruff check .`
 - Check formatting: `black --check .`
 - Apply formatting: `black .`
+- Type check: `basedpyright` (CI runs it on the files selected by `[tool.basedpyright] include` in `pyproject.toml`)
 
 `tests/run_tests.sh` is tied to a developer-specific Conda path and writes
 coverage reports under `test_reports/`; use direct `pytest` commands unless
@@ -37,13 +38,33 @@ that local environment is intentionally available.
 | Benchmarks | [benchmarks/AGENTS.md](benchmarks/AGENTS.md) | Import and SQLite performance measurement with temporary outputs |
 | Setup skill | [skills/AGENTS.md](skills/AGENTS.md) | Installation skill approval and active-interpreter safety boundary |
 
+Deeper scoped guides nested under the entries above:
+
+| Scope | Guide | Responsibility |
+| --- | --- | --- |
+| Package root | [src/pt_snap_cli/AGENTS.md](src/pt_snap_cli/AGENTS.md) | Package layout, entry modules (`cli.py`, `api.py`, `context.py`, `config.py`), and submodule routing |
+| Product services | [src/pt_snap_cli/core/AGENTS.md](src/pt_snap_cli/core/AGENTS.md) | Focus, import, split, metadata, query, and report service contracts |
+| Query subsystem | [src/pt_snap_cli/query/AGENTS.md](src/pt_snap_cli/query/AGENTS.md) | YAML templates, registry, executor, builder/condition SQL helpers, and result mapping |
+| Query templates | [src/pt_snap_cli/query/templates/AGENTS.md](src/pt_snap_cli/query/templates/AGENTS.md) | Packaged YAML template authoring and category conventions |
+| Snapshot runtime | [src/pt_snap_cli/snapshot/AGENTS.md](src/pt_snap_cli/snapshot/AGENTS.md) | First-party pickle/JSON representation, replay, database import, and slicing |
+| MCP server | [src/pt_snap_cli/mcp/AGENTS.md](src/pt_snap_cli/mcp/AGENTS.md) | FastMCP entrypoint, tools, and resources |
+| Domain models | [src/pt_snap_cli/models/AGENTS.md](src/pt_snap_cli/models/AGENTS.md) | Dataclass models and allocator event/block enums |
+| CI and release workflows | [.github/workflows/AGENTS.md](.github/workflows/AGENTS.md) | Reusable quality workflow and tag-gated release publication |
+| Issue templates | [.github/ISSUE_TEMPLATE/AGENTS.md](.github/ISSUE_TEMPLATE/AGENTS.md) | Issue forms and snapshot-runtime provenance decision capture |
+| English docs | [docs/en/AGENTS.md](docs/en/AGENTS.md) | English user guides and API references |
+| Chinese docs | [docs/zh/AGENTS.md](docs/zh/AGENTS.md) | Chinese user guides kept behaviorally aligned with `docs/en/` |
+| Core service tests | [tests/core/AGENTS.md](tests/core/AGENTS.md) | Focus, import, split, metadata, query, and report service suites |
+| Query tests | [tests/query/AGENTS.md](tests/query/AGENTS.md) | Query config, registry, executor, builder, and mapper suites |
+| Snapshot runtime tests | [tests/snapshot/AGENTS.md](tests/snapshot/AGENTS.md) | Replay, slicing, database import, and entity runtime suites |
+| Executable fixtures | [tests/fixtures/AGENTS.md](tests/fixtures/AGENTS.md) | Reviewed pickle fixtures and provenance gating |
+
 ## Runtime Topology
 
 | Surface | Entry point | Responsibility |
 | --- | --- | --- |
-| CLI | `src/pt_snap_cli/cli.py` via `pt_snap_cli.cli:_safe_call` | Typer commands for focus, import, split, metadata, query, reports, and config |
+| CLI | `src/pt_snap_cli/cli.py`, installed as `pt-snap` (`pt_snap_cli.cli:_safe_call`) | Typer commands for focus, import, split, metadata, query, and config, plus the `report` group (`pt-snap report peak-memory`) |
 | Python API | `src/pt_snap_cli/api.py` (`SnapshotAnalyzer`) | Programmatic focus, query, and metadata facade |
-| MCP | `src/pt_snap_cli/mcp/server.py` via `pt_snap_cli.mcp.server:main` | Agent tools/resources backed by `SnapshotAnalyzer` |
+| MCP | `src/pt_snap_cli/mcp/server.py`, installed as `pt-snap-mcp` (`pt_snap_cli.mcp.server:main`) | Agent tools/resources backed by `SnapshotAnalyzer` |
 | Product services | `src/pt_snap_cli/core/` | Shared focus, import, split, query, report, metadata, and error semantics |
 | Database access | `src/pt_snap_cli/context.py` | Read-only SQLite validation, connection management, and device discovery |
 | Query engine | `src/pt_snap_cli/query/` | YAML loading, registry, parameter validation, SQL rendering/execution, and result mapping |

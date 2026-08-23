@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # workflows
+
+Parent scope: [.github](../AGENTS.md)
 
 ## Purpose
 `workflows` contains GitHub Actions definitions for continuous integration and release automation.
