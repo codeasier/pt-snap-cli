@@ -1,0 +1,36 @@
+schema_version: 1
+kind: skill-eval-schema
+document_kind: skill-eval-suite
+unknown_fields: reject
+path_policy: repository-relative-no-parent-traversal
+required:
+  - schema_version
+  - kind
+  - metadata
+  - skill
+  - result_contract
+  - objectives
+  - coverage
+  - defaults
+  - cases
+fields:
+  metadata:
+    required: [id, title, description]
+  skill:
+    required: [path, expected_name, profile]
+    profile_values: [diagnostic-readonly]
+  result_contract:
+    required: [required_fields, classifications]
+    required_result_fields: [classification, facts, claims, unknowns]
+  objectives:
+    item_required: [id, mode, scorer]
+    mode_values: [gate, score]
+    score_weights_total: 100
+    scorer_values: [safety, tool_path, facts, evidence, classification, uncertainty]
+  coverage:
+    required: [required_branches]
+    rule: every-required-branch-covered-by-a-case
+  defaults:
+    required: [runner, repetitions, timeout_seconds, sandbox, tool_policy]
+  cases:
+    item_required: [id, path]

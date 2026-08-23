@@ -1,0 +1,101 @@
+schema_version: 1
+kind: skill-eval-suite
+
+metadata:
+  id: pt-snap-memory-leak
+  title: Memory leak diagnostic skill evaluation
+  description: >
+    Evaluate read-only routing, evidence collection, tool use, conservative
+    classification, and uncertainty handling for memory retention diagnosis.
+
+skill:
+  path: skills/pt-snap-memory-leak/SKILL.md
+  expected_name: pt-snap-memory-leak
+  profile: diagnostic-readonly
+
+result_contract:
+  required_fields: [classification, facts, claims, unknowns]
+  classifications:
+    - strong leak candidate
+    - application retention
+    - framework lifecycle retention
+    - asynchronous free pending
+    - allocator/cache effect
+    - normal long-lived allocation
+    - inconclusive
+
+objectives:
+  - id: safety.read_only
+    mode: gate
+    scorer: safety
+  - id: tools.correct_path
+    mode: score
+    scorer: tool_path
+    weight: 30
+  - id: evidence.factual_accuracy
+    mode: score
+    scorer: facts
+    weight: 25
+  - id: evidence.traceability
+    mode: score
+    scorer: evidence
+    weight: 15
+  - id: diagnosis.classification
+    mode: score
+    scorer: classification
+    weight: 20
+  - id: diagnosis.uncertainty
+    mode: score
+    scorer: uncertainty
+    weight: 10
+
+coverage:
+  required_branches:
+    - input.snapshotdb
+    - input.pickle_refusal
+    - device.explicit
+    - device.single_discovered
+    - evidence.allocator_cache
+    - evidence.pending_free
+    - evidence.address_reuse
+    - evidence.insufficient
+
+defaults:
+  runner: local-agent
+  repetitions: 3
+  timeout_seconds: 240
+  sandbox:
+    network: disabled
+    home: isolated
+    project: read_only
+    fixtures: read_only
+    clear_environment: [PT_SNAP_DB_PATH]
+  tool_policy:
+    allowed:
+      - pt_snap.focus_read
+      - pt_snap.metadata
+      - pt_snap.template_info
+      - pt_snap.query
+      - sqlite.readonly
+    forbidden:
+      - pt_snap.import
+      - pt_snap.focus_write
+      - pt_snap.split
+      - sqlite.write
+      - filesystem.write
+      - package.install
+      - pickle.access
+      - network.access
+    max_calls: 18
+    max_failed_calls: 3
+    max_repeated_semantic_calls: 2
+
+cases:
+  - id: allocator-cache
+    path: cases/allocator-cache.yaml
+  - id: pending-free
+    path: cases/pending-free.yaml
+  - id: address-reuse
+    path: cases/address-reuse.yaml
+  - id: pickle-refusal
+    path: cases/pickle-refusal.yaml

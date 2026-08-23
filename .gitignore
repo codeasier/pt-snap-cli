@@ -23,6 +23,7 @@ htmlcov/
 .codex/*
 .opencode/*
 .tmp/*
+.skill-evals/
 openspec/
 specs/
 

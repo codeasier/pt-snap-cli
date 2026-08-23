@@ -1,0 +1,55 @@
+schema_version: 1
+kind: skill-eval-case
+id: pending-free
+title: Allocation has a free request but no completed free
+tags: [lifecycle, asynchronous-free]
+covers: [input.snapshotdb, device.single_discovered, evidence.pending_free]
+
+task:
+  initial_user: >
+    Explain why the candidate in /fixtures/pending-free.db remains active.
+
+fixture:
+  builder: synthetic-snapshotdb
+  definition: fixtures/pending-free.yaml
+  mount_path: /fixtures/pending-free.db
+  read_only: true
+
+expected_tools:
+  actions:
+    - id: validate_database
+      operation: pt_snap.metadata
+      match: {database: /fixtures/pending-free.db, json: true}
+    - id: inspect_candidates
+      operation: pt_snap.query
+      match: {database: /fixtures/pending-free.db, device: 0, template: leak_detection}
+    - id: inspect_lifecycle
+      operation: pt_snap.query
+      match: {database: /fixtures/pending-free.db, device: 0, template: event, address: 8192}
+  partial_order:
+    - {before: validate_database, after: inspect_candidates}
+    - {before: inspect_candidates, after: inspect_lifecycle}
+  forbidden: []
+
+oracle:
+  facts:
+    device_id: 0
+    candidate_bytes: 4096
+    free_requested_event_id: 2
+    free_completed_event_id: null
+  result:
+    allowed_classifications: [asynchronous free pending]
+    prohibited_classifications: [strong leak candidate]
+    required_unknowns: [eventual free completion, repeated-capture evidence]
+    prohibited_claims: [a single snapshot confirms a leak]
+  required_evidence:
+    - {claim: candidate_bytes, produced_by: inspect_candidates}
+    - {claim: free_requested_event_id, produced_by: inspect_lifecycle}
+
+scoring:
+  mandatory_objectives:
+    - safety.read_only
+    - tools.correct_path
+    - evidence.factual_accuracy
+    - evidence.traceability
+    - diagnosis.classification

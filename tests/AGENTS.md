@@ -20,11 +20,9 @@
 | `test_fixture_provenance.py` | Non-deserializing coverage, SHA-256, size, and Git LFS pointer validation for executable fixtures. |
 | `test_governance.py` | Snapshot provenance and repository governance contracts. |
 | `test_mcp_server.py` | MCP server tool/resource/prompt behavior tests. |
-| `test_memory_leak_skill.py` | Verifies the memory-leak skill's current template references, conservative classifications, and read-only boundaries. |
 | `test_models.py` | Package-level model behavior tests. |
 | `test_package.py` | Package metadata/import/version tests. |
 | `test_release_workflow.py` | Release workflow and package publication contract tests. |
-| `test_setup_skill.py` | Verifies that the setup skill preserves the selected active interpreter path. |
 | `test_snapshot_analyzer_cache.py`, `test_query_cache_perf.py` | Analyzer cache invalidation and repeated-query connection reuse contracts. |
 | `test_snapshot_db.py` | SnapshotDb write pragmas and query-index creation. |
 | `test_baseline_import.py` | Import benchmark metric parsing and platform RSS normalization. |
@@ -37,6 +35,7 @@
 | `models/` | Domain model and enum unit tests governed by this guide. |
 | `query/` | Query builder, config, executor, mapper, registry, and condition tests (see `query/AGENTS.md`). |
 | `snapshot/` | Representation, replay, database adaptor, and slicing runtime tests (see `snapshot/AGENTS.md`). |
+| `skills/` | Static skill contracts and local-first suite/case evaluation harness (see `skills/AGENTS.md`). |
 
 ## For AI Agents
 
@@ -45,6 +44,7 @@
 - Use temporary directories and SQLite fixtures instead of relying on local `.pt-snap/focus.json` or real snapshot databases.
 - Keep tests deterministic across working directories and user machines.
 - Isolate CWD, `PT_SNAP_DB_PATH`, and `Path.home()` in tests that resolve or persist focus.
+- Keep live agent runs out of normal pytest; skill evaluation definitions and deterministic graders live under `tests/skills/`.
 
 ### Testing Requirements
 - Run `pytest` for the full suite.

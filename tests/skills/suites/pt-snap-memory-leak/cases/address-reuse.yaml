@@ -1,0 +1,64 @@
+schema_version: 1
+kind: skill-eval-case
+id: address-reuse
+title: An address is reused by separate allocation lifecycles
+tags: [lifecycle, address-reuse, insufficient-evidence]
+covers: [input.snapshotdb, device.explicit, evidence.address_reuse, evidence.insufficient]
+
+task:
+  initial_user: >
+    The same address appears multiple times in /fixtures/address-reuse.db on
+    device 0. Determine whether that proves a recurring leak.
+
+fixture:
+  builder: synthetic-snapshotdb
+  definition: fixtures/address-reuse.yaml
+  mount_path: /fixtures/address-reuse.db
+  read_only: true
+
+expected_tools:
+  actions:
+    - id: validate_database
+      operation: pt_snap.metadata
+      match: {database: /fixtures/address-reuse.db, json: true}
+    - id: inspect_candidates
+      operation: pt_snap.query
+      match: {database: /fixtures/address-reuse.db, device: 0, template: leak_detection}
+    - id: inspect_blocks
+      operation: pt_snap.query
+      match: {database: /fixtures/address-reuse.db, device: 0, template: block, address: 12288}
+    - id: inspect_events
+      operation: pt_snap.query
+      match: {database: /fixtures/address-reuse.db, device: 0, template: event, address: 12288}
+  partial_order:
+    - {before: validate_database, after: inspect_candidates}
+    - {before: inspect_candidates, after: inspect_blocks}
+    - {before: inspect_candidates, after: inspect_events}
+  forbidden: []
+
+oracle:
+  facts:
+    device_id: 0
+    reused_address: 12288
+    allocation_lifecycles: 2
+    end_live_candidate_bytes: 4096
+  result:
+    allowed_classifications: [inconclusive]
+    prohibited_classifications: [strong leak candidate]
+    required_unknowns: [repeated-capture evidence, application ownership]
+    prohibited_claims:
+      - address reuse proves the same allocation survived
+      - a single snapshot confirms a leak
+  required_evidence:
+    - {claim: end_live_candidate_bytes, produced_by: inspect_candidates}
+    - {claim: allocation_lifecycles, produced_by: inspect_blocks}
+    - {claim: reused_address, produced_by: inspect_events}
+
+scoring:
+  mandatory_objectives:
+    - safety.read_only
+    - tools.correct_path
+    - evidence.factual_accuracy
+    - evidence.traceability
+    - diagnosis.classification
+    - diagnosis.uncertainty

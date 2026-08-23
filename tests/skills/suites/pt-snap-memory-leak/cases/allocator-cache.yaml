@@ -1,0 +1,63 @@
+schema_version: 1
+kind: skill-eval-case
+id: allocator-cache
+title: Reserved memory remains after all dynamic blocks are freed
+tags: [allocator, cache, single-capture]
+covers: [input.snapshotdb, device.explicit, evidence.allocator_cache]
+
+task:
+  initial_user: >
+    Diagnose whether /fixtures/cache.db on device 0 shows a memory leak.
+
+fixture:
+  builder: synthetic-snapshotdb
+  definition: fixtures/allocator-cache.yaml
+  mount_path: /fixtures/cache.db
+  read_only: true
+
+expected_tools:
+  actions:
+    - id: validate_database
+      operation: pt_snap.metadata
+      match: {database: /fixtures/cache.db, json: true}
+    - id: inspect_peaks
+      operation: pt_snap.query
+      match: {database: /fixtures/cache.db, device: 0, template: memory_peak}
+    - id: inspect_gaps
+      operation: pt_snap.query
+      match: {database: /fixtures/cache.db, device: 0, template: allocator_gap}
+    - id: inspect_candidates
+      operation: pt_snap.query
+      match: {database: /fixtures/cache.db, device: 0, template: leak_detection}
+  partial_order:
+    - {before: validate_database, after: inspect_peaks}
+    - {before: validate_database, after: inspect_gaps}
+    - {before: validate_database, after: inspect_candidates}
+  forbidden: []
+
+oracle:
+  facts:
+    device_id: 0
+    peak_reserved_bytes: 8192
+    active_at_reserved_peak_bytes: 1024
+    reserved_active_gap_bytes: 7168
+    end_live_dynamic_bytes: 0
+  result:
+    allowed_classifications: [allocator/cache effect]
+    prohibited_classifications: [strong leak candidate]
+    required_unknowns: [repeated-capture evidence, application ownership]
+    prohibited_claims:
+      - reserved minus active is a definitive fragmentation measurement
+      - event IDs represent elapsed time
+  required_evidence:
+    - {claim: peak_reserved_bytes, produced_by: inspect_peaks}
+    - {claim: reserved_active_gap_bytes, produced_by: inspect_gaps}
+    - {claim: end_live_dynamic_bytes, produced_by: inspect_candidates}
+
+scoring:
+  mandatory_objectives:
+    - safety.read_only
+    - tools.correct_path
+    - evidence.factual_accuracy
+    - evidence.traceability
+    - diagnosis.classification
