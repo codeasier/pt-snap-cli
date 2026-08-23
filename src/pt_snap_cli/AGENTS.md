@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # pt_snap_cli
+
+Parent scope: [src](../AGENTS.md)
 
 ## Purpose
 `pt_snap_cli` is the main Python package. It exposes the Typer CLI, programmatic `SnapshotAnalyzer` API, read-only SQLite context, focus configuration, product service layer, MCP server, domain models, YAML-driven query execution pipeline, and first-party snapshot runtime.

@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-09 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # templates
+
+Parent scope: [query subsystem](../AGENTS.md)
 
 ## Purpose
 `templates` contains the packaged YAML query templates used by the registry and CLI/API/MCP query execution. Templates are grouped by category and define metadata, parameters, SQL, and output schemas.

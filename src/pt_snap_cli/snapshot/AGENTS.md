@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-08-08 | Updated: 2026-08-24 -->
 
 # snapshot
+
+Parent scope: [pt_snap_cli package](../AGENTS.md)
 
 ## Purpose
 `snapshot` is the first-party runtime for trusted PyTorch memory snapshot representations. It owns pickle/JSON normalization, allocator replay, SnapshotDB adaptation, and replay-safe slicing; CLI/API product contracts remain in `core/`.

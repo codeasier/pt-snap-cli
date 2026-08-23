@@ -2,6 +2,8 @@
 
 # skills
 
+Parent scope: [repository root](../AGENTS.md)
+
 ## Purpose
 `skills` contains agent workflows shipped with the repository. The setup skill
 has an independent side-effect boundary because it may install packages into the
