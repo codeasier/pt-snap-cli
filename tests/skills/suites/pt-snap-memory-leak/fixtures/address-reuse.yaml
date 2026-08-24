@@ -1,0 +1,11 @@
+schema_version: 1
+kind: synthetic-snapshotdb
+devices:
+  0:
+    trace:
+      - {id: 1, action: 4, address: 12288, size: 2048, stream: 0, allocated: 2048, active: 2048, reserved: 4096, callstack: "first.py:30"}
+      - {id: 2, action: 6, address: 12288, size: 2048, stream: 0, allocated: 0, active: 0, reserved: 4096, callstack: "first.py:30"}
+      - {id: 3, action: 4, address: 12288, size: 4096, stream: 0, allocated: 4096, active: 4096, reserved: 8192, callstack: "second.py:40"}
+    blocks:
+      - {id: 1, address: 12288, size: 2048, requestedSize: 2000, state: 0, allocEventId: 1, freeEventId: 2}
+      - {id: 2, address: 12288, size: 4096, requestedSize: 4000, state: 1, allocEventId: 3, freeEventId: -1}

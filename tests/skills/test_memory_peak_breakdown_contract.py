@@ -22,7 +22,7 @@ def test_skill_frontmatter_and_agent_routing() -> None:
     assert "active, allocated, or reserved high-water event" in skill
     assert "Not for end-of-trace leak diagnosis" in skill
     assert "pt-snap-memory-peak-breakdown/SKILL.md" in Path("skills/AGENTS.md").read_text()
-    assert "test_memory_peak_breakdown_skill.py" in Path("tests/AGENTS.md").read_text()
+    assert "test_*_contract.py" in Path("tests/skills/AGENTS.md").read_text()
 
 
 def test_skill_references_current_report_and_templates() -> None:

@@ -1,0 +1,40 @@
+schema_version: 1
+kind: skill-eval-schema
+document_kind: skill-eval-case
+unknown_fields: reject
+required:
+  - schema_version
+  - kind
+  - id
+  - title
+  - covers
+  - task
+  - expected_tools
+  - oracle
+  - scoring
+fields:
+  task:
+    required: [initial_user]
+  fixture:
+    required: [builder, definition, mount_path, read_only]
+    builder_values: [synthetic-snapshotdb]
+    mount_path_rule: normalized-absolute-posix-path-under-/fixtures/
+    read_only: true
+  expected_tools:
+    required: [actions, partial_order, forbidden]
+    optional: [max_calls]
+    max_calls_minimum: 0
+    action_required: [id, operation, match]
+    action_optional: [expect_output]
+    order_required: [before, after]
+    forbidden_required: [operation]
+  oracle:
+    required: [facts, result, required_evidence]
+    result_required:
+      - allowed_classifications
+      - prohibited_classifications
+      - required_unknowns
+      - prohibited_claims
+    evidence_required: [claim, produced_by]
+  scoring:
+    required: [mandatory_objectives]

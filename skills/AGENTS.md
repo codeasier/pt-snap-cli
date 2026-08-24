@@ -30,11 +30,7 @@ SnapshotDB data without writes.
   document why a template is insufficient and enforce read-only access.
 
 ## Focused Tests
-- Run `pytest tests/test_setup_skill.py` after setup-skill changes. The current executable test covers active-interpreter path preservation; review the remaining approval and reporting instructions statically.
-- Run `pytest tests/test_memory_leak_skill.py` after memory-leak skill changes;
-  it checks current template references, conservative classification, and the
-  read-only diagnostic boundary.
-- Run `pytest tests/test_memory_peak_breakdown_skill.py` after peak-breakdown skill changes; it locks command/template references, range fallback, and attribution caveats.
-- Run `pytest tests/test_memory_fragmentation_skill.py` after fragmentation-skill
-  changes; it checks current command/template references, read-only boundaries,
-  runtime segment coverage, and conservative classifications.
+- Run `pytest tests/skills/test_setup_contract.py` after setup-skill changes. The current executable test covers active-interpreter path preservation; review the remaining approval and reporting instructions statically.
+- Run `pytest tests/skills` after diagnostic-skill changes. Static contracts
+  check current surfaces and safety boundaries; suite/case evaluations cover
+  decision paths, structured evidence, and tool-call policy.
