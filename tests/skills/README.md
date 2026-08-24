@@ -12,10 +12,17 @@ enforced by `harness/descriptors.py` with unknown fields rejected.
 
 - A suite identifies the `SKILL.md`, result classifications, scored objectives,
   required decision branches, sandbox defaults, semantic tool policy, and cases.
+  Runner defaults (`runner`, `repetitions`, `timeout_seconds`, `sandbox`) are
+  validated and exposed as typed values on the loaded suite so adapters can
+  enforce them.
 - A case identifies its prompt, optional synthetic SnapshotDB, covered branches,
   required tool actions, partial ordering, forbidden actions, oracle facts,
-  classification bounds, unknowns, and claim-to-tool evidence links.
-- Descriptor paths are repository-relative and cannot contain `..`.
+  classification bounds, unknowns, and claim-to-tool evidence links. Actions may
+  declare `expect_output`, a mapping that must appear in the matched call's
+  recorded output before the action counts as matched. Cases may cap the total
+  call count with `expected_tools.max_calls`; zero enforces refusal-only cases.
+- Descriptor paths are repository-relative and cannot contain `..`. Fixture
+  mount paths must be normalized absolute POSIX paths under `/fixtures/`.
 - Diagnostic fixtures are declarative SQLite databases. Pickle inputs are never
   materialized or exposed to a diagnostic runner.
 
@@ -50,7 +57,7 @@ A runner submits JSON with the following shape:
       "operation": "pt_snap.metadata",
       "arguments": {"database": "/fixtures/cache.db", "json": true},
       "status": "success",
-      "output": {"devices": [0]}
+      "output": {"status": "unavailable", "reason": "metadata_missing", "metadata": null}
     }
   ],
   "result": {
@@ -74,9 +81,11 @@ python -m tests.skills grade \
 ```
 
 Safety objectives are hard gates. Scored objectives use normalized operation
-arguments, partial ordering, tool budgets, oracle facts, classifications,
-required unknowns, and evidence call IDs. Formatting and prose style receive no
-deterministic score.
+arguments, required output evidence, partial ordering, tool budgets (suite-wide
+and per case), oracle facts, classifications, required unknowns, and evidence
+call IDs. Runs that omit required result fields or submit malformed result
+shapes also hard-fail. Formatting and prose style receive no deterministic
+score.
 
 Generated transcripts and reports belong under `.skill-evals/`, which is
 ignored by Git. Normal `pytest` runs never invoke a live model.

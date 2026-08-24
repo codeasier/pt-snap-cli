@@ -24,12 +24,15 @@ expected_tools:
     - id: inspect_candidates
       operation: pt_snap.query
       match: {database: /fixtures/address-reuse.db, device: 0, template: leak_detection}
+      expect_output: {size: 4096}
     - id: inspect_blocks
       operation: pt_snap.query
       match: {database: /fixtures/address-reuse.db, device: 0, template: block, address: 12288}
+      expect_output: {allocEventId: 3}
     - id: inspect_events
       operation: pt_snap.query
       match: {database: /fixtures/address-reuse.db, device: 0, template: event, address: 12288}
+      expect_output: {id: 3, action: 4}
   partial_order:
     - {before: validate_database, after: inspect_candidates}
     - {before: inspect_candidates, after: inspect_blocks}

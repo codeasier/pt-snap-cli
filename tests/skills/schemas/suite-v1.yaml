@@ -32,5 +32,6 @@ fields:
     rule: every-required-branch-covered-by-a-case
   defaults:
     required: [runner, repetitions, timeout_seconds, sandbox, tool_policy]
+    exposed_on_loaded_suite: runner-adapters-enforce-these-values
   cases:
     item_required: [id, path]

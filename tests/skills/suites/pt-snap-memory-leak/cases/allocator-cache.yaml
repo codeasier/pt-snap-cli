@@ -23,9 +23,11 @@ expected_tools:
     - id: inspect_peaks
       operation: pt_snap.query
       match: {database: /fixtures/cache.db, device: 0, template: memory_peak}
+      expect_output: {peak_reserved: 8192}
     - id: inspect_gaps
       operation: pt_snap.query
       match: {database: /fixtures/cache.db, device: 0, template: allocator_gap}
+      expect_output: {reserved_active_gap_at_reserved_peak: 7168}
     - id: inspect_candidates
       operation: pt_snap.query
       match: {database: /fixtures/cache.db, device: 0, template: leak_detection}

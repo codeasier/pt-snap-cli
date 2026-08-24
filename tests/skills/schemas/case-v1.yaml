@@ -18,11 +18,14 @@ fields:
   fixture:
     required: [builder, definition, mount_path, read_only]
     builder_values: [synthetic-snapshotdb]
-    mount_prefix: /fixtures/
+    mount_path_rule: normalized-absolute-posix-path-under-/fixtures/
     read_only: true
   expected_tools:
     required: [actions, partial_order, forbidden]
+    optional: [max_calls]
+    max_calls_minimum: 0
     action_required: [id, operation, match]
+    action_optional: [expect_output]
     order_required: [before, after]
     forbidden_required: [operation]
   oracle:

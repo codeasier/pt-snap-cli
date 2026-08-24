@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
+import posixpath
+from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -26,6 +27,16 @@ class ExpectedAction:
     id: str
     operation: str
     match: dict[str, Any]
+    expect_output: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class SandboxPolicy:
+    network: str
+    home: str
+    project: str
+    fixtures: str
+    clear_environment: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -46,6 +57,7 @@ class EvalCase:
     prohibited_claims: tuple[str, ...]
     required_evidence: tuple[tuple[str, str], ...]
     mandatory_objectives: tuple[str, ...]
+    max_tool_calls: int | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +76,11 @@ class EvalSuite:
     max_failed_calls: int
     max_repeated_semantic_calls: int
     cases: tuple[EvalCase, ...]
+    runner: str
+    repetitions: int
+    timeout_seconds: int
+    sandbox: SandboxPolicy
+    required_result_fields: tuple[str, ...]
 
     @property
     def objectives_by_id(self) -> dict[str, Objective]:
@@ -214,7 +231,7 @@ def _load_case(
         data["expected_tools"],
         context=f"{path}: expected_tools",
         required={"actions", "partial_order", "forbidden"},
-        allowed={"actions", "partial_order", "forbidden"},
+        allowed={"actions", "partial_order", "forbidden", "max_calls"},
     )
     if not isinstance(expected_tools["actions"], list):
         raise DescriptorError(f"{path}: expected_tools.actions must be a list")
@@ -224,15 +241,18 @@ def _load_case(
             raw_action,
             context=f"{path}: action {index}",
             required={"id", "operation", "match"},
-            allowed={"id", "operation", "match"},
+            allowed={"id", "operation", "match", "expect_output"},
         )
         if not isinstance(action["match"], dict):
             raise DescriptorError(f"{path}: action {index}.match must be a mapping")
+        if "expect_output" in action and not isinstance(action["expect_output"], dict):
+            raise DescriptorError(f"{path}: action {index}.expect_output must be a mapping")
         actions.append(
             ExpectedAction(
                 id=_string(action["id"], f"{path}: action id"),
                 operation=_string(action["operation"], f"{path}: action operation"),
                 match=dict(action["match"]),
+                expect_output=dict(action.get("expect_output", {})),
             )
         )
     action_ids = {action.id for action in actions}
@@ -257,6 +277,13 @@ def _load_case(
         )
     partial_order = tuple(edges)
     _validate_dag(action_ids, partial_order, f"{path}: partial_order")
+    max_tool_calls = (
+        _positive_int(
+            expected_tools["max_calls"], f"{path}: expected_tools.max_calls", allow_zero=True
+        )
+        if "max_calls" in expected_tools
+        else None
+    )
 
     forbidden: list[str] = []
     if not isinstance(expected_tools["forbidden"], list):
@@ -364,6 +391,12 @@ def _load_case(
         if raw_fixture["read_only"] is not True:
             raise DescriptorError(f"{path}: diagnostic fixtures must be read-only")
         mount_path = _string(raw_fixture["mount_path"], f"{path}: fixture.mount_path")
+        if not mount_path.startswith("/"):
+            raise DescriptorError(f"{path}: fixture.mount_path must be an absolute POSIX path")
+        if ".." in PurePosixPath(mount_path).parts:
+            raise DescriptorError(f"{path}: fixture.mount_path cannot contain '..'")
+        if posixpath.normpath(mount_path) != mount_path:
+            raise DescriptorError(f"{path}: fixture.mount_path must be a normalized POSIX path")
         if not mount_path.startswith("/fixtures/"):
             raise DescriptorError(f"{path}: fixture.mount_path must be under /fixtures/")
         fixture = {**raw_fixture, "definition_path": definition}
@@ -385,6 +418,7 @@ def _load_case(
         prohibited_claims=_string_list(result["prohibited_claims"], f"{path}: prohibited_claims"),
         required_evidence=tuple(required_evidence),
         mandatory_objectives=mandatory_objectives,
+        max_tool_calls=max_tool_calls,
     )
 
 
@@ -448,11 +482,11 @@ def load_suite(path: Path, *, repo_root: Path = REPO_ROOT) -> EvalSuite:
         required={"required_fields", "classifications"},
         allowed={"required_fields", "classifications"},
     )
-    required_result_fields = set(
+    required_result_fields = tuple(
         _string_list(result_contract["required_fields"], f"{path}: required_fields")
     )
     required_v1_fields = {"classification", "facts", "claims", "unknowns"}
-    if not required_v1_fields <= required_result_fields:
+    if not required_v1_fields <= set(required_result_fields):
         raise DescriptorError(
             f"{path}: result_contract must require {', '.join(sorted(required_v1_fields))}"
         )
@@ -517,8 +551,9 @@ def load_suite(path: Path, *, repo_root: Path = REPO_ROOT) -> EvalSuite:
         required={"runner", "repetitions", "timeout_seconds", "sandbox", "tool_policy"},
         allowed={"runner", "repetitions", "timeout_seconds", "sandbox", "tool_policy"},
     )
-    _positive_int(defaults["repetitions"], f"{path}: repetitions")
-    _positive_int(defaults["timeout_seconds"], f"{path}: timeout_seconds")
+    runner = _string(defaults["runner"], f"{path}: runner")
+    repetitions = _positive_int(defaults["repetitions"], f"{path}: repetitions")
+    timeout_seconds = _positive_int(defaults["timeout_seconds"], f"{path}: timeout_seconds")
     sandbox = _strict_mapping(
         defaults["sandbox"],
         context=f"{path}: sandbox",
@@ -534,7 +569,13 @@ def load_suite(path: Path, *, repo_root: Path = REPO_ROOT) -> EvalSuite:
     for key, expected in expected_sandbox.items():
         if sandbox[key] != expected:
             raise DescriptorError(f"{path}: diagnostic sandbox requires {key}: {expected}")
-    _string_list(sandbox["clear_environment"], f"{path}: clear_environment")
+    sandbox_policy = SandboxPolicy(
+        network=sandbox["network"],
+        home=sandbox["home"],
+        project=sandbox["project"],
+        fixtures=sandbox["fixtures"],
+        clear_environment=_string_list(sandbox["clear_environment"], f"{path}: clear_environment"),
+    )
 
     tool_policy = _strict_mapping(
         defaults["tool_policy"],
@@ -620,4 +661,9 @@ def load_suite(path: Path, *, repo_root: Path = REPO_ROOT) -> EvalSuite:
             allow_zero=True,
         ),
         cases=tuple(cases),
+        runner=runner,
+        repetitions=repetitions,
+        timeout_seconds=timeout_seconds,
+        sandbox=sandbox_policy,
+        required_result_fields=required_result_fields,
     )
