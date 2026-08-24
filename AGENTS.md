@@ -35,7 +35,7 @@ that local environment is intentionally available.
 | Package source | [src/AGENTS.md](src/AGENTS.md) | Installable package boundaries and source-layout rules |
 | Tests | [tests/AGENTS.md](tests/AGENTS.md) | Cross-surface contracts, service/query/runtime suites, and reviewed executable fixtures |
 | Benchmarks | [benchmarks/AGENTS.md](benchmarks/AGENTS.md) | Import and SQLite performance measurement with temporary outputs |
-| Agent skills | [skills/AGENTS.md](skills/AGENTS.md) | Environment setup and read-only memory-diagnostic workflows |
+| Agent skills | [skills/AGENTS.md](skills/AGENTS.md) | Installation approval and read-only memory-diagnostic workflows |
 
 ## Runtime Topology
 

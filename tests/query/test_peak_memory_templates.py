@@ -169,6 +169,67 @@ def test_active_blocks_at_event_treats_null_free_event_as_live(peak_memory_db: P
     assert [row["id"] for row in rows] == [1, 6]
 
 
+def _insert_preexisting_block(db_path: Path, block_id: int, free_event_id: int | None) -> None:
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        """
+        INSERT INTO block_0
+          (id, address, size, requestedSize, state, allocEventId, freeEventId)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (block_id, 0x7000, 2048, 2000, 1, -1, free_event_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_active_blocks_at_event_includes_preexisting_block_freed_after_event(
+    peak_memory_db: Path,
+) -> None:
+    _insert_preexisting_block(peak_memory_db, -11, 4)
+
+    rows = _execute_template(peak_memory_db, "active_blocks_at_event", {"event_id": 3})
+
+    by_id = {row["id"]: row for row in rows}
+    assert set(by_id) == {-10, -11, 1}
+    assert by_id[-10]["category"] == "static"
+    assert by_id[-11]["category"] == "preexisting_live_at_event"
+
+
+def test_active_blocks_at_event_excludes_preexisting_block_freed_by_event(
+    peak_memory_db: Path,
+) -> None:
+    _insert_preexisting_block(peak_memory_db, -11, 4)
+
+    rows = _execute_template(peak_memory_db, "active_blocks_at_event", {"event_id": 4})
+
+    assert {row["id"] for row in rows} == {-10, 1, 4}
+
+
+def test_active_blocks_at_event_treats_preexisting_null_free_event_as_live(
+    peak_memory_db: Path,
+) -> None:
+    _insert_preexisting_block(peak_memory_db, -11, None)
+
+    rows = _execute_template(peak_memory_db, "active_blocks_at_event", {"event_id": 5})
+
+    assert {row["id"] for row in rows} == {-10, -11, 1, 4, 5}
+
+
+def test_active_blocks_at_event_excludes_preexisting_when_static_disabled(
+    peak_memory_db: Path,
+) -> None:
+    _insert_preexisting_block(peak_memory_db, -11, 4)
+
+    rows = _execute_template(
+        peak_memory_db,
+        "active_blocks_at_event",
+        {"event_id": 3, "include_static": False},
+    )
+
+    assert [row["id"] for row in rows] == [1]
+
+
 def test_active_memory_callstack_at_event_treats_null_free_event_as_live(
     peak_memory_db: Path,
 ) -> None:
@@ -221,6 +282,81 @@ def test_active_memory_callstack_at_event_can_exclude_static(peak_memory_db: Pat
     )
 
     assert "[static] allocEventId=-1, freeEventId=-1" not in {row["callstack"] for row in rows}
+
+
+def test_active_memory_callstack_at_event_labels_preexisting_group(
+    peak_memory_db: Path,
+) -> None:
+    _insert_preexisting_block(peak_memory_db, -11, 4)
+    _insert_preexisting_block(peak_memory_db, -12, None)
+
+    rows = _execute_template(
+        peak_memory_db,
+        "active_memory_callstack_at_event",
+        {"event_id": 3, "include_static": True, "top_n": -1},
+    )
+
+    by_callstack = {row["callstack"]: row for row in rows}
+    preexisting = by_callstack["[preexisting live] allocEventId=-1"]
+    assert preexisting["category"] == "preexisting_live_at_event"
+    assert preexisting["block_count"] == 2
+    assert preexisting["size_bytes"] == 4096
+    assert by_callstack["[static] allocEventId=-1, freeEventId=-1"]["category"] == "static"
+
+
+def test_active_memory_callstack_at_event_keeps_special_groups_beyond_top_n(
+    peak_memory_db: Path,
+) -> None:
+    conn = sqlite3.connect(str(peak_memory_db))
+    conn.executemany(
+        """
+        INSERT INTO trace_entry_0
+          (id, action, address, size, stream, allocated, active, reserved, callstack)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (-101, 2, 0x11000, 20000, 0, 0, 0, 0, "a.py:1"),
+            (-102, 2, 0x12000, 18000, 0, 0, 0, 0, "b.py:2"),
+            (-103, 2, 0x13000, 16000, 0, 0, 0, 0, "c.py:3"),
+        ],
+    )
+    conn.executemany(
+        """
+        INSERT INTO block_0
+          (id, address, size, requestedSize, state, allocEventId, freeEventId)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (-11, 0x7000, 3000, 2900, 1, -1, 4),
+            (11, 0x11000, 20000, 19900, 1, -101, -1),
+            (12, 0x12000, 18000, 17900, 1, -102, -1),
+            (13, 0x13000, 16000, 15900, 1, -103, -1),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    rows = _execute_template(
+        peak_memory_db,
+        "active_memory_callstack_at_event",
+        {"event_id": 3, "include_static": True, "top_n": 2},
+    )
+
+    by_callstack = {row["callstack"]: row for row in rows}
+    # Only the two largest dynamic groups survive top_n; static and preexisting
+    # groups are exempt from truncation even though smaller groups were dropped.
+    assert set(by_callstack) == {
+        "a.py:1",
+        "b.py:2",
+        "[static] allocEventId=-1, freeEventId=-1",
+        "[preexisting live] allocEventId=-1",
+    }
+    assert by_callstack["[static] allocEventId=-1, freeEventId=-1"]["size_bytes"] == 8192
+    assert by_callstack["[preexisting live] allocEventId=-1"]["size_bytes"] == 3000
+    total = 20000 + 18000 + 8192 + 3000
+    assert by_callstack["[static] allocEventId=-1, freeEventId=-1"][
+        "percent_of_active_blocks"
+    ] == pytest.approx(100.0 * 8192 / total, rel=1e-4)
 
 
 def test_allocator_gap_reports_peak_events_and_same_event_gaps(peak_memory_db: Path) -> None:
