@@ -21,6 +21,7 @@
 | `test_governance.py` | Snapshot provenance and repository governance contracts. |
 | `test_mcp_server.py` | MCP server tool/resource/prompt behavior tests. |
 | `test_memory_leak_skill.py` | Verifies the memory-leak skill's current template references, conservative classifications, and read-only boundaries. |
+| `test_memory_fragmentation_skill.py` | Verifies the fragmentation skill's current command/template references, runtime segment coverage, conservative classifications, and read-only boundaries. |
 | `test_models.py` | Package-level model behavior tests. |
 | `test_package.py` | Package metadata/import/version tests. |
 | `test_release_workflow.py` | Release workflow and package publication contract tests. |
