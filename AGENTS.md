@@ -35,7 +35,7 @@ that local environment is intentionally available.
 | Package source | [src/AGENTS.md](src/AGENTS.md) | Installable package boundaries and source-layout rules |
 | Tests | [tests/AGENTS.md](tests/AGENTS.md) | Cross-surface contracts, service/query/runtime suites, and reviewed executable fixtures |
 | Benchmarks | [benchmarks/AGENTS.md](benchmarks/AGENTS.md) | Import and SQLite performance measurement with temporary outputs |
-| Agent skills | [skills/AGENTS.md](skills/AGENTS.md) | Environment setup and read-only memory-diagnostic workflows |
+| Agent skills | [skills/AGENTS.md](skills/AGENTS.md) | Installation approval and read-only memory-diagnostic workflows |
 
 ## Runtime Topology
 
@@ -112,7 +112,7 @@ templates under category subdirectories are included by
 | Snapshot import or metadata | `src/pt_snap_cli/core/import_service.py`, `src/pt_snap_cli/core/import_metadata.py`, `src/pt_snap_cli/core/snapshot_import_backend.py` | `tests/core/test_import_*.py`, `tests/test_snapshot_db.py` |
 | Snapshot splitting or replay | `src/pt_snap_cli/core/split_service.py`, `src/pt_snap_cli/snapshot/` | `tests/core/test_split_service.py`, `tests/snapshot/` |
 | Reports | `src/pt_snap_cli/core/report_service.py`, report commands in `src/pt_snap_cli/cli.py` | `tests/core/test_report_service.py`, report cases in `tests/test_cli.py` |
-| Agent setup or diagnostic skills | `skills/` and the referenced CLI/query surfaces | `tests/test_setup_skill.py`, `tests/test_memory_leak_skill.py` |
+| Agent setup or diagnostic skills | `skills/` and the referenced CLI/query surfaces | `tests/test_setup_skill.py`, `tests/test_memory_leak_skill.py`, `tests/test_memory_peak_breakdown_skill.py` |
 | Packaging or release | `pyproject.toml`, `.github/workflows/` | `tests/test_package.py`, `tests/test_release_workflow.py` |
 | Executable fixtures | `tests/fixtures/snapshots/` | `tests/test_fixture_provenance.py` before any deserializing suite |
 

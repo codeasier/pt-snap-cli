@@ -13,7 +13,7 @@ queries:
         type: bool
         default: true
         required: false
-        description: Include static blocks with allocEventId=-1 and freeEventId=-1
+        description: Include blocks without a captured allocation event (static and preexisting-live blocks)
       min_size:
         type: int
         default: 0
@@ -51,12 +51,13 @@ queries:
           freeEventId,
           CASE
             WHEN allocEventId = -1 AND freeEventId = -1 THEN 'static'
+            WHEN allocEventId = -1 AND (freeEventId IS NULL OR freeEventId < 0 OR freeEventId > {{ event_id|int }}) THEN 'preexisting_live_at_event'
             ELSE 'dynamic_live_at_event'
           END AS category
         FROM {{ device_block_table }}
         WHERE size >= {{ min_size|int }}
           AND (
-            {% if include_static %}(allocEventId = -1 AND freeEventId = -1) OR{% endif %}
+            {% if include_static %}(allocEventId = -1 AND (freeEventId IS NULL OR freeEventId < 0 OR freeEventId > {{ event_id|int }})) OR{% endif %}
             (allocEventId != -1 AND allocEventId <= {{ event_id|int }} AND (freeEventId IS NULL OR freeEventId < 0 OR freeEventId > {{ event_id|int }}))
           )
       )
