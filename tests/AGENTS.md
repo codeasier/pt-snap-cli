@@ -23,6 +23,7 @@
 | `test_models.py` | Package-level model behavior tests. |
 | `test_package.py` | Package metadata/import/version tests. |
 | `test_release_workflow.py` | Release workflow and package publication contract tests. |
+| `test_memory_peak_breakdown_skill.py` | Static contracts for the read-only peak-memory diagnostic skill and its attribution limits. |
 | `test_setup_skill.py` | Verifies that the setup skill preserves the selected active interpreter path. |
 | `test_snapshot_analyzer_cache.py`, `test_query_cache_perf.py` | Analyzer cache invalidation and repeated-query connection reuse contracts. |
 | `test_snapshot_db.py` | SnapshotDb write pragmas and query-index creation. |
