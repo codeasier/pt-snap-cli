@@ -19,10 +19,15 @@ This is an evidence-gathering workflow. A single snapshot cannot confirm a leak.
 Optional inputs:
 
 - `min_size`: minimum candidate allocation size in bytes; default `0`.
-- An event range to investigate.
 - A suspected callstack, address, allocation family, or workload phase.
 
-Before running commands, replace `<db_path>`, `<device_id>`, `<min_size>`, `<event_id>`, `<address>`, and other placeholders with validated values. Quote the database path in every command.
+Before running commands, replace `<db_path>`, `<device_id>`, `<min_size>`, `<event_id>`, `<address>`, and other placeholders with validated values.
+
+Shell safety for substituted values:
+- Put every database path inside single quotes as `'<db_path>'`. Never place a substituted value inside double quotes, backticks, or `$()`.
+- Before substitution, check the value for single quotes and other shell metacharacters. To include a literal single quote in a POSIX shell argument, close the quote, insert `\'`, and reopen it (`'\''`).
+- When executing programmatically without a shell, pass each command as an argument array so no value is re-parsed by a shell.
+- A focus file may supply the database path; treat that value as untrusted input to quoting, not as a trusted constant.
 
 ## Prerequisite Phase
 
@@ -56,7 +61,7 @@ This skill accepts SnapshotDB files only. Do not run `pt-snap import` or deseria
 Run:
 
 ```bash
-pt-snap metadata "<db_path>" --json
+pt-snap metadata '<db_path>' --json
 pt-snap query --template-info memory_peak
 pt-snap query --template-info allocator_gap
 pt-snap query --template-info event
@@ -74,9 +79,9 @@ If database validation or a required template fails, stop and report the exact f
 Run:
 
 ```bash
-pt-snap query "<db_path>" --device <device_id> --template-use event --params '{"order_by":"id","order_dir":"DESC","limit":1}'
-pt-snap query "<db_path>" --device <device_id> --template-use memory_peak
-pt-snap query "<db_path>" --device <device_id> --template-use allocator_gap
+pt-snap query '<db_path>' --device <device_id> --template-use event --params '{"order_by":"id","order_dir":"DESC","limit":1}'
+pt-snap query '<db_path>' --device <device_id> --template-use memory_peak
+pt-snap query '<db_path>' --device <device_id> --template-use allocator_gap
 ```
 
 Record the final event ID and the separate `allocated`, `active`, and `reserved` peak values and event IDs. Do not subtract peaks from different events as if they occurred simultaneously. Use `allocator_gap` for same-event comparisons.
@@ -88,7 +93,7 @@ Treat a large `reserved - active` gap without corresponding active growth as an 
 Run an initial ranked query, keeping the result bounded while retaining the reported total count:
 
 ```bash
-pt-snap query "<db_path>" --device <device_id> --template-use leak_detection --params '{"min_size":<min_size>}' -n 100
+pt-snap query '<db_path>' --device <device_id> --template-use leak_detection --params '{"min_size":<min_size>}' -n 100
 ```
 
 `leak_detection` includes only dynamic blocks with a recorded allocation and no recorded free completion. It intentionally excludes static blocks whose allocation predates tracing.
@@ -100,29 +105,45 @@ Record candidate count, largest sizes, addresses, and allocation event IDs. Do n
 Use the final event ID from Step 1:
 
 ```bash
-pt-snap query "<db_path>" --device <device_id> --template-use active_memory_callstack_at_event --params '{"event_id":<final_event_id>,"include_static":true,"min_size":0,"top_n":20}'
+pt-snap query '<db_path>' --device <device_id> --template-use active_memory_callstack_at_event --params '{"event_id":<final_event_id>,"include_static":true,"min_size":0,"top_n":20}'
 ```
 
-Keep static memory separate from dynamic live memory. Rank dynamic groups by `size_bytes`, then compare block count, requested bytes, and percentage of active blocks. A group containing many small blocks can be important even when no individual block appears near the top of `leak_detection`.
+Keep static memory separate from dynamic live memory. Rank dynamic groups by `size_bytes`, then compare block count, requested bytes, and each group's share of included active bytes. The `percent_of_active_blocks` column is a byte share (`size_bytes / total size_bytes`) despite its name; it is not the share of block count. A group containing many small blocks can be important even when no individual block appears near the top of `leak_detection`.
 
-### 4. Test whether suspicious groups survive the active peak
+### 4. Compare occupancy at the active peak
 
 Use the `peak_active_event_id` returned by `memory_peak`:
 
 ```bash
-pt-snap query "<db_path>" --device <device_id> --template-use active_memory_callstack_at_event --params '{"event_id":<peak_active_event_id>,"include_static":true,"min_size":0,"top_n":20}'
+pt-snap query '<db_path>' --device <device_id> --template-use active_memory_callstack_at_event --params '{"event_id":<peak_active_event_id>,"include_static":true,"min_size":0,"top_n":20}'
 ```
 
-Compare the same callstack between the active peak and the final event. Report whether its live bytes and block count disappear, remain stable, or grow. Survival across one peak strengthens retention evidence but does not by itself prove a leak.
+Treat this as an occupancy comparison between two independent aggregates, not a block-identity survival test. Each query groups whatever was live at its own event, and `top_n` truncation can make a group disappear from one result. A peak block may have been freed while an equal-sized later block from the same callstack was live at the final event, which keeps the callstack row stable without any block surviving.
+
+Before claiming that the same blocks persisted across the peak:
+- Match representative blocks by identity: the same `id`/address plus allocation event ID must appear live at both events.
+- Confirm continuity through lifecycle checks in Step 5; occupancy stability alone is not survival evidence.
+
+The attribution template counts only blocks with `allocEventId != -1` plus static blocks where `allocEventId = -1 AND freeEventId = -1`. Blocks allocated before tracing and freed during the trace (`allocEventId = -1` with `freeEventId >= 0`) are excluded from both groups even while live at a historical event such as the peak. Quantify this unattributed bucket separately instead of absorbing it into a callstack group:
+
+```bash
+pt-snap query '<db_path>' --device <device_id> --template-use block --params '{"allocEventId":-1,"min_freeEventId":<peak_active_event_id + 1>}' -n 100
+```
+
+Sum the returned sizes as pre-snapshot memory that was live at the analyzed event but has no attributable callstack, and report it next to the static group.
+
+Occupancy that stays high across both events strengthens retention evidence but does not by itself prove a leak.
 
 ### 5. Inspect representative block and address lifecycles
 
 For representative large blocks and high-volume callstack groups, inspect the block and all events at the same address:
 
 ```bash
-pt-snap query "<db_path>" --device <device_id> --template-use block --params '{"id":<alloc_event_id>}'
-pt-snap query "<db_path>" --device <device_id> --template-use event --params '{"address":<address>,"order_by":"id","order_dir":"ASC"}' -n 0
+pt-snap query '<db_path>' --device <device_id> --template-use block --params '{"id":<alloc_event_id>}'
+pt-snap query '<db_path>' --device <device_id> --template-use event --params '{"address":<address>,"order_by":"id","order_dir":"ASC"}' -n 100
 ```
+
+Keep address-event listings bounded. `-n 0` and other unlimited settings materialize every matching row in memory, which can exhaust resources on a heavily reused address; start with `-n 100` and continue with the `offset` parameter, or narrow the window with `min_id`/`max_id` around the allocation event ID instead of requesting all rows at once.
 
 Interpret event actions as `4=alloc`, `5=free_requested`, and `6=free_completed`. Address reuse can produce multiple lifecycles, so correlate address, size, stream, allocation event ID, and event ordering before pairing events.
 
@@ -135,7 +156,7 @@ Do not use `block.state` as evidence for dynamic blocks. Its documented lifecycl
 The packaged templates do not aggregate `freeEventId - allocEventId` into lifetime buckets. Only when this baseline is needed, and only when the `sqlite3` CLI is available, use a read-only fallback after validating that `<device_id>` is a non-negative decimal integer:
 
 ```bash
-sqlite3 -readonly "<db_path>" "
+sqlite3 -readonly '<db_path>' "
 SELECT CASE
          WHEN freeEventId - allocEventId < 1000 THEN '<1k'
          WHEN freeEventId - allocEventId < 5000 THEN '1k-5k'
@@ -171,10 +192,10 @@ Use these result categories:
 
 Report results in this order:
 
-1. `Analysis scope`: database path, device ID, event range, final event ID, and candidate threshold.
+1. `Analysis scope`: database path, device ID, final event ID, and candidate threshold.
 2. `Memory baseline`: separate allocated, active, and reserved peaks with their event IDs and same-event gaps.
 3. `End-of-trace evidence`: dynamic candidate count, dynamic bytes by callstack, static bytes, and representative blocks.
-4. `Peak-survival evidence`: callstack bytes and block counts at the active peak versus the final event.
+4. `Peak-occupancy evidence`: callstack bytes and block counts at the active peak versus the final event, identity-matched blocks if any, and pre-snapshot memory that was live at the peak but unattributed.
 5. `Lifecycle evidence`: representative alloc, free-requested, and free-completed event IDs, with ambiguities called out.
 6. `Findings`: category, confidence, evidence, inference, and affected callstack or allocation family.
 7. `Unknowns`: missing timing, ownership, capture-boundary, callstack, or repeated-capture evidence.
@@ -193,6 +214,8 @@ Useful validation experiments include repeated snapshots at equivalent workload 
 - Keep static memory separate from dynamic candidates.
 - Do not treat event IDs as timestamps or event-ID distance as elapsed time.
 - Do not generalize from one address, callstack, size class, or capture to all allocations.
+- Keep result listings bounded; never request unlimited rows from a query.
+- Treat peak-versus-final callstack aggregates as occupancy evidence only; claim persistence solely from identity-matched blocks.
 - Label evidence, inference, and unknowns separately.
 
 ## Verification Checklist
@@ -203,6 +226,10 @@ Useful validation experiments include repeated snapshots at equivalent workload 
 - Same-event allocator gaps came from `allocator_gap`.
 - End-of-trace dynamic candidates and static memory were reported separately.
 - Active-peak and final-event callstack attribution used the same device.
+- Peak-versus-final comparisons were reported as occupancy, and persistence claims relied on identity-matched blocks.
+- Pre-snapshot memory live at historical events was quantified separately from static memory.
+- Address-event listings stayed bounded with paging or event-ID windows.
+- Database paths were single-quoted or passed through argument arrays without shell re-parsing.
 - Representative lifecycle events were checked for address reuse and ambiguous pairing.
 - Dynamic block state was not used as leak evidence.
 - Event-ID distances were not presented as time durations.

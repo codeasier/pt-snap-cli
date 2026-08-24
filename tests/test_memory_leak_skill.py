@@ -52,3 +52,54 @@ def test_memory_leak_skill_uses_conservative_classifications() -> None:
         assert f"`{classification}`" in skill
 
     assert "Do not use this category from end-of-trace survival alone." in skill
+
+
+def test_memory_leak_skill_quotes_paths_safely() -> None:
+    skill = SKILL_PATH.read_text()
+
+    assert "'<db_path>'" in skill
+    assert '"<db_path>"' not in skill
+    assert "Never place a substituted value inside double quotes" in skill
+    assert "argument array" in skill
+    assert "treat that value as untrusted input to quoting" in skill
+
+
+def test_memory_leak_skill_has_no_unused_range_input() -> None:
+    skill = SKILL_PATH.read_text()
+
+    assert "An event range to investigate" not in skill
+    assert "event range, final event ID" not in skill
+
+
+def test_memory_leak_skill_reports_occupancy_with_identity_evidence() -> None:
+    skill = SKILL_PATH.read_text()
+
+    assert "occupancy comparison" in skill
+    assert "not a block-identity survival test" in skill
+    assert "`top_n` truncation" in skill
+    assert "Match representative blocks by identity" in skill
+
+
+def test_memory_leak_skill_quantifies_unattributed_pre_snapshot_memory() -> None:
+    skill = SKILL_PATH.read_text()
+
+    assert '"allocEventId":-1,"min_freeEventId"' in skill
+    assert "no attributable callstack" in skill
+    assert "pre-snapshot memory" in skill
+
+
+def test_memory_leak_skill_keeps_result_listings_bounded() -> None:
+    skill = SKILL_PATH.read_text()
+
+    address_query = '"order_dir":"ASC"}\' -n 100'
+    assert address_query in skill
+    assert "-n 0` and other unlimited settings materialize" in skill
+    assert "the `offset` parameter" in skill
+    assert "never request unlimited rows from a query" in skill
+
+
+def test_memory_leak_skill_interprets_percent_column_as_byte_share() -> None:
+    skill = SKILL_PATH.read_text()
+
+    assert "share of included active bytes" in skill
+    assert "byte share (`size_bytes / total size_bytes`) despite its name" in skill
