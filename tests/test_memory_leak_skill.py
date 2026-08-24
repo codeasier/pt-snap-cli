@@ -90,39 +90,30 @@ def test_memory_leak_skill_matches_current_preexisting_group_semantics() -> None
     assert "counts only blocks with `allocEventId != -1`" not in skill
 
 
-def test_memory_leak_skill_quantifies_unattributed_pre_snapshot_memory() -> None:
+def test_memory_leak_skill_cross_checks_preexisting_bucket_exactly() -> None:
     skill = SKILL_PATH.read_text()
 
-    assert '"allocEventId":-1,"min_freeEventId"' in skill
-    assert "no attributable callstack" in skill
-    assert "pre-snapshot memory" in skill
-
-
-def test_memory_leak_skill_pages_pre_snapshot_bucket_before_summing() -> None:
-    skill = SKILL_PATH.read_text()
-
-    assert '"order_by":"id","order_dir":"ASC","limit":100,"offset":<offset>' in skill
-    assert "Page through every matching row before summing" in skill
-    assert "start with offset `0`, increase it by `100`" in skill
-    assert "A single `-n 100` page is a sample, not the full bucket" in skill
-    assert "silently undercounts" in skill
-
-
-def test_memory_leak_skill_offers_read_only_aggregate_for_exact_total() -> None:
-    skill = SKILL_PATH.read_text()
-
-    assert "read-only aggregate instead of paging" in skill
+    assert "cannot express the `freeEventId IS NULL` case" in skill
     assert "non-negative decimal integer matching `^[0-9]+$`" in skill
     assert "COALESCE(SUM(size), 0) AS size_bytes" in skill
-    assert "WHERE allocEventId = -1 AND freeEventId >= <peak_active_event_id + 1>" in skill
-    assert "no row limit applies" in skill
-    assert "fall back to the paginated sum above" in skill
+    assert "freeEventId IS NULL" in skill
+    assert "OR freeEventId > <peak_active_event_id>" in skill
+    assert "(freeEventId < 0 AND freeEventId <> -1)" in skill
+    assert "returns a single row" in skill
+    assert "nothing is silently undercounted" in skill
 
     guardrail = "two documented read-only aggregates that templates do not expose"
     assert guardrail in skill
     assert "only for the optional lifetime aggregate" not in skill
     assert "the freed-block lifetime baseline (Step 6)" in skill
     assert "the exact `[preexisting live]` total (Step 4)" in skill
+
+
+def test_memory_leak_skill_has_no_incomplete_bucket_scan() -> None:
+    skill = SKILL_PATH.read_text()
+
+    assert '"allocEventId":-1,"min_freeEventId"' not in skill
+    assert "fall back to the paginated sum above" not in skill
 
 
 def test_memory_leak_skill_keeps_result_listings_bounded() -> None:

@@ -126,24 +126,21 @@ Before claiming that the same blocks persisted across the peak:
 
 The template separates blocks without a captured allocation event into their own groups instead of attributing them to callstacks: `[static] allocEventId=-1, freeEventId=-1`, and `[preexisting live] allocEventId=-1` for blocks allocated before tracing that were still live at the analyzed event because their recorded free event came later or does not exist. Pre-tracing blocks whose free event precedes the analyzed event are correctly absent because they were no longer live. Report each group separately instead of absorbing it into a callstack group.
 
-For an exact cross-check of the `[preexisting live]` bucket — for example against a database imported before this grouping existed — quantify it with a bounded, ordered scan:
-
-```bash
-pt-snap query '<db_path>' --device <device_id> --template-use block --params '{"allocEventId":-1,"min_freeEventId":<peak_active_event_id + 1>,"order_by":"id","order_dir":"ASC","limit":100,"offset":<offset>}' -n 100
-```
-
-Page through every matching row before summing: start with offset `0`, increase it by `100` until a page returns no rows, and add each page's `size` values to the total. A single `-n 100` page is a sample, not the full bucket; stopping early silently undercounts the pre-snapshot memory reported as live at the analyzed event.
-
-When the exact total is required, use a read-only aggregate instead of paging. After validating that `<device_id>` is a non-negative decimal integer matching `^[0-9]+$`, run only a `SELECT` through `sqlite3 -readonly`:
+For an exact cross-check of the `[preexisting live]` bucket — for example against a database imported before this grouping existed — do not scan with the packaged `block` filters: they compare `freeEventId` numerically and cannot express the `freeEventId IS NULL` case that the template counts as preexisting-live, so any filtered scan risks an incomplete bucket. Instead, validate that `<device_id>` is a non-negative decimal integer matching `^[0-9]+$`, then run one read-only aggregate through `sqlite3 -readonly`:
 
 ```bash
 sqlite3 -readonly '<db_path>' "
 SELECT COUNT(*) AS block_count, COALESCE(SUM(size), 0) AS size_bytes
 FROM block_<device_id>
-WHERE allocEventId = -1 AND freeEventId >= <peak_active_event_id + 1>;"
+WHERE allocEventId = -1
+  AND (
+    freeEventId IS NULL
+    OR freeEventId > <peak_active_event_id>
+    OR (freeEventId < 0 AND freeEventId <> -1)
+  );"
 ```
 
-Report the returned count and total as the complete `[preexisting live]` bucket that was live at the analyzed event but has no attributable callstack; no row limit applies. If `sqlite3` read-only mode is unavailable, fall back to the paginated sum above.
+The predicate mirrors the template's `[preexisting live]` condition exactly: pre-tracing allocations whose free event is missing (`NULL`), comes later than the analyzed event, or is negative other than the static sentinel `-1`. The aggregate returns a single row, so no row limit applies and nothing is silently undercounted; report the count and bytes next to the static group.
 
 Occupancy that stays high across both events strengthens retention evidence but does not by itself prove a leak.
 
