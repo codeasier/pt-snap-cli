@@ -39,22 +39,23 @@ def test_memory_fragmentation_skill_uses_paginated_runtime_evidence() -> None:
     skill = SKILL_PATH.read_text()
 
     allocation_command = (
-        '--template-use allocation --params \'{"min_id":0,"order_by":"id",'
-        '"order_dir":"ASC","limit":<page_size>,"offset":<offset>}\''
+        '--template-use allocation --params \'{"min_id":<range_start>,'
+        '"order_by":"id","order_dir":"ASC","limit":<page_size>,'
+        '"offset":<offset>}\''
     )
     assert allocation_command in skill
 
     for action in range(4):
         event_params = (
-            f'--template-use event --params \'{{"min_id":0,"action":{action},'
-            '"order_by":"id","order_dir":"ASC","limit":<page_size>,'
-            '"offset":<offset>}\''
+            f'--template-use event --params \'{{"min_id":<range_start>,'
+            f'"action":{action},"order_by":"id","order_dir":"ASC",'
+            '"limit":<page_size>,"offset":<offset>}\''
         )
         assert event_params in skill
 
     assert "`0=segment_map` and `1=segment_unmap`" in skill
     assert "`2=segment_alloc` and `3=segment_free`" in skill
-    assert "negative IDs are synthetic reconstruction events" in skill
+    assert "negative IDs are synthetic reconstruction events" in " ".join(skill.split())
     assert "Event size sums are operation volume, not retained bytes or" in skill
 
 
@@ -67,7 +68,7 @@ def test_memory_fragmentation_skill_limits_raw_sql_to_read_only_aggregates() -> 
     assert 'sqlite3 -readonly "<db_path>"' in skill
     assert "non-negative decimal integer matching" in skill
     assert "before interpolating it into a table name" in skill
-    assert "WHERE id >= 0 AND action IN (0, 1, 2, 3)" in skill
+    assert "WHERE id >= <range_start> AND action IN (0, 1, 2, 3)" in skill
     assert "only for segment operation" in skill
     assert "counts/sizes or maximum observed gaps" in skill
     assert "No writable SQL is" in skill
@@ -86,6 +87,26 @@ def test_memory_fragmentation_skill_limits_raw_sql_to_read_only_aggregates() -> 
         "vacuum",
     ):
         assert re.search(rf"\b{statement}\b", raw_sql, re.IGNORECASE) is None
+
+
+def test_memory_fragmentation_skill_applies_one_validated_event_range() -> None:
+    skill = SKILL_PATH.read_text()
+
+    for template in ("memory_peak", "allocator_gap"):
+        command = f"--template-use {template} --params " "'{\"start_id\":<range_start>}'"
+        assert command in skill
+
+    for limitation in (
+        "Omit every upper-bound parameter",
+        "excludes negative synthetic reconstruction rows",
+        "cannot drive dynamic attribution",
+        '"end_id":<range_end>',
+        '"max_id":<range_end>',
+        "AND id <= <range_end>",
+        "reject negative peak event IDs before attribution",
+        "The same validated event range was applied consistently to peaks",
+    ):
+        assert limitation in skill
 
 
 def test_memory_fragmentation_skill_preserves_snapshotdb_boundaries() -> None:

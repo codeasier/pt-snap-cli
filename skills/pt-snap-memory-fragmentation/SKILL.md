@@ -25,13 +25,16 @@ derived from this workflow.
 
 Optional inputs:
 
-- An event range to investigate.
+- An event range to investigate, expressed as the `<range_start>` and
+  `<range_end>` event IDs. Use `0` as `<range_start>` unless a validated
+  explicit lower bound applies. Omit every upper-bound parameter while the
+  scope has no validated upper bound.
 - A positive page size for timeline and event pagination; default `1000`.
 - Selected peak or pressure event IDs for active-block attribution.
 
-Replace `<db_path>`, `<device_id>`, `<page_size>`, `<offset>`, and event-range
-placeholders with validated values before running commands. Quote the database
-path in every command.
+Replace `<db_path>`, `<device_id>`, `<page_size>`, `<offset>`, `<range_start>`,
+and `<range_end>` placeholders with validated values before running commands.
+Quote the database path in every command.
 
 ## Prerequisite Phase
 
@@ -97,9 +100,15 @@ pt-snap report peak-memory --help
 Run:
 
 ```bash
-pt-snap query "<db_path>" --device <device_id> --template-use memory_peak
-pt-snap query "<db_path>" --device <device_id> --template-use allocator_gap
+pt-snap query "<db_path>" --device <device_id> --template-use memory_peak --params '{"start_id":<range_start>}'
+pt-snap query "<db_path>" --device <device_id> --template-use allocator_gap --params '{"start_id":<range_start>}'
 ```
+
+The `start_id` filter keeps peak events inside the validated runtime range;
+with the default `0` it excludes negative synthetic reconstruction rows, which
+could otherwise win a peak and whose IDs cannot drive dynamic attribution
+later. When the scope has a validated upper bound, add `"end_id":<range_end>`
+to both parameter objects.
 
 Use `memory_peak` for the separate allocated, active, and reserved peak values
 and their event IDs. These peaks may occur at different events, so never
@@ -113,16 +122,17 @@ unusable free regions; they are not a direct measurement of fragmentation.
 
 ### 2. Read the event-ordered memory curve in bounded pages
 
-Run `allocation` with a positive page size, `min_id=0`, and increasing offsets:
+Run `allocation` with a positive page size, `min_id=<range_start>`, and
+increasing offsets:
 
 ```bash
-pt-snap query "<db_path>" --device <device_id> --template-use allocation --params '{"min_id":0,"order_by":"id","order_dir":"ASC","limit":<page_size>,"offset":<offset>}'
+pt-snap query "<db_path>" --device <device_id> --template-use allocation --params '{"min_id":<range_start>,"order_by":"id","order_dir":"ASC","limit":<page_size>,"offset":<offset>}'
 ```
 
 Start with offset `0`, increase it by `<page_size>`, and stop when a page has no
 rows. Preserve event order while examining the allocated, active, and reserved
-curve. Use the optional `max_id` parameter consistently on every page when the
-scope has an upper event bound.
+curve. Add `"max_id":<range_end>` consistently on every page when the scope has
+an upper event bound.
 
 Look for sustained rather than isolated gaps, reserved plateaus after active
 memory falls, repeated reserve growth, and whether later allocation activity
@@ -131,14 +141,18 @@ event-ID differences are not durations or rates.
 
 ### 3. Inspect both runtime segment operation pairs
 
-Query all four segment actions with `min_id=0`, bounded pages, and event order:
+Query all four segment actions with `min_id=<range_start>`, bounded pages, and
+event order:
 
 ```bash
-pt-snap query "<db_path>" --device <device_id> --template-use event --params '{"min_id":0,"action":0,"order_by":"id","order_dir":"ASC","limit":<page_size>,"offset":<offset>}'
-pt-snap query "<db_path>" --device <device_id> --template-use event --params '{"min_id":0,"action":1,"order_by":"id","order_dir":"ASC","limit":<page_size>,"offset":<offset>}'
-pt-snap query "<db_path>" --device <device_id> --template-use event --params '{"min_id":0,"action":2,"order_by":"id","order_dir":"ASC","limit":<page_size>,"offset":<offset>}'
-pt-snap query "<db_path>" --device <device_id> --template-use event --params '{"min_id":0,"action":3,"order_by":"id","order_dir":"ASC","limit":<page_size>,"offset":<offset>}'
+pt-snap query "<db_path>" --device <device_id> --template-use event --params '{"min_id":<range_start>,"action":0,"order_by":"id","order_dir":"ASC","limit":<page_size>,"offset":<offset>}'
+pt-snap query "<db_path>" --device <device_id> --template-use event --params '{"min_id":<range_start>,"action":1,"order_by":"id","order_dir":"ASC","limit":<page_size>,"offset":<offset>}'
+pt-snap query "<db_path>" --device <device_id> --template-use event --params '{"min_id":<range_start>,"action":2,"order_by":"id","order_dir":"ASC","limit":<page_size>,"offset":<offset>}'
+pt-snap query "<db_path>" --device <device_id> --template-use event --params '{"min_id":<range_start>,"action":3,"order_by":"id","order_dir":"ASC","limit":<page_size>,"offset":<offset>}'
 ```
+
+When the scope has a validated upper bound, add `"max_id":<range_end>` to every
+page of all four actions.
 
 Interpret the operation pairs separately:
 
@@ -147,10 +161,10 @@ Interpret the operation pairs separately:
 - `2=segment_alloc` and `3=segment_free` describe runtime segment acquisition
   and release operations.
 
-Repeat pagination for each action until no rows remain. The `min_id=0` filter is
-mandatory here because negative IDs are synthetic reconstruction events for
-segments that existed before collection; they are not runtime segment
-operations.
+Repeat pagination for each action until no rows remain. The non-negative
+`min_id` filter is mandatory here because negative IDs are synthetic
+reconstruction events for segments that existed before collection; they are not
+runtime segment operations.
 
 Compare the operation ordering with the memory curve. Repeated map/unmap or
 alloc/free activity can support a segment-churn inference, while reserve growth
@@ -164,7 +178,10 @@ the result retained memory.
 Packaged templates expose ordered event rows and same-event gaps at peak events,
 but they do not aggregate segment operation counts/sizes or locate maximum gaps
 over the full runtime range. Only when one of those aggregates is needed, and
-only when the `sqlite3` CLI is available, use this read-only fallback.
+only when the `sqlite3` CLI is available, use this read-only fallback. Scope
+these aggregates to the same validated range: substitute `<range_start>` for
+the literal `0` in the predicates below, and append `AND id <= <range_end>` to
+every statement when the scope has a validated upper bound.
 
 First validate `<device_id>` as a non-negative decimal integer matching
 `^[0-9]+$`; reject signs, whitespace, separators, and every other character
@@ -182,21 +199,21 @@ SELECT action,
        COALESCE(SUM(size), 0) AS operation_volume_bytes,
        MAX(size) AS largest_operation_bytes
 FROM trace_entry_${device_id}
-WHERE id >= 0 AND action IN (0, 1, 2, 3)
+WHERE id >= <range_start> AND action IN (0, 1, 2, 3)
 GROUP BY action
 ORDER BY action;
 
 SELECT id, allocated, active, reserved,
        reserved - active AS reserved_active_gap
 FROM trace_entry_${device_id}
-WHERE id >= 0
+WHERE id >= <range_start>
 ORDER BY reserved_active_gap DESC, id ASC
 LIMIT 1;
 
 SELECT id, allocated, active, reserved,
        reserved - allocated AS reserved_allocated_gap
 FROM trace_entry_${device_id}
-WHERE id >= 0
+WHERE id >= <range_start>
 ORDER BY reserved_allocated_gap DESC, id ASC
 LIMIT 1;"
 ```
@@ -290,7 +307,12 @@ experiment needs size-bin or contiguous-free-region evidence.
 - Keep separate-event peaks distinct and use `allocator_gap` for same-event
   comparisons.
 - Exclude negative synthetic reconstruction events from runtime segment
-  analysis with `min_id=0` or `id >= 0`.
+  analysis with the validated non-negative `min_id`/`start_id` (default `0`)
+  or `id >= <range_start>`.
+- Apply one validated event range across every phase so peaks, the curve,
+  segment operations, optional aggregates, and attribution inputs share a
+  single scope; reject negative peak event IDs before attribution instead of
+  attributing them.
 - Treat operation counts and size sums as operation volume, not retained bytes.
 - Event IDs are ordering markers, not timestamps.
 - Separate evidence, inference, unknowns, classifications/confidence, and
@@ -304,6 +326,9 @@ experiment needs size-bin or contiguous-free-region evidence.
 - Metadata and required templates were verified before diagnosis.
 - Separate peaks came from `memory_peak`; same-event gaps came from
   `allocator_gap`.
+- The same validated event range was applied consistently to peaks, the
+  ordered curve, segment operation pairs, optional aggregates, and
+  attribution inputs.
 - The allocated/active/reserved curve used paginated, event-ordered `allocation`
   queries.
 - Runtime `segment_map`/`segment_unmap` and `segment_alloc`/`segment_free` were
