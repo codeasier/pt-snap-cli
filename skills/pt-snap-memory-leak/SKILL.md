@@ -127,10 +127,21 @@ Before claiming that the same blocks persisted across the peak:
 The attribution template counts only blocks with `allocEventId != -1` plus static blocks where `allocEventId = -1 AND freeEventId = -1`. Blocks allocated before tracing and freed during the trace (`allocEventId = -1` with `freeEventId >= 0`) are excluded from both groups even while live at a historical event such as the peak. Quantify this unattributed bucket separately instead of absorbing it into a callstack group:
 
 ```bash
-pt-snap query '<db_path>' --device <device_id> --template-use block --params '{"allocEventId":-1,"min_freeEventId":<peak_active_event_id + 1>}' -n 100
+pt-snap query '<db_path>' --device <device_id> --template-use block --params '{"allocEventId":-1,"min_freeEventId":<peak_active_event_id + 1>,"order_by":"id","order_dir":"ASC","limit":100,"offset":<offset>}' -n 100
 ```
 
-Sum the returned sizes as pre-snapshot memory that was live at the analyzed event but has no attributable callstack, and report it next to the static group.
+Page through every matching row before summing: start with offset `0`, increase it by `100` until a page returns no rows, and add each page's `size` values to the total. A single `-n 100` page is a sample, not the full bucket; stopping early silently undercounts the pre-snapshot memory reported as live at the analyzed event.
+
+When the exact total is required, use a read-only aggregate instead of paging. After validating that `<device_id>` is a non-negative decimal integer matching `^[0-9]+$`, run only a `SELECT` through `sqlite3 -readonly`:
+
+```bash
+sqlite3 -readonly '<db_path>' "
+SELECT COUNT(*) AS block_count, COALESCE(SUM(size), 0) AS size_bytes
+FROM block_<device_id>
+WHERE allocEventId = -1 AND freeEventId >= <peak_active_event_id + 1>;"
+```
+
+Report the returned count and total as the complete pre-snapshot bucket that was live at the analyzed event but has no attributable callstack; no row limit applies. If `sqlite3` read-only mode is unavailable, fall back to the paginated sum above.
 
 Occupancy that stays high across both events strengthens retention evidence but does not by itself prove a leak.
 
