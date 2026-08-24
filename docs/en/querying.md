@@ -47,7 +47,7 @@ Aggregation and analysis.
 |----------|-------------|
 | `callstack_analysis` | Analyze callstack information |
 | `memory_peak` | Peak memory metrics |
-| `active_blocks_at_event` | List blocks that are still active at a specific event, with optional static block inclusion |
+| `active_blocks_at_event` | List blocks that are still active at a specific event, with optional static and preexisting live inclusion |
 | `allocator_gap` | Compare allocated, active, and reserved peak events and same-event gaps |
 
 ### Business Queries
@@ -57,7 +57,7 @@ Domain-specific analysis.
 | Template | Description |
 |----------|-------------|
 | `leak_detection` | Find allocations without matching free events |
-| `active_memory_callstack_at_event` | Aggregate blocks active at a specific event by allocation callstack, with static memory classified separately |
+| `active_memory_callstack_at_event` | Aggregate blocks active at a specific event by allocation callstack, with static and preexisting memory classified separately |
 
 ## Leak Detection
 
@@ -88,10 +88,17 @@ pt-snap query --template-use active_blocks_at_event --params '{"event_id": 1234,
 
 `active_blocks_at_event` treats a block as live at `event_id` when:
 
-- `allocEventId <= event_id`
-- and `freeEventId = -1` or `freeEventId > event_id`
+- Dynamic block: `allocEventId != -1 AND allocEventId <= event_id`, and `freeEventId`
+  is `NULL`, negative, or greater than `event_id`
+- Block without a captured allocation event (`allocEventId = -1`): `freeEventId`
+  is `NULL`, negative, or greater than `event_id`
 
-When `include_static=true`, blocks with `allocEventId=-1 AND freeEventId=-1` are also included and labeled as `static`.
+When `include_static=true`, blocks without an allocation event that are still
+live at `event_id` are also included:
+
+- `allocEventId=-1 AND freeEventId=-1` is labeled `static`
+- Other allocation-less live blocks (for example, allocated before snapshot
+  collection began and freed later) are labeled `preexisting_live_at_event`
 
 ### 3. Attribute active memory to callstacks at that event
 
@@ -104,7 +111,11 @@ This query:
 - starts from the active block set at `event_id`
 - joins dynamic blocks back to their allocation events in `trace_entry_<device>`
 - groups by allocation callstack
-- emits static memory as a dedicated group instead of inventing a callstack
+- emits static and preexisting memory as dedicated groups instead of inventing a callstack
+
+`top_n` only bounds dynamic callstack groups; `static` and
+`preexisting_live_at_event` groups are always returned and are never pushed out
+by larger dynamic groups.
 
 ### 4. Compare peak event gaps across metrics
 

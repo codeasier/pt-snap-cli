@@ -47,7 +47,7 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 |------|------|
 | `callstack_analysis` | 调用栈分析 |
 | `memory_peak` | 峰值内存指标 |
-| `active_blocks_at_event` | 查询某个事件时刻仍然活跃的 block，可选包含静态内存 |
+| `active_blocks_at_event` | 查询某个事件时刻仍然活跃的 block，可选包含静态与 preexisting 存活内存 |
 | `allocator_gap` | 比较 allocated、active、reserved 三类峰值事件及其同事件 gap |
 
 ### Business Queries
@@ -57,7 +57,7 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 | 模板 | 说明 |
 |------|------|
 | `leak_detection` | 查找未匹配释放事件的分配 |
-| `active_memory_callstack_at_event` | 对某个事件时刻的活跃内存块按分配调用栈做聚合，并单独标识静态内存 |
+| `active_memory_callstack_at_event` | 对某个事件时刻的活跃内存块按分配调用栈做聚合，并单独标识静态与 preexisting 内存 |
 
 ## 泄漏检测
 
@@ -88,10 +88,13 @@ pt-snap query --template-use active_blocks_at_event --params '{"event_id": 1234,
 
 `active_blocks_at_event` 认为 block 在 `event_id` 时刻仍然活跃的条件是：
 
-- `allocEventId <= event_id`
-- 且 `freeEventId = -1` 或 `freeEventId > event_id`
+- 动态 block：`allocEventId != -1 AND allocEventId <= event_id`，且 `freeEventId` 为 `NULL`、负数或大于 `event_id`
+- 无分配事件的 block（`allocEventId = -1`）：`freeEventId` 为 `NULL`、负数或大于 `event_id`
 
-当 `include_static=true` 时，还会包含 `allocEventId=-1 AND freeEventId=-1` 的 block，并标记为 `static`。
+当 `include_static=true` 时，还会包含无分配事件且在 `event_id` 时刻仍活跃的 block：
+
+- `allocEventId=-1 AND freeEventId=-1` 标记为 `static`
+- 其余无分配事件但存活的 block（例如快照采集前已分配、之后才释放）标记为 `preexisting_live_at_event`
 
 ### 3. 对该时刻的活跃内存做调用栈归因
 
@@ -104,7 +107,9 @@ pt-snap query --template-use active_memory_callstack_at_event --params '{"event_
 - 先从 `event_id` 时刻的活跃 block 集合开始
 - 把动态 block 回连到 `trace_entry_<device>` 的分配事件
 - 按分配调用栈做聚合
-- 对静态内存单独分组，而不是伪造调用栈
+- 对静态内存和 preexisting 内存单独分组，而不是伪造调用栈
+
+`top_n` 只限制动态调用栈分组的数量；`static` 和 `preexisting_live_at_event` 分组始终返回，不会被更大的动态分组挤出结果。
 
 ### 4. 比较不同指标的峰值与 gap
 
