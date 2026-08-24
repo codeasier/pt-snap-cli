@@ -160,8 +160,13 @@ pt-snap query "<DB>" --device <DEVICE> --template-use memory_peak --params '{"st
 pt-snap query "<DB>" --device <DEVICE> --template-use allocator_gap --params '{"start_id": <START_ID>, "end_id": <END_ID>}'
 ```
 
-Record all three range peaks and their earliest tied event IDs. Choose the
-requested metric's returned event, then run point-in-time attribution there:
+Record all three range peaks and their earliest tied event IDs. Guard against
+an empty range before selecting anything: if either bounded result has no row,
+or its peak values or event IDs are `NULL`, the selected range is empty — stop
+and report that no peak event was returned. Never fabricate an event ID,
+substitute a full-trace value, or run the attribution commands in that case.
+Choose the requested metric's returned event, then run point-in-time
+attribution there:
 
 ```bash
 pt-snap query "<DB>" --device <DEVICE> --template-use active_memory_callstack_at_event --params '{"event_id": <EVENT_ID>, "include_static": true, "top_n": <LIMIT>}' -n <LIMIT>

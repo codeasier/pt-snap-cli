@@ -124,6 +124,9 @@ def test_range_fallback_and_peak_event_semantics_are_explicit() -> None:
     assert "--template-use active_memory_callstack_at_event --params" in skill
     assert "Peak ties resolve to the earliest event ID" in normalized
     assert "Record same-event counters and gaps" in skill
+    assert "Guard against\nan empty range before selecting anything" in skill
+    assert "its peak values or event IDs are `NULL`" in normalized
+    assert "Never fabricate an event ID,\nsubstitute a full-trace value" in skill
 
 
 def test_preexisting_live_blocks_are_attributed_and_exempt_from_truncation() -> None:
