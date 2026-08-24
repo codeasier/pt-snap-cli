@@ -118,13 +118,15 @@ Use the `peak_active_event_id` returned by `memory_peak`:
 pt-snap query '<db_path>' --device <device_id> --template-use active_memory_callstack_at_event --params '{"event_id":<peak_active_event_id>,"include_static":true,"min_size":0,"top_n":20}'
 ```
 
-Treat this as an occupancy comparison between two independent aggregates, not a block-identity survival test. Each query groups whatever was live at its own event, and `top_n` truncation can make a group disappear from one result. A peak block may have been freed while an equal-sized later block from the same callstack was live at the final event, which keeps the callstack row stable without any block surviving.
+Treat this as an occupancy comparison between two independent aggregates, not a block-identity survival test. Each query groups whatever was live at its own event, and `top_n` truncation applies to dynamic callstack groups only; the static and preexisting groups are always returned in full. A peak block may have been freed while an equal-sized later block from the same callstack was live at the final event, which keeps the callstack row stable without any block surviving.
 
 Before claiming that the same blocks persisted across the peak:
 - Match representative blocks by identity: the same `id`/address plus allocation event ID must appear live at both events.
 - Confirm continuity through lifecycle checks in Step 5; occupancy stability alone is not survival evidence.
 
-The attribution template counts only blocks with `allocEventId != -1` plus static blocks where `allocEventId = -1 AND freeEventId = -1`. Blocks allocated before tracing and freed during the trace (`allocEventId = -1` with `freeEventId >= 0`) are excluded from both groups even while live at a historical event such as the peak. Quantify this unattributed bucket separately instead of absorbing it into a callstack group:
+The template separates blocks without a captured allocation event into their own groups instead of attributing them to callstacks: `[static] allocEventId=-1, freeEventId=-1`, and `[preexisting live] allocEventId=-1` for blocks allocated before tracing that were still live at the analyzed event because their recorded free event came later or does not exist. Pre-tracing blocks whose free event precedes the analyzed event are correctly absent because they were no longer live. Report each group separately instead of absorbing it into a callstack group.
+
+For an exact cross-check of the `[preexisting live]` bucket — for example against a database imported before this grouping existed — quantify it with a bounded, ordered scan:
 
 ```bash
 pt-snap query '<db_path>' --device <device_id> --template-use block --params '{"allocEventId":-1,"min_freeEventId":<peak_active_event_id + 1>,"order_by":"id","order_dir":"ASC","limit":100,"offset":<offset>}' -n 100
@@ -141,7 +143,7 @@ FROM block_<device_id>
 WHERE allocEventId = -1 AND freeEventId >= <peak_active_event_id + 1>;"
 ```
 
-Report the returned count and total as the complete pre-snapshot bucket that was live at the analyzed event but has no attributable callstack; no row limit applies. If `sqlite3` read-only mode is unavailable, fall back to the paginated sum above.
+Report the returned count and total as the complete `[preexisting live]` bucket that was live at the analyzed event but has no attributable callstack; no row limit applies. If `sqlite3` read-only mode is unavailable, fall back to the paginated sum above.
 
 Occupancy that stays high across both events strengthens retention evidence but does not by itself prove a leak.
 
@@ -206,7 +208,7 @@ Report results in this order:
 1. `Analysis scope`: database path, device ID, final event ID, and candidate threshold.
 2. `Memory baseline`: separate allocated, active, and reserved peaks with their event IDs and same-event gaps.
 3. `End-of-trace evidence`: dynamic candidate count, dynamic bytes by callstack, static bytes, and representative blocks.
-4. `Peak-occupancy evidence`: callstack bytes and block counts at the active peak versus the final event, identity-matched blocks if any, and pre-snapshot memory that was live at the peak but unattributed.
+4. `Peak-occupancy evidence`: callstack bytes and block counts at the active peak versus the final event, identity-matched blocks if any, and static plus `[preexisting live]` memory that carries no per-callstack attribution.
 5. `Lifecycle evidence`: representative alloc, free-requested, and free-completed event IDs, with ambiguities called out.
 6. `Findings`: category, confidence, evidence, inference, and affected callstack or allocation family.
 7. `Unknowns`: missing timing, ownership, capture-boundary, callstack, or repeated-capture evidence.
@@ -219,7 +221,7 @@ Useful validation experiments include repeated snapshots at equivalent workload 
 - Keep SnapshotDB access read-only. Never run `create`, `insert`, `update`, `delete`, `drop`, `alter`, `replace`, `attach`, `detach`, `reindex`, or `vacuum` SQL.
 - Do not persist focus, configuration, reports, exports, scratch databases, or readiness files.
 - Do not import or deserialize pickle snapshots.
-- Prefer packaged `pt-snap` templates. Use raw SQLite only for the optional lifetime aggregate that templates do not expose.
+- Prefer packaged `pt-snap` templates. Use raw SQLite only for the two documented read-only aggregates that templates do not expose: the freed-block lifetime baseline (Step 6) and the exact `[preexisting live]` total (Step 4).
 - Do not call every allocation without a free event a leak.
 - Separate cumulative allocation volume from memory simultaneously live at an event.
 - Keep static memory separate from dynamic candidates.
@@ -238,7 +240,7 @@ Useful validation experiments include repeated snapshots at equivalent workload 
 - End-of-trace dynamic candidates and static memory were reported separately.
 - Active-peak and final-event callstack attribution used the same device.
 - Peak-versus-final comparisons were reported as occupancy, and persistence claims relied on identity-matched blocks.
-- Pre-snapshot memory live at historical events was quantified separately from static memory.
+- Preexisting-live memory was reported separately from static and dynamic groups, with exact totals taken only from the documented read-only aggregates.
 - Address-event listings stayed bounded with paging or event-ID windows.
 - Database paths were single-quoted or passed through argument arrays without shell re-parsing.
 - Representative lifecycle events were checked for address reuse and ambiguous pairing.

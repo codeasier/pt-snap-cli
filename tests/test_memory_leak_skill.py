@@ -76,8 +76,18 @@ def test_memory_leak_skill_reports_occupancy_with_identity_evidence() -> None:
 
     assert "occupancy comparison" in skill
     assert "not a block-identity survival test" in skill
-    assert "`top_n` truncation" in skill
+    assert "`top_n` truncation applies to dynamic callstack groups only" in skill
+    assert "static and preexisting groups are always returned in full" in skill
     assert "Match representative blocks by identity" in skill
+
+
+def test_memory_leak_skill_matches_current_preexisting_group_semantics() -> None:
+    skill = SKILL_PATH.read_text()
+
+    assert "`[preexisting live] allocEventId=-1`" in skill
+    assert "[static] allocEventId=-1, freeEventId=-1" in skill
+    assert "are excluded from both groups" not in skill
+    assert "counts only blocks with `allocEventId != -1`" not in skill
 
 
 def test_memory_leak_skill_quantifies_unattributed_pre_snapshot_memory() -> None:
@@ -107,6 +117,12 @@ def test_memory_leak_skill_offers_read_only_aggregate_for_exact_total() -> None:
     assert "WHERE allocEventId = -1 AND freeEventId >= <peak_active_event_id + 1>" in skill
     assert "no row limit applies" in skill
     assert "fall back to the paginated sum above" in skill
+
+    guardrail = "two documented read-only aggregates that templates do not expose"
+    assert guardrail in skill
+    assert "only for the optional lifetime aggregate" not in skill
+    assert "the freed-block lifetime baseline (Step 6)" in skill
+    assert "the exact `[preexisting live]` total (Step 4)" in skill
 
 
 def test_memory_leak_skill_keeps_result_listings_bounded() -> None:
