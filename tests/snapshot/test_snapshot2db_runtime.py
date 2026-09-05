@@ -18,6 +18,7 @@ from .golden_observations import (
     ACTION_VALUE_MAP,
     BLOCK_SCHEMA,
     BLOCK_STATE_VALUE_MAP,
+    CALLSTACK_SCHEMA,
     DATABASE_GOLDEN,
     TRACE_SCHEMA,
 )
@@ -128,8 +129,10 @@ def test_fast_frame_import_matches_eager_database_exactly(monkeypatch, tmp_path)
         assert snapshot2db.dump(snapshot, database, 0)
         with sqlite3.connect(database) as connection:
             return connection.execute(
-                "SELECT id, action, address, size, stream, allocated, active, reserved, callstack "
-                "FROM trace_entry_0 ORDER BY id"
+                "SELECT t.id, t.action, t.address, t.size, t.stream, "
+                "t.allocated, t.active, t.reserved, c.callstack "
+                "FROM trace_entry_0 t JOIN callstack c ON c.id = t.callstackId "
+                "ORDER BY t.id"
             ).fetchall()
 
     eager_rows = dump_rows(tmp_path / "eager.db", eager=True)
@@ -322,7 +325,14 @@ def test_dump_all_multiple_device_snapshot(dump_database):
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             ).fetchall()
         }
-    assert tables == {"dictionary", "trace_entry_0", "block_0", "trace_entry_1", "block_1"}
+    assert tables == {
+        "callstack",
+        "dictionary",
+        "trace_entry_0",
+        "block_0",
+        "trace_entry_1",
+        "block_1",
+    }
 
 
 def negative_id_observation(connection, table):
@@ -360,7 +370,9 @@ def test_database_matches_pre_relocation_golden(dump_database, fixture_name, dev
             "WHERE id >= 0 ORDER BY id DESC LIMIT 1"
         ).fetchone()
         callstacks = connection.execute(
-            f"SELECT COUNT(*) FROM {trace_table} WHERE callstack != ''"
+            f"SELECT COUNT(*) FROM {trace_table} t "
+            "JOIN callstack c ON c.id = t.callstackId "
+            "WHERE c.callstack != ''"
         ).fetchone()[0]
 
         assert rows == golden["rows"]
@@ -384,6 +396,7 @@ def test_database_schema_and_action_state_mapping_are_exact(dump_database):
     assert RUNTIME_ACTION_VALUE_MAP == ACTION_VALUE_MAP
     assert RUNTIME_BLOCK_STATE_VALUE_MAP == BLOCK_STATE_VALUE_MAP
     with sqlite3.connect(database) as connection:
+        assert connection.execute("PRAGMA table_info(callstack)").fetchall() == CALLSTACK_SCHEMA
         for device in (0, 1):
             assert (
                 connection.execute(f"PRAGMA table_info(trace_entry_{device})").fetchall()
@@ -427,9 +440,29 @@ def test_callstack_serialization_preserves_frame_order(dump_database):
     _, database = dump_database("snapshot_1768383987920985470.pkl", 0)
     with sqlite3.connect(database) as connection:
         callstack = connection.execute(
-            "SELECT callstack FROM trace_entry_0 WHERE callstack LIKE '%\n%' LIMIT 1"
+            "SELECT c.callstack FROM trace_entry_0 t "
+            "JOIN callstack c ON c.id = t.callstackId "
+            "WHERE c.callstack LIKE '%\n%' LIMIT 1"
         ).fetchone()[0]
 
     lines = callstack.splitlines()
     assert len(lines) >= 2
     assert all(":" in line and " " in line for line in lines)
+
+
+def test_callstack_table_is_deduplicated_and_covers_every_event(dump_database):
+    _, database = dump_database("snapshot_1768383987920985470.pkl", 0)
+    with sqlite3.connect(database) as connection:
+        rows, distinct_ids, distinct_texts = connection.execute(
+            "SELECT COUNT(*), COUNT(DISTINCT id), COUNT(DISTINCT callstack) FROM callstack"
+        ).fetchone()
+        events, resolved = connection.execute(
+            "SELECT COUNT(*), COUNT(c.id) FROM trace_entry_0 t "
+            "LEFT JOIN callstack c ON c.id = t.callstackId"
+        ).fetchone()
+
+    # One row per distinct text keeps grouping by id equivalent to grouping by text.
+    assert rows == distinct_ids == distinct_texts
+    # Every event resolves to a callstack row, and interning actually collapses rows.
+    assert resolved == events
+    assert rows < events

@@ -48,7 +48,7 @@ queries:
           CASE
             WHEN b.category = 'static' THEN '[static] allocEventId=-1, freeEventId=-1'
             WHEN b.category = 'preexisting_live_at_event' THEN '[preexisting live] allocEventId=-1'
-            ELSE COALESCE(t.callstack, '[missing callstack]')
+            ELSE COALESCE(cs.callstack, '[missing callstack]')
           END AS callstack,
           b.category,
           COUNT(*) AS block_count,
@@ -59,6 +59,8 @@ queries:
         FROM active_blocks b
         LEFT JOIN {{ device_trace_table }} t
           ON b.allocEventId = t.id
+        LEFT JOIN callstack cs
+          ON t.callstackId = cs.id
         GROUP BY callstack, b.category
       ),
       ranked_dynamic AS (

@@ -9,6 +9,8 @@ import yaml
 
 from .descriptors import DescriptorError
 
+# Fixture YAML keeps authoring the callstack as text per trace row; the builder
+# interns it into the shared `callstack` table that SnapshotDB now emits.
 TRACE_COLUMNS = (
     "id",
     "action",
@@ -20,6 +22,8 @@ TRACE_COLUMNS = (
     "reserved",
     "callstack",
 )
+_TRACE_TABLE_COLUMNS = (*TRACE_COLUMNS[:-1], "callstackId")
+_CALLSTACK_INDEX = TRACE_COLUMNS.index("callstack")
 BLOCK_COLUMNS = (
     "id",
     "address",
@@ -77,6 +81,8 @@ def build_snapshotdb(definition_path: Path, output_path: Path, *, read_only: boo
         connection.execute(
             "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
         )
+        connection.execute("CREATE TABLE callstack (id INTEGER PRIMARY KEY, callstack TEXT)")
+        callstack_ids: dict[str, int] = {}
         for raw_device_id, device in definition["devices"].items():
             device_id = int(raw_device_id)
             connection.execute(f"""
@@ -89,7 +95,7 @@ def build_snapshotdb(definition_path: Path, output_path: Path, *, read_only: boo
                     allocated INTEGER,
                     active INTEGER,
                     reserved INTEGER,
-                    callstack TEXT
+                    callstackId INTEGER
                 )
                 """)
             connection.execute(f"""
@@ -105,9 +111,24 @@ def build_snapshotdb(definition_path: Path, output_path: Path, *, read_only: boo
                 """)
             trace_rows = _rows(device["trace"], TRACE_COLUMNS, f"device {device_id}.trace")
             block_rows = _rows(device["blocks"], BLOCK_COLUMNS, f"device {device_id}.blocks")
-            placeholders = ", ".join("?" for _ in TRACE_COLUMNS)
+            interned_rows: list[tuple[Any, ...]] = []
+            for row in trace_rows:
+                callstack = row[_CALLSTACK_INDEX]
+                if callstack is None:
+                    callstack_id = None
+                else:
+                    callstack_id = callstack_ids.get(callstack)
+                    if callstack_id is None:
+                        callstack_id = len(callstack_ids)
+                        callstack_ids[callstack] = callstack_id
+                        connection.execute(
+                            "INSERT INTO callstack (id, callstack) VALUES (?, ?)",
+                            (callstack_id, callstack),
+                        )
+                interned_rows.append((*row[:_CALLSTACK_INDEX], callstack_id))
+            placeholders = ", ".join("?" for _ in _TRACE_TABLE_COLUMNS)
             connection.executemany(
-                f"INSERT INTO trace_entry_{device_id} VALUES ({placeholders})", trace_rows
+                f"INSERT INTO trace_entry_{device_id} VALUES ({placeholders})", interned_rows
             )
             placeholders = ", ".join("?" for _ in BLOCK_COLUMNS)
             connection.executemany(

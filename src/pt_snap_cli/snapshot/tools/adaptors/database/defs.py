@@ -7,6 +7,11 @@ class EventFieldDefs:
     ALLOCATED = "allocated"
     ACTIVE = "active"
     RESERVED = "reserved"
+    CALLSTACK_ID = "callstackId"
+
+
+class CallstackFieldDefs:
+    ID = "id"
     CALLSTACK = "callstack"
 
 

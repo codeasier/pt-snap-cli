@@ -24,16 +24,25 @@ queries:
         description: Maximum rows to return (-1 for unlimited). Mirrored from the caller-side ``max_rows`` for SQL pushdown.
     query: |
       SELECT
-        callstack,
-        COUNT(*) as alloc_count,
-        SUM(size) as total_size,
-        AVG(size) as avg_size,
-        MAX(size) as max_size
-      FROM {{ device_trace_table }}
-      WHERE callstack IS NOT NULL
-      GROUP BY callstack
-      HAVING alloc_count >= {{ min_count }}
-        AND total_size >= {{ min_size }}
+        c.callstack AS callstack,
+        grouped.alloc_count AS alloc_count,
+        grouped.total_size AS total_size,
+        grouped.avg_size AS avg_size,
+        grouped.max_size AS max_size
+      FROM (
+        SELECT
+          callstackId,
+          COUNT(*) as alloc_count,
+          SUM(size) as total_size,
+          AVG(size) as avg_size,
+          MAX(size) as max_size
+        FROM {{ device_trace_table }}
+        WHERE callstackId IS NOT NULL
+        GROUP BY callstackId
+        HAVING alloc_count >= {{ min_count }}
+          AND total_size >= {{ min_size }}
+      ) AS grouped
+      JOIN callstack c ON c.id = grouped.callstackId
       ORDER BY total_size DESC, callstack ASC
       LIMIT {{ limit|int }}
     output_schema:

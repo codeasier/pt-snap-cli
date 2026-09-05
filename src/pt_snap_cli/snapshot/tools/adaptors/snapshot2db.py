@@ -6,19 +6,27 @@ from ...base import Block, BlockState, DeviceSnapshot, TraceEntry
 from ...representation import UnsafePickleError, load_snapshot_representation, replay_snapshot
 from ...simulate import AllocatorHooker, SimulateHooker
 from ...util.logger import get_logger, set_global_log_file
-from .database import SnapshotDb, block2record, event2record
+from .database import CallstackInterner, SnapshotDb, block2record, event2record
 
 dump_logger = get_logger("DatabaseDump")
 
 
+# Import stages rows in a temporary database and only publishes it after a
+# successful replay, so batches are sized for throughput rather than durability.
+DEFAULT_INSERT_CACHE_SIZE = 10000
+
+
 class SnapshotDbHandler:
-    def __init__(self, db_path: str, devices: list[int], insert_cache_size: int = 1000):
+    def __init__(
+        self, db_path: str, devices: list[int], insert_cache_size: int = DEFAULT_INSERT_CACHE_SIZE
+    ):
         self._closed = False
         self.db_path = db_path
         self.db = SnapshotDb(db_path)
         self._device_event_cache = {}
         self._device_block_cache = {}
         self._insert_cache_size = insert_cache_size
+        self.db.create_callstack_table()
         for device in devices:
             self._device_block_cache[device] = []
             self._device_event_cache[device] = []
@@ -44,6 +52,13 @@ class SnapshotDbHandler:
             self._do_insert_events(device)
         if self._device_block_cache.get(device, None):
             self._do_insert_blocks(device)
+
+    def insert_callstacks(self, records: list[dict]):
+        """Write the interned callstack table once every device has replayed."""
+        if not records:
+            return
+        self.db.get_callstack_table().insert_records(self.db.conn, records)
+        self.db.conn.commit()
 
     def _do_insert_events(self, device: int = 0):
         if device not in self._device_event_cache:
@@ -79,8 +94,12 @@ class SnapshotDbHandler:
 
 
 class DumpEventHooker(SimulateHooker, AllocatorHooker):
-    def __init__(self, db_path: str, devices: list[int], dump_cache_size: int = 1000):
+    def __init__(
+        self, db_path: str, devices: list[int], dump_cache_size: int = DEFAULT_INSERT_CACHE_SIZE
+    ):
         self.db_handler = SnapshotDbHandler(db_path, devices, insert_cache_size=dump_cache_size)
+        # One interner for the whole dump so devices share identical callstacks.
+        self.callstacks = CallstackInterner()
 
     def post_undo_event(
         self, already_undo_event: TraceEntry, current_snapshot: DeviceSnapshot
@@ -107,6 +126,7 @@ class DumpEventHooker(SimulateHooker, AllocatorHooker):
                         allocated=current_snapshot.total_allocated,
                         active=current_snapshot.total_activated,
                         reserved=current_snapshot.total_reserved,
+                        callstacks=self.callstacks,
                     ),
                     current_snapshot.device,
                 )
@@ -120,6 +140,7 @@ class DumpEventHooker(SimulateHooker, AllocatorHooker):
                 allocated=current_snapshot.total_allocated,
                 active=current_snapshot.total_activated,
                 reserved=current_snapshot.total_reserved,
+                callstacks=self.callstacks,
             ),
             current_snapshot.device,
         )
@@ -130,6 +151,9 @@ class DumpEventHooker(SimulateHooker, AllocatorHooker):
 
     def flush(self, device: int = 0):
         self.db_handler.flush(device)
+
+    def flush_callstacks(self):
+        self.db_handler.insert_callstacks(self.callstacks.records())
 
     def close(self, *, commit: bool = True):
         self.db_handler.close(commit=commit)
@@ -179,8 +203,10 @@ def dump(pickle_file: str, dump_file: str, device=None) -> bool:
                 return False
             dump_logger.info(f"Finished dump the snapshot to database for device {device}.")
             hooker.flush(device)
+        hooker.flush_callstacks()
         dump_logger.info(
-            f"Successfully dump the snapshot to database for devices {need_dump_devices}."
+            f"Successfully dump the snapshot to database for devices {need_dump_devices}, "
+            f"{len(hooker.callstacks)} distinct callstacks."
         )
         hooker.close()
         os.replace(temporary_path, dump_path)

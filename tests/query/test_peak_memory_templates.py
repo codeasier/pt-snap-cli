@@ -43,9 +43,24 @@ def peak_memory_db(tmp_path: Path) -> Path:
             allocated INTEGER,
             active INTEGER,
             reserved INTEGER,
+            callstackId INTEGER
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE callstack (
+            id INTEGER PRIMARY KEY,
             callstack TEXT
         )
     """)
+    conn.executemany(
+        "INSERT INTO callstack (id, callstack) VALUES (?, ?)",
+        [
+            (0, "train.py:10"),
+            (1, "freed.py:20"),
+            (2, "free.py:30"),
+            (3, "after.py:40"),
+        ],
+    )
     conn.execute("""
         CREATE TABLE block_0 (
             id INTEGER PRIMARY KEY,
@@ -61,14 +76,14 @@ def peak_memory_db(tmp_path: Path) -> Path:
     conn.executemany(
         """
         INSERT INTO trace_entry_0
-          (id, action, address, size, stream, allocated, active, reserved, callstack)
+          (id, action, address, size, stream, allocated, active, reserved, callstackId)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
-            (1, 2, 0x1000, 1024, 0, 1024, 1024, 4096, "train.py:10"),
-            (2, 2, 0x2000, 2048, 0, 3072, 3072, 4096, "freed.py:20"),
-            (3, 3, 0x2000, 2048, 0, 1024, 1024, 8192, "free.py:30"),
-            (4, 2, 0x4000, 4096, 0, 5120, 5120, 8192, "after.py:40"),
+            (1, 2, 0x1000, 1024, 0, 1024, 1024, 4096, 0),
+            (2, 2, 0x2000, 2048, 0, 3072, 3072, 4096, 1),
+            (3, 3, 0x2000, 2048, 0, 1024, 1024, 8192, 2),
+            (4, 2, 0x4000, 4096, 0, 5120, 5120, 8192, 3),
             (5, 2, 0x5000, 512, 0, 5632, 5632, 8192, None),
         ],
     )
@@ -309,15 +324,19 @@ def test_active_memory_callstack_at_event_keeps_special_groups_beyond_top_n(
 ) -> None:
     conn = sqlite3.connect(str(peak_memory_db))
     conn.executemany(
+        "INSERT INTO callstack (id, callstack) VALUES (?, ?)",
+        [(10, "a.py:1"), (11, "b.py:2"), (12, "c.py:3")],
+    )
+    conn.executemany(
         """
         INSERT INTO trace_entry_0
-          (id, action, address, size, stream, allocated, active, reserved, callstack)
+          (id, action, address, size, stream, allocated, active, reserved, callstackId)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
-            (-101, 2, 0x11000, 20000, 0, 0, 0, 0, "a.py:1"),
-            (-102, 2, 0x12000, 18000, 0, 0, 0, 0, "b.py:2"),
-            (-103, 2, 0x13000, 16000, 0, 0, 0, 0, "c.py:3"),
+            (-101, 2, 0x11000, 20000, 0, 0, 0, 0, 10),
+            (-102, 2, 0x12000, 18000, 0, 0, 0, 0, 11),
+            (-103, 2, 0x13000, 16000, 0, 0, 0, 0, 12),
         ],
     )
     conn.executemany(

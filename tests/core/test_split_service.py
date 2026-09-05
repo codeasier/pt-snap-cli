@@ -128,10 +128,13 @@ def _database_observation(
     )
     assert replayed
     hooker.flush(device)
+    hooker.flush_callstacks()
     connection = hooker.db_handler.db.conn
     trace_rows = connection.execute(
-        f"SELECT id, action, address, size, stream, allocated, active, reserved, callstack "
-        f"FROM trace_entry_{device} ORDER BY id"
+        f"SELECT t.id, t.action, t.address, t.size, t.stream, "
+        f"t.allocated, t.active, t.reserved, c.callstack "
+        f"FROM trace_entry_{device} t JOIN callstack c ON c.id = t.callstackId "
+        f"ORDER BY t.id"
     ).fetchall()
     block_rows = connection.execute(
         f"SELECT id, address, size, requestedSize, state, allocEventId, freeEventId "

@@ -336,9 +336,18 @@ class SqliteTable:
         """
         if not records:
             return []
+        # Resolve the per-column value maps once instead of per cell; batches of
+        # snapshot rows are large enough that the per-cell lookup dominated.
+        keys = list(records[0].keys())
+        mapped = [(key, self._column_value_map.get(key)) for key in keys]
+        if not any(value_map for _, value_map in mapped):
+            return [tuple(record[key] for key in keys) for record in records]
         return [
-            tuple(self._column_value_map.get(k, {}).get(r[k], r[k]) for k in records[0].keys())
-            for r in records
+            tuple(
+                record[key] if value_map is None else value_map.get(record[key], record[key])
+                for key, value_map in mapped
+            )
+            for record in records
         ]
 
 

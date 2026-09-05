@@ -82,6 +82,12 @@ def callstack_db(tmp_path: Path) -> Path:
         CREATE TABLE trace_entry_0 (
             id INTEGER PRIMARY KEY,
             size INTEGER,
+            callstackId INTEGER
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE callstack (
+            id INTEGER PRIMARY KEY,
             callstack TEXT
         )
     """)
@@ -89,7 +95,7 @@ def callstack_db(tmp_path: Path) -> Path:
     # actually has something to drop:
     #   * 4 callstacks have 10+ entries (pass min_count=5)
     #   * 2 callstacks have 4 entries each (fail min_count=5)
-    rows: list[tuple[int, int, str | None]] = []
+    rows: list[tuple[int, int, int]] = []
     callstacks = [
         ("train.py:10", 12),
         ("train.py:20", 11),
@@ -98,11 +104,15 @@ def callstack_db(tmp_path: Path) -> Path:
         ("noise.py:50", 4),
         ("noise.py:60", 4),
     ]
-    for cs, count in callstacks:
-        for _ in range(count):
-            rows.append((len(rows) + 1, 100, cs))
     conn.executemany(
-        "INSERT INTO trace_entry_0 (id, size, callstack) VALUES (?, ?, ?)",
+        "INSERT INTO callstack (id, callstack) VALUES (?, ?)",
+        [(index, text) for index, (text, _) in enumerate(callstacks)],
+    )
+    for index, (_, count) in enumerate(callstacks):
+        for _ in range(count):
+            rows.append((len(rows) + 1, 100, index))
+    conn.executemany(
+        "INSERT INTO trace_entry_0 (id, size, callstackId) VALUES (?, ?, ?)",
         rows,
     )
     conn.commit()

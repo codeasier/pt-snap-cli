@@ -97,6 +97,12 @@ def create_peak_report_db(db_path: Path) -> Path:
             allocated INTEGER,
             active INTEGER,
             reserved INTEGER,
+            callstackId INTEGER
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE callstack (
+            id INTEGER PRIMARY KEY,
             callstack TEXT
         )
     """)
@@ -112,16 +118,25 @@ def create_peak_report_db(db_path: Path) -> Path:
         )
     """)
     conn.executemany(
+        "INSERT INTO callstack (id, callstack) VALUES (?, ?)",
+        [
+            (0, "train.py:10"),
+            (1, "block.py:20"),
+            (2, "free.py:30"),
+            (3, "after.py:40"),
+        ],
+    )
+    conn.executemany(
         """
         INSERT INTO trace_entry_0
-          (id, action, address, size, stream, allocated, active, reserved, callstack)
+          (id, action, address, size, stream, allocated, active, reserved, callstackId)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
-            (1, 2, 0x1000, 1024, 0, 1024, 1024, 4096, "train.py:10"),
-            (2, 2, 0x2000, 2048, 0, 3072, 3072, 4096, "block.py:20"),
-            (3, 3, 0x2000, 2048, 0, 1024, 1024, 8192, "free.py:30"),
-            (4, 2, 0x4000, 4096, 0, 5120, 5120, 8192, "after.py:40"),
+            (1, 2, 0x1000, 1024, 0, 1024, 1024, 4096, 0),
+            (2, 2, 0x2000, 2048, 0, 3072, 3072, 4096, 1),
+            (3, 3, 0x2000, 2048, 0, 1024, 1024, 8192, 2),
+            (4, 2, 0x4000, 4096, 0, 5120, 5120, 8192, 3),
         ],
     )
     conn.executemany(

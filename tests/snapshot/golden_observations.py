@@ -126,7 +126,12 @@ TRACE_SCHEMA = [
     (5, "allocated", "INTEGER", 0, None, 0),
     (6, "active", "INTEGER", 0, None, 0),
     (7, "reserved", "INTEGER", 0, None, 0),
-    (8, "callstack", "TEXT", 0, None, 0),
+    (8, "callstackId", "INTEGER", 0, None, 0),
+]
+
+CALLSTACK_SCHEMA = [
+    (0, "id", "INTEGER", 0, None, 1),
+    (1, "callstack", "TEXT", 0, None, 0),
 ]
 
 BLOCK_SCHEMA = [

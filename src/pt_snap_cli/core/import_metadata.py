@@ -20,7 +20,9 @@ from pt_snap_cli.core.models import (
 
 METADATA_TABLE = "pt_snap_metadata"
 METADATA_SCHEMA_VERSION = 1
-IMPORT_FORMAT_VERSION = 1
+# 2: trace_entry_<device> stores `callstackId` referencing the shared `callstack`
+# table instead of an inlined `callstack` text column.
+IMPORT_FORMAT_VERSION = 2
 IMPORTER_NAME = "pt-snap-cli"
 HASH_CHUNK_SIZE = 1024 * 1024
 
