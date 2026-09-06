@@ -90,6 +90,11 @@ addopts = "-v --tb=short"
 [tool.basedpyright]
 pythonVersion = "3.13"
 include = ["src/pt_snap_cli"]
+# basedpyright exits non-zero on warnings by default. The gate is "no errors";
+# warnings (mostly reportUnknown* noise from third-party stubs) are informational.
+# Without this, the result depends on how well-typed the installed typer happens
+# to be, which is why the check passed in CI yet failed on developer machines.
+failOnWarnings = false
 
 # The snapshot runtime was migrated from its upstream project with its original
 # loose annotations (issue #122, phase 3). Only the rules it currently violates are
