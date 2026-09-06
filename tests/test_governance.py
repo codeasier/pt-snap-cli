@@ -217,6 +217,31 @@ def test_old_source_identity_is_confined_to_fixed_evidence_allowlist() -> None:
     assert not unsupported_hits
 
 
+USER_INSTALL_DOCS = (
+    Path("README.md"),
+    Path("README_zh.md"),
+    Path("docs/en/quickstart.md"),
+    Path("docs/zh/quickstart.md"),
+    Path("docs/en/mcp.md"),
+    Path("docs/zh/mcp.md"),
+)
+PYPI_INSTALL = "pip install pt-snap-cli"
+EDITABLE_DEV_INSTALL = 'pip install -e ".[dev]"'
+
+
+def test_user_docs_prefer_pypi_install() -> None:
+    for path in USER_INSTALL_DOCS:
+        text = path.read_text()
+        pypi_at = text.find(PYPI_INSTALL)
+        editable_at = text.find("pip install -e")
+        assert pypi_at != -1, f"{path} must document `{PYPI_INSTALL}`"
+        if editable_at != -1:
+            assert pypi_at < editable_at, f"{path} must list PyPI install before editable install"
+        assert (
+            EDITABLE_DEV_INSTALL in text or "Development" in text or "开发" in text
+        ), f"{path} must keep a contributor/source-install path"
+
+
 def test_bilingual_docs_record_split_and_pickle_security_contract() -> None:
     for path in (Path("docs/en/splitting.md"), Path("docs/zh/splitting.md")):
         text = path.read_text()
