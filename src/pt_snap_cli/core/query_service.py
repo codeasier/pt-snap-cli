@@ -72,18 +72,17 @@ class QueryService:
             if category is not None
             else list_queries_with_details()
         )
-        return [
-            TemplateSummary(
-                name=row["name"],
-                description=row["description"],
-                category=(
-                    get_query(row["name"]).category
-                    if get_query(row["name"]) is not None
-                    else category
-                ),
+        summaries: list[TemplateSummary] = []
+        for row in template_rows:
+            template = get_query(row["name"])
+            summaries.append(
+                TemplateSummary(
+                    name=row["name"],
+                    description=row["description"],
+                    category=template.category if template is not None else category,
+                )
             )
-            for row in template_rows
-        ]
+        return summaries
 
     def get_template_info(self, name: str) -> TemplateInfo:
         template = get_query(name)

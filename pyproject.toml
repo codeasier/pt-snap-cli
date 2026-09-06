@@ -89,10 +89,22 @@ addopts = "-v --tb=short"
 
 [tool.basedpyright]
 pythonVersion = "3.13"
-include = [
-    "src/pt_snap_cli/cli.py",
-    "src/pt_snap_cli/__init__.py",
-]
+include = ["src/pt_snap_cli"]
+
+# The snapshot runtime was migrated from its upstream project with its original
+# loose annotations (issue #122, phase 3). Only the rules it currently violates are
+# downgraded, and only under this root; every other module is checked at error
+# level. Remove entries here as the annotations are fixed. Changes under
+# src/pt_snap_cli/snapshot/ also require a PROVENANCE.md entry.
+[[tool.basedpyright.executionEnvironments]]
+root = "src/pt_snap_cli/snapshot"
+reportMissingTypeArgument = "warning"
+reportAssignmentType = "warning"
+reportAttributeAccessIssue = "warning"
+reportUninitializedInstanceVariable = "warning"
+reportArgumentType = "warning"
+reportIndexIssue = "warning"
+reportImportCycles = "warning"
 
 [tool.coverage.run]
 source = ["pt_snap_cli"]
