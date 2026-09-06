@@ -377,13 +377,18 @@ def query_database(
         if info.parameters:
             for param_name, param_details in info.parameters.items():
                 required_str = " (required)" if param_details.required else " (optional)"
+                choices_str = (
+                    f" [choices: {', '.join(str(choice) for choice in param_details.choices)}]"
+                    if param_details.choices
+                    else ""
+                )
                 default_str = (
                     f" [default: {param_details.default}]"
                     if param_details.default is not None
                     else ""
                 )
                 typer.secho(
-                    f"  {param_name}: {param_details.type}{required_str}{default_str}",
+                    f"  {param_name}: {param_details.type}{required_str}{choices_str}{default_str}",
                     fg=typer.colors.YELLOW,
                 )
                 typer.echo(f"    {param_details.description}")

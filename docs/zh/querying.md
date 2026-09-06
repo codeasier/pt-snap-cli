@@ -68,6 +68,31 @@ pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 `min_size` 表示候选泄漏的最小字节数，默认值为 `0`。目标设备应通过命令级
 `--device` 选项指定，而不是放进 `--params`。
 
+## 参数校验
+
+`--params` 会在渲染任何 SQL 之前按模板定义进行校验：
+
+- 每个键都必须是模板声明的参数。未声明的键会被拒绝而不是忽略，因此把
+  `min_size` 拼成 `min_sze` 会得到 `Unknown parameter(s) for template
+  'leak_detection': min_sze (accepted: min_size, limit)`，而不是悄悄返回一份
+  未过滤的结果。
+- 值会按声明的类型（`int`、`float`、`str`、`bool`）转换。
+- 会被当作 SQL 标识符或关键字渲染的参数（如 `order_by`、`order_dir`）只接受
+  `--template-info` 中 `[choices: ...]` 列出的取值。字符串取值不区分大小写，
+  并按声明的写法渲染（`desc` 会变成 `DESC`）；其他任何值都会在到达数据库之前
+  被拒绝。
+
+```bash
+pt-snap query --template-info allocation
+#   order_by: str (optional) [choices: id, allocated, active, reserved] [default: id]
+#   order_dir: str (optional) [choices: ASC, DESC] [default: ASC]
+
+pt-snap query --template-use allocation --params '{"order_by": "reserved", "order_dir": "desc"}' -n 5
+```
+
+`SnapshotAnalyzer.execute_query()` 和 MCP 的 `execute_query` 工具遵循同样的规则，
+并以相同的错误信息抛出 `TemplateRenderError`。
+
 ## 峰值内存归因工作流
 
 这些新增能力把“先找到峰值，再解释峰值时刻哪些内存仍然活跃”的手工分析流程产品化了。
@@ -187,6 +212,7 @@ CLI、Python API 和 MCP 的查询结果包含原始 SQLite 值。模板的 `out
 查询模板使用 YAML 格式定义，包含：
 - `version`: 模板版本
 - `queries`: 查询定义，包含描述、支持的设备、参数、SQL（Jinja2 模板语法）和输出 schema
+- 每个参数声明 `type`、`default`、`required`、`description`，以及可选的 `choices`（允许取值的封闭列表；会被渲染为 SQL 标识符或关键字的参数必须声明它）
 
 显式传给 `ResultMapper` 时，可识别的映射类型包括 `int`、`float`、`str`、
 `bool`、`hex` 和 `datetime`；当前 `datetime` 只是透传声明，不执行解析。

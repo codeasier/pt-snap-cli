@@ -109,6 +109,7 @@ class QueryService:
                     default=param_details["default"],
                     required=param_details["required"],
                     description=param_details["description"],
+                    choices=param_details.get("choices"),
                 )
                 for param_name, param_details in info["parameters"].items()
             },

@@ -18,6 +18,31 @@ class QueryParameter:
     default: Any = None
     required: bool = False
     description: str = ""
+    # Closed set of accepted values. Required for parameters that are rendered
+    # into SQL as identifiers or keywords (e.g. ORDER BY column / direction),
+    # where the type alone cannot bound what reaches the database.
+    choices: list[Any] | None = None
+
+    def __post_init__(self) -> None:
+        if self.choices is None:
+            return
+        if not isinstance(self.choices, list) or not self.choices:
+            raise ValueError(f"Parameter '{self.name}' choices must be a non-empty list")
+        if self.default is not None and self._match_choice(self.default) is None:
+            raise ValueError(
+                f"Parameter '{self.name}' default {self.default!r} is not one of its choices"
+            )
+
+    def _match_choice(self, value: Any) -> Any | None:
+        """Return the canonical choice equal to ``value``, or None when not allowed."""
+        if self.choices is None:
+            return value
+        if self.type == "str" and isinstance(value, str):
+            for choice in self.choices:
+                if isinstance(choice, str) and choice.lower() == value.lower():
+                    return choice
+            return None
+        return value if value in self.choices else None
 
     def validate(self, value: Any) -> Any:
         """Validate and convert parameter value.
@@ -26,11 +51,14 @@ class QueryParameter:
             value: Value to validate.
 
         Returns:
-            Converted value.
+            Converted value. For ``str`` parameters with ``choices`` the
+            canonical spelling from ``choices`` is returned, so case-insensitive
+            input (``"desc"``) renders as declared (``"DESC"``).
 
         Raises:
             TypeError: If value cannot be converted to expected type.
-            ValueError: If required parameter is missing.
+            ValueError: If required parameter is missing or the value is not one
+                of the declared choices.
         """
         if value is None:
             if self.required:
@@ -46,11 +74,19 @@ class QueryParameter:
 
         converter = type_converters.get(self.type, str)
         try:
-            return converter(value)
+            converted = converter(value)
         except (ValueError, TypeError) as e:
             raise TypeError(
                 f"Parameter '{self.name}' cannot be converted to {self.type}: {e}"
             ) from e
+
+        if self.choices is None:
+            return converted
+        matched = self._match_choice(converted)
+        if matched is None:
+            allowed = ", ".join(str(choice) for choice in self.choices)
+            raise ValueError(f"Parameter '{self.name}' must be one of: {allowed} (got {value!r})")
+        return matched
 
 
 @dataclass
@@ -75,17 +111,25 @@ class QueryTemplate:
             Validated and converted parameters.
 
         Raises:
-            ValueError: If required parameter is missing.
+            ValueError: If a required parameter is missing, a value is not one
+                of the parameter's declared choices, or ``params`` contains a
+                name the template does not declare. Unknown names are rejected
+                rather than ignored so that a misspelled filter cannot silently
+                widen a query.
             TypeError: If parameter type is invalid.
         """
+        unknown = sorted(name for name in params if name not in self.parameters)
+        if unknown:
+            accepted = ", ".join(self.parameters) if self.parameters else "none"
+            raise ValueError(
+                f"Unknown parameter(s) for template '{self.name}': {', '.join(unknown)} "
+                f"(accepted: {accepted})"
+            )
+
         validated = {}
         for name, param_def in self.parameters.items():
             value = params.get(name)
             validated[name] = param_def.validate(value)
-
-        for name, value in params.items():
-            if name not in self.parameters:
-                validated[name] = value
 
         return validated
 
@@ -109,6 +153,7 @@ class QueryTemplate:
                 default=param_data.get("default"),
                 required=param_data.get("required", False),
                 description=param_data.get("description", ""),
+                choices=param_data.get("choices"),
             )
 
         return cls(
