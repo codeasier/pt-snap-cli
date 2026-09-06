@@ -26,6 +26,11 @@ Run these commands from the repository root.
 coverage reports under `test_reports/`; use direct `pytest` commands unless
 that local environment is intentionally available.
 
+Local-only directories (`.pt-snap/` written by `pt-snap focus`/`pt-snap import`,
+`tmp/`, `.tmp/`, `.worktrees/`) are ignored by Git and excluded from Ruff and
+Black in `pyproject.toml`, so the root-level lint commands above stay stable
+when they exist.
+
 ## Scoped Guidance
 
 | Scope | Guide | Responsibility |
