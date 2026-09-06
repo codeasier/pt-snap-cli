@@ -186,6 +186,36 @@ class TestMCPToolFunctions:
         assert "device_id" in result
         assert "rows" in result
 
+    def test_execute_query_default_max_rows_caps_rows_but_keeps_exact_total(
+        self, valid_db: Path
+    ) -> None:
+        """Documented contract (#123): MCP defaults to 100 rows, unlike the CLI.
+
+        ``total`` must stay exact when the cap is hit so agents can detect that
+        more data exists; ``max_rows=0`` lifts the cap.
+        """
+        import pt_snap_cli.mcp.server as server_mod
+        from pt_snap_cli.api import SnapshotAnalyzer
+
+        conn = sqlite3.connect(str(valid_db))
+        conn.executemany(
+            "INSERT INTO block_0 (address, size, requestedSize, state, allocEventId, freeEventId)"
+            " VALUES (?, ?, ?, 1, ?, -1)",
+            [(4096 * i, 1024, 1024, i) for i in range(150)],
+        )
+        conn.commit()
+        conn.close()
+        server_mod._analyzer = SnapshotAnalyzer(db_path=valid_db)
+
+        capped = server_mod.execute_query("leak_detection")
+        assert capped["returned"] == 100
+        assert capped["total"] == 150
+        assert len(capped["rows"]) == 100
+
+        unlimited = server_mod.execute_query("leak_detection", max_rows=0)
+        assert unlimited["returned"] == 150
+        assert unlimited["total"] == 150
+
     def test_get_database_metadata(self, valid_db: Path) -> None:
         import pt_snap_cli.mcp.server as server_mod
         from pt_snap_cli.api import SnapshotAnalyzer

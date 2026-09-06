@@ -30,7 +30,7 @@ pt-snap-mcp
 | `set_focus` | 设置焦点到指定数据库和可选设备。运行查询前使用。 |
 | `list_templates` | 列出可用的查询模板，可按类别筛选 |
 | `get_template_info` | 获取模板详情，包括参数信息 |
-| `execute_query` | 对焦点数据库执行查询模板 |
+| `execute_query` | 对焦点数据库执行查询模板。最多返回 `max_rows` 行（默认 **100**；传 `0` 表示不限制）。见[查询结果与行数限制](#查询结果与行数限制)。 |
 | `get_database_metadata` | 查看焦点或指定数据库的导入来源 metadata |
 
 ## 可用资源
@@ -69,12 +69,37 @@ get_template_info("leak_detection")
 
 # 运行查询
 execute_query("leak_detection", params={"min_size": 1024})
-# 返回: {"total": 5, "returned": 5, "rows": [...]}
+# 返回: {"total": 5, "returned": 5, "device_id": 0, "rows": [...]}
 
 # 查看数据库导入 metadata
 get_database_metadata()
 # 返回: {"status": "available", "metadata": {"source_sha256": "...", ...}}
 ```
+
+## 查询结果与行数限制
+
+`execute_query(template, params=None, device_id=None, max_rows=100)` 的返回值：
+
+| 字段 | 含义 |
+|------|------|
+| `total` | 查询匹配的总行数。即使结果被截断，这个值也是精确的：命中 `max_rows` 时服务端会对同一查询额外执行一次 `COUNT(*)`。 |
+| `returned` | `rows` 中实际包含的行数。 |
+| `device_id` | 查询实际使用的设备（显式 `device_id`，否则为焦点设备，否则为数据库中的第一个设备）。 |
+| `rows` | 结果行，每行是原始 SQLite 值组成的字典。 |
+
+**MCP 的默认值是 `max_rows=100`，与 CLI 不同。** `pt-snap query` 在没有 `-n` 时
+显示全部行；MCP 工具则限制输出，避免大结果集撑爆 agent 的上下文。把
+`returned < total` 理解为"还有更多数据"：提高 `max_rows`、传 `0` 取消限制，或收紧
+查询参数。不要把 `rows` 当作完整结果去求和或计数。
+
+```python
+result = execute_query("leak_detection", params={"min_size": 1024})
+if result["returned"] < result["total"]:
+    result = execute_query("leak_detection", params={"min_size": 1024}, max_rows=0)
+```
+
+带 `limit` 参数的模板（如 `leak_detection`、`allocation`、`block`、`event`）在两者
+都设置时取 `min(limit, max_rows)`。
 
 ## CLI 命令
 
