@@ -17,12 +17,18 @@ htmlcov/
 .mypy_cache/
 .tox/
 
+# --- pt-snap runtime artifacts ---
+# `pt-snap focus` and `pt-snap import` write the project focus file into the
+# current directory, so dogfooding from the repository root creates this.
+.pt-snap/
+
 # --- Local agent/tool scratch (not project source) ---
 .agents/*
 .claude/*
 .codex/*
 .opencode/*
 .tmp/*
+tmp/
 .skill-evals/
 openspec/
 specs/
