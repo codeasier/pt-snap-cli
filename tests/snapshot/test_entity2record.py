@@ -1,4 +1,5 @@
 from pt_snap_cli.snapshot.base import Block, Frame, TraceEntry
+from pt_snap_cli.snapshot.tools.adaptors.database.callstack import CallstackInterner
 from pt_snap_cli.snapshot.tools.adaptors.database.defs import (
     BlockFieldDefs,
     EventFieldDefs,
@@ -26,7 +27,7 @@ def test_get_timestamp_by_event_idx_handles_none():
 def test_event2record_uses_generated_default_id_when_missing():
     event = TraceEntry(action="alloc", addr=0x1000, size=16, stream=0, idx=None)
 
-    record = event2record(event, allocated=1, active=2, reserved=3)
+    record = event2record(event, allocated=1, active=2, reserved=3, callstacks=CallstackInterner())
 
     assert record[EventFieldDefs.ID] < 0
     assert record[EventFieldDefs.ALLOCATED] == 1
@@ -65,7 +66,10 @@ def test_records_preserve_totals_state_ids_and_callstack_serialization():
         free_event_idx=12,
     )
 
-    event_record = event2record(event, allocated=100, active=120, reserved=256)
+    callstacks = CallstackInterner()
+    event_record = event2record(
+        event, allocated=100, active=120, reserved=256, callstacks=callstacks
+    )
     block_record = block2record(block)
 
     assert event_record == {
@@ -77,8 +81,9 @@ def test_records_preserve_totals_state_ids_and_callstack_serialization():
         "allocated": 100,
         "active": 120,
         "reserved": 256,
-        "callstack": "outer.py:20 outer\ninner.py:10 inner",
+        "callstackId": 0,
     }
+    assert callstacks.records() == [{"id": 0, "callstack": "outer.py:20 outer\ninner.py:10 inner"}]
     assert block_record == {
         "id": 9,
         "address": 0x2000,

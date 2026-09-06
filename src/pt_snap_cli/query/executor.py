@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 import warnings
 from pathlib import Path
 from typing import Any
@@ -100,6 +101,18 @@ class QueryExecutor:
         if trimmed.endswith(";"):
             trimmed = trimmed[:-1].rstrip()
         return f"{trimmed} LIMIT {int(limit)}"
+
+    @staticmethod
+    def _execution_error(error: sqlite3.OperationalError) -> QueryExecutionError:
+        detail = str(error)
+        if "no such table: callstack" in detail or re.search(
+            r"no such column: (?:[\w]+\.)?callstackId", detail
+        ):
+            return QueryExecutionError(
+                "Query execution failed: database uses the legacy inline-callstack layout; "
+                "re-import the snapshot to use callstack queries"
+            )
+        return QueryExecutionError(f"Query execution failed: {error}")
 
     def _load_templates(self) -> None:
         """Load all YAML templates from template directory."""
@@ -199,6 +212,8 @@ class QueryExecutor:
                     cursor.execute(sql)
                 columns = [desc[0] for desc in cursor.description]
                 return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+        except sqlite3.OperationalError as e:
+            raise self._execution_error(e) from e
         except Exception as e:
             raise QueryExecutionError(f"Query execution failed: {e}") from e
 
@@ -212,6 +227,8 @@ class QueryExecutor:
                 cursor.execute(count_sql)
                 row = cursor.fetchone()
                 return int(row[0]) if row is not None else 0
+        except sqlite3.OperationalError as e:
+            raise self._execution_error(e) from e
         except Exception as e:
             raise QueryExecutionError(f"Query execution failed: {e}") from e
 

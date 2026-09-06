@@ -1,9 +1,12 @@
 """Tests for query executor."""
 
+import sqlite3
+
 import pytest
 
+from pt_snap_cli.context import Context
 from pt_snap_cli.query.config import QueryParameter, QueryTemplate
-from pt_snap_cli.query.executor import QueryExecutor, TemplateRenderError
+from pt_snap_cli.query.executor import QueryExecutionError, QueryExecutor, TemplateRenderError
 
 
 class TestQueryExecutor:
@@ -336,6 +339,38 @@ class TestQueryExecutor:
 
         results = executor.execute_on_all_devices("empty_test")
         assert results == {}
+
+    def test_legacy_callstack_schema_error_is_actionable(self, tmp_path):
+        db_path = tmp_path / "legacy.db"
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("CREATE TABLE dictionary (table_name TEXT)")
+            conn.execute("CREATE TABLE trace_entry_0 " "(id INTEGER, callstack TEXT)")
+        executor = QueryExecutor(Context(db_path))
+        executor.register_template(
+            QueryTemplate(
+                name="legacy_callstack",
+                query="SELECT callstack FROM callstack",
+            )
+        )
+
+        with pytest.raises(QueryExecutionError, match="legacy inline-callstack layout"):
+            executor.execute_template("legacy_callstack", device_id=0)
+
+    def test_qualified_legacy_callstack_schema_error_is_actionable(self, tmp_path):
+        db_path = tmp_path / "legacy-qualified.db"
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("CREATE TABLE dictionary (table_name TEXT)")
+            conn.execute("CREATE TABLE trace_entry_0 (id INTEGER)")
+        executor = QueryExecutor(Context(db_path))
+        executor.register_template(
+            QueryTemplate(
+                name="qualified_legacy_callstack",
+                query="SELECT t.callstackId FROM trace_entry_0 t",
+            )
+        )
+
+        with pytest.raises(QueryExecutionError, match="legacy inline-callstack layout"):
+            executor.execute_template("qualified_legacy_callstack", device_id=0)
 
 
 def _make_mock_context(device_ids: list[int]):

@@ -98,8 +98,16 @@ class TraceEntry:
         )
         return trace_entry
 
+    def callstack_frames(self) -> list[Frame] | list[dict]:
+        """Return the frame container that backs ``get_callstack()``.
+
+        Callers that deduplicate callstacks key on this container's identity,
+        so the same object must be returned for repeated calls.
+        """
+        return self._raw_frames if self._raw_frames is not None else self.frames
+
     def get_callstack(self):
-        return _format_callstack(self._raw_frames if self._raw_frames is not None else self.frames)
+        return _format_callstack(self.callstack_frames())
 
     def to_dict(self, include_id: bool = False):
         if self._origin and not include_id:

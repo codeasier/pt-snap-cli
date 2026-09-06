@@ -1,4 +1,5 @@
 from ....base import Block, TraceEntry
+from .callstack import CallstackInterner
 from .defs import BlockFieldDefs, EventFieldDefs
 
 
@@ -22,7 +23,14 @@ next_default_block_id = make_default_id_counter()
 next_default_event_id = make_default_id_counter()
 
 
-def event2record(event: TraceEntry, allocated: int = 0, active: int = 0, reserved: int = 0) -> dict:
+def event2record(
+    event: TraceEntry,
+    allocated: int = 0,
+    active: int = 0,
+    reserved: int = 0,
+    *,
+    callstacks: CallstackInterner,
+) -> dict:
     return {
         EventFieldDefs.ID: (event.idx if event.idx is not None else next_default_event_id()),
         EventFieldDefs.ACTION: event.action,
@@ -32,7 +40,7 @@ def event2record(event: TraceEntry, allocated: int = 0, active: int = 0, reserve
         EventFieldDefs.ALLOCATED: allocated,
         EventFieldDefs.ACTIVE: active,
         EventFieldDefs.RESERVED: reserved,
-        EventFieldDefs.CALLSTACK: event.get_callstack(),
+        EventFieldDefs.CALLSTACK_ID: callstacks.intern(event),
     }
 
 

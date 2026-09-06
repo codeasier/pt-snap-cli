@@ -76,7 +76,20 @@ queries:
         required: false
         description: Number of rows to skip
     query: |
-      SELECT * FROM {{ device_trace_table }}
+      SELECT
+        id,
+        action,
+        address,
+        size,
+        stream,
+        allocated,
+        active,
+        reserved,
+        (
+          SELECT callstack FROM callstack
+          WHERE callstack.id = {{ device_trace_table }}.callstackId
+        ) AS callstack
+      FROM {{ device_trace_table }}
       WHERE 1=1
         {% if id is not none %}AND id = {{ id }}{% endif %}
         {% if min_id is not none %}AND id >= {{ min_id }}{% endif %}

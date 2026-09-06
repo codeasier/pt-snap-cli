@@ -44,8 +44,9 @@ pt-snap metadata snapshot.pkl.db --json
 pt-snap import snapshot.pkl --force
 ```
 
-旧版或外部生成且结构兼容的 DB 仍可正常查询。若没有 metadata，查询会返回 unavailable，
-下一次执行对应 pickle 导入时会重建一次。
+旧版或外部生成且结构兼容的 DB，仍可用于不依赖去重调用栈结构的查询。调用栈相关模板要求
+数据库由当前导入器生成；否则会提示需要重新导入快照。若没有 metadata，查询会返回
+unavailable，下一次执行对应 pickle 导入时会重建一次。
 
 ### 查询工作流
 
@@ -70,11 +71,12 @@ pt-snap query --template-use block --params '{"min_size": 1048576}'
 | 表名 | 说明 | 记录数（示例） |
 |------|------|---------------|
 | `dictionary` | 字典映射表 | - |
+| `callstack` | 去重后的调用栈文本，所有设备共享 | 4,369 |
 | `trace_entry_0` | 设备 0 的事件跟踪表 | 8,094 |
 | `block_0` | 设备 0 的内存块表 | - |
 | `pt_snap_metadata` | 第一方导入来源与缓存 metadata | 1 |
 
-> **命名规则**: 多设备场景下，表名后缀为设备 ID，如 `trace_entry_1`、`block_1` 表示设备 1 的数据。
+> **命名规则**: 多设备场景下，表名后缀为设备 ID，如 `trace_entry_1`、`block_1` 表示设备 1 的数据。`callstack` 表没有设备后缀，因为调用栈在设备之间共享。
 
 ---
 
@@ -96,7 +98,7 @@ CREATE TABLE trace_entry_0 (
     `allocated` INTEGER,
     `active` INTEGER,
     `reserved` INTEGER,
-    `callstack` TEXT
+    `callstackId` INTEGER
 );
 ```
 
@@ -112,7 +114,7 @@ CREATE TABLE trace_entry_0 (
 | allocated | INTEGER | — | 当前已分配总量 | `136426496` |
 | active | INTEGER | — | 当前活跃总量 | `136426496` |
 | reserved | INTEGER | — | 内存池保留总量 | `155189248` |
-| callstack | TEXT | NULL | 调用栈，多行文本格式 | 见示例 |
+| callstackId | INTEGER | NULL | 指向 `callstack.id`，需 join 才能取到文本 | `12` |
 
 #### 动作类型编码（action 字段）
 
@@ -139,11 +141,22 @@ CREATE TABLE trace_entry_0 (
 ```
 id=1, action=4, address=20697535234048, size=41943040, stream=1276474240
 allocated=136426496, active=136426496, reserved=155189248
-callstack:
+callstackId=12 -> callstack.callstack:
   /home/liuyekang/dev/projects/test/memory_leaks_demo.py:60 <module>
   /home/liuyekang/dev/projects/test/memory_leaks_demo.py:34 main
   /home/liuyekang/dev/projects/test/memory_leaks_demo.py:24 train
   /home/liuyekang/dev/projects/test/memory_leaks_demo.py:12 train_one_step
+```
+
+#### 读取调用栈文本
+
+join `callstack` 表解析 `callstackId`：
+
+```sql
+SELECT t.id, t.size, c.callstack
+FROM trace_entry_0 t
+LEFT JOIN callstack c ON c.id = t.callstackId
+WHERE t.id = 1;
 ```
 
 ---
@@ -257,7 +270,38 @@ table=trace_entry_0, column=action, key=4, value=alloc
 table=block_0, column=state, key=1, value=active_allocated
 ```
 
-### 4. pt_snap_metadata — 导入 Metadata 表
+---
+
+### 4. callstack — 去重调用栈表
+
+快照中少量调用栈会在极多事件上重复出现，因此文本按不同调用栈只存一份，由
+`trace_entry_<device>.callstackId` 引用。
+
+#### Schema
+
+```sql
+CREATE TABLE callstack (
+    `id` INTEGER PRIMARY KEY,
+    `callstack` TEXT
+);
+```
+
+#### 字段说明
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| id | INTEGER | 调用栈 ID，被 `trace_entry_<device>.callstackId` 引用 |
+| callstack | TEXT | 调用栈文本，最外层帧在前，每行一个 `文件:行号 函数名` |
+
+#### 表属性
+
+| 属性 | 保证 |
+|------|------|
+| 唯一性 | 每条不同的调用栈文本只有一行，因此按 `callstackId` 分组等价于按文本分组 |
+| 作用域 | 数据库内所有设备共享，表名不带设备后缀 |
+| 覆盖度 | 导入产生的每个事件都能解析到一行；只有外部生成的数据库才可能出现 `callstackId` 为 `NULL` |
+
+### 5. pt_snap_metadata — 导入 Metadata 表
 
 第一方导入会创建一条 metadata 记录，用于来源追踪和缓存兼容性检查：
 

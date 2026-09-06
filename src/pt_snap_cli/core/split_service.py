@@ -145,7 +145,9 @@ class SplitService:
                 max_entries=max_entries if max_entries is not None else event_count,
                 dump_type="pkl",
             )
-            _, replayed = replay_snapshot(representation, device, hooker=hooker)
+            # Slices serialize the original frame dictionaries, so eager Frame
+            # objects would be rebuilt only to be discarded.
+            _, replayed = replay_snapshot(representation, device, hooker=hooker, _raw_frames=True)
         except Exception as exc:
             self._fail("load/engine", source, f"device {device}: {exc}", exc)
         if not replayed:
@@ -174,7 +176,7 @@ class SplitService:
                     or not traces[device]
                 ):
                     raise ValueError(f"generated slice has no trace entries for device {device}")
-                _, replayed = replay_snapshot(generated, device)
+                _, replayed = replay_snapshot(generated, device, _raw_frames=True)
                 if not replayed:
                     raise ValueError("replay returned false")
             except Exception as exc:

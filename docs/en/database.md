@@ -48,8 +48,11 @@ pt-snap metadata snapshot.pkl.db --json
 pt-snap import snapshot.pkl --force
 ```
 
-Legacy or externally generated compatible databases without this table remain queryable. Their
-metadata status is reported as unavailable, and a later import rebuilds them once before reuse.
+Legacy or externally generated compatible databases without this table remain queryable for
+templates that do not require the deduplicated callstack schema. Callstack templates require a
+database produced by the current importer; otherwise the query reports that the snapshot must be
+re-imported. Their metadata status is reported as unavailable, and a later import rebuilds them
+once before reuse.
 
 ### Query workflow
 
@@ -75,11 +78,12 @@ the supported query surface. See [Querying](querying.md) for the complete workfl
 | Table | Description | Records (example) |
 |-------|-------------|-------------------|
 | `dictionary` | Enum mapping dictionary | - |
+| `callstack` | Deduplicated callstack text shared by all devices | 4,369 |
 | `trace_entry_0` | Device 0 event trace table | 8,094 |
 | `block_0` | Device 0 memory block table | - |
 | `pt_snap_metadata` | First-party import provenance and cache metadata | 1 |
 
-> **Naming convention**: For multi-device scenarios, table names are suffixed with the device ID, e.g., `trace_entry_1` and `block_1` for device 1.
+> **Naming convention**: For multi-device scenarios, table names are suffixed with the device ID, e.g., `trace_entry_1` and `block_1` for device 1. The `callstack` table carries no device suffix because callstacks are shared across devices.
 
 ---
 
@@ -101,7 +105,7 @@ CREATE TABLE trace_entry_0 (
     `allocated` INTEGER,
     `active` INTEGER,
     `reserved` INTEGER,
-    `callstack` TEXT
+    `callstackId` INTEGER
 );
 ```
 
@@ -117,7 +121,7 @@ CREATE TABLE trace_entry_0 (
 | allocated | INTEGER | — | Total allocated bytes | `136426496` |
 | active | INTEGER | — | Total active bytes | `136426496` |
 | reserved | INTEGER | — | Memory pool reserved bytes | `155189248` |
-| callstack | TEXT | NULL | Callstack information (multi-line text) | See example |
+| callstackId | INTEGER | NULL | Reference to `callstack.id`; join to read the text | `12` |
 
 #### Action Type Codes
 
@@ -144,11 +148,22 @@ CREATE TABLE trace_entry_0 (
 ```
 id=1, action=4, address=20697535234048, size=41943040, stream=1276474240
 allocated=136426496, active=136426496, reserved=155189248
-callstack:
+callstackId=12 -> callstack.callstack:
   /home/liuyekang/dev/projects/test/memory_leaks_demo.py:60 <module>
   /home/liuyekang/dev/projects/test/memory_leaks_demo.py:34 main
   /home/liuyekang/dev/projects/test/memory_leaks_demo.py:24 train
   /home/liuyekang/dev/projects/test/memory_leaks_demo.py:12 train_one_step
+```
+
+#### Reading Callstack Text
+
+Join `callstack` to resolve `callstackId`:
+
+```sql
+SELECT t.id, t.size, c.callstack
+FROM trace_entry_0 t
+LEFT JOIN callstack c ON c.id = t.callstackId
+WHERE t.id = 1;
 ```
 
 ---
@@ -264,7 +279,39 @@ table=trace_entry_0, column=action, key=4, value=alloc
 table=block_0, column=state, key=1, value=active_allocated
 ```
 
-### 4. pt_snap_metadata — Import Metadata Table
+---
+
+### 4. callstack — Deduplicated Callstack Text
+
+Snapshots repeat a small number of callstacks across a very large number of
+events, so the text is stored once per distinct callstack and referenced by
+`trace_entry_<device>.callstackId`.
+
+#### Schema
+
+```sql
+CREATE TABLE callstack (
+    `id` INTEGER PRIMARY KEY,
+    `callstack` TEXT
+);
+```
+
+#### Columns
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Callstack ID referenced by `trace_entry_<device>.callstackId` |
+| callstack | TEXT | Callstack text, outermost frame first, one `file:line name` per line |
+
+#### Properties
+
+| Property | Guarantee |
+|----------|-----------|
+| Uniqueness | One row per distinct callstack text, so grouping by `callstackId` equals grouping by text |
+| Scope | Shared by every device in the database; the table has no device suffix |
+| Coverage | Every event produced by import resolves to a row; `callstackId` is `NULL` only in externally generated databases |
+
+### 5. pt_snap_metadata — Import Metadata Table
 
 First-party imports create one metadata row for provenance and cache
 compatibility checks:

@@ -158,6 +158,36 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
   split maps it to `unsafe pickle:` so allowlist rejection is distinct from
   corrupt input. `dump()` re-raises `UnsafePickleError` instead of returning
   false.
+- On 2026-09-06, issue #113 deduplicated database callstacks. A new local
+  `snapshot/tools/adaptors/database/callstack.py` interns one id per distinct
+  callstack text, `trace_entry_<device>` stores `callstackId` instead of an
+  inlined `callstack` text column, and a shared device-suffix-free `callstack`
+  table holds the text. `TraceEntry.callstack_frames()` exposes the frame
+  container that already backed `get_callstack()` so interning can key on
+  container identity; the interner holds a reference to every keyed container so
+  an `id()` key cannot be reused by an unrelated object. `CallstackInterner` is
+  not present in audited MemSnapDump @87ea207; it is a local addition.
+  `sqlite_meta.SqliteTable.get_insert_values_by_records` now resolves per-column
+  value maps once per batch instead of once per cell, and the default insert
+  batch size moved from 1000 to 10000 because import stages rows in a temporary
+  database and only publishes after a successful replay. Allocator replay,
+  synthetic event and block identities, totals, and callstack text are
+  unchanged: on `snapshot_with_multi_devices.pkl`, `snapshot_expandable.pkl`,
+  `snapshot_with_empty_cache_expandable.pkl`,
+  `snapshot_import_131k_sanitized.pickle`, and
+  `snapshot_import_628k_sanitized.pickle`, every trace and block row matches the
+  pre-change output after resolving `callstackId` through the join. This is a
+  local performance and schema change; audited upstream source mappings and
+  license terms are unchanged.
+- On 2026-09-06, PR #114 follow-up corrected the preceding callstack entry's
+  implementation description: the interner keys on individual frame object
+  identities and retains one exemplar frame container per distinct frame-key
+  tuple, rather than keying and retaining every outer frame container. The
+  follow-up also propagates `_raw_frames` through NPU workspace adaptation,
+  maps legacy callstack-schema SQLite errors to an actionable re-import
+  message, and uses a left join with a missing-callstack placeholder in
+  statistical analysis. These are local fixes to the issue #113 runtime;
+  audited upstream source mappings and license terms remain unchanged.
 
 ## Migration toolchain
 

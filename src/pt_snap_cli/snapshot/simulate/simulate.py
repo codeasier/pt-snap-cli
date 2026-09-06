@@ -127,6 +127,7 @@ class SimulateDeviceSnapshot:
                     address=existed_seg.address,
                     state=BlockState.ACTIVE_ALLOCATED,
                     frames=existed_seg.frames,
+                    _raw_frames=existed_seg._raw_frames,
                     segment_ptr=existed_seg,
                 ),
                 0,
