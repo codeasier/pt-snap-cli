@@ -45,10 +45,6 @@ dev = [
     "build>=1.0.0",
     "basedpyright>=1.39.3",
 ]
-rag = [
-    "chromadb>=0.4.0",
-    "langchain>=0.1.0",
-]
 
 [project.scripts]
 pt-snap = "pt_snap_cli.cli:_safe_call"
