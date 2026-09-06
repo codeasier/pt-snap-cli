@@ -7,13 +7,16 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 ENV_DB_PATH = "PT_SNAP_DB_PATH"
 PROJECT_FOCUS_DIR = ".pt-snap"
 PROJECT_FOCUS_FILE = "focus.json"
 DB_PATH_KEY = "db_path"
 DEVICE_ID_KEY = "device_id"
+
+# Where a resolved database came from, in precedence order.
+FocusSource = Literal["explicit", "env", "project", "global", "none"]
 
 
 class FocusResolutionError(ValueError):
@@ -27,7 +30,7 @@ class ResolvedFocus:
     """Resolved focus (database + optional device) with its source."""
 
     db_path: Path | None
-    source: str
+    source: FocusSource
     focus_file: Path | None = None
     device_id: int | None = None
 

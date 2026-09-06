@@ -138,7 +138,7 @@ class SplitService:
         try:
             raw_dir = stage / f".device-{device}"
             raw_dir.mkdir()
-            event_count = len(cast(list[object], representation["device_traces"])[device])
+            event_count = len(cast(list[list[object]], representation["device_traces"])[device])
             hooker = SliceDumpHooker(
                 dump_dir=str(raw_dir),
                 num_of_slices=slices if slices is not None else 1,
