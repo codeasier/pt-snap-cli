@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import sqlite3
-import warnings
 from pathlib import Path
 from typing import Any
 
@@ -35,21 +34,22 @@ class TemplateRenderError(Exception):
 
 
 class QueryExecutor:
-    """Executes SQL queries with template rendering support."""
+    """Executes SQL queries with template rendering support.
 
-    def __init__(
-        self,
-        context: Context,
-        template_dir: str | Path | None = None,
-    ):
+    Packaged templates are owned by :mod:`pt_snap_cli.query.registry`, which
+    loads them recursively (one category per subdirectory) at import time.
+    ``_configs`` only holds templates attached to this executor at runtime via
+    :meth:`load_config` or :meth:`register_template`; lookups consult those
+    first and then fall back to the registry.
+    """
+
+    def __init__(self, context: Context):
         """Initialize query executor.
 
         Args:
             context: Database context for executing queries.
-            template_dir: Optional directory containing YAML template files.
         """
         self._context = context
-        self._template_dir = Path(template_dir) if template_dir else None
         self._configs: dict[str, QueryConfig] = {}
         self._env = Environment(
             undefined=StrictUndefined,
@@ -59,9 +59,6 @@ class QueryExecutor:
         # long-lived executors (e.g. the MCP server) avoid re-parsing
         # identical template bodies on every query.
         self._compiled_cache: dict[tuple[str, str], Template] = {}
-
-        if self._template_dir and self._template_dir.exists():
-            self._load_templates()
 
     def _compiled_template(self, template: QueryTemplate) -> Template:
         """Return the cached compiled Jinja template for ``template``.
@@ -113,18 +110,6 @@ class QueryExecutor:
                 "re-import the snapshot to use callstack queries"
             )
         return QueryExecutionError(f"Query execution failed: {error}")
-
-    def _load_templates(self) -> None:
-        """Load all YAML templates from template directory."""
-        if not self._template_dir:
-            return
-
-        for yaml_file in self._template_dir.glob("*.yaml"):
-            try:
-                config = QueryConfig.load_yaml(yaml_file)
-                self._configs[yaml_file.stem] = config
-            except Exception as e:
-                warnings.warn(f"Failed to load query template from {yaml_file}: {e}", stacklevel=2)
 
     def render(
         self,

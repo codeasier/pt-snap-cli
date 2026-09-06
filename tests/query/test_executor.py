@@ -303,6 +303,32 @@ class TestQueryExecutor:
 
         assert "test_query" in executor.list_templates()
 
+    def test_packaged_templates_resolve_through_registry_only(self):
+        """Regression for issue #121: the executor owns no template directory.
+
+        Packaged templates live in category subdirectories and are loaded by
+        the registry; a freshly constructed executor must find them through the
+        registry fallback while holding no configs of its own.
+        """
+        from pt_snap_cli.query.registry import _load_all_templates
+
+        _load_all_templates()
+        executor = QueryExecutor(context=None)
+
+        assert executor._configs == {}
+        assert executor._find_template("leak_detection") is not None
+        assert "leak_detection" in executor.list_templates()
+
+    def test_runtime_registered_template_shadows_registry(self):
+        from pt_snap_cli.query.registry import _load_all_templates
+
+        _load_all_templates()
+        executor = QueryExecutor(context=None)
+        override = QueryTemplate(name="leak_detection", query="SELECT 'override'")
+        executor.register_template(override)
+
+        assert executor._find_template("leak_detection") is override
+
     def test_execute_on_all_devices(self):
         """Test execute_on_all_devices runs template on each device."""
         mock_context = _make_mock_context(device_ids=[0, 1])
