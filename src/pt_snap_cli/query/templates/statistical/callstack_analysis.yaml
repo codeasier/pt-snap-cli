@@ -42,7 +42,7 @@ queries:
         HAVING alloc_count >= {{ min_count }}
           AND total_size >= {{ min_size }}
       ) AS grouped
-      JOIN callstack c ON c.id = grouped.callstackId
+      LEFT JOIN callstack c ON c.id = grouped.callstackId
       ORDER BY total_size DESC, callstack ASC
       LIMIT {{ limit|int }}
     output_schema:

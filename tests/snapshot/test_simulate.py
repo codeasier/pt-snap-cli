@@ -265,6 +265,18 @@ def test_simulate_device_snapshot_sets_workspace_flag_from_first_event():
     assert device.total_reserved == 4096
 
 
+def test_raw_workspace_adaptation_preserves_segment_frames():
+    frame = {"filename": "workspace.py", "line": 7, "name": "reserve"}
+    data = make_torch_npu_workspace_snapshot()
+    data["segments"][0]["frames"] = [frame]
+
+    snapshot = SimulateDeviceSnapshot(data, 0, _raw_frames=True)
+
+    block = snapshot.device_snapshot.segments[0].blocks[0]
+    assert block._raw_frames == [frame]
+    assert block.to_dict()["frames"] == [frame]
+
+
 def test_simulate_register_unregister_hookers_and_allocator_hookers():
     snapshot = SimulateDeviceSnapshot(make_snapshot_dict(), 0)
     hooker = Hooker()

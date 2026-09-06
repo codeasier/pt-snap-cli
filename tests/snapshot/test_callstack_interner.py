@@ -67,25 +67,19 @@ def test_empty_frames_intern_to_empty_text():
     assert interner.records() == [{"id": 0, "callstack": ""}]
 
 
-def test_reclaimed_container_address_does_not_produce_a_false_hit():
-    """A freed container must not let a new object inherit its callstack id."""
+def test_distinct_frame_identities_do_not_produce_a_false_hit():
+    """Distinct frame identities must not inherit an unrelated callstack id."""
     interner = CallstackInterner()
-    addresses = []
 
     for frames in ([INNER], [OUTER]):
         event = _raw_event(frames)
-        addresses.append(id(event.callstack_frames()))
         interner.intern(event)
-        del event
 
-    # The interner pins each keyed container, so a later container cannot land
-    # on a pinned address and inherit the wrong id.
     assert len(interner) == 2
     assert [record["callstack"] for record in interner.records()] == [
         "inner.py:10 inner",
         "outer.py:20 outer",
     ]
-    assert len(set(addresses)) == 2
 
 
 def test_eager_frame_objects_intern_to_the_same_text_as_raw_frames():

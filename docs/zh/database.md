@@ -44,8 +44,9 @@ pt-snap metadata snapshot.pkl.db --json
 pt-snap import snapshot.pkl --force
 ```
 
-旧版或外部生成且结构兼容的 DB 仍可正常查询。若没有 metadata，查询会返回 unavailable，
-下一次执行对应 pickle 导入时会重建一次。
+旧版或外部生成且结构兼容的 DB，仍可用于不依赖去重调用栈结构的查询。调用栈相关模板要求
+数据库由当前导入器生成；否则会提示需要重新导入快照。若没有 metadata，查询会返回
+unavailable，下一次执行对应 pickle 导入时会重建一次。
 
 ### 查询工作流
 

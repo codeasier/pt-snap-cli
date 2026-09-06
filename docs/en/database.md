@@ -48,8 +48,11 @@ pt-snap metadata snapshot.pkl.db --json
 pt-snap import snapshot.pkl --force
 ```
 
-Legacy or externally generated compatible databases without this table remain queryable. Their
-metadata status is reported as unavailable, and a later import rebuilds them once before reuse.
+Legacy or externally generated compatible databases without this table remain queryable for
+templates that do not require the deduplicated callstack schema. Callstack templates require a
+database produced by the current importer; otherwise the query reports that the snapshot must be
+re-imported. Their metadata status is reported as unavailable, and a later import rebuilds them
+once before reuse.
 
 ### Query workflow
 
