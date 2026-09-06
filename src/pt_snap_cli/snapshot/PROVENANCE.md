@@ -179,6 +179,15 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
   pre-change output after resolving `callstackId` through the join. This is a
   local performance and schema change; audited upstream source mappings and
   license terms are unchanged.
+- On 2026-09-06, PR #114 follow-up corrected the preceding callstack entry's
+  implementation description: the interner keys on individual frame object
+  identities and retains one exemplar frame container per distinct frame-key
+  tuple, rather than keying and retaining every outer frame container. The
+  follow-up also propagates `_raw_frames` through NPU workspace adaptation,
+  maps legacy callstack-schema SQLite errors to an actionable re-import
+  message, and uses a left join with a missing-callstack placeholder in
+  statistical analysis. These are local fixes to the issue #113 runtime;
+  audited upstream source mappings and license terms remain unchanged.
 
 ## Migration toolchain
 

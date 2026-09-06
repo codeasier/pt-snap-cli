@@ -105,7 +105,9 @@ class QueryExecutor:
     @staticmethod
     def _execution_error(error: sqlite3.OperationalError) -> QueryExecutionError:
         detail = str(error)
-        if "no such table: callstack" in detail or "no such column: callstackId" in detail:
+        if "no such table: callstack" in detail or re.search(
+            r"no such column: (?:[\w]+\.)?callstackId", detail
+        ):
             return QueryExecutionError(
                 "Query execution failed: database uses the legacy inline-callstack layout; "
                 "re-import the snapshot to use callstack queries"

@@ -356,6 +356,22 @@ class TestQueryExecutor:
         with pytest.raises(QueryExecutionError, match="legacy inline-callstack layout"):
             executor.execute_template("legacy_callstack", device_id=0)
 
+    def test_qualified_legacy_callstack_schema_error_is_actionable(self, tmp_path):
+        db_path = tmp_path / "legacy-qualified.db"
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("CREATE TABLE dictionary (table_name TEXT)")
+            conn.execute("CREATE TABLE trace_entry_0 (id INTEGER)")
+        executor = QueryExecutor(Context(db_path))
+        executor.register_template(
+            QueryTemplate(
+                name="qualified_legacy_callstack",
+                query="SELECT t.callstackId FROM trace_entry_0 t",
+            )
+        )
+
+        with pytest.raises(QueryExecutionError, match="legacy inline-callstack layout"):
+            executor.execute_template("qualified_legacy_callstack", device_id=0)
+
 
 def _make_mock_context(device_ids: list[int]):
     """Create a mock Context with the given device IDs."""

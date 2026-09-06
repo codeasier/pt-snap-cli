@@ -1,9 +1,16 @@
+import gc
+import weakref
+
 from pt_snap_cli.snapshot.base import TraceEntry
 from pt_snap_cli.snapshot.tools.adaptors.database.callstack import CallstackInterner
 
 INNER = {"filename": "inner.py", "line": 10, "name": "inner"}
 OUTER = {"filename": "outer.py", "line": 20, "name": "outer"}
 EXPECTED_TEXT = "outer.py:20 outer\ninner.py:10 inner"
+
+
+class WeakrefableFrames(list):
+    """List-shaped frame container used to test exemplar retention."""
 
 
 def _raw_event(frames: list[dict], idx: int = 0) -> TraceEntry:
@@ -80,6 +87,18 @@ def test_distinct_frame_identities_do_not_produce_a_false_hit():
         "inner.py:10 inner",
         "outer.py:20 outer",
     ]
+
+
+def test_frame_container_exemplar_stays_alive_for_id_reuse_safety():
+    interner = CallstackInterner()
+    frames = WeakrefableFrames([INNER])
+    frames_ref = weakref.ref(frames)
+
+    interner.intern(_raw_event(frames))
+    del frames
+    gc.collect()
+
+    assert frames_ref() is not None
 
 
 def test_eager_frame_objects_intern_to_the_same_text_as_raw_frames():

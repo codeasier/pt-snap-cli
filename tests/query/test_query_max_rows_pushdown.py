@@ -181,3 +181,19 @@ class TestCallstackAnalysisMaxRowsPushdown:
             {"min_size": 0, "min_count": 1, "limit": 2},
         )
         assert len(rows) == 2
+
+    def test_missing_callstack_uses_placeholder(self, callstack_db: Path) -> None:
+        with sqlite3.connect(callstack_db) as conn:
+            conn.execute(
+                "INSERT INTO trace_entry_0 (id, size, callstackId) VALUES (?, ?, ?)",
+                (100, 1, 99),
+            )
+            conn.commit()
+
+        rows = _execute_template(
+            callstack_db,
+            "callstack_analysis",
+            {"min_count": 1, "min_size": 0},
+        )
+
+        assert rows[-1]["callstack"] == "[missing callstack]"

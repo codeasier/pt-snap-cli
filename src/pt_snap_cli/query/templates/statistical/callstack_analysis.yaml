@@ -24,7 +24,7 @@ queries:
         description: Maximum rows to return (-1 for unlimited). Mirrored from the caller-side ``max_rows`` for SQL pushdown.
     query: |
       SELECT
-        c.callstack AS callstack,
+        COALESCE(c.callstack, '[missing callstack]') AS callstack,
         grouped.alloc_count AS alloc_count,
         grouped.total_size AS total_size,
         grouped.avg_size AS avg_size,
