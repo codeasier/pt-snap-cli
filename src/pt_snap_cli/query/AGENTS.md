@@ -32,6 +32,7 @@
 - Variant SQL is selected from `Context.callstack_layout`; unknown or conflicting
   layouts must fail variant templates with a layout-specific error rather than a
   generic re-import message. Non-variant templates keep working.
+- `QueryTemplate.validate_params()` rejects undeclared parameter names and enforces `QueryParameter.choices`; extra render-context variables (`device_id`, table names, the pushed-down `limit`) are injected by `QueryExecutor.render()` after validation, not passed through `params`.
 
 ### Testing Requirements
 - Run `pytest tests/query` for query subsystem changes; real SQLite template semantics live in `test_peak_memory_templates.py`, `test_callstack_schema_compat.py`, and `test_query_max_rows_pushdown.py`.

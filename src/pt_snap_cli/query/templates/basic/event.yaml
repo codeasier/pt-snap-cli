@@ -59,11 +59,13 @@ queries:
         type: str
         default: "id"
         required: false
+        choices: [id, action, address, size, stream, allocated, active, reserved, callstack]
         description: Column to order by
       order_dir:
         type: str
         default: "ASC"
         required: false
+        choices: [ASC, DESC]
         description: Sort direction (ASC or DESC)
       limit:
         type: int

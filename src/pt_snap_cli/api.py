@@ -132,6 +132,7 @@ class SnapshotAnalyzer:
                     "default": param.default,
                     "required": param.required,
                     "description": param.description,
+                    "choices": param.choices,
                 }
                 for param_name, param in info.parameters.items()
             },
