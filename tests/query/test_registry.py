@@ -233,6 +233,46 @@ class TestListByCategory:
             "freeEventId",
         ]
 
+    def test_packaged_sql_fragment_parameters_declare_choices(self):
+        """Regression for issue #120.
+
+        ``order_by`` / ``order_dir`` are rendered into SQL as an identifier and a
+        keyword, so a bare ``str`` type would let any SQL fragment reach the
+        database. Every packaged template that exposes them must bound them
+        with ``choices`` drawn from its own output columns.
+        """
+        checked = 0
+        for name in list_queries():
+            template = get_query(name)
+            assert template is not None
+            columns = {column["column"] for column in template.output_schema}
+            for param_name in ("order_by", "order_dir"):
+                param = template.parameters.get(param_name)
+                if param is None:
+                    continue
+                checked += 1
+                assert param.choices, f"{name}.{param_name} must declare choices"
+                if param_name == "order_dir":
+                    assert param.choices == ["ASC", "DESC"], f"{name}.order_dir choices"
+                else:
+                    unknown = set(param.choices) - columns
+                    assert not unknown, f"{name}.order_by choices not in output_schema: {unknown}"
+        assert (
+            checked >= 8
+        ), "expected order_by/order_dir on allocation, block, event, active_blocks"
+
+    def test_template_info_exposes_choices(self):
+        info = get_template_info("allocation")
+        assert info is not None
+        assert info["parameters"]["order_by"]["choices"] == [
+            "id",
+            "allocated",
+            "active",
+            "reserved",
+        ]
+        assert info["parameters"]["order_dir"]["choices"] == ["ASC", "DESC"]
+        assert info["parameters"]["limit"]["choices"] is None
+
     def test_list_by_category_with_details(self):
         register_query(
             QueryTemplate(

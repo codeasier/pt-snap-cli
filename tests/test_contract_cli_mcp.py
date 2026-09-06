@@ -180,11 +180,16 @@ def _normalize_cli_template_info(output: str) -> dict[str, object]:
             if "[default: " in metadata:
                 default_text = metadata.split("[default: ", 1)[1].removesuffix("]")
                 default = _coerce_cli_default(default_text)
+            choices = None
+            if "[choices: " in metadata:
+                choices_text = metadata.split("[choices: ", 1)[1].split("]", 1)[0]
+                choices = [_coerce_cli_default(item) for item in choices_text.split(", ")]
             info["parameters"][name] = {
                 "type": param_type,
                 "default": default,
                 "required": required,
                 "description": "",
+                "choices": choices,
             }
             current_param = name
         elif section == "parameters" and current_param and line.startswith("    "):
@@ -369,6 +374,52 @@ def test_missing_focus_error_contract_matches_cli_and_mcp_semantics(
 
     assert _normalize_cli_missing_focus(cli_result.stdout) == {"kind": "focus_not_configured"}
     assert str(exc_info.value) == "No database configured. Call set_focus() first."
+
+
+def test_unknown_parameter_error_contract_matches_cli_and_mcp_semantics(
+    contract_db: Path, mcp_server: ModuleType
+) -> None:
+    """Regression for issue #120: both surfaces reject undeclared parameters identically."""
+    cli_result = runner.invoke(
+        app,
+        [
+            "query",
+            str(contract_db),
+            "--template-use",
+            "leak_detection",
+            "--params",
+            '{"min_sze": 1024}',
+        ],
+    )
+    assert cli_result.exit_code == 1
+
+    server = _set_mcp_focus(mcp_server, contract_db)
+    with pytest.raises(TemplateRenderError) as exc_info:
+        server.execute_query("leak_detection", params={"min_sze": 1024})
+
+    assert "Unknown parameter(s) for template 'leak_detection': min_sze" in str(exc_info.value)
+    assert str(exc_info.value) in cli_result.stdout
+
+
+def test_choices_error_contract_matches_cli_and_mcp_semantics(
+    contract_db: Path, mcp_server: ModuleType
+) -> None:
+    """Regression for issue #120: SQL fragment parameters are bounded on both surfaces."""
+    params = {"order_by": "(SELECT 1)", "order_dir": "ASC"}
+    cli_result = runner.invoke(
+        app,
+        ["query", str(contract_db), "--template-use", "allocation", "--params", json.dumps(params)],
+    )
+    assert cli_result.exit_code == 1
+
+    server = _set_mcp_focus(mcp_server, contract_db)
+    with pytest.raises(TemplateRenderError) as exc_info:
+        server.execute_query("allocation", params=params)
+
+    assert "Parameter 'order_by' must be one of: id, allocated, active, reserved" in str(
+        exc_info.value
+    )
+    assert str(exc_info.value) in cli_result.stdout
 
 
 def test_missing_template_error_contract_matches_cli_and_mcp_semantics(

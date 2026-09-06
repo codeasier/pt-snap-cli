@@ -29,6 +29,7 @@
 - Keep SQL value filters parameterized where using builder/condition APIs.
 - Device-specific template SQL should use injected table names such as `device_trace_table` and `device_block_table`.
 - Keep direct `QueryParameter` validation errors local; `QueryExecutor` must normalize them to its `TemplateRenderError` before the core boundary.
+- `QueryTemplate.validate_params()` rejects undeclared parameter names and enforces `QueryParameter.choices`; extra render-context variables (`device_id`, table names, the pushed-down `limit`) are injected by `QueryExecutor.render()` after validation, not passed through `params`.
 
 ### Testing Requirements
 - Run `pytest tests/query` for query subsystem changes; real SQLite template semantics live in `test_peak_memory_templates.py` and `test_query_max_rows_pushdown.py`.
