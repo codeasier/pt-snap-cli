@@ -6,11 +6,11 @@ A command-line tool for analyzing PyTorch memory snapshots. Set a snapshot datab
 
 ## Installation
 
-From a source checkout:
-
 ```bash
-pip install -e .
+pip install pt-snap-cli
 ```
+
+For a source checkout and contributor setup, see [Development](#development).
 
 ## Quick Start
 

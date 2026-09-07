@@ -6,11 +6,13 @@ Get up and running with `pt-snap-cli` in a few minutes.
 
 ## Installation
 
-From a source checkout:
-
 ```bash
-pip install -e .
+pip install pt-snap-cli
 ```
+
+This installs the `pt-snap` CLI. Contributors working from a source checkout can
+use `pip install -e ".[dev]"`; see [Development](../../README.md#development)
+in the repository README.
 
 ## Your First Analysis
 

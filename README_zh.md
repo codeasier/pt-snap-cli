@@ -6,11 +6,11 @@
 
 ## 安装
 
-从源码 checkout 安装：
-
 ```bash
-pip install -e .
+pip install pt-snap-cli
 ```
+
+源码 checkout 与贡献者安装见[开发](#开发)。
 
 ## 快速开始
 

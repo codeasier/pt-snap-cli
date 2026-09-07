@@ -6,13 +6,13 @@
 
 ## Installation
 
-From a source checkout:
-
 ```bash
-pip install -e .
+pip install pt-snap-cli
 ```
 
-The MCP server is installed as part of the core package.
+The MCP server is installed as part of the core package. Contributors working
+from a source checkout can use `pip install -e ".[dev]"`; see
+[Development](../../README.md#development) in the repository README.
 
 ## Starting the Server
 

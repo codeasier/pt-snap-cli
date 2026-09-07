@@ -6,11 +6,12 @@
 
 ## 安装
 
-从源码 checkout 安装：
-
 ```bash
-pip install -e .
+pip install pt-snap-cli
 ```
+
+这会安装 `pt-snap` 命令行工具。从源码 checkout 开发时，可使用
+`pip install -e ".[dev]"`；详见仓库 README 的[开发](../../README_zh.md#开发)一节。
 
 ## 第一次分析
 
