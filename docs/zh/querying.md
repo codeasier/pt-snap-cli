@@ -178,6 +178,9 @@ Found 150 results, showing 2:
   ... and 148 more (use -n to show more)
 ```
 
+即使输出被截断，"Found N" 的计数也是精确的。注意 MCP 的 `execute_query` 工具默认
+最多返回 100 行，与 CLI 不同；见[MCP 服务器：查询结果与行数限制](mcp.md#查询结果与行数限制)。
+
 CLI、Python API 和 MCP 的查询结果包含原始 SQLite 值。模板的 `output_schema`
 只是 metadata，查询执行时不会自动应用。需要十六进制地址字符串等转换值时，
 应显式调用 `ResultMapper`。

@@ -184,6 +184,10 @@ Found 150 results, showing 2:
   ... and 148 more (use -n to show more)
 ```
 
+The "Found N" count is exact even when output is capped. Note that the MCP
+`execute_query` tool applies a default cap of 100 rows, unlike the CLI; see
+[MCP Server: Query Results and Row Limits](mcp.md#query-results-and-row-limits).
+
 CLI, Python API, and MCP query results contain raw SQLite values. A template's
 `output_schema` is metadata and is not applied automatically during query
 execution. Use `ResultMapper` explicitly when converted values such as
