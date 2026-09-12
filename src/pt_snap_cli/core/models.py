@@ -4,7 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-FocusSource = Literal["explicit", "env", "project", "global", "none"]
+from pt_snap_cli.config import FocusSource
+
 CacheMissReason = Literal[
     "database_missing",
     "database_invalid",
