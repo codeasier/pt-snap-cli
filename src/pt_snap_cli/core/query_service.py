@@ -158,11 +158,13 @@ class QueryService:
         )
 
     def _get_executor(self, ctx: Context) -> QueryExecutor:
-        """Reuse the executor while its cached database context remains valid."""
+        """Reuse the executor while its cached database context remains valid.
+
+        Packaged templates are served by the registry, so the executor needs no
+        template directory of its own.
+        """
         if self._executor is None or self._executor_context is not ctx:
-            self._executor = QueryExecutor(
-                ctx, template_dir=Path(__file__).parent.parent / "query" / "templates"
-            )
+            self._executor = QueryExecutor(ctx)
             self._executor_context = ctx
         return self._executor
 

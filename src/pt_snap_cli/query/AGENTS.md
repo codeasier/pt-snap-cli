@@ -35,7 +35,7 @@
 - Run `pytest tests/test_cli.py` when template listing/info/output behavior changes.
 
 ### Common Patterns
-- Registry lookup is global and package templates load at import time.
+- Registry lookup is global and package templates load at import time. It is the only loader for packaged templates: `QueryExecutor` has no template directory, and its `_configs` holds only templates attached at runtime through `load_config()` / `register_template()`, which take precedence over registry entries of the same name.
 - `StrictUndefined` is used during template rendering so missing template variables fail loudly.
 - Template categories are inferred from directory structure when not explicitly declared in YAML.
 - `QueryService` translates executor errors to `core.errors` and owns cached Context/QueryExecutor reuse.
