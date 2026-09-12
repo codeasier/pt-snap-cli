@@ -55,6 +55,7 @@
 - CLI tests exercise Typer commands through test runners and assert printed output.
 - Query tests build minimal SQLite schemas and YAML-like config objects around the template pipeline.
 - Snapshot/import tests may deserialize only objects accepted by `fixtures/snapshots/PROVENANCE.md` and `SHA256SUMS`; never load a new or changed pickle before review.
+- `conftest.py` aborts the whole pytest session before collection when any `.pkl`/`.pickle` in `tests/fixtures/snapshots/` is not listed in `SHA256SUMS` (or a listed one is absent); the exit message names the offending files. Keep local analysis snapshots outside that directory, for example under `.tmp/`. There is deliberately no override flag.
 
 ## Dependencies
 
