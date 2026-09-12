@@ -23,11 +23,13 @@ queries:
         type: str
         default: "size"
         required: false
+        choices: [size, requestedSize, allocEventId, freeEventId, id]
         description: Sort key (size, requestedSize, allocEventId, freeEventId, id)
       order_dir:
         type: str
         default: "DESC"
         required: false
+        choices: [ASC, DESC]
         description: Sort direction (ASC or DESC)
       limit:
         type: int

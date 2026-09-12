@@ -68,6 +68,32 @@ pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 `min_size` is the minimum candidate size in bytes and defaults to `0`. Select
 the target device with the command-level `--device` option, not inside `--params`.
 
+## Parameter Validation
+
+`--params` is validated against the template before any SQL is rendered:
+
+- Every key must be a parameter the template declares. Unknown keys are
+  rejected instead of ignored, so a misspelled filter such as `min_sze` fails
+  with `Unknown parameter(s) for template 'leak_detection': min_sze (accepted:
+  min_size, limit)` rather than silently returning unfiltered results.
+- Values are converted to the declared type (`int`, `float`, `str`, `bool`).
+- Parameters that are rendered into SQL as identifiers or keywords, such as
+  `order_by` and `order_dir`, accept only the values listed under
+  `[choices: ...]` in `--template-info`. String choices match
+  case-insensitively and render with the declared spelling (`desc` becomes
+  `DESC`); anything else is rejected before it reaches the database.
+
+```bash
+pt-snap query --template-info allocation
+#   order_by: str (optional) [choices: id, allocated, active, reserved] [default: id]
+#   order_dir: str (optional) [choices: ASC, DESC] [default: ASC]
+
+pt-snap query --template-use allocation --params '{"order_by": "reserved", "order_dir": "desc"}' -n 5
+```
+
+The same rules apply to `SnapshotAnalyzer.execute_query()` and the MCP
+`execute_query` tool, which raise `TemplateRenderError` with the same message.
+
 ## Peak Memory Attribution Workflow
 
 These additions productize the common "find the peak, then explain what was live at that moment" workflow.
@@ -194,6 +220,7 @@ hexadecimal address strings are required.
 Query templates are defined in YAML format with:
 - `version`: Template version
 - `queries`: Query definitions with description, supported devices, parameters, SQL (Jinja2 templated), and output schema
+- Each parameter declares `type`, `default`, `required`, `description`, and optionally `choices`, a closed list of accepted values that is mandatory for parameters rendered as SQL identifiers or keywords
 
 When passed explicitly to `ResultMapper`, recognized mapping types are `int`,
 `float`, `str`, `bool`, `hex`, and `datetime`; `datetime` is currently a

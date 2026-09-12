@@ -23,6 +23,8 @@
 ### Working In This Directory
 - Keep each YAML template's `queries` entry name aligned with the file/topic and documented template name.
 - Include accurate parameter defaults, required flags, descriptions, and output schema entries.
+- Any parameter rendered as a SQL identifier or keyword (`order_by`, `order_dir`, or similar) must declare `choices`; `order_by` choices must be columns present in `output_schema`. `tests/query/test_registry.py` enforces this for packaged templates.
+- Callers cannot pass undeclared parameters; `QueryTemplate.validate_params()` rejects unknown names, so declare every input the SQL reads.
 - Use Jinja variables provided by `QueryExecutor`, especially device-specific table names.
 - Make ranked/grouped results deterministic with explicit tie-breakers and keep every selected result column in `output_schema`.
 

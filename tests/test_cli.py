@@ -452,6 +452,33 @@ class TestQueryTemplateInfo:
         assert "(optional)" in result.stdout
         assert "[default:" in result.stdout
 
+    def test_template_info_shows_choices(self, sample_db: Path) -> None:
+        from pt_snap_cli.query.config import QueryParameter
+
+        register_query(
+            QueryTemplate(
+                name="ordered",
+                query="SELECT 1 ORDER BY {{ order_by }} {{ order_dir }}",
+                parameters={
+                    "order_by": QueryParameter(
+                        name="order_by", type="str", default="id", choices=["id", "size"]
+                    ),
+                    "order_dir": QueryParameter(
+                        name="order_dir", type="str", default="ASC", choices=["ASC", "DESC"]
+                    ),
+                    "limit": QueryParameter(name="limit", type="int", default=-1),
+                },
+            )
+        )
+
+        result = runner.invoke(app, ["query", str(sample_db), "--template-info", "ordered"])
+
+        assert result.exit_code == 0
+        output = unstyle(result.stdout)
+        assert "  order_by: str (optional) [choices: id, size] [default: id]" in output
+        assert "  order_dir: str (optional) [choices: ASC, DESC] [default: ASC]" in output
+        assert "  limit: int (optional) [default: -1]" in output
+
     def test_template_info_without_parameters(self, sample_db: Path) -> None:
         """Test template info with no parameters."""
         template = QueryTemplate(
@@ -901,6 +928,93 @@ class TestQueryCommand:
         assert result.exit_code == 1
         assert "Error executing query" in result.stdout
         assert "cannot be converted to int" in result.stdout
+
+    def test_query_unknown_parameter_is_rejected(self, sample_db: Path) -> None:
+        """Regression for issue #120: a misspelled filter must not be silently dropped."""
+        from pt_snap_cli.query.config import QueryParameter
+
+        register_query(
+            QueryTemplate(
+                name="filtered",
+                query="SELECT * FROM trace_entry_0 WHERE size >= {{ min_size }}",
+                parameters={"min_size": QueryParameter(name="min_size", type="int", default=0)},
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            ["query", str(sample_db), "--template-use", "filtered", "--params", '{"min_sze": 1}'],
+        )
+
+        assert result.exit_code == 1
+        assert "Error executing query" in result.stdout
+        assert "Unknown parameter(s) for template 'filtered': min_sze (accepted: min_size)" in (
+            result.stdout
+        )
+
+    def test_query_sql_fragment_parameter_outside_choices_is_rejected(
+        self, sample_db: Path
+    ) -> None:
+        """Regression for issue #120: ORDER BY inputs are bounded before rendering."""
+        from pt_snap_cli.query.config import QueryParameter
+
+        register_query(
+            QueryTemplate(
+                name="ordered",
+                query="SELECT * FROM trace_entry_0 ORDER BY {{ order_by }} {{ order_dir }}",
+                parameters={
+                    "order_by": QueryParameter(
+                        name="order_by", type="str", default="id", choices=["id", "size"]
+                    ),
+                    "order_dir": QueryParameter(
+                        name="order_dir", type="str", default="ASC", choices=["ASC", "DESC"]
+                    ),
+                },
+            )
+        )
+
+        injected = runner.invoke(
+            app,
+            [
+                "query",
+                str(sample_db),
+                "--template-use",
+                "ordered",
+                "--params",
+                '{"order_by": "(SELECT name FROM sqlite_master LIMIT 1)"}',
+            ],
+        )
+        assert injected.exit_code == 1
+        assert "Parameter 'order_by' must be one of: id, size" in injected.stdout
+        assert "syntax error" not in injected.stdout
+
+        bad_direction = runner.invoke(
+            app,
+            [
+                "query",
+                str(sample_db),
+                "--template-use",
+                "ordered",
+                "--params",
+                '{"order_dir": "UP"}',
+            ],
+        )
+        assert bad_direction.exit_code == 1
+        assert "Parameter 'order_dir' must be one of: ASC, DESC (got 'UP')" in bad_direction.stdout
+
+        accepted = runner.invoke(
+            app,
+            [
+                "query",
+                str(sample_db),
+                "--template-use",
+                "ordered",
+                "--params",
+                '{"order_by": "size", "order_dir": "desc"}',
+            ],
+        )
+        assert accepted.exit_code == 0
+        assert "Found 1 results" in accepted.stdout
 
     def test_query_list_by_category(self, sample_db: Path) -> None:
         """Test 'query --list --category basic' filters by category."""
