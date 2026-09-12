@@ -1,6 +1,5 @@
 """Tests for the high-level SnapshotAnalyzer API."""
 
-import os
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -54,15 +53,20 @@ def _reset_registry():
 
 
 @pytest.fixture(autouse=True)
-def _isolate_config():
-    """Isolate Config from user's global config during tests."""
-    original_env = os.environ.get("PT_SNAP_DB_PATH")
-    if "PT_SNAP_DB_PATH" in os.environ:
-        del os.environ["PT_SNAP_DB_PATH"]
-    with patch.object(Path, "home", return_value=Path(tempfile.mkdtemp())):
-        yield
-    if original_env is not None:
-        os.environ["PT_SNAP_DB_PATH"] = original_env
+def _isolate_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Isolate focus resolution from the developer's machine.
+
+    ``Config.resolve_focus()`` consults, in order, ``PT_SNAP_DB_PATH``, the
+    nearest ancestor ``.pt-snap/focus.json`` of the current directory, and the
+    global config under ``Path.home()``. All three must be neutralized; a
+    ``.pt-snap/focus.json`` left in the repository root by ``pt-snap focus`` or
+    ``pt-snap import`` would otherwise leak into every test here (#52, #117).
+    """
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PT_SNAP_DB_PATH", raising=False)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home)
 
 
 class TestFocusState:
@@ -153,6 +157,13 @@ class TestSnapshotAnalyzerWithDB:
 
         with pytest.raises(RuntimeError, match="Set db_path"):
             analyzer.set_focus(device_id=0)
+
+    def test_isolated_environment_has_no_inherited_focus(self) -> None:
+        """The autouse fixture must hide any focus file above the repository (#52, #117)."""
+        state = SnapshotAnalyzer().get_focus()
+
+        assert state.source == "none"
+        assert state.db_path is None
 
     def test_list_templates(self) -> None:
         analyzer = SnapshotAnalyzer()
