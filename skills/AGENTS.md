@@ -5,13 +5,15 @@
 ## Purpose
 `skills` contains agent workflows shipped with the repository. Setup owns the
 only Python-environment mutation boundary and installs after explicit approval;
-diagnostic skills consume installed `pt-snap` surfaces against existing
-SnapshotDB data without writes.
+collection skills guide Ascend NPU snapshot capture without importing
+or diagnosing the pickle; diagnostic skills consume installed `pt-snap`
+surfaces against existing SnapshotDB data without writes.
 
 ## Scope
 | Path | Responsibility |
 | --- | --- |
 | `pt-snap-setup/SKILL.md` | Detect the active interpreter, verify CLI ownership, request install approval, and re-verify the same environment. |
+| `pt-snap-ascend-npu-collect/SKILL.md` | Collect Ascend NPU pickles via native APIs, framework config, or OOM env; inventory artifacts without import or diagnosis. |
 | `pt-snap-memory-leak/SKILL.md` | Diagnose end-of-trace live allocations, peak survival, callstack attribution, and release evidence without persisting analysis state. |
 | `pt-snap-memory-peak-breakdown/SKILL.md` | Explain active memory at active, allocated, or reserved peak events without leak, fragmentation, or OOM overclaims. |
 | `pt-snap-memory-fragmentation/SKILL.md` | Diagnose allocator gaps, runtime segment retention/churn, and fragmentation-consistent pressure without persisting analysis state. |
@@ -21,6 +23,10 @@ SnapshotDB data without writes.
 - Never assume Conda, switch environments, use plain `pip`, or install automatically.
 - Keep `editable` and PyPI choices explicit, and obtain confirmation before every install attempt.
 - Do not add setup steps that write reports or modify pt-snap focus/configuration.
+- Collection skills guide capture configuration and artifact inventory only.
+  They must not install packages, import or deserialize pickle snapshots,
+  persist focus, treat CSV/SVG as SnapshotDB input, or start diagnostic
+  queries. Import remains a separate trusted-input decision.
 - Diagnostic skills must not install packages, import pickle snapshots, persist
   focus, classify every allocation without a free event as a confirmed leak, or
   turn allocator gaps into definitive fragmentation claims.
@@ -31,6 +37,10 @@ SnapshotDB data without writes.
 
 ## Focused Tests
 - Run `pytest tests/skills/test_setup_contract.py` after setup-skill changes. The current executable test covers active-interpreter path preservation; review the remaining approval and reporting instructions statically.
+- Run `pytest tests/skills/test_ascend_npu_collect_contract.py` after
+  collection-skill changes. The v1 evaluation harness accepts only
+  `diagnostic-readonly` suites, so collection coverage stays in the static
+  contract.
 - Run `pytest tests/skills` after diagnostic-skill changes. Static contracts
   check current surfaces and safety boundaries; suite/case evaluations cover
   decision paths, structured evidence, and tool-call policy.
