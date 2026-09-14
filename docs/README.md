@@ -10,6 +10,7 @@
 | Querying | [en/querying.md](en/querying.md) |
 | Reports | [en/querying.md](en/querying.md) |
 | Splitting Snapshots | [en/splitting.md](en/splitting.md) |
+| Agent skills | [en/skills.md](en/skills.md) |
 | MCP server | [en/mcp.md](en/mcp.md) |
 | Database Schema | [en/database.md](en/database.md) |
 | Import metadata | [en/database.md](en/database.md) |
@@ -26,6 +27,7 @@
 | 运行查询 | [zh/querying.md](zh/querying.md) |
 | 分析报告 | [zh/querying.md](zh/querying.md) |
 | 拆分快照 | [zh/splitting.md](zh/splitting.md) |
+| Agent skill | [zh/skills.md](zh/skills.md) |
 | MCP 服务器 | [zh/mcp.md](zh/mcp.md) |
 | 数据库格式 | [zh/database.md](zh/database.md) |
 | 导入 metadata | [zh/database.md](zh/database.md) |

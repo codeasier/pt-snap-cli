@@ -62,6 +62,7 @@ include = ["pt_snap_cli*"]
 pt_snap_cli = [
     "query/templates/*.yaml",
     "query/templates/*/*.yaml",
+    "bundled_skills/*/SKILL.md",
 ]
 "pt_snap_cli.snapshot" = ["LICENSE", "PROVENANCE.md"]
 

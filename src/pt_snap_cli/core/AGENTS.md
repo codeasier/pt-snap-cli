@@ -4,7 +4,7 @@
 # core
 
 ## Purpose
-`core` contains the product service layer shared by CLI, Python API, and MCP adapters. It owns focus, import publication and metadata, snapshot splitting, query orchestration, reports, stable result models, and domain-specific errors over lower-level config, context, query, and snapshot modules.
+`core` contains the product service layer shared by CLI, Python API, and MCP adapters. It owns focus, import publication and metadata, snapshot splitting, query orchestration, reports, CLI-only agent-skill install/list, stable result models, and domain-specific errors over lower-level config, context, query, and snapshot modules.
 
 ## Key Files
 | File | Description |
@@ -20,6 +20,7 @@
 | `report_service.py` | Higher-level reports composed from shared query services. |
 | `snapshot_import_backend.py` | Adapter from trusted snapshot runtime replay to staged SnapshotDB output. |
 | `split_service.py` | Argument/device validation, replay-safe slicing, staging cleanup, and exclusive publication. |
+| `skill_service.py` | Bundled agent-skill discovery, install-status detection, and host-directory publication. |
 
 ## Subdirectories
 | Directory | Purpose |

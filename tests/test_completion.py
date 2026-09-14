@@ -9,6 +9,8 @@ import pytest
 from pt_snap_cli.completion import (
     complete_categories,
     complete_device_ids,
+    complete_skill_names,
+    complete_skill_targets,
     complete_template_names,
 )
 from pt_snap_cli.config import (
@@ -86,6 +88,18 @@ class TestCompleteCategories:
     def test_order_is_fixed(self):
         result = complete_categories()
         assert result == sorted(result)
+
+
+class TestCompleteSkillNames:
+    def test_returns_bundled_skills(self) -> None:
+        result = complete_skill_names()
+        assert "pt-snap-setup" in result
+        assert result == sorted(result)
+
+
+class TestCompleteSkillTargets:
+    def test_returns_supported_hosts(self) -> None:
+        assert complete_skill_targets() == ["agents", "claude", "cursor", "codex"]
 
 
 class TestCompleteDeviceIds:

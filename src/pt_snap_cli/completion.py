@@ -23,6 +23,24 @@ def complete_categories() -> list[str]:
     return discover_categories()
 
 
+def complete_skill_names() -> list[str]:
+    """Return bundled agent skill names for shell completion."""
+    from pt_snap_cli.core.errors import SkillCatalogError
+    from pt_snap_cli.core.skill_service import SkillService
+
+    try:
+        return [skill.name for skill in SkillService().list_catalog()]
+    except SkillCatalogError:
+        return []
+
+
+def complete_skill_targets() -> list[str]:
+    """Return supported skill host names for shell completion."""
+    from pt_snap_cli.core.models import SKILL_HOSTS
+
+    return list(SKILL_HOSTS)
+
+
 def _resolve_db_for_completion() -> Path | None:
     """Resolve the database path using the same priority as the CLI.
 
