@@ -14,6 +14,7 @@ from pt_snap_cli.core.skill_service import (
     SkillService,
     default_catalog_dir,
     human_skill_summary,
+    skill_dir_digest,
 )
 
 
@@ -214,6 +215,101 @@ def test_install_refuses_existing_destination_without_skill_md(
     assert updated.results[0].action == "updated"
     assert dest.joinpath("SKILL.md").is_file()
     assert not notes.exists()
+
+
+def test_upgrade_refuses_existing_destination_without_skill_md(
+    service: SkillService,
+) -> None:
+    dest = service.skill_destination("claude", "user", "pt-snap-demo")
+    dest.mkdir(parents=True)
+    notes = dest / "notes.txt"
+    notes.write_text("keep me\n", encoding="utf-8")
+
+    with pytest.raises(SkillInstallError, match="missing SKILL.md"):
+        service.upgrade_skills(["pt-snap-demo"], hosts=("claude",), scope="user")
+    assert notes.is_file()
+    assert not dest.joinpath("SKILL.md").exists()
+
+
+def test_install_refuses_before_mutating_later_host_conflict(
+    service: SkillService,
+) -> None:
+    claude_dest = service.skill_destination("claude", "user", "pt-snap-demo")
+    claude_dest.mkdir(parents=True)
+    notes = claude_dest / "notes.txt"
+    notes.write_text("keep me\n", encoding="utf-8")
+    agents_dest = service.skill_destination("agents", "user", "pt-snap-demo")
+
+    with pytest.raises(SkillInstallError, match="--force"):
+        service.install_skills(["pt-snap-demo"], scope="user")
+    assert notes.is_file()
+    assert not agents_dest.exists()
+
+
+def test_upgrade_refuses_before_mutating_later_host_conflict(
+    service: SkillService,
+) -> None:
+    service.install_skills(["pt-snap-demo"], hosts=("agents",), scope="user")
+    agents_skill = service.skill_destination("agents", "user", "pt-snap-demo") / "SKILL.md"
+    agents_skill.write_text(
+        agents_skill.read_text(encoding="utf-8") + "local change\n",
+        encoding="utf-8",
+    )
+    claude_dest = service.skill_destination("claude", "user", "pt-snap-demo")
+    claude_dest.mkdir(parents=True)
+    notes = claude_dest / "notes.txt"
+    notes.write_text("keep me\n", encoding="utf-8")
+
+    with pytest.raises(SkillInstallError, match="missing SKILL.md"):
+        service.upgrade_skills(["pt-snap-demo"], scope="user")
+    assert "local change" in agents_skill.read_text(encoding="utf-8")
+    assert notes.is_file()
+
+
+def test_publish_translates_parent_mkdir_oserror(service: SkillService, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").write_text("not a directory\n", encoding="utf-8")
+    with pytest.raises(SkillInstallError, match="Failed to install skill"):
+        service.install_skills(["pt-snap-demo"], hosts=("claude",), scope="user")
+
+
+def test_catalog_translates_unreadable_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    catalog = tmp_path / "catalog"
+    _write_skill(catalog, "pt-snap-demo", "Demo")
+    original_iterdir = Path.iterdir
+
+    def fake_iterdir(self: Path):
+        if self == catalog:
+            raise PermissionError("denied")
+        return original_iterdir(self)
+
+    monkeypatch.setattr(Path, "iterdir", fake_iterdir)
+    service = SkillService(
+        catalog_dir=catalog,
+        home=tmp_path / "home",
+        cwd=tmp_path / "project",
+        environ={},
+    )
+    with pytest.raises(SkillCatalogError, match="Failed to read skill catalog"):
+        service.list_catalog()
+
+
+def test_digest_translates_unreadable_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    skill_dir = _write_skill(tmp_path / "catalog", "pt-snap-demo", "Demo")
+    skill_md = skill_dir / "SKILL.md"
+    original_read_bytes = Path.read_bytes
+
+    def fake_read_bytes(self: Path) -> bytes:
+        if self == skill_md:
+            raise PermissionError("denied")
+        return original_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", fake_read_bytes)
+    with pytest.raises(SkillCatalogError, match="Failed to read skill file"):
+        skill_dir_digest(skill_dir)
 
 
 def test_agents_shared_roots(service: SkillService, tmp_path: Path) -> None:

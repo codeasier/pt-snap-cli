@@ -52,7 +52,7 @@ pt-snap skill install --project --target agents
 
 Omitting skill names installs every bundled skill. The default destination is the shared user-level `agents` directory plus Claude. Use `--target` to choose hosts, `--project` to write into the current working directory, or `--dir` for a custom skills folder.
 
-If a destination already exists and its contents differ, install refuses unless you pass `--force`. Identical copies are left unchanged.
+If a destination already exists and its contents differ, install refuses unless you pass `--force`. Identical copies are left unchanged. When more than one host is selected, every destination is checked before any copy is written.
 
 ## Upgrade skills
 
@@ -61,7 +61,7 @@ pt-snap skill upgrade
 pt-snap skill upgrade pt-snap-setup --target claude
 ```
 
-`upgrade` replaces outdated copies with the bundled skill. Missing skills are left missing; current copies are left unchanged.
+`upgrade` replaces outdated copies that already contain `SKILL.md`. Missing skills are left missing; current copies are left unchanged. A same-named path that exists without `SKILL.md` is left untouched; use `install --force` to replace it.
 
 ## Uninstall skills
 

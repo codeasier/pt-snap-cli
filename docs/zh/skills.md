@@ -52,7 +52,7 @@ pt-snap skill install --project --target agents
 
 省略 skill 名称时会安装全部随包 skill。默认写入共享的用户级 `agents` 目录以及 Claude 目录。用 `--target` 选择宿主，用 `--project` 写入当前工作目录，或用 `--dir` 写入自定义 skill 目录。
 
-如果目标目录已存在且内容不同，必须加上 `--force` 才会覆盖。内容相同的副本会保持不变。
+如果目标目录已存在且内容不同，必须加上 `--force` 才会覆盖。内容相同的副本会保持不变。写入多个宿主时，会先检查全部目标，确认都可以安装后再复制任何文件。
 
 ## 升级 skill
 
@@ -61,7 +61,7 @@ pt-snap skill upgrade
 pt-snap skill upgrade pt-snap-setup --target claude
 ```
 
-`upgrade` 会用随包版本替换已经过期的副本。尚未安装的 skill 保持未安装；内容已是最新的副本不会改动。
+`upgrade` 会替换已经包含 `SKILL.md` 但内容过期的副本。尚未安装的 skill 保持未安装；内容已是最新的副本不会改动。同名路径存在但没有 `SKILL.md` 时不会改动，需要用 `install --force` 才能覆盖。
 
 ## 卸载 skill
 

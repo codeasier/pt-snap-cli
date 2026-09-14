@@ -9,6 +9,7 @@ import shutil
 from collections.abc import Iterable, Mapping
 from importlib.resources import files
 from pathlib import Path
+from uuid import uuid4
 
 import yaml
 
@@ -116,16 +117,17 @@ class SkillService:
         force: bool = False,
         dest_dir: Path | str | None = None,
     ) -> SkillInstallReport:
-        catalog = {spec.name: spec for spec in self.list_catalog()}
-        requested = self._resolve_names(names, catalog)
-        results: list[SkillInstallResult] = []
-        for name in requested:
-            spec = catalog[name]
-            for host, selected_scope, dest in self._mutation_targets(name, hosts, scope, dest_dir):
-                results.append(
-                    self._install_one(spec, host, selected_scope, dest=dest, force=force)
-                )
-        return SkillInstallReport(results=results)
+        jobs = self._mutation_jobs(names, hosts, scope, dest_dir)
+        if not force:
+            for spec, _host, _selected_scope, dest in jobs:
+                if _install_status(spec.source_dir, dest) == "outdated":
+                    raise SkillInstallError(_force_replace_message(spec.name, dest))
+        return SkillInstallReport(
+            results=[
+                self._install_one(spec, host, selected_scope, dest=dest, force=force)
+                for spec, host, selected_scope, dest in jobs
+            ]
+        )
 
     def upgrade_skills(
         self,
@@ -135,14 +137,16 @@ class SkillService:
         scope: str = "user",
         dest_dir: Path | str | None = None,
     ) -> SkillInstallReport:
-        catalog = {spec.name: spec for spec in self.list_catalog()}
-        requested = self._resolve_names(names, catalog)
-        results: list[SkillInstallResult] = []
-        for name in requested:
-            spec = catalog[name]
-            for host, selected_scope, dest in self._mutation_targets(name, hosts, scope, dest_dir):
-                results.append(self._upgrade_one(spec, host, selected_scope, dest=dest))
-        return SkillInstallReport(results=results)
+        jobs = self._mutation_jobs(names, hosts, scope, dest_dir)
+        for spec, _host, _selected_scope, dest in jobs:
+            if _non_skill_destination(dest):
+                raise SkillInstallError(_non_skill_replace_message(spec.name, dest))
+        return SkillInstallReport(
+            results=[
+                self._upgrade_one(spec, host, selected_scope, dest=dest)
+                for spec, host, selected_scope, dest in jobs
+            ]
+        )
 
     def uninstall_skills(
         self,
@@ -152,13 +156,13 @@ class SkillService:
         scope: str = "user",
         dest_dir: Path | str | None = None,
     ) -> SkillInstallReport:
-        catalog = {spec.name: spec for spec in self.list_catalog()}
-        requested = self._resolve_names(names, catalog)
-        results: list[SkillInstallResult] = []
-        for name in requested:
-            for host, selected_scope, dest in self._mutation_targets(name, hosts, scope, dest_dir):
-                results.append(self._uninstall_one(name, host, selected_scope, dest=dest))
-        return SkillInstallReport(results=results)
+        jobs = self._mutation_jobs(names, hosts, scope, dest_dir)
+        return SkillInstallReport(
+            results=[
+                self._uninstall_one(spec.name, host, selected_scope, dest=dest)
+                for spec, host, selected_scope, dest in jobs
+            ]
+        )
 
     def listing_to_dict(self, listings: list[SkillListing]) -> dict[str, object]:
         return {
@@ -203,6 +207,22 @@ class SkillService:
         resolved_host = self._resolve_host(host)
         resolved_scope = self._resolve_scope(scope)
         return self._host_root(resolved_host, resolved_scope) / name
+
+    def _mutation_jobs(
+        self,
+        names: Iterable[str] | None,
+        hosts: Iterable[str] | None,
+        scope: str,
+        dest_dir: Path | str | None,
+    ) -> list[tuple[SkillSpec, SkillHost, SkillScope, Path]]:
+        catalog = {spec.name: spec for spec in self.list_catalog()}
+        requested = self._resolve_names(names, catalog)
+        jobs: list[tuple[SkillSpec, SkillHost, SkillScope, Path]] = []
+        for name in requested:
+            spec = catalog[name]
+            for host, selected_scope, dest in self._mutation_targets(name, hosts, scope, dest_dir):
+                jobs.append((spec, host, selected_scope, dest))
+        return jobs
 
     def _mutation_targets(
         self,
@@ -267,10 +287,7 @@ class SkillService:
                 action="already_installed",
             )
         if status == "outdated" and not force:
-            raise SkillInstallError(
-                f"Skill '{spec.name}' already exists at '{dest}' and differs from "
-                f"the bundled copy. Re-run with --force to replace it."
-            )
+            raise SkillInstallError(_force_replace_message(spec.name, dest))
         _publish_skill(spec.source_dir, dest)
         action: SkillInstallAction = "updated" if status == "outdated" else "installed"
         return SkillInstallResult(
@@ -306,6 +323,8 @@ class SkillService:
                 path=dest,
                 action="already_installed",
             )
+        if _non_skill_destination(dest):
+            raise SkillInstallError(_non_skill_replace_message(spec.name, dest))
         _publish_skill(spec.source_dir, dest)
         return SkillInstallResult(
             name=spec.name,
@@ -425,7 +444,11 @@ def list_catalog_skills(catalog_dir: Path) -> list[SkillSpec]:
     if not catalog_dir.is_dir():
         raise SkillCatalogError(f"Skill catalog directory does not exist: {catalog_dir}")
     skills: list[SkillSpec] = []
-    for child in sorted(catalog_dir.iterdir(), key=lambda path: path.name):
+    try:
+        children = sorted(catalog_dir.iterdir(), key=lambda path: path.name)
+    except OSError as exc:
+        raise SkillCatalogError(f"Failed to read skill catalog '{catalog_dir}': {exc}") from exc
+    for child in children:
         if not child.is_dir() or child.name.startswith("."):
             continue
         skill_md = child / "SKILL.md"
@@ -479,9 +502,12 @@ def _packaged_skills_dir() -> Path | None:
 
 
 def _looks_like_catalog(path: Path) -> bool:
-    if not path.is_dir():
+    try:
+        if not path.is_dir():
+            return False
+        return any((child / "SKILL.md").is_file() for child in path.iterdir() if child.is_dir())
+    except OSError:
         return False
-    return any((child / "SKILL.md").is_file() for child in path.iterdir() if child.is_dir())
 
 
 def _validated_skill_name(name: str, *, source: Path) -> str:
@@ -510,8 +536,12 @@ def _parse_skill_frontmatter(skill_md: Path) -> dict[str, object]:
 
 
 def _iter_skill_files(skill_dir: Path) -> list[Path]:
+    try:
+        candidates = sorted(skill_dir.rglob("*"))
+    except OSError as exc:
+        raise SkillCatalogError(f"Failed to read skill directory '{skill_dir}': {exc}") from exc
     files_found: list[Path] = []
-    for path in sorted(skill_dir.rglob("*")):
+    for path in candidates:
         if not path.is_file():
             continue
         if path.name in {".DS_Store"} or "__pycache__" in path.parts:
@@ -526,7 +556,10 @@ def skill_dir_digest(skill_dir: Path) -> str:
         relative = path.relative_to(skill_dir).as_posix()
         hasher.update(relative.encode("utf-8"))
         hasher.update(b"\0")
-        hasher.update(path.read_bytes())
+        try:
+            hasher.update(path.read_bytes())
+        except OSError as exc:
+            raise SkillCatalogError(f"Failed to read skill file '{path}': {exc}") from exc
     return hasher.hexdigest()
 
 
@@ -592,11 +625,30 @@ def _remove_path(path: Path) -> None:
     path.unlink()
 
 
+def _non_skill_destination(dest: Path) -> bool:
+    if not dest.exists() and not dest.is_symlink():
+        return False
+    return not (dest / "SKILL.md").is_file()
+
+
+def _force_replace_message(name: str, dest: Path) -> str:
+    return (
+        f"Skill '{name}' already exists at '{dest}' and differs from "
+        f"the bundled copy. Re-run with --force to replace it."
+    )
+
+
+def _non_skill_replace_message(name: str, dest: Path) -> str:
+    return (
+        f"Skill '{name}' already exists at '{dest}' but is not an installed skill "
+        f"(missing SKILL.md). Re-run install with --force to replace it."
+    )
+
+
 def _publish_skill(source_dir: Path, dest: Path) -> None:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    staging = dest.parent / f".{dest.name}.pt-snap-staging"
+    staging = dest.parent / f".{dest.name}.{uuid4().hex}.pt-snap-staging"
     try:
-        _remove_path(staging)
+        dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source_dir, staging)
         _remove_path(dest)
         try:
