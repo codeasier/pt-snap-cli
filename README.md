@@ -63,6 +63,7 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 | `pt-snap query` | Run memory analysis queries |
 | `pt-snap report` | Generate higher-level memory analysis reports |
 | `pt-snap config` | Manage global configuration |
+| `pt-snap skill` | List and install bundled agent skills |
 | `pt-snap-mcp` | Start the MCP server for agent integration |
 
 ## MCP Server
@@ -86,6 +87,7 @@ See the [documentation index](docs/README.md) for all English and Chinese guides
 | Managing focus | [Focus Management](docs/en/focus-management.md) |
 | Running queries | [Querying](docs/en/querying.md) |
 | Splitting snapshots | [Splitting Snapshots](docs/en/splitting.md) |
+| Agent skills | [Agent Skills](docs/en/skills.md) |
 | MCP server | [MCP Guide](docs/en/mcp.md) |
 | Database format | [SnapshotDB Schema](docs/en/database.md) |
 | Python API | [SnapshotAnalyzer API](docs/en/snapshot-analyzer-api.md) |

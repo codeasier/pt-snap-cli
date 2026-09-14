@@ -41,7 +41,7 @@ that local environment is intentionally available.
 
 | Surface | Entry point | Responsibility |
 | --- | --- | --- |
-| CLI | `src/pt_snap_cli/cli.py` via `pt_snap_cli.cli:_safe_call` | Typer commands for focus, import, split, metadata, query, reports, and config |
+| CLI | `src/pt_snap_cli/cli.py` via `pt_snap_cli.cli:_safe_call` | Typer commands for focus, import, split, metadata, query, reports, config, and skill install/list |
 | Python API | `src/pt_snap_cli/api.py` (`SnapshotAnalyzer`) | Programmatic focus, query, and metadata facade |
 | MCP | `src/pt_snap_cli/mcp/server.py` via `pt_snap_cli.mcp.server:main` | Agent tools/resources backed by `SnapshotAnalyzer` |
 | Product services | `src/pt_snap_cli/core/` | Shared focus, import, split, query, report, metadata, and error semantics |
@@ -85,6 +85,20 @@ templates under category subdirectories are included by
   executor, `core/query_service.py`, CLI/MCP presentation, and focused tests
   together.
 
+### Agent skills
+
+- Author skills under `skills/<name>/SKILL.md`. Keep the packaged copy at
+  `src/pt_snap_cli/bundled_skills/<name>/SKILL.md` identical so wheel installs
+  can run `pt-snap skill install`.
+- `SkillService` prefers `PT_SNAP_SKILLS_DIR` when set, then the repository
+  `skills/` tree in a source checkout, then packaged copies. Default install writes the shared
+  `~/.agents/skills` tree (Cursor, OpenCode, current Codex, and other
+  Agent Skills hosts) plus Claude's independent `~/.claude/skills` or
+  `$CLAUDE_CONFIG_DIR/skills`. `--target cursor` and `--target codex` keep
+  the host-native extras; `--dir` covers anything else. List reports
+  `installed`, `outdated`, or `missing`. Skill management is CLI-only and
+  is not exposed on the MCP server.
+
 ### Snapshot import and split
 
 - Pickle input is trusted-code execution, not a sandbox. Never load an
@@ -112,6 +126,7 @@ templates under category subdirectories are included by
 | Snapshot import or metadata | `src/pt_snap_cli/core/import_service.py`, `src/pt_snap_cli/core/import_metadata.py`, `src/pt_snap_cli/core/snapshot_import_backend.py` | `tests/core/test_import_*.py`, `tests/test_snapshot_db.py` |
 | Snapshot splitting or replay | `src/pt_snap_cli/core/split_service.py`, `src/pt_snap_cli/snapshot/` | `tests/core/test_split_service.py`, `tests/snapshot/` |
 | Reports | `src/pt_snap_cli/core/report_service.py`, report commands in `src/pt_snap_cli/cli.py` | `tests/core/test_report_service.py`, report cases in `tests/test_cli.py` |
+| Skill list/install destinations or catalog packaging | `src/pt_snap_cli/core/skill_service.py`, `src/pt_snap_cli/bundled_skills/`, skill commands in `src/pt_snap_cli/cli.py` | `tests/core/test_skill_service.py`, `tests/test_bundled_skills.py`, skill cases in `tests/test_cli.py` |
 | Agent setup, Ascend NPU collection, diagnostics, or skill evaluation | `skills/`, `tests/skills/`, and the referenced CLI/query surfaces | `tests/skills/` |
 | Packaging or release | `pyproject.toml`, `.github/workflows/` | `tests/test_package.py`, `tests/test_release_workflow.py` |
 | Executable fixtures | `tests/fixtures/snapshots/` | `tests/test_fixture_provenance.py` before any deserializing suite |

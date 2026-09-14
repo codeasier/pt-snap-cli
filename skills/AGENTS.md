@@ -35,6 +35,15 @@ surfaces against existing SnapshotDB data without writes.
 - Prefer packaged query templates for diagnostics. Any raw SQLite fallback must
   document why a template is insufficient and enforce read-only access.
 
+## Packaging
+Repository `skills/*/SKILL.md` is the authoring source. Wheel installs read
+`src/pt_snap_cli/bundled_skills/`. After adding or editing a skill, copy the
+same `SKILL.md` into that packaged tree. `pt-snap skill list`, `install`,
+`upgrade`, and `uninstall` manage copies in the shared `.agents/skills`
+tree, Claude's independent directories, optional Cursor/Codex extras, or
+an explicit `--dir`. After install or upgrade, the host agent must be
+restarted.
+
 ## Focused Tests
 - Run `pytest tests/skills/test_setup_contract.py` after setup-skill changes. The current executable test covers active-interpreter path preservation; review the remaining approval and reporting instructions statically.
 - Run `pytest tests/skills/test_ascend_npu_collect_contract.py` after

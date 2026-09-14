@@ -177,6 +177,9 @@ def mock_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Mock Path.home to use tmp_path."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("PT_SNAP_DB_PATH", raising=False)
+    monkeypatch.delenv("PT_SNAP_SKILLS_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
     with patch.object(Path, "home", return_value=tmp_path):
         yield
 
@@ -1170,3 +1173,157 @@ class TestReportCommand:
         assert result.exit_code == 1
         assert "Database from global focus not found" in result.stdout
         assert str(missing_db) in result.stdout
+
+
+class TestSkillCommands:
+    def test_skill_help_lists_subcommands(self) -> None:
+        result = runner.invoke(app, ["skill", "--help"])
+        assert result.exit_code == 0
+        output = unstyle(result.stdout)
+        assert "list" in output
+        assert "install" in output
+        assert "upgrade" in output
+        assert "uninstall" in output
+
+    def test_skill_list_json_and_install_roundtrip(self, tmp_path: Path) -> None:
+        listed = runner.invoke(app, ["skill", "list", "--json", "--user", "--target", "claude"])
+        assert listed.exit_code == 0
+        payload = json.loads(listed.stdout)
+        names = {item["name"] for item in payload["skills"]}
+        assert "pt-snap-setup" in names
+        setup = next(item for item in payload["skills"] if item["name"] == "pt-snap-setup")
+        assert setup["status"] == "missing"
+        assert setup["description"]
+        assert "note" not in payload
+
+        human = runner.invoke(app, ["skill", "list", "--user", "--target", "claude"])
+        assert human.exit_code == 0
+        human_out = unstyle(human.stdout)
+        assert "pt-snap-setup" in human_out
+        assert "Status" in human_out
+        assert "Locations" in human_out
+        assert "Use when installing or verifying pt-snap-cli" in human_out
+        assert "NAME" not in human_out.splitlines()[0]
+        assert "Restart the agent" not in human_out
+
+        human_install = runner.invoke(
+            app, ["skill", "install", "pt-snap-setup", "--target", "claude"]
+        )
+        assert human_install.exit_code == 0
+        assert "Restart the agent after install, upgrade, or uninstall" in unstyle(
+            human_install.stdout
+        )
+        dest = tmp_path / ".claude" / "skills" / "pt-snap-setup" / "SKILL.md"
+        assert dest.is_file()
+
+        listed_after_install = runner.invoke(app, ["skill", "list", "--user", "--target", "claude"])
+        assert listed_after_install.exit_code == 0
+        assert "Restart the agent" not in unstyle(listed_after_install.stdout)
+
+        installed = runner.invoke(
+            app, ["skill", "install", "pt-snap-setup", "--target", "claude", "--json"]
+        )
+        assert installed.exit_code == 0
+        report = json.loads(installed.stdout)
+        assert report["results"][0]["action"] == "already_installed"
+        assert report["restart_required"] is False
+        assert report["restart_hint"] is None
+        already_human = runner.invoke(
+            app, ["skill", "install", "pt-snap-setup", "--target", "claude"]
+        )
+        assert already_human.exit_code == 0
+        assert "Restart the agent" not in unstyle(already_human.stdout)
+
+        listed_again = runner.invoke(
+            app, ["skill", "list", "--json", "--user", "--target", "claude"]
+        )
+        setup_again = next(
+            item
+            for item in json.loads(listed_again.stdout)["skills"]
+            if item["name"] == "pt-snap-setup"
+        )
+        assert setup_again["status"] == "installed"
+
+    def test_skill_install_unknown_name(self) -> None:
+        result = runner.invoke(app, ["skill", "install", "pt-snap-missing"])
+        assert result.exit_code == 1
+        assert "Unknown skill" in unstyle(result.stdout)
+
+    def test_skill_list_rejects_scope_flags_together(self) -> None:
+        result = runner.invoke(app, ["skill", "list", "--project", "--user"])
+        assert result.exit_code == 1
+        assert "--project and --user cannot be used together" in unstyle(result.stdout)
+
+    def test_skill_upgrade_and_uninstall(self, tmp_path: Path) -> None:
+        runner.invoke(app, ["skill", "install", "pt-snap-setup", "--target", "claude"])
+        dest = tmp_path / ".claude" / "skills" / "pt-snap-setup" / "SKILL.md"
+        dest.write_text(dest.read_text(encoding="utf-8") + "local change\n", encoding="utf-8")
+
+        upgraded = runner.invoke(
+            app, ["skill", "upgrade", "pt-snap-setup", "--target", "claude", "--json"]
+        )
+        assert upgraded.exit_code == 0
+        payload = json.loads(upgraded.stdout)
+        assert payload["results"][0]["action"] == "updated"
+        assert payload["restart_required"] is True
+        assert "Restart the agent after install, upgrade, or uninstall" in payload["restart_hint"]
+
+        removed = runner.invoke(
+            app, ["skill", "uninstall", "pt-snap-setup", "--target", "claude", "--json"]
+        )
+        assert removed.exit_code == 0
+        removed_payload = json.loads(removed.stdout)
+        assert removed_payload["results"][0]["action"] == "uninstalled"
+        assert removed_payload["restart_required"] is True
+        assert (
+            "Restart the agent after install, upgrade, or uninstall"
+            in removed_payload["restart_hint"]
+        )
+        assert not dest.exists()
+
+        missing = runner.invoke(
+            app, ["skill", "uninstall", "pt-snap-setup", "--target", "claude", "--json"]
+        )
+        assert missing.exit_code == 0
+        missing_payload = json.loads(missing.stdout)
+        assert missing_payload["results"][0]["action"] == "not_installed"
+        assert missing_payload["restart_required"] is False
+        assert missing_payload["restart_hint"] is None
+
+    def test_skill_dir_install_and_list(self, tmp_path: Path) -> None:
+        dest = tmp_path / "other-agent" / "skills"
+        installed = runner.invoke(
+            app, ["skill", "install", "pt-snap-setup", "--dir", str(dest), "--json"]
+        )
+        assert installed.exit_code == 0
+        payload = json.loads(installed.stdout)
+        assert payload["results"][0]["host"] == "custom"
+        assert payload["results"][0]["action"] == "installed"
+        assert (dest / "pt-snap-setup" / "SKILL.md").is_file()
+
+        listed = runner.invoke(app, ["skill", "list", "--dir", str(dest), "--json"])
+        assert listed.exit_code == 0
+        setup = next(
+            item for item in json.loads(listed.stdout)["skills"] if item["name"] == "pt-snap-setup"
+        )
+        assert setup["status"] == "installed"
+        assert setup["locations"][0]["host"] == "custom"
+
+        human = runner.invoke(app, ["skill", "list", "--dir", str(dest)])
+        assert human.exit_code == 0
+        assert str(dest) in unstyle(human.stdout)
+
+    def test_skill_dir_rejects_target(self, tmp_path: Path) -> None:
+        result = runner.invoke(
+            app, ["skill", "list", "--dir", str(tmp_path / "skills"), "--target", "claude"]
+        )
+        assert result.exit_code == 1
+        assert "--dir cannot be combined with --target" in unstyle(result.stdout)
+
+    def test_skill_dir_rejects_project(self, tmp_path: Path) -> None:
+        result = runner.invoke(
+            app,
+            ["skill", "install", "pt-snap-setup", "--dir", str(tmp_path / "skills"), "--project"],
+        )
+        assert result.exit_code == 1
+        assert "--dir cannot be combined with --project" in unstyle(result.stdout)

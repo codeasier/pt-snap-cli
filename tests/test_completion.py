@@ -9,6 +9,8 @@ import pytest
 from pt_snap_cli.completion import (
     complete_categories,
     complete_device_ids,
+    complete_skill_names,
+    complete_skill_targets,
     complete_template_names,
 )
 from pt_snap_cli.config import (
@@ -29,6 +31,7 @@ def isolate_completion_state(
     """Reset registries and isolate focus resolution from the host machine."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv(ENV_DB_PATH, raising=False)
+    monkeypatch.delenv("PT_SNAP_SKILLS_DIR", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     QueryRegistry.reset()
@@ -86,6 +89,18 @@ class TestCompleteCategories:
     def test_order_is_fixed(self):
         result = complete_categories()
         assert result == sorted(result)
+
+
+class TestCompleteSkillNames:
+    def test_returns_bundled_skills(self) -> None:
+        result = complete_skill_names()
+        assert "pt-snap-setup" in result
+        assert result == sorted(result)
+
+
+class TestCompleteSkillTargets:
+    def test_returns_supported_hosts(self) -> None:
+        assert complete_skill_targets() == ["agents", "claude", "cursor", "codex"]
 
 
 class TestCompleteDeviceIds:
