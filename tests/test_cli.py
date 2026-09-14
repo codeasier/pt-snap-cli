@@ -1274,9 +1274,10 @@ class TestSkillCommands:
         removed_payload = json.loads(removed.stdout)
         assert removed_payload["results"][0]["action"] == "uninstalled"
         assert removed_payload["restart_required"] is True
-        assert "Restart the agent after install, upgrade, or uninstall" in removed_payload[
-            "restart_hint"
-        ]
+        assert (
+            "Restart the agent after install, upgrade, or uninstall"
+            in removed_payload["restart_hint"]
+        )
         assert not dest.exists()
 
         missing = runner.invoke(
