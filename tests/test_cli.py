@@ -177,6 +177,7 @@ def mock_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Mock Path.home to use tmp_path."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("PT_SNAP_DB_PATH", raising=False)
+    monkeypatch.delenv("PT_SNAP_SKILLS_DIR", raising=False)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     monkeypatch.delenv("CODEX_HOME", raising=False)
     with patch.object(Path, "home", return_value=tmp_path):
@@ -1318,3 +1319,11 @@ class TestSkillCommands:
         )
         assert result.exit_code == 1
         assert "--dir cannot be combined with --target" in unstyle(result.stdout)
+
+    def test_skill_dir_rejects_project(self, tmp_path: Path) -> None:
+        result = runner.invoke(
+            app,
+            ["skill", "install", "pt-snap-setup", "--dir", str(tmp_path / "skills"), "--project"],
+        )
+        assert result.exit_code == 1
+        assert "--dir cannot be combined with --project" in unstyle(result.stdout)

@@ -31,7 +31,7 @@ Cursor, OpenCode, Codex, and several other Agent Skills hosts read the shared di
 | `cursor` | `~/.cursor/skills` | `.cursor/skills` | Cursor-native extra. Cloud Agents sync only this user directory, not `~/.agents/skills`. |
 | `codex` | `~/.codex/skills` | `.codex/skills` | Codex legacy user home (`$CODEX_HOME/skills`). Codex still scans it; new user skills belong in `agents`. |
 
-Windows equivalents use `%USERPROFILE%` instead of `~`. If `CLAUDE_CONFIG_DIR` is set, user-level Claude skills go to `$CLAUDE_CONFIG_DIR/skills`. If `CODEX_HOME` is set, `--target codex` writes `$CODEX_HOME/skills`.
+Windows equivalents use `%USERPROFILE%` instead of `~`. If `CLAUDE_CONFIG_DIR` is set, user-level Claude skills go to `$CLAUDE_CONFIG_DIR/skills`. If `CODEX_HOME` is set, `--target codex` writes `$CODEX_HOME/skills`. Set `PT_SNAP_SKILLS_DIR` to a directory of `*/SKILL.md` folders to load a custom catalog instead of the repository `skills/` tree or the packaged copies; it does not change install destinations.
 
 OpenCode also has a native tree at `~/.config/opencode/skills` and `.opencode/skills`. It already reads `agents` and `claude`, so a separate OpenCode target is not required. Use `--dir` for that native tree, Windsurf, or any other custom folder. `--dir` cannot be combined with `--target`, `--user`, or `--project`.
 

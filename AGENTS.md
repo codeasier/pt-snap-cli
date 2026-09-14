@@ -90,8 +90,8 @@ templates under category subdirectories are included by
 - Author skills under `skills/<name>/SKILL.md`. Keep the packaged copy at
   `src/pt_snap_cli/bundled_skills/<name>/SKILL.md` identical so wheel installs
   can run `pt-snap skill install`.
-- `SkillService` prefers the repository `skills/` tree in a source checkout,
-  then packaged copies. Default install writes the shared
+- `SkillService` prefers `PT_SNAP_SKILLS_DIR` when set, then the repository
+  `skills/` tree in a source checkout, then packaged copies. Default install writes the shared
   `~/.agents/skills` tree (Cursor, OpenCode, current Codex, and other
   Agent Skills hosts) plus Claude's independent `~/.claude/skills` or
   `$CLAUDE_CONFIG_DIR/skills`. `--target cursor` and `--target codex` keep

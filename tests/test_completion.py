@@ -31,6 +31,7 @@ def isolate_completion_state(
     """Reset registries and isolate focus resolution from the host machine."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv(ENV_DB_PATH, raising=False)
+    monkeypatch.delenv("PT_SNAP_SKILLS_DIR", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     QueryRegistry.reset()

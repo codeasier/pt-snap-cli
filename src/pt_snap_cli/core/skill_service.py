@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 from collections.abc import Iterable, Mapping
 from importlib.resources import files
@@ -36,6 +37,7 @@ from pt_snap_cli.core.models import (
 
 ENV_SKILLS_DIR = "PT_SNAP_SKILLS_DIR"
 _DEFAULT_INSTALL_HOSTS: tuple[SkillHost, ...] = ("agents", "claude")
+_SKILL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 class SkillService:
@@ -65,7 +67,7 @@ class SkillService:
     def catalog_dir(self) -> Path:
         if self._catalog_dir is not None:
             return self._catalog_dir
-        return default_catalog_dir()
+        return default_catalog_dir(self._environ_map)
 
     def list_catalog(self) -> list[SkillSpec]:
         return list_catalog_skills(self.catalog_dir())
@@ -402,8 +404,9 @@ class SkillService:
         return normalized
 
 
-def default_catalog_dir() -> Path:
-    env = os.environ.get(ENV_SKILLS_DIR)
+def default_catalog_dir(environ: Mapping[str, str] | None = None) -> Path:
+    env_map = environ if environ is not None else os.environ
+    env = env_map.get(ENV_SKILLS_DIR)
     if env:
         path = Path(env).expanduser()
         if not _looks_like_catalog(path):
@@ -429,7 +432,7 @@ def list_catalog_skills(catalog_dir: Path) -> list[SkillSpec]:
         if not skill_md.is_file():
             continue
         metadata = _parse_skill_frontmatter(skill_md)
-        name = str(metadata.get("name") or child.name)
+        name = _validated_skill_name(str(metadata.get("name") or child.name), source=skill_md)
         description = str(metadata.get("description") or "").strip()
         skills.append(SkillSpec(name=name, description=description, source_dir=child))
     if not skills:
@@ -444,13 +447,6 @@ def parse_host_option(value: str | None) -> tuple[str, ...] | None:
     if not hosts:
         raise InvalidSkillTargetError("Skill target list must not be empty.")
     return tuple(hosts)
-
-
-def parse_name_option(value: str | None) -> list[str] | None:
-    if value is None:
-        return None
-    names = [item.strip() for item in value.split(",") if item.strip()]
-    return names or None
 
 
 def format_skill_location(location: SkillLocationStatus) -> str:
@@ -488,14 +484,28 @@ def _looks_like_catalog(path: Path) -> bool:
     return any((child / "SKILL.md").is_file() for child in path.iterdir() if child.is_dir())
 
 
+def _validated_skill_name(name: str, *, source: Path) -> str:
+    if not _SKILL_NAME_PATTERN.fullmatch(name):
+        raise SkillCatalogError(
+            f"Skill name {name!r} from '{source}' is not a valid skill directory name."
+        )
+    return name
+
+
 def _parse_skill_frontmatter(skill_md: Path) -> dict[str, object]:
-    text = skill_md.read_text(encoding="utf-8")
+    try:
+        text = skill_md.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise SkillCatalogError(f"Failed to read skill file '{skill_md}': {exc}") from exc
     if not text.startswith("---"):
         return {}
     parts = text.split("---", 2)
     if len(parts) < 3:
         return {}
-    loaded = yaml.safe_load(parts[1])
+    try:
+        loaded = yaml.safe_load(parts[1])
+    except yaml.YAMLError as exc:
+        raise SkillCatalogError(f"Invalid SKILL.md frontmatter in '{skill_md}': {exc}") from exc
     return loaded if isinstance(loaded, dict) else {}
 
 
@@ -523,6 +533,8 @@ def skill_dir_digest(skill_dir: Path) -> str:
 def _install_status(source_dir: Path, dest: Path) -> SkillStatus:
     skill_md = dest / "SKILL.md"
     if not skill_md.is_file():
+        if dest.exists() or dest.is_symlink():
+            return "outdated"
         return "missing"
     if skill_dir_digest(source_dir) == skill_dir_digest(dest):
         return "installed"

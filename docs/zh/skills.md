@@ -31,7 +31,7 @@ Cursor、OpenCode、Codex 以及多个 Agent Skills 宿主会读取共享目录�
 | `cursor` | `~/.cursor/skills` | `.cursor/skills` | Cursor 原生目录。Cloud Agents 只同步这个用户目录，不同步 `~/.agents/skills`。 |
 | `codex` | `~/.codex/skills` | `.codex/skills` | Codex 旧版用户目录（`$CODEX_HOME/skills`）。Codex 仍会扫描；新的用户 skill 应写入 `agents`。 |
 
-Windows 上用 `%USERPROFILE%` 代替 `~`。如果设置了 `CLAUDE_CONFIG_DIR`，用户级 Claude skill 会写到 `$CLAUDE_CONFIG_DIR/skills`。如果设置了 `CODEX_HOME`，`--target codex` 会写到 `$CODEX_HOME/skills`。
+Windows 上用 `%USERPROFILE%` 代替 `~`。如果设置了 `CLAUDE_CONFIG_DIR`，用户级 Claude skill 会写到 `$CLAUDE_CONFIG_DIR/skills`。如果设置了 `CODEX_HOME`，`--target codex` 会写到 `$CODEX_HOME/skills`。设置 `PT_SNAP_SKILLS_DIR` 指向包含 `*/SKILL.md` 子目录的目录，会用该目录作为 skill 目录源，覆盖仓库 `skills/` 或随包副本；它不会改变安装目标路径。
 
 OpenCode 还有原生目录 `~/.config/opencode/skills` 和 `.opencode/skills`。它已经会读取 `agents` 和 `claude`，因此不需要单独的 OpenCode 目标。原生目录、Windsurf 或其他自定义文件夹用 `--dir`。`--dir` 不能与 `--target`、`--user` 或 `--project` 同时使用。
 
