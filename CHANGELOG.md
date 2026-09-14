@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.3.0] - 2026-09-17
+
+本次发布聚焦 Agent 诊断技能与查询/导入性能：新增内存泄漏、碎片、峰值拆解与 Ascend NPU 采集等诊断 skill、`pt-snap skill` 共享安装命令及本地 skill 评测框架；SnapshotDB 采用去重 callstack 存储，叠加查询执行层优化，使导入、拆分与查询获得数量级加速，同时只读兼容 v1/v2 两种 callstack 布局；pickle 加载收敛到内建类型白名单，进一步降低反序列化风险。
+
+### 新增
+
+- 新增内存泄漏归因、分配器碎片取证、内存峰值拆解三个只读诊断 skill，Agent 可直接基于 SnapshotDB 完成常见内存分析工作流。
+- 新增 Ascend NPU 快照采集 skill，覆盖华为昇腾环境下的快照获取流程。
+- 新增 `pt-snap skill` 命令，支持对内置 skill 的安装、列出、升级与卸载，统一写入共享 `~/.agents/skills` 及 Claude 独立目录；安装/升级/卸载均先校验目标目录，拒绝覆盖或删除非 skill 路径，发布失败可回滚。
+- 新增本地 skill 评测框架，用于诊断 skill 的回归验证与质量评估。
+- SnapshotDB callstack 查询只读兼容 v1/v2 双布局：旧版 inline callstack 数据库无需重建即可继续 focus、查看元数据和执行查询，按布局自动选择 SQL。
+- 快照 pickle 加载改经 `SafeUnpickler` 白名单限制为内建类型，降低加载不可信快照时的任意代码执行风险。
+
+### 性能
+
+- `trace_entry_<device>` 改为整数引用共享 `callstack` 表存储去重后的 callstack：基准样本（62.8 万事件）导入耗时 29.1s 降至 8.6s，数据库体积 5.95 GB 降至 177 MB，callstack 与聚合类查询提速 2.9x 至 184x。
+- `max_rows` 下沉为 SQL `LIMIT`，Jinja 模板按名称缓存编译结果；新增 mtime 感知的 `ContextCache`（LRU，默认 4 项），MCP server 与 `SnapshotAnalyzer` 跨查询复用只读 SQLite 连接并跳过逐次 schema 校验。
+- 拆分回放复用原始帧、跳过 `Frame` 重建，基准样本 4 分片拆分耗时 12.5s 降至 2.5s，分片规范化哈希保持不变。
+
+### 修复
+
+- 修复缺少 `addr` 字段的 OOM 快照导入失败的问题。
+- 恢复 dump 时 torch-npu workspace 快照校正，保证 NPU 工作区块在导入与拆分后仍保留帧信息。
+- callstack 布局冲突的外部数据库不再阻断 focus、metadata 与非 callstack 查询，仅在执行 callstack 变体模板时报错。
+- 移除 `leak_detection` 模板未使用的 `device_id` 参数；对齐仓库安全契约与文档描述和实际运行时行为。
+
+### 稳定性与工程
+
+- basedpyright 类型检查覆盖整个 `src/pt_snap_cli` 并设为零 error 门槛，修复 core/query 既有类型问题；snapshot 目录暂以 warning 过渡，后续版本逐步收紧。
+- 对齐 MCP `execute_query` 文档与 `max_rows` 默认值及结果截断语义；改进 fixture 溯源守卫与测试环境的本地隔离。
+
+### 兼容性提示
+
+- 导入格式版本升级为 2，新导入的 SnapshotDB 采用去重 callstack 布局；v1 与 v2 布局均可只读查询，无需重新导入或迁移。
+- 依赖非内建类型的第三方 pickle 快照将无法直接加载，需先在来源侧完成序列化收敛。
+
 ## [0.2.0] - 2026-08-08
 
 本次发布重点补齐大型 PyTorch 内存快照的拆分与可追溯导入能力，并将快照运行时转为项目首方维护。导入和回放链路同时获得显著的时间与内存优化，SnapshotDB 查询性能和失败安全性也进一步提升。
