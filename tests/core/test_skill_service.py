@@ -266,6 +266,58 @@ def test_upgrade_refuses_before_mutating_later_host_conflict(
     assert notes.is_file()
 
 
+def test_uninstall_refuses_existing_destination_without_skill_md(
+    service: SkillService,
+) -> None:
+    dest = service.skill_destination("claude", "user", "pt-snap-demo")
+    dest.mkdir(parents=True)
+    notes = dest / "notes.txt"
+    notes.write_text("keep me\n", encoding="utf-8")
+
+    with pytest.raises(SkillInstallError, match="Refusing to delete"):
+        service.uninstall_skills(["pt-snap-demo"], hosts=("claude",), scope="user")
+    assert notes.is_file()
+    assert dest.is_dir()
+
+
+def test_uninstall_refuses_before_mutating_later_host_conflict(
+    service: SkillService,
+) -> None:
+    service.install_skills(["pt-snap-demo"], hosts=("agents",), scope="user")
+    agents_dest = service.skill_destination("agents", "user", "pt-snap-demo")
+    claude_dest = service.skill_destination("claude", "user", "pt-snap-demo")
+    claude_dest.mkdir(parents=True)
+    notes = claude_dest / "notes.txt"
+    notes.write_text("keep me\n", encoding="utf-8")
+
+    with pytest.raises(SkillInstallError, match="Refusing to delete"):
+        service.uninstall_skills(["pt-snap-demo"], scope="user")
+    assert agents_dest.joinpath("SKILL.md").is_file()
+    assert notes.is_file()
+
+
+def test_publish_restores_previous_copy_when_replace_fails(
+    service: SkillService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service.install_skills(["pt-snap-demo"], hosts=("claude",), scope="user")
+    dest = service.skill_destination("claude", "user", "pt-snap-demo")
+    skill_md = dest / "SKILL.md"
+    skill_md.write_text(skill_md.read_text(encoding="utf-8") + "local change\n", encoding="utf-8")
+    original_replace = Path.replace
+
+    def fake_replace(self: Path, target: Path, /) -> Path:
+        if ".pt-snap-staging" in self.name:
+            raise OSError("replace failed")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", fake_replace)
+    with pytest.raises(SkillInstallError, match="Failed to install skill"):
+        service.install_skills(["pt-snap-demo"], hosts=("claude",), scope="user", force=True)
+    assert "local change" in skill_md.read_text(encoding="utf-8")
+    leftovers = [path.name for path in dest.parent.iterdir() if "pt-snap-staging" in path.name]
+    assert leftovers == []
+
+
 def test_publish_translates_parent_mkdir_oserror(service: SkillService, tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()

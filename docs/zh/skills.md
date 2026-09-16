@@ -71,7 +71,7 @@ pt-snap skill uninstall pt-snap-setup --target claude
 pt-snap skill uninstall --project --target cursor
 ```
 
-`uninstall` 会从选定宿主的 skill 目录删除随包 skill。未安装的 skill 会报告为 `not_installed`。
+`uninstall` 会删除已经包含 `SKILL.md` 的随包 skill 目录。未安装的 skill 会报告为 `not_installed`。同名路径存在但没有 `SKILL.md` 时不会删除。
 
 仅在 install、upgrade 或 uninstall 实际改动 skill 之后，才需要重启 agent 让变更生效。`list` 不会提示重启。
 

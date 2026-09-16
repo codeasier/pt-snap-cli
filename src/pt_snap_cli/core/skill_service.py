@@ -157,6 +157,9 @@ class SkillService:
         dest_dir: Path | str | None = None,
     ) -> SkillInstallReport:
         jobs = self._mutation_jobs(names, hosts, scope, dest_dir)
+        for spec, _host, _selected_scope, dest in jobs:
+            if _non_skill_destination(dest):
+                raise SkillInstallError(_non_skill_delete_message(spec.name, dest))
         return SkillInstallReport(
             results=[
                 self._uninstall_one(spec.name, host, selected_scope, dest=dest)
@@ -350,6 +353,8 @@ class SkillService:
                 path=dest,
                 action="not_installed",
             )
+        if _non_skill_destination(dest):
+            raise SkillInstallError(_non_skill_delete_message(name, dest))
         try:
             _remove_path(dest)
         except OSError as exc:
@@ -645,16 +650,46 @@ def _non_skill_replace_message(name: str, dest: Path) -> str:
     )
 
 
+def _non_skill_delete_message(name: str, dest: Path) -> str:
+    return (
+        f"Skill '{name}' exists at '{dest}' but is not an installed skill "
+        f"(missing SKILL.md). Refusing to delete it."
+    )
+
+
+def _safe_remove(path: Path) -> None:
+    try:
+        _remove_path(path)
+    except OSError:
+        return
+
+
+def _restore_destination(dest: Path, backup: Path) -> None:
+    if dest.exists() or dest.is_symlink():
+        return
+    if not backup.exists() and not backup.is_symlink():
+        return
+    try:
+        backup.replace(dest)
+    except OSError:
+        return
+
+
 def _publish_skill(source_dir: Path, dest: Path) -> None:
-    staging = dest.parent / f".{dest.name}.{uuid4().hex}.pt-snap-staging"
+    token = uuid4().hex
+    staging = dest.parent / f".{dest.name}.{token}.pt-snap-staging"
+    backup = dest.parent / f".{dest.name}.{token}.pt-snap-backup"
+    published = False
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source_dir, staging)
-        _remove_path(dest)
-        try:
-            staging.replace(dest)
-        except OSError:
-            shutil.move(str(staging), str(dest))
+        if dest.exists() or dest.is_symlink():
+            dest.replace(backup)
+        staging.replace(dest)
+        published = True
     except OSError as exc:
-        _remove_path(staging)
+        if not published:
+            _restore_destination(dest, backup)
+        _safe_remove(staging)
         raise SkillInstallError(f"Failed to install skill at '{dest}': {exc}") from exc
+    _safe_remove(backup)

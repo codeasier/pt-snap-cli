@@ -71,7 +71,7 @@ pt-snap skill uninstall pt-snap-setup --target claude
 pt-snap skill uninstall --project --target cursor
 ```
 
-`uninstall` removes bundled skill directories from the selected hosts. Skills that are not installed are reported as `not_installed`.
+`uninstall` removes bundled skill directories that contain `SKILL.md`. Skills that are not installed are reported as `not_installed`. A same-named path that exists without `SKILL.md` is left untouched.
 
 After an install, upgrade, or uninstall that changes skill files, restart the agent so it picks up the change.
 
