@@ -12,7 +12,8 @@
 | `conftest.py` | Verifies executable fixture provenance at session start and registers repository-wide pytest markers. |
 | `run_tests.sh` | Developer-specific Conda/coverage wrapper; prefer direct `pytest` unless its local environment exists. |
 | `test_api.py` | Tests for the public `SnapshotAnalyzer` API layer. |
-| `test_cli.py` | CLI behavior tests, including focus, query listing, template info, and output limits. |
+| `test_cli.py` | CLI behavior tests, including focus, query listing, template info, skill install/list, and output limits. |
+| `test_bundled_skills.py` | Packaged `bundled_skills/` copies must match repository `skills/*/SKILL.md`. |
 | `test_completion.py` | Shell completion helper tests. |
 | `test_config.py` | Configuration and focus precedence tests. |
 | `test_contract_cli_mcp.py` | Normalized behavior contract between CLI and MCP adapters. |

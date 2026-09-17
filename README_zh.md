@@ -58,6 +58,7 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 | `pt-snap query` | 运行内存分析查询 |
 | `pt-snap report` | 生成高层内存分析报告 |
 | `pt-snap config` | 管理全局配置 |
+| `pt-snap skill` | 列出并安装随包 agent skill |
 | `pt-snap-mcp` | 启动 MCP 服务器以支持 Agent 集成 |
 
 ## MCP 服务器
@@ -81,6 +82,7 @@ pt-snap-mcp
 | Focus 管理 | [Focus Management](docs/zh/focus-management.md) |
 | 运行查询 | [Querying](docs/zh/querying.md) |
 | 拆分快照 | [拆分快照](docs/zh/splitting.md) |
+| Agent skill | [Agent Skills](docs/zh/skills.md) |
 | MCP 服务器 | [MCP 指南](docs/zh/mcp.md) |
 | 数据库格式 | [SnapshotDB Schema](docs/zh/database.md) |
 | Python API | [SnapshotAnalyzer API](docs/zh/snapshot-analyzer-api.md) |

@@ -4,7 +4,7 @@
 # zh
 
 ## Purpose
-`docs/zh` contains the Chinese documentation set for `pt-snap-cli`, covering the same user-facing areas as the English docs: quick start, focus management, querying, snapshot splitting, MCP integration, database schema, and the high-level and result mapping Python APIs.
+`docs/zh` contains the Chinese documentation set for `pt-snap-cli`, covering the same user-facing areas as the English docs: quick start, focus management, querying, snapshot splitting, agent skills, MCP integration, database schema, and the high-level and result mapping Python APIs.
 
 ## Key Files
 | File | Description |
@@ -13,6 +13,7 @@
 | `focus-management.md` | Chinese guide to focus resolution and persistence. |
 | `querying.md` | Chinese guide to query templates, parameters, and output. |
 | `splitting.md` | Chinese guide to snapshot slicing, formats, replay validation, and publication. |
+| `skills.md` | Chinese guide to bundled agent-skill listing and installation. |
 | `mcp.md` | Chinese MCP server setup and tool reference. |
 | `database.md` | Chinese snapshot SQLite schema reference. |
 | `snapshot-analyzer-api.md` | Chinese guide to the high-level focus, query, and metadata Python API. |
@@ -34,6 +35,7 @@
 
 ### Common Patterns
 - Files mirror the English documentation topics one-for-one.
+- `skills.md` must stay aligned with `../en/skills.md` and `SkillService`.
 
 ## Dependencies
 
