@@ -123,6 +123,10 @@ class SkillInstallError(SkillError):
 class SplitError(PtSnapCoreError):
     """A phase-identifying split failure suitable for CLI presentation."""
 
+    phase: SplitPhase
+    source_path: Path
+    detail: str
+
     def __init__(self, phase: SplitPhase, source_path: Path, detail: str) -> None:
         self.phase = phase
         self.source_path = source_path

@@ -5,6 +5,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from pt_snap_cli.query.config import QueryConfig, QueryTemplate
 
@@ -15,13 +16,18 @@ class QueryRegistry:
     """Registry for predefined query templates."""
 
     _instance: QueryRegistry | None = None
+    # Initialized in __new__ (the singleton has no __init__ so repeated
+    # QueryRegistry() calls cannot wipe the shared state).
+    _queries: dict[str, QueryTemplate]  # pyright: ignore[reportUninitializedInstanceVariable]
+    _factories: dict[str, QueryFactory]  # pyright: ignore[reportUninitializedInstanceVariable]
 
     def __new__(cls) -> QueryRegistry:
         """Singleton pattern for global registry."""
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._queries: dict[str, QueryTemplate] = {}
-            cls._instance._factories: dict[str, QueryFactory] = {}
+            instance = super().__new__(cls)
+            instance._queries = {}
+            instance._factories = {}
+            cls._instance = instance
         return cls._instance
 
     @classmethod
@@ -175,7 +181,7 @@ def get_query(name: str) -> QueryTemplate | None:
     return _registry.get(name)
 
 
-def get_template_info(name: str) -> dict | None:
+def get_template_info(name: str) -> dict[str, Any] | None:
     """Get detailed information about a template.
 
     Args:

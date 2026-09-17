@@ -21,6 +21,11 @@ Run these commands from the repository root.
 - Lint: `ruff check .`
 - Check formatting: `black --check .`
 - Apply formatting: `black .`
+- Type check: `python -m basedpyright --pythonpath "$(python -c 'import sys; print(sys.executable)')"`
+  (covers all of `src/pt_snap_cli`; the gate is zero errors and warnings are
+  informational. `pyproject.toml` downgrades a listed set of rules to warnings
+  under `src/pt_snap_cli/snapshot/` until its annotations are fixed — do not
+  widen that list, shrink it)
 
 `tests/run_tests.sh` is tied to a developer-specific Conda path and writes
 coverage reports under `test_reports/`; use direct `pytest` commands unless
