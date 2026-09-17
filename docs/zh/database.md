@@ -44,9 +44,14 @@ pt-snap metadata snapshot.pkl.db --json
 pt-snap import snapshot.pkl --force
 ```
 
-旧版或外部生成且结构兼容的 DB，仍可用于不依赖去重调用栈结构的查询。调用栈相关模板要求
-数据库由当前导入器生成；否则会提示需要重新导入快照。若没有 metadata，查询会返回
-unavailable，下一次执行对应 pickle 导入时会重建一次。
+旧版或外部生成且结构兼容的 DB 仍可查询。`pt-snap` 根据表列识别调用栈布局，并把
+`pt_snap_metadata.import_format_version` 当作辅助校验，而不是唯一依据。调用栈相关
+模板会自动选择匹配的 SQL。
+
+打开、focus 和查询都不会写入 `.db` 文件，也不会原地迁移 schema。导入缓存仍会在
+当前导入器格式版本不匹配时重建目标库，这与读取兼容是分开的。没有 metadata 时，
+`pt-snap metadata` 会报告 unavailable；之后对同一 pickle 再导入会先重建一次再参与
+缓存复用。
 
 ### 查询工作流
 
@@ -60,7 +65,9 @@ pt-snap query --template-use block --params '{"min_size": 1048576}'
 ```
 
 使用 `pt-snap query --list` 和 `pt-snap query --template-info <name>` 查看受支持的
-查询入口。完整流程见[运行查询](querying.md)。
+查询入口。`event`、`callstack_analysis` 和 `active_memory_callstack_at_event`
+同时支持当前去重调用栈结构和旧版内联文本库；见
+[调用栈布局兼容](database.md#调用栈布局兼容)。完整流程见[运行查询](querying.md)。
 
 ---
 
@@ -300,6 +307,36 @@ CREATE TABLE callstack (
 | 唯一性 | 每条不同的调用栈文本只有一行，因此按 `callstackId` 分组等价于按文本分组 |
 | 作用域 | 数据库内所有设备共享，表名不带设备后缀 |
 | 覆盖度 | 导入产生的每个事件都能解析到一行；只有外部生成的数据库才可能出现 `callstackId` 为 `NULL` |
+
+当前 `pt-snap import` 写入的是这种 v2 布局（`import_format_version = 2`）。
+调用栈去重之前生成的数据库在每张 `trace_entry_<device>` 表中内联存储
+`callstack` TEXT，没有共享 `callstack` 表（有 metadata 时为
+`import_format_version = 1`）。
+
+### 调用栈布局兼容
+
+`pt-snap` 可以读取两种布局，且不会改写数据库文件：
+
+| 布局 | 识别方式 | 调用栈文本 |
+|------|----------|------------|
+| v2（当前导入） | `trace_entry_<device>.callstackId` 加共享 `callstack` 表 | join `callstack.id` |
+| v1（旧版） | `trace_entry_<device>.callstack` TEXT，无 `callstackId`，无共享表 | 直接读该列 |
+
+`event`、`callstack_analysis` 和 `active_memory_callstack_at_event` 保持相同的
+模板名、参数和输出契约。查询引擎按识别到的布局选择 v1 或 v2 SQL。其他模板不依赖
+这次拆分。
+
+识别过程是只读的：`focus`、`query`、报告、Python API 和 MCP 都以 SQLite
+`mode=ro` 打开数据库。布局不会写入 `.pt-snap/focus.json`。列冲突、设备布局不一致、
+损坏的 `callstack` 表，或 metadata 与物理结构不一致时会明确报错，而不是猜测。
+默认不会做 v1→v2 迁移。
+
+```bash
+pt-snap focus legacy.db
+# Callstack layout: v1 (inline text)
+pt-snap query --template-use event
+pt-snap query --template-use callstack_analysis
+```
 
 ### 5. pt_snap_metadata — 导入 Metadata 表
 

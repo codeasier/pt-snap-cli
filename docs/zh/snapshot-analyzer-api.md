@@ -29,6 +29,7 @@ state = analyzer.get_focus()
 print(state.db_path)
 print(state.device_id)
 print(state.available_devices)
+print(state.callstack_layout)
 print(state.source)
 
 state = analyzer.set_focus(
@@ -56,6 +57,7 @@ focus 中的设备。没有显式 `db_path` 时，已验证的 analyzer 设备�
 | `device_id` | analyzer 设备覆盖；未设置覆盖时为已解析 focus 所附带的设备 |
 | `source` | `explicit`、`env`、`project`、`global`、`none` 等解析来源 |
 | `available_devices` | 从 `trace_entry_<device>` 表发现的设备 ID |
+| `callstack_layout` | 内联调用栈文本为 `"v1"`，去重 `callstackId` 为 `"v2"`，无法识别时为 `None` |
 
 完整解析和持久化模型见 [Focus 管理](focus-management.md)。
 

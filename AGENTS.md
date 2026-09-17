@@ -81,6 +81,13 @@ templates under category subdirectories are included by
   `query/registry.py` recursively loads templates into the singleton registry;
   `query/executor.py` renders with Jinja2 `StrictUndefined` and injects device
   table names before executing through `Context`.
+- Templates that differ by SnapshotDB callstack layout declare
+  `query_variants.v1` / `query_variants.v2` in the same YAML entry and share
+  description, parameters, and `output_schema`. Unaffected templates keep a
+  single `query`. `Context` detects the layout from read-only column/table
+  checks (with `pt_snap_metadata` as an auxiliary check) and
+  `QueryExecutor` selects the matching SQL. Do not persist layout in
+  `focus.json` or migrate databases on open.
 - When template metadata or behavior changes, review the YAML, config, registry,
   executor, `core/query_service.py`, CLI/MCP presentation, and focused tests
   together.

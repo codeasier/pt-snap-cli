@@ -497,6 +497,22 @@ class TestQueryTemplateInfo:
         focus_file = Path.cwd() / ".pt-snap" / "focus.json"
         assert json.loads(focus_file.read_text())["db_path"] == str(sample_db.resolve())
 
+    def test_focus_database_reports_v1_callstack_layout(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "v1.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+        )
+        conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY, callstack TEXT)")
+        conn.commit()
+        conn.close()
+
+        result = runner.invoke(app, ["focus", str(db_path)])
+        assert result.exit_code == 0
+        assert "Callstack layout: v1 (inline text)" in result.stdout
+        focus_data = json.loads((Path.cwd() / ".pt-snap" / "focus.json").read_text())
+        assert "callstack_layout" not in focus_data
+
     def test_focus_database_with_device(self, sample_db: Path) -> None:
         """Test 'focus --device' sets both database and device."""
         result = runner.invoke(app, ["focus", str(sample_db), "--device", "0"])

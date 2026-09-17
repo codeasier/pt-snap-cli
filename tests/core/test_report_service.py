@@ -166,3 +166,66 @@ def test_peak_memory_report_handles_empty_trace(tmp_path: Path) -> None:
     assert report.event_id is None
     assert report.allocator_gap is None
     assert report.callstack_groups == []
+
+
+def test_peak_memory_report_reads_v1_inline_callstack(tmp_path: Path) -> None:
+    db_path = tmp_path / "v1-report.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)")
+    conn.execute("""
+        CREATE TABLE trace_entry_0 (
+            id INTEGER PRIMARY KEY,
+            action INTEGER,
+            address INTEGER,
+            size INTEGER,
+            stream INTEGER,
+            allocated INTEGER,
+            active INTEGER,
+            reserved INTEGER,
+            callstack TEXT
+        )
+        """)
+    conn.execute("""
+        CREATE TABLE block_0 (
+            id INTEGER PRIMARY KEY,
+            address INTEGER,
+            size INTEGER,
+            requestedSize INTEGER,
+            state INTEGER,
+            allocEventId INTEGER,
+            freeEventId INTEGER
+        )
+        """)
+    conn.executemany(
+        """
+        INSERT INTO trace_entry_0
+          (id, action, address, size, stream, allocated, active, reserved, callstack)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (1, 2, 0x1000, 1024, 0, 1024, 1024, 4096, "train.py:10"),
+            (5, 2, 0x5000, 512, 0, 5632, 5632, 8192, None),
+        ],
+    )
+    conn.executemany(
+        """
+        INSERT INTO block_0
+          (id, address, size, requestedSize, state, allocEventId, freeEventId)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (-10, 0xA000, 8192, 8000, 1, -1, -1),
+            (1, 0x1000, 1024, 1000, 1, 1, -1),
+            (5, 0x5000, 512, 500, 1, 5, -1),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    report = ReportService().peak_memory_report(db_path, metric="active")
+
+    assert report.event_id == 5
+    by_callstack = {row["callstack"]: row for row in report.callstack_groups}
+    assert by_callstack["[static] allocEventId=-1, freeEventId=-1"]["size_bytes"] == 8192
+    assert by_callstack["train.py:10"]["size_bytes"] == 1024
+    assert by_callstack["[missing callstack]"]["size_bytes"] == 512

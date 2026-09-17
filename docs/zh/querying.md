@@ -39,6 +39,10 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 | `event` | 灵活字段过滤的内存事件查询 |
 | `allocation` | 内存分配时间线（id, allocated, active, reserved） |
 
+`event`、`callstack_analysis` 和 `active_memory_callstack_at_event` 对外保持同一契约，
+并根据数据库布局选择 v1 或 v2 SQL。见
+[调用栈布局兼容](database.md#调用栈布局兼容)。
+
 ### Statistical Queries
 
 聚合分析。

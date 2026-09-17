@@ -140,6 +140,7 @@ class TestMCPToolFunctions:
         assert isinstance(result, dict)
         assert result["db_path"] == str(valid_db)
         assert result["device_id"] == 0
+        assert result["callstack_layout"] == "v1"
 
     def test_set_focus_rejects_invalid_device(self, valid_db: Path) -> None:
         import pt_snap_cli.mcp.server as server_mod

@@ -75,6 +75,7 @@ class TestQueryTemplate:
         assert "min_size" in template.parameters
         assert template.parameters["min_size"].type == "int"
         assert template.category == "basic"
+        assert template.query_variants == {}
 
     def test_from_dict_with_category(self):
         data = {
@@ -112,6 +113,30 @@ class TestQueryTemplate:
         )
         with pytest.raises(ValueError):
             template.validate_params({})
+
+    def test_from_dict_loads_query_variants(self):
+        template = QueryTemplate.from_dict(
+            {
+                "name": "event",
+                "query_variants": {
+                    "v1": "SELECT callstack FROM {{ device_trace_table }}",
+                    "v2": "SELECT callstackId FROM {{ device_trace_table }}",
+                },
+            }
+        )
+        assert template.query_variants["v1"].startswith("SELECT callstack")
+        assert template.query == template.query_variants["v2"]
+        assert template.sql_for_layout("v1") == template.query_variants["v1"]
+        assert template.sql_for_layout(None) is None
+
+    def test_from_dict_rejects_incomplete_query_variants(self):
+        with pytest.raises(ValueError, match="must include"):
+            QueryTemplate.from_dict(
+                {
+                    "name": "event",
+                    "query_variants": {"v2": "SELECT 1"},
+                }
+            )
 
 
 class TestQueryConfig:

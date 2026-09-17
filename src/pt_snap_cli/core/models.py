@@ -61,6 +61,7 @@ class FocusState:
     available_devices: list[int] = field(default_factory=list)
     source: FocusSource = "none"
     focus_file: Path | None = None
+    callstack_layout: str | None = None
 
 
 @dataclass(frozen=True)

@@ -48,11 +48,16 @@ pt-snap metadata snapshot.pkl.db --json
 pt-snap import snapshot.pkl --force
 ```
 
-Legacy or externally generated compatible databases without this table remain queryable for
-templates that do not require the deduplicated callstack schema. Callstack templates require a
-database produced by the current importer; otherwise the query reports that the snapshot must be
-re-imported. Their metadata status is reported as unavailable, and a later import rebuilds them
-once before reuse.
+Legacy or externally generated compatible databases without this table remain
+queryable. `pt-snap` detects the callstack layout from table columns (and treats
+`pt_snap_metadata.import_format_version` as an auxiliary check, not the only
+source of truth). Callstack templates use the matching SQL automatically.
+
+Opening, focusing, and querying a database never writes the `.db` file and never
+migrates it in place. Import cache invalidation still rebuilds a destination
+when the current importer's format version does not match; that is separate from
+read compatibility. `pt-snap metadata` reports missing metadata as unavailable,
+and a later import of the same pickle rebuilds the database once before reuse.
 
 ### Query workflow
 
@@ -67,7 +72,11 @@ pt-snap query --template-use block --params '{"min_size": 1048576}'
 ```
 
 Use `pt-snap query --list` and `pt-snap query --template-info <name>` to inspect
-the supported query surface. See [Querying](querying.md) for the complete workflow.
+the supported query surface. `event`, `callstack_analysis`, and
+`active_memory_callstack_at_event` work on both the current deduplicated
+callstack schema and older inline-text databases; see
+[Callstack layout compatibility](database.md#callstack-layout-compatibility).
+See [Querying](querying.md) for the complete workflow.
 
 ---
 
@@ -310,6 +319,37 @@ CREATE TABLE callstack (
 | Uniqueness | One row per distinct callstack text, so grouping by `callstackId` equals grouping by text |
 | Scope | Shared by every device in the database; the table has no device suffix |
 | Coverage | Every event produced by import resolves to a row; `callstackId` is `NULL` only in externally generated databases |
+
+Current `pt-snap import` writes this v2 layout (`import_format_version = 2`).
+Databases produced before callstack deduplication store inline `callstack` TEXT
+on each `trace_entry_<device>` table and have no shared `callstack` table
+(`import_format_version = 1` when metadata is present).
+
+### Callstack layout compatibility
+
+`pt-snap` reads both layouts without rewriting the file:
+
+| Layout | How to recognize it | Callstack text |
+|--------|---------------------|----------------|
+| v2 (current import) | `trace_entry_<device>.callstackId` plus shared `callstack` | Join `callstack.id` |
+| v1 (legacy) | `trace_entry_<device>.callstack` TEXT, no `callstackId`, no shared table | Read the column directly |
+
+`event`, `callstack_analysis`, and `active_memory_callstack_at_event` keep one
+template name, parameter set, and output schema. The query engine selects v1 or
+v2 SQL from the detected layout. Other templates do not depend on this split.
+
+Detection is read-only: `focus`, `query`, reports, the Python API, and MCP all
+open the database with SQLite `mode=ro`. Layout is not stored in
+`.pt-snap/focus.json`. Conflicting columns, mixed devices, a damaged
+`callstack` table, or metadata that disagrees with the physical schema raise a
+schema error instead of guessing. There is no implicit v1→v2 migration.
+
+```bash
+pt-snap focus legacy.db
+# Callstack layout: v1 (inline text)
+pt-snap query --template-use event
+pt-snap query --template-use callstack_analysis
+```
 
 ### 5. pt_snap_metadata — Import Metadata Table
 

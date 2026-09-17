@@ -39,6 +39,10 @@ Raw data lookup.
 | `event` | Query memory events with flexible field filters |
 | `allocation` | Memory allocation timeline (id, allocated, active, reserved) |
 
+`event`, `callstack_analysis`, and `active_memory_callstack_at_event` share one
+public contract and select v1 or v2 SQL from the database layout. See
+[Callstack layout compatibility](database.md#callstack-layout-compatibility).
+
 ### Statistical Queries
 
 Aggregation and analysis.

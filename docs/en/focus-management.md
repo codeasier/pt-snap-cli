@@ -56,7 +56,7 @@ its device, becomes effective again only after the session override is unset.
 pt-snap focus
 ```
 
-This shows the resolved database path, device ID, and where they came from (project focus, session env, or global config).
+This shows the resolved database path, device ID, and where they came from (project focus, session env, or global config). When the database uses a recognized callstack schema, focus also prints `Callstack layout: v1 (inline text)` or `v2 (deduplicated)`. That label is detected read-only from the database; it is not stored in `.pt-snap/focus.json`.
 
 ## Override Focus
 

@@ -84,6 +84,7 @@ class TestContext:
         ctx = Context(valid_db)
         assert ctx.db_path == valid_db
         assert ctx.device_ids == [0]
+        assert ctx.callstack_layout == "v1"
 
     def test_context_database_not_found(self, tmp_path: Path) -> None:
         """Test creating context with non-existent database."""
@@ -125,6 +126,34 @@ class TestContext:
 
         ctx2 = Context(valid_db, devices=[1])
         assert ctx2.device_ids == []
+
+    def test_v2_callstack_layout_detection(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "v2.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+        )
+        conn.execute("CREATE TABLE callstack (id INTEGER PRIMARY KEY, callstack TEXT)")
+        conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY, callstackId INTEGER)")
+        conn.commit()
+        conn.close()
+
+        assert Context(db_path).callstack_layout == "v2"
+
+    def test_both_callstack_columns_are_incompatible(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "both.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY, callstack TEXT, callstackId INTEGER)"
+        )
+        conn.commit()
+        conn.close()
+
+        with pytest.raises(SchemaVersionError, match="both callstack and callstackId"):
+            Context(db_path)
 
     def test_close_connection(self, valid_db: Path) -> None:
         """Test closing connection."""

@@ -17,6 +17,7 @@
 | `test_memory_peak_cte.py` | Tests generated memory-peak SQL CTE structure and semantics. |
 | `test_mapper.py` | Tests result type conversion and model factory mapping. |
 | `test_peak_memory_templates.py` | Tests active-at-event, allocator-gap, and callstack attribution template semantics. |
+| `test_callstack_schema_compat.py` | Tests v1/v2 callstack layout detection and dual-schema template results. |
 | `test_query_max_rows_pushdown.py` | Executes packaged leak/callstack templates against SQLite and tests SQL limit pushdown and stable ordering. |
 | `test_registry.py` | Tests template registration, lookup, category listing, and registry reset behavior. |
 

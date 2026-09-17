@@ -35,6 +35,9 @@
 - Preserve focus precedence: explicit CLI/API path, `PT_SNAP_DB_PATH`, nearest project `.pt-snap/focus.json`, then legacy global config.
 - Keep SQLite access read-only for analysis paths.
 - When adding or changing a repository skill under `skills/`, copy the same `SKILL.md` into `bundled_skills/<name>/`.
+- `Context.callstack_layout` is `v1`, `v2`, or `None`; conflicting layouts raise
+  `SchemaVersionError` during construction. Query SQL variants are selected by
+  `QueryExecutor`, not by adapters.
 
 ### Testing Requirements
 - CLI changes should update/run `tests/test_cli.py` and any affected config/focus tests.

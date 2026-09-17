@@ -78,6 +78,11 @@ class TestFocusState:
         assert state.source == "explicit"
         assert state.available_devices == [0, 1]
 
+    def test_get_focus_reports_v1_callstack_layout(self, valid_db: Path) -> None:
+        analyzer = SnapshotAnalyzer(db_path=valid_db)
+        state = analyzer.get_focus()
+        assert state.callstack_layout == "v1"
+
 
 class TestSnapshotAnalyzerWithDB:
     def test_get_focus_with_explicit_db(self, valid_db: Path) -> None:
@@ -86,6 +91,7 @@ class TestSnapshotAnalyzerWithDB:
         assert state.db_path == str(valid_db)
         assert state.source == "explicit"
         assert 0 in state.available_devices
+        assert state.callstack_layout == "v1"
 
     def test_set_focus_changes_db(self, valid_db: Path, tmp_path: Path) -> None:
         """Create a second DB and switch focus."""
@@ -224,13 +230,18 @@ class TestSnapshotAnalyzerWithDB:
         assert result["reason"] == "metadata_missing"
 
     def test_get_database_metadata_available(self, valid_db: Path) -> None:
+        from dataclasses import replace
+
         from pt_snap_cli.core.import_metadata import ImportMetadataService
 
         source = valid_db.parent / "snapshot.pkl"
         source.write_bytes(b"snapshot")
         service = ImportMetadataService()
         digest = service.calculate_sha256(source)
-        service.write(valid_db, service.build_metadata(source, digest, None))
+        service.write(
+            valid_db,
+            replace(service.build_metadata(source, digest, None), import_format_version=1),
+        )
         analyzer = SnapshotAnalyzer(db_path=valid_db)
 
         result = analyzer.get_database_metadata()

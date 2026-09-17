@@ -94,6 +94,35 @@ class TestContextCache:
         assert second is not first
         assert second.device_ids == [1]
 
+    def test_replaced_database_redetects_callstack_layout(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "layout.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+        )
+        conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY, callstack TEXT)")
+        conn.commit()
+        conn.close()
+
+        cache = ContextCache(maxsize=4)
+        first = cache.get(db_path)
+        assert first.callstack_layout == "v1"
+
+        replacement = tmp_path / "v2.db"
+        conn = sqlite3.connect(str(replacement))
+        conn.execute(
+            "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+        )
+        conn.execute("CREATE TABLE callstack (id INTEGER PRIMARY KEY, callstack TEXT)")
+        conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY, callstackId INTEGER)")
+        conn.commit()
+        conn.close()
+        os.replace(replacement, db_path)
+
+        second = cache.get(db_path)
+        assert second is not first
+        assert second.callstack_layout == "v2"
+
     def test_invalidate_path_drops_entry(self, tmp_path: Path) -> None:
         db_path = _make_db(tmp_path)
         cache = ContextCache(maxsize=4)

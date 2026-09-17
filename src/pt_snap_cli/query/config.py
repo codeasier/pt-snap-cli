@@ -8,6 +8,8 @@ from typing import Any
 
 import yaml
 
+_CALLSTACK_VARIANTS = ("v1", "v2")
+
 
 @dataclass
 class QueryParameter:
@@ -62,8 +64,22 @@ class QueryTemplate:
     devices: list[str] = field(default_factory=lambda: ["all"])
     parameters: dict[str, QueryParameter] = field(default_factory=dict)
     query: str = ""
+    query_variants: dict[str, str] = field(default_factory=dict)
     output_schema: list[dict[str, str]] = field(default_factory=list)
     category: str = "basic"
+
+    def sql_for_layout(self, layout: str | None) -> str | None:
+        """Return SQL for a detected callstack layout.
+
+        Templates without variants always use ``query``. Variant templates
+        return the matching body, or ``None`` when the layout is missing or
+        unknown.
+        """
+        if not self.query_variants:
+            return self.query
+        if layout is None:
+            return None
+        return self.query_variants.get(layout)
 
     def validate_params(self, params: dict[str, Any]) -> dict[str, Any]:
         """Validate and convert parameters.
@@ -111,15 +127,51 @@ class QueryTemplate:
                 description=param_data.get("description", ""),
             )
 
+        query_variants = _parse_query_variants(data.get("name", ""), data.get("query_variants"))
+        query = data.get("query") or ""
+        if query_variants:
+            query = query_variants.get("v2") or query
+
         return cls(
             name=data.get("name", ""),
             description=data.get("description", ""),
             devices=data.get("devices", ["all"]),
             parameters=parameters,
-            query=data.get("query", ""),
+            query=query,
+            query_variants=query_variants,
             output_schema=data.get("output_schema", []),
             category=data.get("category") or default_category or "basic",
         )
+
+
+def _parse_query_variants(template_name: str, raw: Any) -> dict[str, str]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"query_variants for '{template_name}' must be a mapping of layout to SQL")
+    if not raw:
+        return {}
+
+    unknown = set(raw) - set(_CALLSTACK_VARIANTS)
+    if unknown:
+        raise ValueError(
+            f"query_variants for '{template_name}' has unsupported layouts: "
+            f"{', '.join(sorted(str(key) for key in unknown))}"
+        )
+    missing = [name for name in _CALLSTACK_VARIANTS if name not in raw]
+    if missing:
+        raise ValueError(
+            f"query_variants for '{template_name}' must include {_CALLSTACK_VARIANTS}, "
+            f"missing: {', '.join(missing)}"
+        )
+
+    variants: dict[str, str] = {}
+    for name in _CALLSTACK_VARIANTS:
+        sql = raw[name]
+        if not isinstance(sql, str) or not sql.strip():
+            raise ValueError(f"query_variants.{name} for '{template_name}' must be a SQL string")
+        variants[name] = sql
+    return variants
 
 
 @dataclass

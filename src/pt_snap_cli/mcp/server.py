@@ -22,6 +22,7 @@ def get_focus() -> dict[str, Any]:
         "device_id": state.device_id,
         "source": state.source,
         "available_devices": state.available_devices,
+        "callstack_layout": state.callstack_layout,
     }
 
 
@@ -32,6 +33,7 @@ def set_focus(db_path: str | None = None, device_id: int | None = None) -> dict[
         "db_path": state.db_path,
         "device_id": state.device_id,
         "available_devices": state.available_devices,
+        "callstack_layout": state.callstack_layout,
     }
 
 
@@ -71,6 +73,7 @@ def focus_resource() -> dict[str, Any]:
         "device_id": state.device_id,
         "source": state.source,
         "available_devices": state.available_devices,
+        "callstack_layout": state.callstack_layout,
     }
 
 

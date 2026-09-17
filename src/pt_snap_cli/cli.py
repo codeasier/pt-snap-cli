@@ -151,6 +151,7 @@ def focus_database(
                 typer.echo(f"Focus file: {state.focus_file}")
             if state.device_id is not None:
                 typer.echo(f"Focused device: {state.device_id}")
+            _echo_callstack_layout(state.callstack_layout)
             if not state.db_path.exists():
                 typer.secho("Warning: Database file does not exist!", fg=typer.colors.YELLOW)
         else:
@@ -203,6 +204,7 @@ def focus_database(
             typer.echo(f"Available devices: {', '.join(map(str, state.available_devices))}")
         else:
             typer.echo("No devices found in database.")
+        _echo_callstack_layout(state.callstack_layout)
     except (
         DatabaseMissingError,
         DatabaseSchemaError,
@@ -969,6 +971,13 @@ def show_config(
         typer.echo("Current configuration:")
         for key, value in cast(Mapping[str, object], current_config).items():
             typer.echo(f"  {key}: {value}")
+
+
+def _echo_callstack_layout(layout: str | None) -> None:
+    if layout == "v1":
+        typer.echo("Callstack layout: v1 (inline text)")
+    elif layout == "v2":
+        typer.echo("Callstack layout: v2 (deduplicated)")
 
 
 def _error(message: str) -> NoReturn:

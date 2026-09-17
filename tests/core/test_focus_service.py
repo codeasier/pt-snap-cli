@@ -107,3 +107,22 @@ class TestFocusService:
     def test_validate_session_db_rejects_invalid_device(self, sample_db: Path) -> None:
         with pytest.raises(InvalidDeviceError, match="Device 99 not found"):
             FocusService().validate_session_db(sample_db, device_id=99)
+
+    def test_set_project_focus_reports_v1_layout_without_persisting_it(
+        self, tmp_path: Path
+    ) -> None:
+        db_path = tmp_path / "v1.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+        )
+        conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY, callstack TEXT)")
+        conn.commit()
+        conn.close()
+
+        state = FocusService().set_project_focus(db_path)
+        focus_data = json.loads((Path.cwd() / ".pt-snap" / "focus.json").read_text())
+
+        assert state.callstack_layout == "v1"
+        assert "callstack_layout" not in focus_data
+        assert set(focus_data) == {"db_path"}
