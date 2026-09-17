@@ -2,6 +2,8 @@
 
 # fixtures
 
+Parent scope: [tests](../AGENTS.md)
+
 ## Purpose
 `tests/fixtures` owns committed test inputs. Snapshot pickle files are executable
 inputs with a separate acceptance lifecycle; they are not trusted merely because

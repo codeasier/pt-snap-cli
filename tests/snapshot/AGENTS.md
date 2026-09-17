@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-08-08 | Updated: 2026-08-24 -->
 
 # snapshot tests
+
+Parent scope: [tests](../AGENTS.md)
 
 ## Purpose
 `tests/snapshot` verifies the first-party snapshot representation, entities, allocator simulation/replay, SQLite adaptors, and slice runtime using synthetic objects and checksum-verified fixtures.

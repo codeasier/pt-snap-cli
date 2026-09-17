@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # tests
+
+Parent scope: [repository root](../AGENTS.md)
 
 ## Purpose
 `tests` contains the pytest suite for CLI/API/MCP contracts, configuration, services, query behavior, packaging/governance, and the first-party snapshot runtime. Most tests use temporary data; snapshot and import suites may use only checksum-verified executable fixtures under `tests/fixtures/snapshots/`.

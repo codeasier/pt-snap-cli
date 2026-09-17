@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # docs
+
+Parent scope: [repository root](../AGENTS.md)
 
 ## Purpose
 `docs` contains end-user and API documentation for the CLI, focus management, query templates, MCP integration, snapshot database format, high-level and result mapping Python APIs, and retained legal evidence. It is split into English and Chinese language trees with a top-level README for navigation.

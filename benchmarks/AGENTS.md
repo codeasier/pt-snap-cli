@@ -2,6 +2,8 @@
 
 # benchmarks
 
+Parent scope: [repository root](../AGENTS.md)
+
 ## Purpose
 `benchmarks` contains opt-in performance measurements. These scripts are not
 pytest entry points: they can consume substantial CPU, memory, and time, and the

@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # query tests
+
+Parent scope: [tests](../AGENTS.md)
 
 ## Purpose
 `tests/query` verifies the query subsystem: fluent SQL building, condition composition, YAML config loading, Jinja2 rendering, SQLite execution, result mapping, and registry behavior.

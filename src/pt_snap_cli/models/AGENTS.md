@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-05-26 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # models
+
+Parent scope: [pt_snap_cli package](../AGENTS.md)
 
 ## Purpose
 `models` contains library-facing domain objects for PyTorch memory snapshot data, including allocation blocks, events, and enum values that describe allocator state and event types.

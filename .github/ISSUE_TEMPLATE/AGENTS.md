@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-09 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # ISSUE_TEMPLATE
+
+Parent scope: [.github](../AGENTS.md)
 
 ## Purpose
 `ISSUE_TEMPLATE` contains structured GitHub issue forms for bugs, documentation requests, feature requests, questions, and template chooser configuration.

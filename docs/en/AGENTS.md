@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # en
+
+Parent scope: [docs](../AGENTS.md)
 
 ## Purpose
 `docs/en` contains the English documentation set for installing and using `pt-snap-cli`, managing focus, querying and splitting snapshots, running the MCP server, understanding the SQLite schema, and using the high-level and result mapping Python APIs.

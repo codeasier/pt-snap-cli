@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-09 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # query
+
+Parent scope: [pt_snap_cli package](../AGENTS.md)
 
 ## Purpose
 `query` implements the template-driven query subsystem. It loads YAML query definitions, validates template parameters, renders device-specific SQL with Jinja2, executes queries through the read-only database context, maps result types, and provides fluent builder utilities for constructing SQL programmatically.

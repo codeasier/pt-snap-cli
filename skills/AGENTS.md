@@ -2,6 +2,8 @@
 
 # skills
 
+Parent scope: [repository root](../AGENTS.md)
+
 ## Purpose
 `skills` contains agent workflows shipped with the repository. Setup owns the
 only Python-environment mutation boundary and installs after explicit approval;

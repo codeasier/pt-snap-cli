@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # core
+
+Parent scope: [pt_snap_cli package](../AGENTS.md)
 
 ## Purpose
 `core` contains the product service layer shared by CLI, Python API, and MCP adapters. It owns focus, import publication and metadata, snapshot splitting, query orchestration, reports, stable result models, and domain-specific errors over lower-level config, context, query, and snapshot modules.

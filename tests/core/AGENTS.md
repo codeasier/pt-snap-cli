@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # core tests
+
+Parent scope: [tests](../AGENTS.md)
 
 ## Purpose
 `tests/core` verifies focus, import, split, metadata, query, and report services between CLI/API/MCP callers and lower-level config, context, query, and snapshot modules.

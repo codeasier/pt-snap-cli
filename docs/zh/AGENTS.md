@@ -1,7 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+<!-- Generated: 2026-05-26 | Updated: 2026-08-24 -->
 
 # zh
+
+Parent scope: [docs](../AGENTS.md); translation reference: [en](../en/AGENTS.md)
 
 ## Purpose
 `docs/zh` contains the Chinese documentation set for `pt-snap-cli`, covering the same user-facing areas as the English docs: quick start, focus management, querying, snapshot splitting, MCP integration, database schema, and the high-level and result mapping Python APIs.
