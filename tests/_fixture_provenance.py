@@ -28,9 +28,9 @@ class FixtureProvenanceError(RuntimeError):
     pass
 
 
-def load_manifest() -> dict[str, str]:
+def load_manifest(manifest: Path = MANIFEST) -> dict[str, str]:
     entries: dict[str, str] = {}
-    for line in MANIFEST.read_text().splitlines():
+    for line in manifest.read_text().splitlines():
         digest, filename = line.split("  ", 1)
         if filename in entries:
             raise FixtureProvenanceError(f"Duplicate fixture manifest entry: {filename}")
@@ -46,13 +46,40 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def verify_snapshot_fixtures() -> None:
-    expected = load_manifest()
+def _format_names(names: list[str]) -> str:
+    return ", ".join(names) if names else "<none>"
+
+
+def _describe_set_mismatch(fixture_dir: Path, unexpected: list[str], missing: list[str]) -> str:
+    # Only file names are reported; the guard never reads pickle content.
+    return (
+        f"Executable fixture set does not match the reviewed manifest in {fixture_dir}.\n"
+        f"  unexpected (not in SHA256SUMS): {_format_names(unexpected)}\n"
+        f"  missing (in SHA256SUMS but absent): {_format_names(missing)}\n"
+        f"Move unreviewed pickles out of {fixture_dir}/ (for example into .tmp/), or complete "
+        "the provenance review in PROVENANCE.md and update SHA256SUMS before running the suite."
+    )
+
+
+def verify_snapshot_fixtures(
+    fixture_dir: Path = FIXTURE_DIR,
+    manifest: Path = MANIFEST,
+    expected_sizes: dict[str, int] = EXPECTED_SIZES,
+) -> None:
+    expected = load_manifest(manifest)
     fixtures = {
-        path.name: path for path in FIXTURE_DIR.iterdir() if path.suffix.lower() in PICKLE_SUFFIXES
+        path.name: path for path in fixture_dir.iterdir() if path.suffix.lower() in PICKLE_SUFFIXES
     }
-    if set(fixtures) != set(expected) or set(fixtures) != set(EXPECTED_SIZES):
-        raise FixtureProvenanceError("Executable fixture set does not match the reviewed manifest")
+    unexpected = sorted(set(fixtures) - set(expected))
+    missing = sorted(set(expected) - set(fixtures))
+    if unexpected or missing:
+        raise FixtureProvenanceError(_describe_set_mismatch(fixture_dir, unexpected, missing))
+    if set(expected) != set(expected_sizes):
+        raise FixtureProvenanceError(
+            "SHA256SUMS and the reviewed size table disagree; update both together.\n"
+            f"  only in SHA256SUMS: {_format_names(sorted(set(expected) - set(expected_sizes)))}\n"
+            f"  only in size table: {_format_names(sorted(set(expected_sizes) - set(expected)))}"
+        )
 
     for filename, path in fixtures.items():
         pointer = LFS_POINTER.fullmatch(path.read_bytes()) if path.stat().st_size < 1024 else None
@@ -60,5 +87,5 @@ def verify_snapshot_fixtures() -> None:
         actual_size = int(pointer.group("size")) if pointer else path.stat().st_size
         if actual_digest != expected[filename]:
             raise FixtureProvenanceError(f"Fixture checksum mismatch: {filename}")
-        if actual_size != EXPECTED_SIZES[filename]:
+        if actual_size != expected_sizes[filename]:
             raise FixtureProvenanceError(f"Fixture size mismatch: {filename}")

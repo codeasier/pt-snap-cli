@@ -17,4 +17,5 @@ they are tracked by Git.
 
 ## Verification
 - Run `pytest tests/test_fixture_provenance.py` before import, split, benchmark, or snapshot suites that load committed pickles.
+- Any `.pkl`/`.pickle` present in `snapshots/` but missing from `SHA256SUMS` stops the entire pytest session at startup (`tests/conftest.py`), and the message lists the unexpected and missing names. The `.gitignore` rule for `*.pickle` only keeps such files out of Git; it does not make them acceptable here. Store local snapshots elsewhere (e.g. `.tmp/`).
 - Changes to fixture trust records require `git diff --check` and review of `.gitattributes`/`.gitignore` when Git LFS or sensitive-data rules are affected.
