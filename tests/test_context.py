@@ -152,8 +152,10 @@ class TestContext:
         conn.commit()
         conn.close()
 
-        with pytest.raises(SchemaVersionError, match="both callstack and callstackId"):
-            Context(db_path)
+        ctx = Context(db_path)
+        assert ctx.callstack_layout is None
+        assert ctx.callstack_layout_error is not None
+        assert "both callstack and callstackId" in ctx.callstack_layout_error
 
     def test_close_connection(self, valid_db: Path) -> None:
         """Test closing connection."""

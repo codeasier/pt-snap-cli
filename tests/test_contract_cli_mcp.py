@@ -128,9 +128,12 @@ def _normalize_cli_focus(output: str) -> dict[str, object]:
             ]
         elif line.startswith("Callstack layout: "):
             focus["callstack_layout"] = line.removeprefix("Callstack layout: ").split(" ", 1)[0]
+        elif line.startswith("Warning: "):
+            focus["callstack_layout_error"] = line.removeprefix("Warning: ")
     focus.setdefault("device_id", None)
     focus.setdefault("available_devices", [])
     focus.setdefault("callstack_layout", None)
+    focus.setdefault("callstack_layout_error", None)
     return focus
 
 
@@ -234,8 +237,10 @@ def test_focus_contract_matches_cli_and_mcp_semantics(
         "device_id": mcp_focus["device_id"],
         "available_devices": mcp_focus["available_devices"],
         "callstack_layout": mcp_focus["callstack_layout"],
+        "callstack_layout_error": mcp_focus["callstack_layout_error"],
     }
     assert cli_focus["callstack_layout"] == "v1"
+    assert cli_focus["callstack_layout_error"] is None
 
 
 def test_invalid_focus_device_contract_matches_cli_and_mcp_semantics(

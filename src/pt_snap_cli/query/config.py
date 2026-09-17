@@ -127,10 +127,17 @@ class QueryTemplate:
                 description=param_data.get("description", ""),
             )
 
-        query_variants = _parse_query_variants(data.get("name", ""), data.get("query_variants"))
-        query = data.get("query") or ""
+        template_name = data.get("name", "")
+        query_variants = _parse_query_variants(template_name, data.get("query_variants"))
+        explicit_query = data.get("query")
         if query_variants:
-            query = query_variants.get("v2") or query
+            if isinstance(explicit_query, str) and explicit_query.strip():
+                raise ValueError(
+                    f"template '{template_name}' cannot declare both query and query_variants"
+                )
+            query = query_variants.get("v2") or ""
+        else:
+            query = explicit_query or ""
 
         return cls(
             name=data.get("name", ""),

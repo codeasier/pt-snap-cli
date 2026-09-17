@@ -82,6 +82,26 @@ class TestFocusState:
         analyzer = SnapshotAnalyzer(db_path=valid_db)
         state = analyzer.get_focus()
         assert state.callstack_layout == "v1"
+        assert state.callstack_layout_error is None
+
+    def test_get_focus_reports_conflicting_callstack_layout(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "conflict.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE trace_entry_0 "
+            "(id INTEGER PRIMARY KEY, callstack TEXT, callstackId INTEGER)"
+        )
+        conn.commit()
+        conn.close()
+
+        state = SnapshotAnalyzer(db_path=db_path).get_focus()
+        assert state.available_devices == [0]
+        assert state.callstack_layout is None
+        assert state.callstack_layout_error is not None
+        assert "both callstack and callstackId" in state.callstack_layout_error
 
 
 class TestSnapshotAnalyzerWithDB:

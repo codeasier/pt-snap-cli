@@ -29,9 +29,9 @@
 - Keep SQL value filters parameterized where using builder/condition APIs.
 - Device-specific template SQL should use injected table names such as `device_trace_table` and `device_block_table`.
 - Keep direct `QueryParameter` validation errors local; `QueryExecutor` must normalize them to its `TemplateRenderError` before the core boundary.
-- Variant SQL is selected from `Context.callstack_layout`; unknown layouts must
-  fail variant templates with a layout-specific error rather than a generic
-  re-import message.
+- Variant SQL is selected from `Context.callstack_layout`; unknown or conflicting
+  layouts must fail variant templates with a layout-specific error rather than a
+  generic re-import message. Non-variant templates keep working.
 
 ### Testing Requirements
 - Run `pytest tests/query` for query subsystem changes; real SQLite template semantics live in `test_peak_memory_templates.py`, `test_callstack_schema_compat.py`, and `test_query_max_rows_pushdown.py`.

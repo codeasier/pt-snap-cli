@@ -62,6 +62,7 @@ class FocusState:
     source: FocusSource = "none"
     focus_file: Path | None = None
     callstack_layout: str | None = None
+    callstack_layout_error: str | None = None
 
 
 @dataclass(frozen=True)

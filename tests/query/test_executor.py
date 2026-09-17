@@ -353,7 +353,7 @@ class TestQueryExecutor:
             )
         )
 
-        with pytest.raises(QueryExecutionError, match="legacy inline-callstack layout"):
+        with pytest.raises(QueryExecutionError, match="v1 inline-callstack layout"):
             executor.execute_template("legacy_callstack", device_id=0)
 
     def test_qualified_legacy_callstack_schema_error_is_actionable(self, tmp_path):
@@ -369,7 +369,7 @@ class TestQueryExecutor:
             )
         )
 
-        with pytest.raises(QueryExecutionError, match="legacy inline-callstack layout"):
+        with pytest.raises(QueryExecutionError, match="recognized v1 or v2"):
             executor.execute_template("qualified_legacy_callstack", device_id=0)
 
     def test_variant_template_uses_inline_sql_on_v1_database(self, tmp_path):

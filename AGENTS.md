@@ -86,8 +86,9 @@ templates under category subdirectories are included by
   description, parameters, and `output_schema`. Unaffected templates keep a
   single `query`. `Context` detects the layout from read-only column/table
   checks (with `pt_snap_metadata` as an auxiliary check) and
-  `QueryExecutor` selects the matching SQL. Do not persist layout in
-  `focus.json` or migrate databases on open.
+  `QueryExecutor` selects the matching SQL. Conflicting or damaged layouts
+  leave `callstack_layout` unset and fail only variant templates. Do not
+  persist layout in `focus.json` or migrate databases on open.
 - When template metadata or behavior changes, review the YAML, config, registry,
   executor, `core/query_service.py`, CLI/MCP presentation, and focused tests
   together.

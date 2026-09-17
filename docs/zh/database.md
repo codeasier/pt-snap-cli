@@ -44,9 +44,9 @@ pt-snap metadata snapshot.pkl.db --json
 pt-snap import snapshot.pkl --force
 ```
 
-旧版或外部生成且结构兼容的 DB 仍可查询。`pt-snap` 根据表列识别调用栈布局，并把
-`pt_snap_metadata.import_format_version` 当作辅助校验，而不是唯一依据。调用栈相关
-模板会自动选择匹配的 SQL。
+旧版或外部生成且结构兼容的 DB 仍可查询不依赖可识别调用栈布局的模板。`pt-snap`
+根据表列识别调用栈布局，并把 `pt_snap_metadata.import_format_version` 当作辅助
+校验，而不是唯一依据。调用栈相关模板会自动选择匹配的 SQL。
 
 打开、focus 和查询都不会写入 `.db` 文件，也不会原地迁移 schema。导入缓存仍会在
 当前导入器格式版本不匹配时重建目标库，这与读取兼容是分开的。没有 metadata 时，
@@ -328,7 +328,8 @@ CREATE TABLE callstack (
 
 识别过程是只读的：`focus`、`query`、报告、Python API 和 MCP 都以 SQLite
 `mode=ro` 打开数据库。布局不会写入 `.pt-snap/focus.json`。列冲突、设备布局不一致、
-损坏的 `callstack` 表，或 metadata 与物理结构不一致时会明确报错，而不是猜测。
+损坏的 `callstack` 表，或 metadata 与物理结构不一致时，布局保持无法识别，并且
+只有调用栈模板会报错；不会猜测布局，也不会阻止 focus、metadata 和其他查询。
 默认不会做 v1→v2 迁移。
 
 ```bash

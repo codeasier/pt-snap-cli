@@ -138,6 +138,19 @@ class TestQueryTemplate:
                 }
             )
 
+    def test_from_dict_rejects_query_and_query_variants(self):
+        with pytest.raises(ValueError, match="cannot declare both query and query_variants"):
+            QueryTemplate.from_dict(
+                {
+                    "name": "event",
+                    "query": "SELECT 1",
+                    "query_variants": {
+                        "v1": "SELECT callstack FROM t",
+                        "v2": "SELECT callstackId FROM t",
+                    },
+                }
+            )
+
 
 class TestQueryConfig:
     def test_load_yaml_from_string(self):

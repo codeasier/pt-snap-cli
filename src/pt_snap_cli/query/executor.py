@@ -87,6 +87,9 @@ class QueryExecutor:
         sql = template.sql_for_layout(self._callstack_layout())
         if sql is not None:
             return sql
+        error = self._callstack_layout_error()
+        if error:
+            raise QueryExecutionError(f"Query execution failed: {error}")
         layout = self._callstack_layout()
         if layout is None:
             raise QueryExecutionError(
@@ -105,6 +108,13 @@ class QueryExecutor:
             return None
         layout = getattr(context, "callstack_layout", None)
         return layout if isinstance(layout, str) else None
+
+    def _callstack_layout_error(self) -> str | None:
+        context = getattr(self, "_context", None)
+        if context is None:
+            return None
+        error = getattr(context, "callstack_layout_error", None)
+        return error if isinstance(error, str) and error else None
 
     def _apply_limit(self, sql: str, limit: int) -> str:
         """Tighten a trailing numeric LIMIT or append one when absent."""
@@ -128,15 +138,25 @@ class QueryExecutor:
             trimmed = trimmed[:-1].rstrip()
         return f"{trimmed} LIMIT {int(limit)}"
 
-    @staticmethod
-    def _execution_error(error: sqlite3.OperationalError) -> QueryExecutionError:
+    def _execution_error(self, error: sqlite3.OperationalError) -> QueryExecutionError:
         detail = str(error)
         if "no such table: callstack" in detail or re.search(
             r"no such column: (?:[\w]+\.)?callstackId", detail
         ):
+            layout = self._callstack_layout()
+            if layout == "v1":
+                return QueryExecutionError(
+                    "Query execution failed: this SQL requires callstackId, "
+                    "but this database uses the v1 inline-callstack layout"
+                )
+            if layout == "v2":
+                return QueryExecutionError(
+                    "Query execution failed: this SQL expects the v1 inline-callstack "
+                    "layout, but this database uses the v2 callstackId layout"
+                )
             return QueryExecutionError(
-                "Query execution failed: database uses the legacy inline-callstack layout; "
-                "re-import the snapshot to use callstack queries"
+                "Query execution failed: this SQL requires a recognized v1 or v2 "
+                "callstack layout"
             )
         return QueryExecutionError(f"Query execution failed: {error}")
 

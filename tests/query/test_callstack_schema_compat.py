@@ -8,8 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.context import Context, SchemaVersionError
+from pt_snap_cli.context import Context
 from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.query.config import QueryTemplate
 from pt_snap_cli.query.executor import QueryExecutionError, QueryExecutor
 from pt_snap_cli.query.registry import QueryRegistry, _load_all_templates, get_query
 
@@ -305,10 +306,19 @@ def test_multi_device_v1_layout_is_consistent(tmp_path: Path) -> None:
     assert rows[0]["callstack"] == "train.py:10"
 
 
-def test_metadata_conflict_is_a_schema_error(tmp_path: Path) -> None:
+def test_metadata_conflict_fails_only_variant_templates(tmp_path: Path) -> None:
     db_path = create_v1_db(tmp_path / "conflict.db", metadata_version=2)
-    with pytest.raises(SchemaVersionError, match="import_format_version is 2"):
-        Context(db_path)
+    ctx = Context(db_path)
+    assert ctx.callstack_layout is None
+    assert ctx.callstack_layout_error is not None
+    assert "import_format_version is 2" in ctx.callstack_layout_error
+    executor = QueryExecutor(ctx)
+    with pytest.raises(QueryExecutionError, match="import_format_version is 2"):
+        executor.execute_template("event", device_id=0)
+    executor.register_template(
+        QueryTemplate(name="plain_size", query="SELECT size FROM {{ device_trace_table }}")
+    )
+    assert executor.execute_template("plain_size", device_id=0)[0]["size"] == 1024
 
 
 def test_unknown_metadata_version_does_not_override_structure(tmp_path: Path) -> None:
@@ -316,7 +326,7 @@ def test_unknown_metadata_version_does_not_override_structure(tmp_path: Path) ->
     assert Context(db_path).callstack_layout == "v2"
 
 
-def test_mixed_device_layouts_are_a_schema_error(tmp_path: Path) -> None:
+def test_mixed_device_layouts_fail_only_variant_templates(tmp_path: Path) -> None:
     db_path = tmp_path / "mixed.db"
     conn = sqlite3.connect(str(db_path))
     _create_dictionary(conn)
@@ -325,8 +335,18 @@ def test_mixed_device_layouts_are_a_schema_error(tmp_path: Path) -> None:
     conn.execute("CREATE TABLE callstack (id INTEGER PRIMARY KEY, callstack TEXT)")
     conn.commit()
     conn.close()
-    with pytest.raises(SchemaVersionError, match="devices disagree"):
-        Context(db_path)
+    ctx = Context(db_path)
+    assert ctx.device_ids == [0, 1]
+    assert ctx.callstack_layout is None
+    assert ctx.callstack_layout_error is not None
+    assert "devices disagree" in ctx.callstack_layout_error
+    executor = QueryExecutor(ctx)
+    with pytest.raises(QueryExecutionError, match="devices disagree"):
+        executor.execute_template("event", device_id=0)
+    executor.register_template(
+        QueryTemplate(name="plain_id", query="SELECT id FROM {{ device_trace_table }}")
+    )
+    assert executor.execute_template("plain_id", device_id=0) == []
 
 
 def test_unknown_layout_errors_only_for_variant_templates(tmp_path: Path) -> None:
@@ -339,5 +359,54 @@ def test_unknown_layout_errors_only_for_variant_templates(tmp_path: Path) -> Non
 
     ctx = Context(db_path)
     assert ctx.callstack_layout is None
+    assert ctx.callstack_layout_error is None
+    executor = QueryExecutor(ctx)
     with pytest.raises(QueryExecutionError, match="needs a v1 or v2 callstack layout"):
+        executor.execute_template("event", device_id=0)
+    executor.register_template(
+        QueryTemplate(name="plain_size", query="SELECT size FROM {{ device_trace_table }}")
+    )
+    assert executor.execute_template("plain_size", device_id=0) == []
+
+
+def test_unrecognized_structure_conflicts_with_metadata_version(tmp_path: Path) -> None:
+    db_path = tmp_path / "unrecognized-meta.db"
+    conn = sqlite3.connect(str(db_path))
+    _create_dictionary(conn)
+    conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY, size INTEGER)")
+    _insert_metadata(conn, 2)
+    conn.commit()
+    conn.close()
+
+    ctx = Context(db_path)
+    assert ctx.callstack_layout is None
+    assert ctx.callstack_layout_error is not None
+    assert "import_format_version is 2" in ctx.callstack_layout_error
+    assert "unrecognized" in ctx.callstack_layout_error
+    with pytest.raises(QueryExecutionError, match="import_format_version is 2"):
         QueryExecutor(ctx).execute_template("event", device_id=0)
+
+
+def test_v2_layout_accepts_case_insensitive_callstack_table(tmp_path: Path) -> None:
+    db_path = tmp_path / "Callstack.db"
+    conn = sqlite3.connect(str(db_path))
+    _create_dictionary(conn)
+    conn.execute("CREATE TABLE Callstack (id INTEGER PRIMARY KEY, callstack TEXT)")
+    conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY, callstackId INTEGER)")
+    conn.commit()
+    conn.close()
+    assert Context(db_path).callstack_layout == "v2"
+
+
+def test_v1_layout_detects_case_insensitive_shared_table(tmp_path: Path) -> None:
+    db_path = tmp_path / "v1-Callstack.db"
+    conn = sqlite3.connect(str(db_path))
+    _create_dictionary(conn)
+    conn.execute("CREATE TABLE Callstack (id INTEGER PRIMARY KEY, callstack TEXT)")
+    conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY, callstack TEXT)")
+    conn.commit()
+    conn.close()
+    ctx = Context(db_path)
+    assert ctx.callstack_layout is None
+    assert ctx.callstack_layout_error is not None
+    assert "coexists" in ctx.callstack_layout_error

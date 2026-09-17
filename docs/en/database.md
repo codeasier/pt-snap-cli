@@ -49,7 +49,8 @@ pt-snap import snapshot.pkl --force
 ```
 
 Legacy or externally generated compatible databases without this table remain
-queryable. `pt-snap` detects the callstack layout from table columns (and treats
+queryable for templates that do not require a recognized callstack layout.
+`pt-snap` detects the callstack layout from table columns (and treats
 `pt_snap_metadata.import_format_version` as an auxiliary check, not the only
 source of truth). Callstack templates use the matching SQL automatically.
 
@@ -341,8 +342,10 @@ v2 SQL from the detected layout. Other templates do not depend on this split.
 Detection is read-only: `focus`, `query`, reports, the Python API, and MCP all
 open the database with SQLite `mode=ro`. Layout is not stored in
 `.pt-snap/focus.json`. Conflicting columns, mixed devices, a damaged
-`callstack` table, or metadata that disagrees with the physical schema raise a
-schema error instead of guessing. There is no implicit v1→v2 migration.
+`callstack` table, or metadata that disagrees with the physical schema leave
+the layout unrecognized and fail only callstack templates, instead of guessing
+or blocking focus, metadata, and other queries. There is no implicit v1→v2
+migration.
 
 ```bash
 pt-snap focus legacy.db
