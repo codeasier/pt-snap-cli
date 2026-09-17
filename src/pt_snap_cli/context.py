@@ -6,7 +6,11 @@ import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Literal
 from urllib.parse import quote
+
+CallstackLayout = Literal["v1", "v2"]
+_METADATA_TABLE = "pt_snap_metadata"
 
 
 class DatabaseNotFoundError(FileNotFoundError):
@@ -60,6 +64,8 @@ class Context:
         self._conn: sqlite3.Connection | None = None
         self._connect_depth = 0
         self._device_ids: list[int] | None = None
+        self._callstack_layout: CallstackLayout | None = None
+        self._callstack_layout_error: str | None = None
 
         if not self.db_path.exists():
             raise DatabaseNotFoundError(f"Database not found: {self.db_path}")
@@ -78,6 +84,101 @@ class Context:
                     "Invalid database schema: 'dictionary' table not found. "
                     "This may not be a valid PyTorch memory snapshot database."
                 )
+            self._callstack_layout, self._callstack_layout_error = self._detect_callstack_layout(
+                conn
+            )
+
+    @property
+    def callstack_layout(self) -> CallstackLayout | None:
+        """Return the detected callstack schema, or None when it is unrecognized.
+
+        ``v1`` is inline ``callstack`` text on each ``trace_entry_<device>``
+        table. ``v2`` stores ``callstackId`` and a shared ``callstack`` table.
+        Detection is read-only and cached on this context; it is not written
+        to focus files. Conflicting or damaged layouts leave this ``None`` and
+        set :attr:`callstack_layout_error` instead of failing construction.
+        """
+        return self._callstack_layout
+
+    @property
+    def callstack_layout_error(self) -> str | None:
+        """Return a layout conflict reason, or None when none was detected."""
+        return self._callstack_layout_error
+
+    def _detect_callstack_layout(
+        self, conn: sqlite3.Connection
+    ) -> tuple[CallstackLayout | None, str | None]:
+        """Identify v1/v2 callstack layout from table columns and metadata."""
+        cursor = conn.cursor()
+        layouts: dict[int, CallstackLayout] = {}
+        unrecognized: list[int] = []
+        for device_id, table_name in _trace_entry_tables(cursor):
+            columns = _table_columns(cursor, table_name)
+            has_id = "callstackid" in columns
+            has_text = "callstack" in columns
+            if has_id and has_text:
+                return None, (
+                    "Incompatible callstack layout: "
+                    f"'{table_name}' has both callstack and callstackId columns."
+                )
+            if has_id:
+                layouts[device_id] = "v2"
+            elif has_text:
+                layouts[device_id] = "v1"
+            else:
+                unrecognized.append(device_id)
+
+        if layouts and unrecognized:
+            return None, (
+                "Incompatible callstack layout: some devices have a recognized "
+                "callstack schema but others do not "
+                f"(unrecognized devices: {unrecognized})."
+            )
+
+        distinct = set(layouts.values())
+        if len(distinct) > 1:
+            return None, (
+                "Incompatible callstack layout: devices disagree "
+                f"({', '.join(sorted(distinct))})."
+            )
+
+        layout = next(iter(distinct), None)
+        callstack_table = _find_table(cursor, "callstack")
+        if layout == "v1" and callstack_table is not None:
+            return None, (
+                "Incompatible callstack layout: inline callstack text coexists "
+                "with a shared callstack table."
+            )
+        if layout == "v2":
+            if callstack_table is None:
+                return None, (
+                    "Incompatible callstack layout: callstackId is present but "
+                    "the shared callstack table is missing."
+                )
+            callstack_columns = _table_columns(cursor, callstack_table)
+            if not {"id", "callstack"}.issubset(callstack_columns):
+                return None, (
+                    "Incompatible callstack layout: shared callstack table is "
+                    "missing id or callstack columns."
+                )
+
+        metadata_version = _import_format_version(cursor)
+        if metadata_version in (1, 2):
+            expected: CallstackLayout = "v1" if metadata_version == 1 else "v2"
+            if layout is None:
+                return None, (
+                    "Incompatible callstack layout: "
+                    f"pt_snap_metadata.import_format_version is {metadata_version} "
+                    "but the database structure is unrecognized."
+                )
+            if layout != expected:
+                return None, (
+                    "Incompatible callstack layout: "
+                    f"pt_snap_metadata.import_format_version is {metadata_version} "
+                    f"but the database structure is {layout}."
+                )
+
+        return layout, None
 
     @property
     def device_ids(self) -> list[int]:
@@ -160,3 +261,61 @@ class Context:
             self._conn.close()
             self._conn = None
         self._connect_depth = 0
+
+
+def _quote_ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _find_table(cursor: sqlite3.Cursor, name: str) -> str | None:
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=? COLLATE NOCASE",
+        (name,),
+    )
+    row = cursor.fetchone()
+    return str(row[0]) if row is not None else None
+
+
+def _has_table(cursor: sqlite3.Cursor, name: str) -> bool:
+    return _find_table(cursor, name) is not None
+
+
+def _table_columns(cursor: sqlite3.Cursor, table_name: str) -> set[str]:
+    cursor.execute(f"PRAGMA table_info({_quote_ident(table_name)})")
+    return {str(row[1]).lower() for row in cursor.fetchall()}
+
+
+def _trace_entry_tables(cursor: sqlite3.Cursor) -> list[tuple[int, str]]:
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'trace_entry_%'"
+    )
+    tables: list[tuple[int, str]] = []
+    for row in cursor.fetchall():
+        table_name = row[0]
+        suffix = table_name.rsplit("_", 1)[-1]
+        try:
+            tables.append((int(suffix), table_name))
+        except ValueError:
+            continue
+    return tables
+
+
+def _import_format_version(cursor: sqlite3.Cursor) -> int | None:
+    metadata_table = _find_table(cursor, _METADATA_TABLE)
+    if metadata_table is None:
+        return None
+    columns = _table_columns(cursor, metadata_table)
+    if "import_format_version" not in columns:
+        return None
+    try:
+        rows = cursor.execute(
+            f"SELECT import_format_version FROM {_quote_ident(metadata_table)}"
+        ).fetchall()
+    except sqlite3.DatabaseError:
+        return None
+    if len(rows) != 1:
+        return None
+    try:
+        return int(rows[0][0])
+    except (TypeError, ValueError):
+        return None

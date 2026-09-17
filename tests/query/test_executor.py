@@ -353,7 +353,7 @@ class TestQueryExecutor:
             )
         )
 
-        with pytest.raises(QueryExecutionError, match="legacy inline-callstack layout"):
+        with pytest.raises(QueryExecutionError, match="v1 inline-callstack layout"):
             executor.execute_template("legacy_callstack", device_id=0)
 
     def test_qualified_legacy_callstack_schema_error_is_actionable(self, tmp_path):
@@ -369,8 +369,30 @@ class TestQueryExecutor:
             )
         )
 
-        with pytest.raises(QueryExecutionError, match="legacy inline-callstack layout"):
+        with pytest.raises(QueryExecutionError, match="recognized v1 or v2"):
             executor.execute_template("qualified_legacy_callstack", device_id=0)
+
+    def test_variant_template_uses_inline_sql_on_v1_database(self, tmp_path):
+        db_path = tmp_path / "v1.db"
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("CREATE TABLE dictionary (table_name TEXT)")
+            conn.execute("CREATE TABLE trace_entry_0 (id INTEGER, size INTEGER, callstack TEXT)")
+            conn.execute(
+                "INSERT INTO trace_entry_0 (id, size, callstack) VALUES (1, 10, 'train.py:1')"
+            )
+        executor = QueryExecutor(Context(db_path))
+        executor.register_template(
+            QueryTemplate(
+                name="variant_event",
+                query_variants={
+                    "v1": "SELECT callstack FROM {{ device_trace_table }}",
+                    "v2": "SELECT callstackId FROM {{ device_trace_table }}",
+                },
+            )
+        )
+
+        rows = executor.execute_template("variant_event", device_id=0)
+        assert rows == [{"callstack": "train.py:1"}]
 
 
 def _make_mock_context(device_ids: list[int]):

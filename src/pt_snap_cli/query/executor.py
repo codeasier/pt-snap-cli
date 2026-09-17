@@ -63,22 +63,58 @@ class QueryExecutor:
         if self._template_dir and self._template_dir.exists():
             self._load_templates()
 
-    def _compiled_template(self, template: QueryTemplate) -> Template:
-        """Return the cached compiled Jinja template for ``template``.
+    def _compiled_template(self, template: QueryTemplate, sql: str | None = None) -> Template:
+        """Return the cached compiled Jinja template for ``sql``.
 
         Compiles and caches on first access so repeat renders skip the
-        ``Environment.from_string`` parse step.
+        ``Environment.from_string`` parse step. Variant templates cache
+        each layout body separately.
         """
-        cache_key = (template.name, template.query)
+        body = sql if sql is not None else template.query
+        cache_key = (template.name, body)
         cached = self._compiled_cache.get(cache_key)
         if cached is not None:
             return cached
         try:
-            compiled = self._env.from_string(template.query)
+            compiled = self._env.from_string(body)
         except TemplateSyntaxError as e:
             raise TemplateRenderError(f"Template syntax error in '{template.name}': {e}") from e
         self._compiled_cache[cache_key] = compiled
         return compiled
+
+    def _sql_for_layout(self, template: QueryTemplate) -> str:
+        """Select the SQL body for the current database callstack layout."""
+        sql = template.sql_for_layout(self._callstack_layout())
+        if sql is not None:
+            return sql
+        error = self._callstack_layout_error()
+        if error:
+            raise QueryExecutionError(f"Query execution failed: {error}")
+        layout = self._callstack_layout()
+        if layout is None:
+            raise QueryExecutionError(
+                f"Query execution failed: template '{template.name}' needs a v1 "
+                "or v2 callstack layout, but this database's trace tables have "
+                "neither an inline callstack column nor callstackId"
+            )
+        raise QueryExecutionError(
+            f"Query execution failed: template '{template.name}' has no SQL "
+            f"variant for callstack layout {layout}"
+        )
+
+    def _callstack_layout(self) -> str | None:
+        context = getattr(self, "_context", None)
+        if context is None:
+            return None
+        layout = getattr(context, "callstack_layout", None)
+        return layout if isinstance(layout, str) else None
+
+    def _callstack_layout_error(self) -> str | None:
+        context = getattr(self, "_context", None)
+        if context is None:
+            return None
+        error = getattr(context, "callstack_layout_error", None)
+        return error if isinstance(error, str) and error else None
 
     def _apply_limit(self, sql: str, limit: int) -> str:
         """Tighten a trailing numeric LIMIT or append one when absent."""
@@ -102,15 +138,25 @@ class QueryExecutor:
             trimmed = trimmed[:-1].rstrip()
         return f"{trimmed} LIMIT {int(limit)}"
 
-    @staticmethod
-    def _execution_error(error: sqlite3.OperationalError) -> QueryExecutionError:
+    def _execution_error(self, error: sqlite3.OperationalError) -> QueryExecutionError:
         detail = str(error)
         if "no such table: callstack" in detail or re.search(
             r"no such column: (?:[\w]+\.)?callstackId", detail
         ):
+            layout = self._callstack_layout()
+            if layout == "v1":
+                return QueryExecutionError(
+                    "Query execution failed: this SQL requires callstackId, "
+                    "but this database uses the v1 inline-callstack layout"
+                )
+            if layout == "v2":
+                return QueryExecutionError(
+                    "Query execution failed: this SQL expects the v1 inline-callstack "
+                    "layout, but this database uses the v2 callstackId layout"
+                )
             return QueryExecutionError(
-                "Query execution failed: database uses the legacy inline-callstack layout; "
-                "re-import the snapshot to use callstack queries"
+                "Query execution failed: this SQL requires a recognized v1 or v2 "
+                "callstack layout"
             )
         return QueryExecutionError(f"Query execution failed: {error}")
 
@@ -175,7 +221,7 @@ class QueryExecutor:
                 effective_limit = max_rows
             render_context["limit"] = effective_limit
 
-        jinja_template = self._compiled_template(template)
+        jinja_template = self._compiled_template(template, self._sql_for_layout(template))
         try:
             rendered_sql = jinja_template.render(render_context)
         except Exception as e:

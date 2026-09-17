@@ -24,46 +24,58 @@ queries:
         default: 20
         required: false
         description: Maximum number of callstack groups to return (-1 for unlimited)
-    query: |
-      WITH active_blocks AS (
-        SELECT
-          id,
-          size,
-          requestedSize,
-          allocEventId,
-          freeEventId,
-          CASE
-            WHEN allocEventId = -1 AND freeEventId = -1 THEN 'static'
-            WHEN allocEventId = -1 AND (freeEventId IS NULL OR freeEventId < 0 OR freeEventId > {{ event_id|int }}) THEN 'preexisting_live_at_event'
-            ELSE 'dynamic_live_at_event'
-          END AS category
-        FROM {{ device_block_table }}
-        WHERE size >= {{ min_size|int }}
-          AND (
-            {% if include_static %}(allocEventId = -1 AND (freeEventId IS NULL OR freeEventId < 0 OR freeEventId > {{ event_id|int }})) OR{% endif %}
-            (allocEventId != -1 AND allocEventId <= {{ event_id|int }} AND (freeEventId IS NULL OR freeEventId < 0 OR freeEventId > {{ event_id|int }}))
-          )
-      ), grouped AS (
-        SELECT
-          CASE
-            WHEN b.category = 'static' THEN '[static] allocEventId=-1, freeEventId=-1'
-            WHEN b.category = 'preexisting_live_at_event' THEN '[preexisting live] allocEventId=-1'
-            ELSE COALESCE(cs.callstack, '[missing callstack]')
-          END AS callstack,
-          b.category,
-          COUNT(*) AS block_count,
-          SUM(b.size) AS size_bytes,
-          ROUND(SUM(b.size) / 1073741824.0, 6) AS size_gib,
-          SUM(b.requestedSize) AS requested_bytes,
-          ROUND(SUM(b.requestedSize) / 1073741824.0, 6) AS requested_gib
-        FROM active_blocks b
-        LEFT JOIN {{ device_trace_table }} t
-          ON b.allocEventId = t.id
-        LEFT JOIN callstack cs
-          ON t.callstackId = cs.id
-        GROUP BY callstack, b.category
-      ),
-      ranked_dynamic AS (
+    query_variants:
+      v1: |
+        WITH active_blocks AS (
+          SELECT
+            id,
+            size,
+            requestedSize,
+            allocEventId,
+            freeEventId,
+            CASE
+              WHEN allocEventId = -1 AND freeEventId = -1 THEN 'static'
+              WHEN allocEventId = -1 AND (freeEventId IS NULL OR freeEventId < 0 OR freeEventId > {{ event_id|int }}) THEN 'preexisting_live_at_event'
+              ELSE 'dynamic_live_at_event'
+            END AS category
+          FROM {{ device_block_table }}
+          WHERE size >= {{ min_size|int }}
+            AND (
+              {% if include_static %}(allocEventId = -1 AND (freeEventId IS NULL OR freeEventId < 0 OR freeEventId > {{ event_id|int }})) OR{% endif %}
+              (allocEventId != -1 AND allocEventId <= {{ event_id|int }} AND (freeEventId IS NULL OR freeEventId < 0 OR freeEventId > {{ event_id|int }}))
+            )
+        ), grouped AS (
+          SELECT
+            CASE
+              WHEN b.category = 'static' THEN '[static] allocEventId=-1, freeEventId=-1'
+              WHEN b.category = 'preexisting_live_at_event' THEN '[preexisting live] allocEventId=-1'
+              ELSE COALESCE(t.callstack, '[missing callstack]')
+            END AS callstack,
+            b.category,
+            COUNT(*) AS block_count,
+            SUM(b.size) AS size_bytes,
+            ROUND(SUM(b.size) / 1073741824.0, 6) AS size_gib,
+            SUM(b.requestedSize) AS requested_bytes,
+            ROUND(SUM(b.requestedSize) / 1073741824.0, 6) AS requested_gib
+          FROM active_blocks b
+          LEFT JOIN {{ device_trace_table }} t
+            ON b.allocEventId = t.id
+          GROUP BY callstack, b.category
+        ),
+        ranked_dynamic AS (
+          SELECT
+            callstack,
+            category,
+            block_count,
+            size_bytes,
+            size_gib,
+            requested_bytes,
+            requested_gib
+          FROM grouped
+          WHERE category = 'dynamic_live_at_event'
+          ORDER BY size_bytes DESC, block_count DESC, callstack ASC
+          LIMIT {{ top_n|int }}
+        )
         SELECT
           callstack,
           category,
@@ -71,22 +83,84 @@ queries:
           size_bytes,
           size_gib,
           requested_bytes,
-          requested_gib
-        FROM grouped
-        WHERE category = 'dynamic_live_at_event'
+          requested_gib,
+          ROUND(size_bytes * 100.0 / NULLIF(SUM(size_bytes) OVER (), 0), 4) AS percent_of_active_blocks
+        FROM (
+          SELECT
+            callstack,
+            category,
+            block_count,
+            size_bytes,
+            size_gib,
+            requested_bytes,
+            requested_gib
+          FROM grouped
+          WHERE category IN ('static', 'preexisting_live_at_event')
+          UNION ALL
+          SELECT
+            callstack,
+            category,
+            block_count,
+            size_bytes,
+            size_gib,
+            requested_bytes,
+            requested_gib
+          FROM ranked_dynamic
+        )
         ORDER BY size_bytes DESC, block_count DESC, callstack ASC
-        LIMIT {{ top_n|int }}
-      )
-      SELECT
-        callstack,
-        category,
-        block_count,
-        size_bytes,
-        size_gib,
-        requested_bytes,
-        requested_gib,
-        ROUND(size_bytes * 100.0 / NULLIF(SUM(size_bytes) OVER (), 0), 4) AS percent_of_active_blocks
-      FROM (
+      v2: |
+        WITH active_blocks AS (
+          SELECT
+            id,
+            size,
+            requestedSize,
+            allocEventId,
+            freeEventId,
+            CASE
+              WHEN allocEventId = -1 AND freeEventId = -1 THEN 'static'
+              WHEN allocEventId = -1 AND (freeEventId IS NULL OR freeEventId < 0 OR freeEventId > {{ event_id|int }}) THEN 'preexisting_live_at_event'
+              ELSE 'dynamic_live_at_event'
+            END AS category
+          FROM {{ device_block_table }}
+          WHERE size >= {{ min_size|int }}
+            AND (
+              {% if include_static %}(allocEventId = -1 AND (freeEventId IS NULL OR freeEventId < 0 OR freeEventId > {{ event_id|int }})) OR{% endif %}
+              (allocEventId != -1 AND allocEventId <= {{ event_id|int }} AND (freeEventId IS NULL OR freeEventId < 0 OR freeEventId > {{ event_id|int }}))
+            )
+        ), grouped AS (
+          SELECT
+            CASE
+              WHEN b.category = 'static' THEN '[static] allocEventId=-1, freeEventId=-1'
+              WHEN b.category = 'preexisting_live_at_event' THEN '[preexisting live] allocEventId=-1'
+              ELSE COALESCE(cs.callstack, '[missing callstack]')
+            END AS callstack,
+            b.category,
+            COUNT(*) AS block_count,
+            SUM(b.size) AS size_bytes,
+            ROUND(SUM(b.size) / 1073741824.0, 6) AS size_gib,
+            SUM(b.requestedSize) AS requested_bytes,
+            ROUND(SUM(b.requestedSize) / 1073741824.0, 6) AS requested_gib
+          FROM active_blocks b
+          LEFT JOIN {{ device_trace_table }} t
+            ON b.allocEventId = t.id
+          LEFT JOIN callstack cs
+            ON t.callstackId = cs.id
+          GROUP BY callstack, b.category
+        ),
+        ranked_dynamic AS (
+          SELECT
+            callstack,
+            category,
+            block_count,
+            size_bytes,
+            size_gib,
+            requested_bytes,
+            requested_gib
+          FROM grouped
+          WHERE category = 'dynamic_live_at_event'
+          ORDER BY size_bytes DESC, block_count DESC, callstack ASC
+          LIMIT {{ top_n|int }}
+        )
         SELECT
           callstack,
           category,
@@ -94,21 +168,31 @@ queries:
           size_bytes,
           size_gib,
           requested_bytes,
-          requested_gib
-        FROM grouped
-        WHERE category IN ('static', 'preexisting_live_at_event')
-        UNION ALL
-        SELECT
-          callstack,
-          category,
-          block_count,
-          size_bytes,
-          size_gib,
-          requested_bytes,
-          requested_gib
-        FROM ranked_dynamic
-      )
-      ORDER BY size_bytes DESC, block_count DESC, callstack ASC
+          requested_gib,
+          ROUND(size_bytes * 100.0 / NULLIF(SUM(size_bytes) OVER (), 0), 4) AS percent_of_active_blocks
+        FROM (
+          SELECT
+            callstack,
+            category,
+            block_count,
+            size_bytes,
+            size_gib,
+            requested_bytes,
+            requested_gib
+          FROM grouped
+          WHERE category IN ('static', 'preexisting_live_at_event')
+          UNION ALL
+          SELECT
+            callstack,
+            category,
+            block_count,
+            size_bytes,
+            size_gib,
+            requested_bytes,
+            requested_gib
+          FROM ranked_dynamic
+        )
+        ORDER BY size_bytes DESC, block_count DESC, callstack ASC
     output_schema:
       - column: callstack
         type: str
