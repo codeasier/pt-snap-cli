@@ -6,11 +6,13 @@ Get up and running with `pt-snap-cli` in a few minutes.
 
 ## Installation
 
-From a source checkout:
-
 ```bash
-pip install -e .
+pip install pt-snap-cli
 ```
+
+This installs the `pt-snap` CLI. Contributors working from a source checkout can
+use `pip install -e ".[dev]"`; see [Development](../../README.md#development)
+in the repository README.
 
 ## Your First Analysis
 
@@ -103,6 +105,7 @@ pt-snap query --template-use block --device 0 --params '{"min_size": 1048576}'
 - [Focus Management](focus-management.md) — Learn how to manage database and device focus across projects and sessions
 - [Querying](querying.md) — Query workflows, template discovery, parameters, and output
 - [Splitting Snapshots](splitting.md) — Create independently replayable per-device slices
+- [Agent Skills](skills.md) — Install bundled agent workflows into the shared agents directory and Claude
 - [MCP Server](mcp.md) — Use the MCP server for AI agent integration
 - [Database Schema](database.md) — Understand the SnapshotDB format
 - [SnapshotAnalyzer API](snapshot-analyzer-api.md) — Query SnapshotDB files from Python

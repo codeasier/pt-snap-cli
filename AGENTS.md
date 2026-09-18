@@ -21,10 +21,20 @@ Run these commands from the repository root.
 - Lint: `ruff check .`
 - Check formatting: `black --check .`
 - Apply formatting: `black .`
+- Type check: `python -m basedpyright --pythonpath "$(python -c 'import sys; print(sys.executable)')"`
+  (covers all of `src/pt_snap_cli`; the gate is zero errors and warnings are
+  informational. `pyproject.toml` downgrades a listed set of rules to warnings
+  under `src/pt_snap_cli/snapshot/` until its annotations are fixed — do not
+  widen that list, shrink it)
 
 `tests/run_tests.sh` is tied to a developer-specific Conda path and writes
 coverage reports under `test_reports/`; use direct `pytest` commands unless
 that local environment is intentionally available.
+
+Local-only directories (`.pt-snap/` written by `pt-snap focus`/`pt-snap import`,
+`tmp/`, `.tmp/`, `.worktrees/`) are ignored by Git and excluded from Ruff and
+Black in `pyproject.toml`, so the root-level lint commands above stay stable
+when they exist.
 
 ## Scoped Guidance
 
@@ -35,13 +45,13 @@ that local environment is intentionally available.
 | Package source | [src/AGENTS.md](src/AGENTS.md) | Installable package boundaries and source-layout rules |
 | Tests | [tests/AGENTS.md](tests/AGENTS.md) | Cross-surface contracts, service/query/runtime suites, and reviewed executable fixtures |
 | Benchmarks | [benchmarks/AGENTS.md](benchmarks/AGENTS.md) | Import and SQLite performance measurement with temporary outputs |
-| Agent skills | [skills/AGENTS.md](skills/AGENTS.md) | Installation approval and read-only memory-diagnostic workflows |
+| Agent skills | [skills/AGENTS.md](skills/AGENTS.md) | Helper routing, installation approval, Ascend NPU collection, and read-only memory-diagnostic workflows |
 
 ## Runtime Topology
 
 | Surface | Entry point | Responsibility |
 | --- | --- | --- |
-| CLI | `src/pt_snap_cli/cli.py` via `pt_snap_cli.cli:_safe_call` | Typer commands for focus, import, split, metadata, query, reports, and config |
+| CLI | `src/pt_snap_cli/cli.py` via `pt_snap_cli.cli:_safe_call` | Typer commands for focus, import, split, metadata, query, reports, config, and skill install/list |
 | Python API | `src/pt_snap_cli/api.py` (`SnapshotAnalyzer`) | Programmatic focus, query, and metadata facade |
 | MCP | `src/pt_snap_cli/mcp/server.py` via `pt_snap_cli.mcp.server:main` | Agent tools/resources backed by `SnapshotAnalyzer` |
 | Product services | `src/pt_snap_cli/core/` | Shared focus, import, split, query, report, metadata, and error semantics |
@@ -81,9 +91,31 @@ templates under category subdirectories are included by
   `query/registry.py` recursively loads templates into the singleton registry;
   `query/executor.py` renders with Jinja2 `StrictUndefined` and injects device
   table names before executing through `Context`.
+- Templates that differ by SnapshotDB callstack layout declare
+  `query_variants.v1` / `query_variants.v2` in the same YAML entry and share
+  description, parameters, and `output_schema`. Unaffected templates keep a
+  single `query`. `Context` detects the layout from read-only column/table
+  checks (with `pt_snap_metadata` as an auxiliary check) and
+  `QueryExecutor` selects the matching SQL. Conflicting or damaged layouts
+  leave `callstack_layout` unset and fail only variant templates. Do not
+  persist layout in `focus.json` or migrate databases on open.
 - When template metadata or behavior changes, review the YAML, config, registry,
   executor, `core/query_service.py`, CLI/MCP presentation, and focused tests
   together.
+
+### Agent skills
+
+- Author skills under `skills/<name>/SKILL.md`. Keep the packaged copy at
+  `src/pt_snap_cli/bundled_skills/<name>/SKILL.md` identical so wheel installs
+  can run `pt-snap skill install`.
+- `SkillService` prefers `PT_SNAP_SKILLS_DIR` when set, then the repository
+  `skills/` tree in a source checkout, then packaged copies. Default install writes the shared
+  `~/.agents/skills` tree (Cursor, OpenCode, current Codex, and other
+  Agent Skills hosts) plus Claude's independent `~/.claude/skills` or
+  `$CLAUDE_CONFIG_DIR/skills`. `--target cursor` and `--target codex` keep
+  the host-native extras; `--dir` covers anything else. List reports
+  `installed`, `outdated`, or `missing`. Skill management is CLI-only and
+  is not exposed on the MCP server.
 
 ### Snapshot import and split
 
@@ -112,7 +144,8 @@ templates under category subdirectories are included by
 | Snapshot import or metadata | `src/pt_snap_cli/core/import_service.py`, `src/pt_snap_cli/core/import_metadata.py`, `src/pt_snap_cli/core/snapshot_import_backend.py` | `tests/core/test_import_*.py`, `tests/test_snapshot_db.py` |
 | Snapshot splitting or replay | `src/pt_snap_cli/core/split_service.py`, `src/pt_snap_cli/snapshot/` | `tests/core/test_split_service.py`, `tests/snapshot/` |
 | Reports | `src/pt_snap_cli/core/report_service.py`, report commands in `src/pt_snap_cli/cli.py` | `tests/core/test_report_service.py`, report cases in `tests/test_cli.py` |
-| Agent setup, diagnostics, or skill evaluation | `skills/`, `tests/skills/`, and the referenced CLI/query surfaces | `tests/skills/` |
+| Skill list/install destinations or catalog packaging | `src/pt_snap_cli/core/skill_service.py`, `src/pt_snap_cli/bundled_skills/`, skill commands in `src/pt_snap_cli/cli.py` | `tests/core/test_skill_service.py`, `tests/test_bundled_skills.py`, skill cases in `tests/test_cli.py` |
+| Agent setup, Ascend NPU collection, diagnostics, or skill evaluation | `skills/`, `tests/skills/`, and the referenced CLI/query surfaces | `tests/skills/` |
 | Packaging or release | `pyproject.toml`, `.github/workflows/` | `tests/test_package.py`, `tests/test_release_workflow.py` |
 | Executable fixtures | `tests/fixtures/snapshots/` | `tests/test_fixture_provenance.py` before any deserializing suite |
 

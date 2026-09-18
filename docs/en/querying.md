@@ -39,6 +39,10 @@ Raw data lookup.
 | `event` | Query memory events with flexible field filters |
 | `allocation` | Memory allocation timeline (id, allocated, active, reserved) |
 
+`event`, `callstack_analysis`, and `active_memory_callstack_at_event` share one
+public contract and select v1 or v2 SQL from the database layout. See
+[Callstack layout compatibility](database.md#callstack-layout-compatibility).
+
 ### Statistical Queries
 
 Aggregation and analysis.
@@ -183,6 +187,10 @@ Found 150 results, showing 2:
   {'id': 2, 'address': 8192, 'size': 4096, ...}
   ... and 148 more (use -n to show more)
 ```
+
+The "Found N" count is exact even when output is capped. Note that the MCP
+`execute_query` tool applies a default cap of 100 rows, unlike the CLI; see
+[MCP Server: Query Results and Row Limits](mcp.md#query-results-and-row-limits).
 
 CLI, Python API, and MCP query results contain raw SQLite values. A template's
 `output_schema` is metadata and is not applied automatically during query

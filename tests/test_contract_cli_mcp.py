@@ -126,8 +126,14 @@ def _normalize_cli_focus(output: str) -> dict[str, object]:
                 int(device.strip())
                 for device in line.removeprefix("Available devices: ").split(",")
             ]
+        elif line.startswith("Callstack layout: "):
+            focus["callstack_layout"] = line.removeprefix("Callstack layout: ").split(" ", 1)[0]
+        elif line.startswith("Warning: "):
+            focus["callstack_layout_error"] = line.removeprefix("Warning: ")
     focus.setdefault("device_id", None)
     focus.setdefault("available_devices", [])
+    focus.setdefault("callstack_layout", None)
+    focus.setdefault("callstack_layout_error", None)
     return focus
 
 
@@ -230,7 +236,11 @@ def test_focus_contract_matches_cli_and_mcp_semantics(
         "db_path": mcp_focus["db_path"],
         "device_id": mcp_focus["device_id"],
         "available_devices": mcp_focus["available_devices"],
+        "callstack_layout": mcp_focus["callstack_layout"],
+        "callstack_layout_error": mcp_focus["callstack_layout_error"],
     }
+    assert cli_focus["callstack_layout"] == "v1"
+    assert cli_focus["callstack_layout_error"] is None
 
 
 def test_invalid_focus_device_contract_matches_cli_and_mcp_semantics(
@@ -333,6 +343,46 @@ def test_query_execution_contract_matches_cli_and_mcp_semantics(
     assert cli_query == mcp_query
 
 
+def test_event_query_contract_reads_v1_inline_callstack(
+    contract_db: Path, mcp_server: ModuleType
+) -> None:
+    conn = sqlite3.connect(str(contract_db))
+    conn.execute(
+        """
+        INSERT INTO trace_entry_1
+          (id, action, address, size, stream, allocated, active, reserved, callstack)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (1, 4, 0x1000, 2048, 0, 2048, 2048, 4096, "train.py:10"),
+    )
+    conn.commit()
+    conn.close()
+
+    cli_result = runner.invoke(
+        app,
+        [
+            "query",
+            str(contract_db),
+            "--template-use",
+            "event",
+            "--params",
+            json.dumps({"id": 1}),
+            "--device",
+            "1",
+            "-n",
+            "0",
+        ],
+    )
+    assert cli_result.exit_code == 0
+
+    server = _set_mcp_focus(mcp_server, contract_db)
+    cli_query = _normalize_cli_query_result(cli_result.stdout, device_id=1)
+    mcp_query = server.execute_query("event", params={"id": 1}, device_id=1, max_rows=0)
+
+    assert cli_query == mcp_query
+    assert mcp_query["rows"][0]["callstack"] == "train.py:10"
+
+
 def test_query_parameter_error_contract_matches_cli_and_mcp_semantics(
     contract_db: Path, mcp_server: ModuleType
 ) -> None:
@@ -376,7 +426,7 @@ def test_missing_template_error_contract_matches_cli_and_mcp_semantics(
 ) -> None:
     template_name = "does_not_exist"
     cli_result = runner.invoke(app, ["query", "--template-info", template_name])
-    assert cli_result.exit_code == 0
+    assert cli_result.exit_code == 1
 
     assert _normalize_cli_missing_template(cli_result.stdout) == mcp_server.get_template_info(
         template_name

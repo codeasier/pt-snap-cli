@@ -58,6 +58,7 @@ include = ["pt_snap_cli*"]
 pt_snap_cli = [
     "query/templates/*.yaml",
     "query/templates/*/*.yaml",
+    "bundled_skills/**/*",
 ]
 "pt_snap_cli.snapshot" = ["LICENSE", "PROVENANCE.md"]
 
@@ -68,10 +69,22 @@ local_scheme = "no-local-version"
 [tool.black]
 line-length = 100
 target-version = ["py310"]
+# Local-only directories that may exist in a checkout but are not project source.
+# Both tools already honor .gitignore; listing them here keeps `black --check .`
+# and `ruff check .` stable even when run with gitignore handling disabled.
+extend-exclude = '''
+/(
+    \.pt-snap
+  | \.tmp
+  | \.worktrees
+  | tmp
+)/
+'''
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+extend-exclude = [".pt-snap", ".tmp", ".worktrees", "tmp"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
@@ -85,10 +98,27 @@ addopts = "-v --tb=short"
 
 [tool.basedpyright]
 pythonVersion = "3.13"
-include = [
-    "src/pt_snap_cli/cli.py",
-    "src/pt_snap_cli/__init__.py",
-]
+include = ["src/pt_snap_cli"]
+# basedpyright exits non-zero on warnings by default. The gate is "no errors";
+# warnings (mostly reportUnknown* noise from third-party stubs) are informational.
+# Without this, the result depends on how well-typed the installed typer happens
+# to be, which is why the check passed in CI yet failed on developer machines.
+failOnWarnings = false
+
+# The snapshot runtime was migrated from its upstream project with its original
+# loose annotations (issue #122, phase 3). Only the rules it currently violates are
+# downgraded, and only under this root; every other module is checked at error
+# level. Remove entries here as the annotations are fixed. Changes under
+# src/pt_snap_cli/snapshot/ also require a PROVENANCE.md entry.
+[[tool.basedpyright.executionEnvironments]]
+root = "src/pt_snap_cli/snapshot"
+reportMissingTypeArgument = "warning"
+reportAssignmentType = "warning"
+reportAttributeAccessIssue = "warning"
+reportUninitializedInstanceVariable = "warning"
+reportArgumentType = "warning"
+reportIndexIssue = "warning"
+reportImportCycles = "warning"
 
 [tool.coverage.run]
 source = ["pt_snap_cli"]

@@ -10,7 +10,7 @@ import pytest
 from click import unstyle
 from typer.testing import CliRunner
 
-from pt_snap_cli.cli import app
+from pt_snap_cli.cli import AGENT_HELP_EPILOG, app
 from pt_snap_cli.query.config import QueryTemplate
 from pt_snap_cli.query.registry import QueryRegistry, register_query
 
@@ -177,6 +177,9 @@ def mock_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Mock Path.home to use tmp_path."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("PT_SNAP_DB_PATH", raising=False)
+    monkeypatch.delenv("PT_SNAP_SKILLS_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
     with patch.object(Path, "home", return_value=tmp_path):
         yield
 
@@ -209,6 +212,33 @@ class TestCLI:
         result = runner.invoke(app, ["-h"])
         assert result.exit_code == 0
         assert "PyTorch Memory Snapshot Analysis Tool" in result.stdout
+
+    def test_root_help_includes_agent_epilog(self) -> None:
+        for flag in ("--help", "-h"):
+            result = runner.invoke(app, [flag])
+            assert result.exit_code == 0
+            normalized = " ".join(unstyle(result.stdout).split())
+            assert AGENT_HELP_EPILOG in normalized
+            assert normalized.index(AGENT_HELP_EPILOG) > normalized.index(
+                "PyTorch Memory Snapshot Analysis Tool"
+            )
+
+    def test_json_output_excludes_agent_help_epilog(self) -> None:
+        listed = runner.invoke(app, ["skill", "list", "--json", "--user", "--target", "claude"])
+        assert listed.exit_code == 0
+        listed_out = unstyle(listed.stdout)
+        assert "Agents: prefer --json where supported" not in listed_out
+        payload = json.loads(listed.stdout)
+        names = {item["name"] for item in payload["skills"]}
+        assert "pt-snap-helper" in names
+
+        version = runner.invoke(app, ["--version"])
+        assert version.exit_code == 0
+        assert "Agents: prefer --json where supported" not in unstyle(version.stdout)
+
+        query_help = runner.invoke(app, ["query", "-h"])
+        assert query_help.exit_code == 0
+        assert "Agents: prefer --json where supported" not in unstyle(query_help.stdout)
 
     def test_subcommand_short_help_flag(self) -> None:
         """Test -h flag for subcommands."""
@@ -319,9 +349,8 @@ class TestQueryCommandErrors:
     def test_query_template_info_not_found(self, sample_db: Path) -> None:
         """Test 'query --template-info' with non-existent template."""
         result = runner.invoke(app, ["query", str(sample_db), "--template-info", "nonexistent"])
-        assert result.exit_code == 0
-        assert "Error" in result.stdout
-        assert "not found" in result.stdout
+        assert result.exit_code == 1
+        assert "Error: Template 'nonexistent' not found" in result.stdout
 
     def test_query_without_template_use(self, sample_db: Path) -> None:
         """Test 'query' command without --template-use raises error."""
@@ -493,6 +522,61 @@ class TestQueryTemplateInfo:
         assert "Available devices" in result.stdout
         focus_file = Path.cwd() / ".pt-snap" / "focus.json"
         assert json.loads(focus_file.read_text())["db_path"] == str(sample_db.resolve())
+
+    def test_focus_database_reports_v1_callstack_layout(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "v1.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+        )
+        conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY, callstack TEXT)")
+        conn.commit()
+        conn.close()
+
+        result = runner.invoke(app, ["focus", str(db_path)])
+        assert result.exit_code == 0
+        assert "Callstack layout: v1 (inline text)" in result.stdout
+        focus_data = json.loads((Path.cwd() / ".pt-snap" / "focus.json").read_text())
+        assert "callstack_layout" not in focus_data
+
+    def test_focus_database_warns_on_conflicting_callstack_layout(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "conflict.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE trace_entry_0 "
+            "(id INTEGER PRIMARY KEY, callstack TEXT, callstackId INTEGER)"
+        )
+        conn.commit()
+        conn.close()
+
+        result = runner.invoke(app, ["focus", str(db_path)])
+        assert result.exit_code == 0
+        assert "Warning:" in result.stdout
+        assert "both callstack and callstackId" in result.stdout
+        focus_data = json.loads((Path.cwd() / ".pt-snap" / "focus.json").read_text())
+        assert focus_data["db_path"] == str(db_path.resolve())
+        assert "callstack_layout" not in focus_data
+
+    def test_focus_device_only_reports_callstack_layout(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "v1.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+        )
+        conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY, callstack TEXT)")
+        conn.commit()
+        conn.close()
+        focus_dir = Path.cwd() / ".pt-snap"
+        focus_dir.mkdir()
+        (focus_dir / "focus.json").write_text(json.dumps({"db_path": str(db_path)}))
+
+        result = runner.invoke(app, ["focus", "--device", "0"])
+        assert result.exit_code == 0
+        assert "Focused device" in result.stdout
+        assert "Callstack layout: v1 (inline text)" in result.stdout
 
     def test_focus_database_with_device(self, sample_db: Path) -> None:
         """Test 'focus --device' sets both database and device."""
@@ -1170,3 +1254,158 @@ class TestReportCommand:
         assert result.exit_code == 1
         assert "Database from global focus not found" in result.stdout
         assert str(missing_db) in result.stdout
+
+
+class TestSkillCommands:
+    def test_skill_help_lists_subcommands(self) -> None:
+        result = runner.invoke(app, ["skill", "--help"])
+        assert result.exit_code == 0
+        output = unstyle(result.stdout)
+        assert "list" in output
+        assert "install" in output
+        assert "upgrade" in output
+        assert "uninstall" in output
+
+    def test_skill_list_json_and_install_roundtrip(self, tmp_path: Path) -> None:
+        listed = runner.invoke(app, ["skill", "list", "--json", "--user", "--target", "claude"])
+        assert listed.exit_code == 0
+        payload = json.loads(listed.stdout)
+        names = {item["name"] for item in payload["skills"]}
+        assert "pt-snap-setup" in names
+        assert "pt-snap-helper" in names
+        setup = next(item for item in payload["skills"] if item["name"] == "pt-snap-setup")
+        assert setup["status"] == "missing"
+        assert setup["description"]
+        assert "note" not in payload
+
+        human = runner.invoke(app, ["skill", "list", "--user", "--target", "claude"])
+        assert human.exit_code == 0
+        human_out = unstyle(human.stdout)
+        assert "pt-snap-setup" in human_out
+        assert "Status" in human_out
+        assert "Locations" in human_out
+        assert "Use when installing or verifying pt-snap-cli" in human_out
+        assert "NAME" not in human_out.splitlines()[0]
+        assert "Restart the agent" not in human_out
+
+        human_install = runner.invoke(
+            app, ["skill", "install", "pt-snap-setup", "--target", "claude"]
+        )
+        assert human_install.exit_code == 0
+        assert "Restart the agent after install, upgrade, or uninstall" in unstyle(
+            human_install.stdout
+        )
+        dest = tmp_path / ".claude" / "skills" / "pt-snap-setup" / "SKILL.md"
+        assert dest.is_file()
+
+        listed_after_install = runner.invoke(app, ["skill", "list", "--user", "--target", "claude"])
+        assert listed_after_install.exit_code == 0
+        assert "Restart the agent" not in unstyle(listed_after_install.stdout)
+
+        installed = runner.invoke(
+            app, ["skill", "install", "pt-snap-setup", "--target", "claude", "--json"]
+        )
+        assert installed.exit_code == 0
+        report = json.loads(installed.stdout)
+        assert report["results"][0]["action"] == "already_installed"
+        assert report["restart_required"] is False
+        assert report["restart_hint"] is None
+        already_human = runner.invoke(
+            app, ["skill", "install", "pt-snap-setup", "--target", "claude"]
+        )
+        assert already_human.exit_code == 0
+        assert "Restart the agent" not in unstyle(already_human.stdout)
+
+        listed_again = runner.invoke(
+            app, ["skill", "list", "--json", "--user", "--target", "claude"]
+        )
+        setup_again = next(
+            item
+            for item in json.loads(listed_again.stdout)["skills"]
+            if item["name"] == "pt-snap-setup"
+        )
+        assert setup_again["status"] == "installed"
+
+    def test_skill_install_unknown_name(self) -> None:
+        result = runner.invoke(app, ["skill", "install", "pt-snap-missing"])
+        assert result.exit_code == 1
+        assert "Unknown skill" in unstyle(result.stdout)
+
+    def test_skill_list_rejects_scope_flags_together(self) -> None:
+        result = runner.invoke(app, ["skill", "list", "--project", "--user"])
+        assert result.exit_code == 1
+        assert "--project and --user cannot be used together" in unstyle(result.stdout)
+
+    def test_skill_upgrade_and_uninstall(self, tmp_path: Path) -> None:
+        runner.invoke(app, ["skill", "install", "pt-snap-setup", "--target", "claude"])
+        dest = tmp_path / ".claude" / "skills" / "pt-snap-setup" / "SKILL.md"
+        dest.write_text(dest.read_text(encoding="utf-8") + "local change\n", encoding="utf-8")
+
+        upgraded = runner.invoke(
+            app, ["skill", "upgrade", "pt-snap-setup", "--target", "claude", "--json"]
+        )
+        assert upgraded.exit_code == 0
+        payload = json.loads(upgraded.stdout)
+        assert payload["results"][0]["action"] == "updated"
+        assert payload["restart_required"] is True
+        assert "Restart the agent after install, upgrade, or uninstall" in payload["restart_hint"]
+
+        removed = runner.invoke(
+            app, ["skill", "uninstall", "pt-snap-setup", "--target", "claude", "--json"]
+        )
+        assert removed.exit_code == 0
+        removed_payload = json.loads(removed.stdout)
+        assert removed_payload["results"][0]["action"] == "uninstalled"
+        assert removed_payload["restart_required"] is True
+        assert (
+            "Restart the agent after install, upgrade, or uninstall"
+            in removed_payload["restart_hint"]
+        )
+        assert not dest.exists()
+
+        missing = runner.invoke(
+            app, ["skill", "uninstall", "pt-snap-setup", "--target", "claude", "--json"]
+        )
+        assert missing.exit_code == 0
+        missing_payload = json.loads(missing.stdout)
+        assert missing_payload["results"][0]["action"] == "not_installed"
+        assert missing_payload["restart_required"] is False
+        assert missing_payload["restart_hint"] is None
+
+    def test_skill_dir_install_and_list(self, tmp_path: Path) -> None:
+        dest = tmp_path / "other-agent" / "skills"
+        installed = runner.invoke(
+            app, ["skill", "install", "pt-snap-setup", "--dir", str(dest), "--json"]
+        )
+        assert installed.exit_code == 0
+        payload = json.loads(installed.stdout)
+        assert payload["results"][0]["host"] == "custom"
+        assert payload["results"][0]["action"] == "installed"
+        assert (dest / "pt-snap-setup" / "SKILL.md").is_file()
+
+        listed = runner.invoke(app, ["skill", "list", "--dir", str(dest), "--json"])
+        assert listed.exit_code == 0
+        setup = next(
+            item for item in json.loads(listed.stdout)["skills"] if item["name"] == "pt-snap-setup"
+        )
+        assert setup["status"] == "installed"
+        assert setup["locations"][0]["host"] == "custom"
+
+        human = runner.invoke(app, ["skill", "list", "--dir", str(dest)])
+        assert human.exit_code == 0
+        assert str(dest) in unstyle(human.stdout)
+
+    def test_skill_dir_rejects_target(self, tmp_path: Path) -> None:
+        result = runner.invoke(
+            app, ["skill", "list", "--dir", str(tmp_path / "skills"), "--target", "claude"]
+        )
+        assert result.exit_code == 1
+        assert "--dir cannot be combined with --target" in unstyle(result.stdout)
+
+    def test_skill_dir_rejects_project(self, tmp_path: Path) -> None:
+        result = runner.invoke(
+            app,
+            ["skill", "install", "pt-snap-setup", "--dir", str(tmp_path / "skills"), "--project"],
+        )
+        assert result.exit_code == 1
+        assert "--dir cannot be combined with --project" in unstyle(result.stdout)

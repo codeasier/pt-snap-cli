@@ -4,7 +4,7 @@
 # core tests
 
 ## Purpose
-`tests/core` verifies focus, import, split, metadata, query, and report services between CLI/API/MCP callers and lower-level config, context, query, and snapshot modules.
+`tests/core` verifies focus, import, split, metadata, query, report, and skill services between CLI/API/MCP callers and lower-level config, context, query, and snapshot modules.
 
 ## Key Files
 | File | Description |
@@ -15,6 +15,7 @@
 | `test_query_service.py` | Tests query service template listing/info, focus resolution, execution, row limiting, and error translation. |
 | `test_report_service.py` | Tests higher-level report composition and normalized results. |
 | `test_split_service.py` | Tests split contracts, devices, formats, replay validation, cleanup, races, and publication. |
+| `test_skill_service.py` | Tests skill catalog discovery, install status, host destinations, and conflict handling. |
 
 ## Subdirectories
 | Directory | Purpose |

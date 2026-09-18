@@ -31,6 +31,7 @@ state = analyzer.get_focus()
 print(state.db_path)
 print(state.device_id)
 print(state.available_devices)
+print(state.callstack_layout)
 print(state.source)
 
 state = analyzer.set_focus(
@@ -61,6 +62,8 @@ explicit `db_path`, a validated device-only analyzer override is reported by
 | `device_id` | Analyzer device override, or the device attached to the resolved focus |
 | `source` | Resolution source such as `explicit`, `env`, `project`, `global`, or `none` |
 | `available_devices` | Device IDs discovered from `trace_entry_<device>` tables |
+| `callstack_layout` | `"v1"` for inline callstack text, `"v2"` for deduplicated `callstackId`, or `None` when unrecognized or conflicting |
+| `callstack_layout_error` | Conflict reason when the layout cannot be used, otherwise `None` |
 
 See [Focus Management](focus-management.md) for the complete resolution and
 persistence model.

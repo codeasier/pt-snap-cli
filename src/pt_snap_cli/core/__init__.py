@@ -8,8 +8,13 @@ from pt_snap_cli.core.errors import (
     ImportToolMissingError,
     InvalidCategoryError,
     InvalidDeviceError,
+    InvalidSkillTargetError,
     PtSnapCoreError,
     QueryExecutionError,
+    SkillCatalogError,
+    SkillError,
+    SkillInstallError,
+    SkillNotFoundError,
     SnapshotFileInvalidError,
     SourceChangedError,
     SplitError,
@@ -28,6 +33,9 @@ from pt_snap_cli.core.models import (
     PeakMemoryReport,
     QueryResult,
     ResolvedFocus,
+    SkillInstallReport,
+    SkillListing,
+    SkillSpec,
     SplitOptions,
     SplitResult,
     TemplateInfo,
@@ -36,6 +44,7 @@ from pt_snap_cli.core.models import (
 )
 from pt_snap_cli.core.query_service import QueryService
 from pt_snap_cli.core.report_service import ReportService
+from pt_snap_cli.core.skill_service import SkillService
 from pt_snap_cli.core.split_service import SplitService
 
 __all__ = [
@@ -55,6 +64,11 @@ __all__ = [
     "ImportMetadataError",
     "SourceChangedError",
     "SplitError",
+    "SkillError",
+    "SkillCatalogError",
+    "SkillNotFoundError",
+    "InvalidSkillTargetError",
+    "SkillInstallError",
     "ResolvedFocus",
     "FocusState",
     "ImportMetadata",
@@ -68,10 +82,14 @@ __all__ = [
     "ImportResult",
     "SplitOptions",
     "SplitResult",
+    "SkillSpec",
+    "SkillListing",
+    "SkillInstallReport",
     "FocusService",
     "ImportMetadataService",
     "QueryService",
     "ReportService",
     "ImportService",
     "SplitService",
+    "SkillService",
 ]

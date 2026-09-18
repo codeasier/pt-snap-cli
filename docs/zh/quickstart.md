@@ -6,11 +6,12 @@
 
 ## 安装
 
-从源码 checkout 安装：
-
 ```bash
-pip install -e .
+pip install pt-snap-cli
 ```
+
+这会安装 `pt-snap` 命令行工具。从源码 checkout 开发时，可使用
+`pip install -e ".[dev]"`；详见仓库 README 的[开发](../../README_zh.md#开发)一节。
 
 ## 第一次分析
 
@@ -97,6 +98,7 @@ pt-snap query --template-use block --device 0 --params '{"min_size": 1048576}'
 - [Focus 管理](focus-management.md) — 学习如何在多个项目和会话之间管理数据库和设备焦点
 - [运行查询](querying.md) — 查询流程、模板发现、参数和输出说明
 - [拆分快照](splitting.md) — 创建可独立回放的逐设备切片
+- [Agent Skills](skills.md) — 将随包 agent 工作流安装到共享 agents 目录和 Claude
 - [MCP 服务器](mcp.md) — 使用 MCP 服务器进行 AI Agent 集成
 - [数据库格式](database.md) — 了解 SnapshotDB 格式
 - [SnapshotAnalyzer API](snapshot-analyzer-api.md) — 从 Python 查询 SnapshotDB 文件

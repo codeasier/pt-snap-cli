@@ -4,7 +4,7 @@
 # en
 
 ## Purpose
-`docs/en` contains the English documentation set for installing and using `pt-snap-cli`, managing focus, querying and splitting snapshots, running the MCP server, understanding the SQLite schema, and using the high-level and result mapping Python APIs.
+`docs/en` contains the English documentation set for installing and using `pt-snap-cli`, managing focus, querying and splitting snapshots, installing bundled agent skills, running the MCP server, understanding the SQLite schema, and using the high-level and result mapping Python APIs.
 
 ## Key Files
 | File | Description |
@@ -13,6 +13,7 @@
 | `focus-management.md` | Focus resolution, project focus files, environment variables, and global config behavior. |
 | `querying.md` | Query listing, template info, parameter usage, result limits, and built-in templates. |
 | `splitting.md` | Snapshot slicing strategies, output formats, replay validation, and publication guarantees. |
+| `skills.md` | Bundled agent-skill listing, helper entry, install destinations, and status meanings. |
 | `mcp.md` | MCP server setup, tools, resources, prompts, and agent usage. |
 | `database.md` | Snapshot SQLite table/schema reference. |
 | `snapshot-analyzer-api.md` | High-level Python API for focus, template discovery, queries, and import metadata. |
@@ -35,6 +36,7 @@
 
 ### Common Patterns
 - Topic files correspond to major product areas rather than source modules.
+- `skills.md` documents `pt-snap skill list` / `install` / `upgrade` / `uninstall`, built-in and `--dir` destinations, and must stay aligned with `SkillService`.
 
 ## Dependencies
 

@@ -27,6 +27,8 @@ class FocusState:
     device_id: int | None
     source: str
     available_devices: list[int]
+    callstack_layout: str | None = None
+    callstack_layout_error: str | None = None
 
 
 class SnapshotAnalyzer:
@@ -71,6 +73,8 @@ class SnapshotAnalyzer:
             device_id=self._device_id if self._device_id is not None else state.device_id,
             source=state.source,
             available_devices=state.available_devices,
+            callstack_layout=state.callstack_layout,
+            callstack_layout_error=state.callstack_layout_error,
         )
 
     def set_focus(self, db_path: str | None = None, device_id: int | None = None) -> FocusState:

@@ -50,10 +50,15 @@ class FocusService:
     ) -> FocusState:
         resolved = self.resolve_focus(explicit_db_path, explicit_device_id, start_dir)
         available_devices: list[int] = []
+        callstack_layout: str | None = None
+        callstack_layout_error: str | None = None
 
         if resolved.db_path is not None and resolved.db_path.exists():
             try:
-                available_devices = Context(resolved.db_path).device_ids
+                ctx = Context(resolved.db_path)
+                available_devices = ctx.device_ids
+                callstack_layout = ctx.callstack_layout
+                callstack_layout_error = ctx.callstack_layout_error
             except (DatabaseNotFoundError, SchemaVersionError):
                 available_devices = []
 
@@ -63,6 +68,8 @@ class FocusService:
             available_devices=available_devices,
             source=resolved.source,
             focus_file=resolved.focus_file,
+            callstack_layout=callstack_layout,
+            callstack_layout_error=callstack_layout_error,
         )
 
     def set_project_focus(
@@ -81,6 +88,8 @@ class FocusService:
             available_devices=ctx.device_ids,
             source="project",
             focus_file=self._config.project_focus_path(base_dir),
+            callstack_layout=ctx.callstack_layout,
+            callstack_layout_error=ctx.callstack_layout_error,
         )
 
     def set_global_focus(self, db_path: Path | str, device_id: int | None = None) -> FocusState:
@@ -94,6 +103,8 @@ class FocusService:
             available_devices=ctx.device_ids,
             source="global",
             focus_file=self._config.config_file,
+            callstack_layout=ctx.callstack_layout,
+            callstack_layout_error=ctx.callstack_layout_error,
         )
 
     def set_device(
@@ -117,6 +128,8 @@ class FocusService:
                 available_devices=ctx.device_ids,
                 source="global",
                 focus_file=self._config.config_file,
+                callstack_layout=ctx.callstack_layout,
+                callstack_layout_error=ctx.callstack_layout_error,
             )
 
         focus_file = self._config.write_project_focus(
@@ -130,6 +143,8 @@ class FocusService:
             available_devices=ctx.device_ids,
             source="project",
             focus_file=focus_file,
+            callstack_layout=ctx.callstack_layout,
+            callstack_layout_error=ctx.callstack_layout_error,
         )
 
     def clear_global_focus(self) -> None:
@@ -155,6 +170,8 @@ class FocusService:
             available_devices=ctx.device_ids,
             source="explicit",
             focus_file=None,
+            callstack_layout=ctx.callstack_layout,
+            callstack_layout_error=ctx.callstack_layout_error,
         )
 
     def _validated_context(self, db_path: Path) -> Context:

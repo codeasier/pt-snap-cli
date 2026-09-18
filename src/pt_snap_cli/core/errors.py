@@ -98,8 +98,34 @@ SplitPhase = Literal[
 ]
 
 
+class SkillError(PtSnapCoreError):
+    """A skill catalog or install failure suitable for CLI presentation."""
+
+    pass
+
+
+class SkillCatalogError(SkillError):
+    pass
+
+
+class SkillNotFoundError(SkillError):
+    pass
+
+
+class InvalidSkillTargetError(SkillError):
+    pass
+
+
+class SkillInstallError(SkillError):
+    pass
+
+
 class SplitError(PtSnapCoreError):
     """A phase-identifying split failure suitable for CLI presentation."""
+
+    phase: SplitPhase
+    source_path: Path
+    detail: str
 
     def __init__(self, phase: SplitPhase, source_path: Path, detail: str) -> None:
         self.phase = phase

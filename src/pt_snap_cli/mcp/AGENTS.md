@@ -4,7 +4,7 @@
 # mcp
 
 ## Purpose
-`mcp` exposes `pt-snap-cli` functionality as a FastMCP server so agents and MCP clients can inspect or set focus, list templates, fetch template metadata, execute queries, inspect database import metadata, and use a memory-leak analysis prompt.
+`mcp` exposes `pt-snap-cli` functionality as a FastMCP server so agents and MCP clients can inspect or set focus, list templates, fetch template metadata, execute queries, inspect database import metadata, and use a memory-leak analysis prompt. Skill install/list/upgrade/uninstall stay on the CLI.
 
 ## Key Files
 | File | Description |
@@ -23,6 +23,7 @@
 - Keep MCP tool behavior aligned with `SnapshotAnalyzer` rather than duplicating CLI-specific logic.
 - Use JSON-serializable return values for tools and resources.
 - Update docs in `docs/*/mcp.md` and tests when adding or changing MCP tools.
+- Do not add skill-management tools; `pt-snap skill` is CLI-only.
 
 ### Testing Requirements
 - Run `pytest tests/test_mcp_server.py` for wrapper behavior and FastMCP tool/resource/prompt registration.

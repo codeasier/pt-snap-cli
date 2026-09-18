@@ -4,7 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-FocusSource = Literal["explicit", "env", "project", "global", "none"]
+from pt_snap_cli.config import FocusSource
+
 CacheMissReason = Literal[
     "database_missing",
     "database_invalid",
@@ -18,6 +19,28 @@ CacheMissReason = Literal[
 ]
 MetadataStatus = Literal["available", "unavailable", "invalid"]
 SplitFormat = Literal["pickle", "json"]
+SkillHost = Literal["agents", "claude", "cursor", "codex", "custom"]
+SkillScope = Literal["user", "project"]
+SKILL_CONFIG_ENV: dict[str, str] = {
+    "claude": "CLAUDE_CONFIG_DIR",
+    "codex": "CODEX_HOME",
+}
+SkillStatus = Literal["installed", "outdated", "missing"]
+SkillInstallAction = Literal[
+    "installed",
+    "updated",
+    "already_installed",
+    "not_installed",
+    "uninstalled",
+]
+SKILL_RESTART_ACTIONS: frozenset[SkillInstallAction] = frozenset(
+    {"installed", "updated", "uninstalled"}
+)
+SKILL_RESTART_HINT = (
+    "Restart the agent after install, upgrade, or uninstall so the skill change takes effect."
+)
+SKILL_HOSTS: tuple[SkillHost, ...] = ("agents", "claude", "cursor", "codex")
+SKILL_SCOPES: tuple[SkillScope, ...] = ("user", "project")
 
 
 @dataclass(frozen=True)
@@ -39,6 +62,8 @@ class FocusState:
     available_devices: list[int] = field(default_factory=list)
     source: FocusSource = "none"
     focus_file: Path | None = None
+    callstack_layout: str | None = None
+    callstack_layout_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -168,3 +193,41 @@ class SplitResult:
     files: tuple[Path, ...]
     devices: tuple[int, ...]
     format: SplitFormat
+
+
+@dataclass(frozen=True)
+class SkillSpec:
+    name: str
+    description: str
+    source_dir: Path
+
+
+@dataclass(frozen=True)
+class SkillLocationStatus:
+    host: SkillHost
+    scope: SkillScope
+    path: Path
+    status: SkillStatus
+
+
+@dataclass(frozen=True)
+class SkillListing:
+    name: str
+    description: str
+    source_dir: Path
+    status: SkillStatus
+    locations: list[SkillLocationStatus]
+
+
+@dataclass(frozen=True)
+class SkillInstallResult:
+    name: str
+    host: SkillHost
+    scope: SkillScope
+    path: Path
+    action: SkillInstallAction
+
+
+@dataclass(frozen=True)
+class SkillInstallReport:
+    results: list[SkillInstallResult]

@@ -45,3 +45,7 @@
 - YAML syntax via `pyyaml` and Jinja2 expressions inside SQL strings.
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+
+- For callstack-dependent templates, put v1 inline SQL and v2 `callstackId` SQL
+  under `query_variants` instead of duplicating the template file. Keep the
+  public name, parameters, and `output_schema` identical.

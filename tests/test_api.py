@@ -1,6 +1,5 @@
 """Tests for the high-level SnapshotAnalyzer API."""
 
-import os
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -54,15 +53,20 @@ def _reset_registry():
 
 
 @pytest.fixture(autouse=True)
-def _isolate_config():
-    """Isolate Config from user's global config during tests."""
-    original_env = os.environ.get("PT_SNAP_DB_PATH")
-    if "PT_SNAP_DB_PATH" in os.environ:
-        del os.environ["PT_SNAP_DB_PATH"]
-    with patch.object(Path, "home", return_value=Path(tempfile.mkdtemp())):
-        yield
-    if original_env is not None:
-        os.environ["PT_SNAP_DB_PATH"] = original_env
+def _isolate_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Isolate focus resolution from the developer's machine.
+
+    ``Config.resolve_focus()`` consults, in order, ``PT_SNAP_DB_PATH``, the
+    nearest ancestor ``.pt-snap/focus.json`` of the current directory, and the
+    global config under ``Path.home()``. All three must be neutralized; a
+    ``.pt-snap/focus.json`` left in the repository root by ``pt-snap focus`` or
+    ``pt-snap import`` would otherwise leak into every test here (#52, #117).
+    """
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PT_SNAP_DB_PATH", raising=False)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home)
 
 
 class TestFocusState:
@@ -78,6 +82,31 @@ class TestFocusState:
         assert state.source == "explicit"
         assert state.available_devices == [0, 1]
 
+    def test_get_focus_reports_v1_callstack_layout(self, valid_db: Path) -> None:
+        analyzer = SnapshotAnalyzer(db_path=valid_db)
+        state = analyzer.get_focus()
+        assert state.callstack_layout == "v1"
+        assert state.callstack_layout_error is None
+
+    def test_get_focus_reports_conflicting_callstack_layout(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "conflict.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE trace_entry_0 "
+            "(id INTEGER PRIMARY KEY, callstack TEXT, callstackId INTEGER)"
+        )
+        conn.commit()
+        conn.close()
+
+        state = SnapshotAnalyzer(db_path=db_path).get_focus()
+        assert state.available_devices == [0]
+        assert state.callstack_layout is None
+        assert state.callstack_layout_error is not None
+        assert "both callstack and callstackId" in state.callstack_layout_error
+
 
 class TestSnapshotAnalyzerWithDB:
     def test_get_focus_with_explicit_db(self, valid_db: Path) -> None:
@@ -86,6 +115,7 @@ class TestSnapshotAnalyzerWithDB:
         assert state.db_path == str(valid_db)
         assert state.source == "explicit"
         assert 0 in state.available_devices
+        assert state.callstack_layout == "v1"
 
     def test_set_focus_changes_db(self, valid_db: Path, tmp_path: Path) -> None:
         """Create a second DB and switch focus."""
@@ -153,6 +183,13 @@ class TestSnapshotAnalyzerWithDB:
 
         with pytest.raises(RuntimeError, match="Set db_path"):
             analyzer.set_focus(device_id=0)
+
+    def test_isolated_environment_has_no_inherited_focus(self) -> None:
+        """The autouse fixture must hide any focus file above the repository (#52, #117)."""
+        state = SnapshotAnalyzer().get_focus()
+
+        assert state.source == "none"
+        assert state.db_path is None
 
     def test_list_templates(self) -> None:
         analyzer = SnapshotAnalyzer()
@@ -224,13 +261,18 @@ class TestSnapshotAnalyzerWithDB:
         assert result["reason"] == "metadata_missing"
 
     def test_get_database_metadata_available(self, valid_db: Path) -> None:
+        from dataclasses import replace
+
         from pt_snap_cli.core.import_metadata import ImportMetadataService
 
         source = valid_db.parent / "snapshot.pkl"
         source.write_bytes(b"snapshot")
         service = ImportMetadataService()
         digest = service.calculate_sha256(source)
-        service.write(valid_db, service.build_metadata(source, digest, None))
+        service.write(
+            valid_db,
+            replace(service.build_metadata(source, digest, None), import_format_version=1),
+        )
         analyzer = SnapshotAnalyzer(db_path=valid_db)
 
         result = analyzer.get_database_metadata()

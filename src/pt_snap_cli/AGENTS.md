@@ -11,7 +11,7 @@
 |------|-------------|
 | `__init__.py` | Package exports and version wiring. |
 | `api.py` | High-level `SnapshotAnalyzer` API used by MCP and library callers. |
-| `cli.py` | Typer CLI entrypoint for focus, import, split, metadata, query, report, and config commands. |
+| `cli.py` | Typer CLI entrypoint for focus, import, split, metadata, query, report, config, and skill commands. |
 | `completion.py` | Shell completion helpers for templates, categories, and device IDs. |
 | `config.py` | Atomic focus persistence and resolution across explicit paths, environment, project focus, and legacy global config. |
 | `context.py` | Read-only SQLite context with schema validation and device discovery. |
@@ -25,16 +25,24 @@
 | `models/` | Domain models for snapshot blocks, events, and enums (see `models/AGENTS.md`). |
 | `query/` | Query builders, config loading, execution, mapping, registry, and templates (see `query/AGENTS.md`). |
 | `snapshot/` | Snapshot representation, replay, database adaptors, and slicing for explicitly trusted inputs (see `snapshot/AGENTS.md`). |
+| `bundled_skills/` | Packaged copies of repository `skills/*/SKILL.md` for wheel installs. Keep them identical to `skills/`. |
 
 ## For AI Agents
 
 ### Working In This Directory
 - Route user-facing command logic through `core` services when practical so CLI, API, and MCP behavior remain aligned.
+- Skill list/install/upgrade/uninstall is CLI-only; do not expose it on MCP.
 - Preserve focus precedence: explicit CLI/API path, `PT_SNAP_DB_PATH`, nearest project `.pt-snap/focus.json`, then legacy global config.
 - Keep SQLite access read-only for analysis paths.
+- When adding or changing a repository skill under `skills/`, copy the same `SKILL.md` into `bundled_skills/<name>/`.
+- `Context.callstack_layout` is `v1`, `v2`, or `None`. Conflicting layouts leave
+  it `None` and set `callstack_layout_error`; construction still only requires
+  the `dictionary` table. Query SQL variants are selected by `QueryExecutor`,
+  not by adapters.
 
 ### Testing Requirements
 - CLI changes should update/run `tests/test_cli.py` and any affected config/focus tests.
+- Skill catalog or install changes should update/run `tests/core/test_skill_service.py` and `tests/test_bundled_skills.py`.
 - API or MCP changes should update/run `tests/test_api.py`, `tests/test_mcp_server.py`, and `tests/test_contract_cli_mcp.py` when shared semantics change.
 - Context or config changes should update/run `tests/test_context.py` and `tests/test_config.py`.
 - Import, split, and report changes should run their focused `tests/core/` suites; add `tests/snapshot/` when import/split changes cross into the runtime.

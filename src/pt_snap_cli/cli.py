@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import shlex
+import shutil
+import textwrap
 from collections.abc import Mapping
 from dataclasses import asdict
 from pathlib import Path
@@ -12,7 +14,13 @@ from typing import Annotated, Literal, NoReturn, cast
 import typer
 
 from pt_snap_cli import __version__
-from pt_snap_cli.completion import complete_categories, complete_device_ids, complete_template_names
+from pt_snap_cli.completion import (
+    complete_categories,
+    complete_device_ids,
+    complete_skill_names,
+    complete_skill_targets,
+    complete_template_names,
+)
 from pt_snap_cli.config import ENV_DB_PATH
 from pt_snap_cli.core import (
     DatabaseMissingError,
@@ -27,10 +35,17 @@ from pt_snap_cli.core import (
     ImportToolMissingError,
     InvalidCategoryError,
     InvalidDeviceError,
+    InvalidSkillTargetError,
     PeakMemoryReport,
     QueryExecutionError,
     QueryService,
     ReportService,
+    SkillCatalogError,
+    SkillInstallError,
+    SkillInstallReport,
+    SkillListing,
+    SkillNotFoundError,
+    SkillService,
     SnapshotFileInvalidError,
     SplitError,
     SplitOptions,
@@ -38,16 +53,32 @@ from pt_snap_cli.core import (
     TemplateNotFoundError,
     TemplateRenderError,
 )
+from pt_snap_cli.core.models import SKILL_RESTART_ACTIONS, SKILL_RESTART_HINT
+from pt_snap_cli.core.skill_service import (
+    format_skill_install_target,
+    format_skill_location,
+    human_skill_summary,
+    parse_host_option,
+)
 from pt_snap_cli.query.registry import discover_categories
+
+AGENT_HELP_EPILOG = (
+    "Agents: prefer --json where supported. "
+    "Start with the pt-snap-helper skill; "
+    "check availability with pt-snap skill list --json."
+)
 
 app = typer.Typer(
     name="pt-snap",
     help="PyTorch Memory Snapshot Analysis Tool",
+    epilog=AGENT_HELP_EPILOG,
     add_completion=True,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 report_app = typer.Typer(help="Generate memory analysis reports")
+skill_app = typer.Typer(help="Manage bundled agent skills", no_args_is_help=True)
 app.add_typer(report_app, name="report")
+app.add_typer(skill_app, name="skill")
 
 
 def _focus_service() -> FocusService:
@@ -56,6 +87,28 @@ def _focus_service() -> FocusService:
 
 def _query_service() -> QueryService:
     return QueryService(_focus_service())
+
+
+def _skill_service() -> SkillService:
+    return SkillService()
+
+
+def _skill_dest_dir(
+    dest_dir: Path | None,
+    target: str | None,
+    *,
+    project: bool = False,
+    user: bool = False,
+) -> Path | None:
+    if dest_dir is None:
+        return None
+    if target:
+        _error("--dir cannot be combined with --target.")
+    if project:
+        _error("--dir cannot be combined with --project.")
+    if user:
+        _error("--dir cannot be combined with --user.")
+    return dest_dir
 
 
 def version_callback(value: bool) -> None:
@@ -105,6 +158,7 @@ def focus_database(
                 typer.echo(f"Focus file: {state.focus_file}")
             if state.device_id is not None:
                 typer.echo(f"Focused device: {state.device_id}")
+            _echo_callstack_layout(state.callstack_layout, state.callstack_layout_error)
             if not state.db_path.exists():
                 typer.secho("Warning: Database file does not exist!", fg=typer.colors.YELLOW)
         else:
@@ -133,6 +187,7 @@ def focus_database(
         typer.secho(f"Focused device ({state.source}): {device}", fg=typer.colors.GREEN)
         if state.source == "project" and state.focus_file:
             typer.echo(f"Focus file: {state.focus_file}")
+        _echo_callstack_layout(state.callstack_layout, state.callstack_layout_error)
         raise typer.Exit()
 
     try:
@@ -157,6 +212,7 @@ def focus_database(
             typer.echo(f"Available devices: {', '.join(map(str, state.available_devices))}")
         else:
             typer.echo("No devices found in database.")
+        _echo_callstack_layout(state.callstack_layout, state.callstack_layout_error)
     except (
         DatabaseMissingError,
         DatabaseSchemaError,
@@ -364,9 +420,8 @@ def query_database(
     if template_info:
         try:
             info = query_service.get_template_info(template_info)
-        except TemplateNotFoundError:
-            typer.secho(f"Error: Template '{template_info}' not found", fg=typer.colors.RED)
-            raise typer.Exit() from None
+        except TemplateNotFoundError as e:
+            _error(str(e))
 
         typer.secho(f"Template: {info.name}", fg=typer.colors.GREEN, bold=True)
         typer.echo(f"Description: {info.description}")
@@ -619,6 +674,286 @@ def _print_peak_memory_report(report: PeakMemoryReport) -> None:
         typer.echo(f"      {row.get('callstack')}")
 
 
+@skill_app.command("list")
+def skill_list(
+    target: Annotated[
+        str | None,
+        typer.Option(
+            "--target",
+            "-t",
+            help="Comma-separated hosts to inspect: agents,claude,cursor,codex",
+            autocompletion=complete_skill_targets,
+        ),
+    ] = None,
+    project: Annotated[
+        bool, typer.Option("--project", help="Inspect only project-local skill directories")
+    ] = False,
+    user: Annotated[
+        bool, typer.Option("--user", help="Inspect only user-level skill directories")
+    ] = False,
+    dest_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--dir",
+            help="Inspect this skills directory instead of built-in agent/Claude/Cursor/Codex paths",
+        ),
+    ] = None,
+    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+) -> None:
+    """List bundled agent skills and whether they are installed."""
+    if project and user:
+        _error("--project and --user cannot be used together.")
+    custom_dir = _skill_dest_dir(dest_dir, target, project=project, user=user)
+    service = _skill_service()
+    try:
+        listings = service.list_skills(
+            hosts=None if custom_dir is not None else parse_host_option(target),
+            scopes=(
+                None
+                if custom_dir is not None
+                else (("project",) if project else (("user",) if user else None))
+            ),
+            dest_dir=custom_dir,
+        )
+    except (SkillCatalogError, InvalidSkillTargetError) as e:
+        _error(str(e))
+
+    if json_output:
+        typer.echo(json.dumps(service.listing_to_dict(listings), indent=2))
+        return
+
+    if not listings:
+        typer.echo("No bundled agent skills are available.")
+        return
+
+    _print_skill_listings(listings)
+
+
+@skill_app.command("install")
+def skill_install(
+    names: Annotated[
+        list[str] | None,
+        typer.Argument(
+            help="Skill names to install. Omit to install every bundled skill.",
+            autocompletion=complete_skill_names,
+        ),
+    ] = None,
+    target: Annotated[
+        str | None,
+        typer.Option(
+            "--target",
+            "-t",
+            help="Comma-separated hosts: agents,claude,cursor,codex (default: agents,claude)",
+            autocompletion=complete_skill_targets,
+        ),
+    ] = None,
+    project: Annotated[
+        bool, typer.Option("--project", help="Install into the current project")
+    ] = False,
+    force: Annotated[
+        bool, typer.Option("--force", help="Replace existing skills that differ")
+    ] = False,
+    dest_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--dir",
+            help="Install into this skills directory (Windows, other agents, or a custom path)",
+        ),
+    ] = None,
+    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+) -> None:
+    """Install bundled agent skills into shared agent, Claude, Cursor, Codex, or custom directories."""
+    custom_dir = _skill_dest_dir(dest_dir, target, project=project)
+    service = _skill_service()
+    try:
+        report = service.install_skills(
+            names,
+            hosts=None if custom_dir is not None else parse_host_option(target),
+            scope="project" if project else "user",
+            force=force,
+            dest_dir=custom_dir,
+        )
+    except (
+        SkillCatalogError,
+        SkillNotFoundError,
+        InvalidSkillTargetError,
+        SkillInstallError,
+    ) as e:
+        _error(str(e))
+
+    if json_output:
+        typer.echo(json.dumps(service.install_report_to_dict(report), indent=2))
+        return
+
+    _print_skill_mutation_report(report)
+
+
+@skill_app.command("upgrade")
+def skill_upgrade(
+    names: Annotated[
+        list[str] | None,
+        typer.Argument(
+            help="Skill names to upgrade. Omit to upgrade every installed bundled skill.",
+            autocompletion=complete_skill_names,
+        ),
+    ] = None,
+    target: Annotated[
+        str | None,
+        typer.Option(
+            "--target",
+            "-t",
+            help="Comma-separated hosts: agents,claude,cursor,codex (default: agents,claude)",
+            autocompletion=complete_skill_targets,
+        ),
+    ] = None,
+    project: Annotated[
+        bool, typer.Option("--project", help="Upgrade skills in the current project")
+    ] = False,
+    dest_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--dir",
+            help="Upgrade skills in this directory instead of a built-in host",
+        ),
+    ] = None,
+    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+) -> None:
+    """Replace outdated installed skills with the bundled copies."""
+    custom_dir = _skill_dest_dir(dest_dir, target, project=project)
+    service = _skill_service()
+    try:
+        report = service.upgrade_skills(
+            names,
+            hosts=None if custom_dir is not None else parse_host_option(target),
+            scope="project" if project else "user",
+            dest_dir=custom_dir,
+        )
+    except (
+        SkillCatalogError,
+        SkillNotFoundError,
+        InvalidSkillTargetError,
+        SkillInstallError,
+    ) as e:
+        _error(str(e))
+
+    if json_output:
+        typer.echo(json.dumps(service.install_report_to_dict(report), indent=2))
+        return
+
+    _print_skill_mutation_report(report)
+
+
+@skill_app.command("uninstall")
+def skill_uninstall(
+    names: Annotated[
+        list[str] | None,
+        typer.Argument(
+            help="Skill names to uninstall. Omit to uninstall every bundled skill.",
+            autocompletion=complete_skill_names,
+        ),
+    ] = None,
+    target: Annotated[
+        str | None,
+        typer.Option(
+            "--target",
+            "-t",
+            help="Comma-separated hosts: agents,claude,cursor,codex (default: agents,claude)",
+            autocompletion=complete_skill_targets,
+        ),
+    ] = None,
+    project: Annotated[
+        bool, typer.Option("--project", help="Uninstall skills from the current project")
+    ] = False,
+    dest_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--dir",
+            help="Uninstall skills from this directory instead of a built-in host",
+        ),
+    ] = None,
+    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+) -> None:
+    """Remove bundled agent skills from shared agent, Claude, Cursor, Codex, or custom directories."""
+    custom_dir = _skill_dest_dir(dest_dir, target, project=project)
+    service = _skill_service()
+    try:
+        report = service.uninstall_skills(
+            names,
+            hosts=None if custom_dir is not None else parse_host_option(target),
+            scope="project" if project else "user",
+            dest_dir=custom_dir,
+        )
+    except (
+        SkillCatalogError,
+        SkillNotFoundError,
+        InvalidSkillTargetError,
+        SkillInstallError,
+    ) as e:
+        _error(str(e))
+
+    if json_output:
+        typer.echo(json.dumps(service.install_report_to_dict(report), indent=2))
+        return
+
+    _print_skill_mutation_report(report)
+
+
+def _print_skill_listings(listings: list[SkillListing]) -> None:
+    width = max(shutil.get_terminal_size((80, 24)).columns - 2, 40)
+    width = min(width, 88)
+    status_colors = {
+        "installed": typer.colors.GREEN,
+        "outdated": typer.colors.YELLOW,
+        "missing": typer.colors.RED,
+    }
+    for index, item in enumerate(listings):
+        if index:
+            typer.echo()
+        typer.secho(item.name, fg=typer.colors.GREEN, bold=True)
+        locations = ", ".join(
+            format_skill_location(location)
+            for location in item.locations
+            if location.status != "missing"
+        )
+        typer.echo("  Status     ", nl=False)
+        typer.secho(item.status, fg=status_colors.get(item.status, typer.colors.WHITE))
+        typer.echo(f"  Locations  {locations or '—'}")
+        summary = human_skill_summary(item.description)
+        if summary:
+            typer.echo(
+                textwrap.fill(
+                    summary,
+                    width=width,
+                    initial_indent="  ",
+                    subsequent_indent="  ",
+                )
+            )
+
+
+def _print_skill_mutation_report(report: SkillInstallReport) -> None:
+    if not report.results:
+        typer.echo("No matching skills were found.")
+        return
+
+    messages = {
+        "already_installed": "Already installed",
+        "updated": "Updated",
+        "installed": "Installed",
+        "not_installed": "Not installed",
+        "uninstalled": "Uninstalled",
+    }
+    for item in report.results:
+        prefix = messages.get(item.action, item.action.capitalize())
+        line = f"{prefix} {item.name} -> {format_skill_install_target(item)}"
+        if item.action in {"installed", "updated", "uninstalled"}:
+            typer.secho(line, fg=typer.colors.GREEN)
+        else:
+            typer.echo(line)
+    if any(item.action in SKILL_RESTART_ACTIONS for item in report.results):
+        typer.echo()
+        typer.secho(SKILL_RESTART_HINT, fg=typer.colors.YELLOW)
+
+
 @app.command("config")
 def show_config(
     clear: Annotated[bool, typer.Option("--clear", help="Clear all configuration")] = False,
@@ -643,6 +978,15 @@ def show_config(
         typer.echo("Current configuration:")
         for key, value in cast(Mapping[str, object], current_config).items():
             typer.echo(f"  {key}: {value}")
+
+
+def _echo_callstack_layout(layout: str | None, error: str | None = None) -> None:
+    if layout == "v1":
+        typer.echo("Callstack layout: v1 (inline text)")
+    elif layout == "v2":
+        typer.echo("Callstack layout: v2 (deduplicated)")
+    elif error:
+        typer.secho(f"Warning: {error}", fg=typer.colors.YELLOW)
 
 
 def _error(message: str) -> NoReturn:

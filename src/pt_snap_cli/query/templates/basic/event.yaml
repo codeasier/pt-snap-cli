@@ -75,35 +75,62 @@ queries:
         default: 0
         required: false
         description: Number of rows to skip
-    query: |
-      SELECT
-        id,
-        action,
-        address,
-        size,
-        stream,
-        allocated,
-        active,
-        reserved,
-        (
-          SELECT callstack FROM callstack
-          WHERE callstack.id = {{ device_trace_table }}.callstackId
-        ) AS callstack
-      FROM {{ device_trace_table }}
-      WHERE 1=1
-        {% if id is not none %}AND id = {{ id }}{% endif %}
-        {% if min_id is not none %}AND id >= {{ min_id }}{% endif %}
-        {% if max_id is not none %}AND id <= {{ max_id }}{% endif %}
-        {% if action is not none %}AND action = {{ action }}{% endif %}
-        {% if address is not none %}AND address = {{ address }}{% endif %}
-        {% if size is not none %}AND size = {{ size }}{% endif %}
-        {% if stream is not none %}AND stream = {{ stream }}{% endif %}
-        {% if min_allocated is not none %}AND allocated >= {{ min_allocated }}{% endif %}
-        {% if min_active is not none %}AND active >= {{ min_active }}{% endif %}
-        {% if min_reserved is not none %}AND reserved >= {{ min_reserved }}{% endif %}
-      ORDER BY {{ order_by }} {{ order_dir }}
-      LIMIT {{ limit }}
-      {% if offset > 0 %}OFFSET {{ offset }}{% endif %}
+    query_variants:
+      v1: |
+        SELECT
+          id,
+          action,
+          address,
+          size,
+          stream,
+          allocated,
+          active,
+          reserved,
+          callstack
+        FROM {{ device_trace_table }}
+        WHERE 1=1
+          {% if id is not none %}AND id = {{ id }}{% endif %}
+          {% if min_id is not none %}AND id >= {{ min_id }}{% endif %}
+          {% if max_id is not none %}AND id <= {{ max_id }}{% endif %}
+          {% if action is not none %}AND action = {{ action }}{% endif %}
+          {% if address is not none %}AND address = {{ address }}{% endif %}
+          {% if size is not none %}AND size = {{ size }}{% endif %}
+          {% if stream is not none %}AND stream = {{ stream }}{% endif %}
+          {% if min_allocated is not none %}AND allocated >= {{ min_allocated }}{% endif %}
+          {% if min_active is not none %}AND active >= {{ min_active }}{% endif %}
+          {% if min_reserved is not none %}AND reserved >= {{ min_reserved }}{% endif %}
+        ORDER BY {{ order_by }} {{ order_dir }}
+        LIMIT {{ limit }}
+        {% if offset > 0 %}OFFSET {{ offset }}{% endif %}
+      v2: |
+        SELECT
+          id,
+          action,
+          address,
+          size,
+          stream,
+          allocated,
+          active,
+          reserved,
+          (
+            SELECT callstack FROM callstack
+            WHERE callstack.id = {{ device_trace_table }}.callstackId
+          ) AS callstack
+        FROM {{ device_trace_table }}
+        WHERE 1=1
+          {% if id is not none %}AND id = {{ id }}{% endif %}
+          {% if min_id is not none %}AND id >= {{ min_id }}{% endif %}
+          {% if max_id is not none %}AND id <= {{ max_id }}{% endif %}
+          {% if action is not none %}AND action = {{ action }}{% endif %}
+          {% if address is not none %}AND address = {{ address }}{% endif %}
+          {% if size is not none %}AND size = {{ size }}{% endif %}
+          {% if stream is not none %}AND stream = {{ stream }}{% endif %}
+          {% if min_allocated is not none %}AND allocated >= {{ min_allocated }}{% endif %}
+          {% if min_active is not none %}AND active >= {{ min_active }}{% endif %}
+          {% if min_reserved is not none %}AND reserved >= {{ min_reserved }}{% endif %}
+        ORDER BY {{ order_by }} {{ order_dir }}
+        LIMIT {{ limit }}
+        {% if offset > 0 %}OFFSET {{ offset }}{% endif %}
     output_schema:
       - column: id
         type: int

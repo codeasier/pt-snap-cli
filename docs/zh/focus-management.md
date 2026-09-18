@@ -55,7 +55,7 @@ Session focus 只导出 `PT_SNAP_DB_PATH`，因此 `--session` 不能与 `--devi
 pt-snap focus
 ```
 
-显示已解析的数据库路径、设备 ID 及其来源（项目 focus、session 环境变量或全局配置）。
+显示已解析的数据库路径、设备 ID 及其来源（项目 focus、session 环境变量或全局配置）。`pt-snap focus`、`pt-snap focus <db>`、`pt-snap focus --global` 和 `pt-snap focus --device` 在识别到调用栈 schema 时还会打印 `Callstack layout: v1 (inline text)` 或 `v2 (deduplicated)`；布局冲突时打印警告。`pt-snap focus --session` 只输出 `export PT_SNAP_DB_PATH=...`，以便被 shell 直接执行。该信息从数据库只读识别，不会写入 `.pt-snap/focus.json`。
 
 ## 覆盖焦点
 

@@ -39,6 +39,10 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 | `event` | 灵活字段过滤的内存事件查询 |
 | `allocation` | 内存分配时间线（id, allocated, active, reserved） |
 
+`event`、`callstack_analysis` 和 `active_memory_callstack_at_event` 对外保持同一契约，
+并根据数据库布局选择 v1 或 v2 SQL。见
+[调用栈布局兼容](database.md#调用栈布局兼容)。
+
 ### Statistical Queries
 
 聚合分析。
@@ -177,6 +181,9 @@ Found 150 results, showing 2:
   {'id': 2, 'address': 8192, 'size': 4096, ...}
   ... and 148 more (use -n to show more)
 ```
+
+即使输出被截断，"Found N" 的计数也是精确的。注意 MCP 的 `execute_query` 工具默认
+最多返回 100 行，与 CLI 不同；见[MCP 服务器：查询结果与行数限制](mcp.md#查询结果与行数限制)。
 
 CLI、Python API 和 MCP 的查询结果包含原始 SQLite 值。模板的 `output_schema`
 只是 metadata，查询执行时不会自动应用。需要十六进制地址字符串等转换值时，
