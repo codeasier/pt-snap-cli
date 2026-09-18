@@ -4,7 +4,7 @@
 # tests
 
 ## Purpose
-`tests` contains the pytest suite for CLI/API/MCP contracts, configuration, services, query behavior, packaging/governance, and the first-party snapshot runtime. Most tests use temporary data; snapshot and import suites may use only checksum-verified executable fixtures under `tests/fixtures/snapshots/`.
+`tests` contains the pytest suite for CLI/API contracts, configuration, services, query behavior, packaging/governance, and the first-party snapshot runtime. Most tests use temporary data; snapshot and import suites may use only checksum-verified executable fixtures under `tests/fixtures/snapshots/`.
 
 ## Key Files
 | File | Description |
@@ -16,11 +16,10 @@
 | `test_bundled_skills.py` | Packaged `bundled_skills/` copies must match repository `skills/*/SKILL.md`. |
 | `test_completion.py` | Shell completion helper tests. |
 | `test_config.py` | Configuration and focus precedence tests. |
-| `test_contract_cli_mcp.py` | Normalized behavior contract between CLI and MCP adapters. |
+| `test_contract_cli_api.py` | Normalized behavior contract between CLI and `SnapshotAnalyzer`. |
 | `test_context.py` | SQLite context, schema validation, and device discovery tests. |
 | `test_fixture_provenance.py` | Non-deserializing coverage, SHA-256, size, and Git LFS pointer validation for executable fixtures. |
 | `test_governance.py` | Snapshot provenance and repository governance contracts. |
-| `test_mcp_server.py` | MCP server tool/resource/prompt behavior tests. |
 | `test_models.py` | Package-level model behavior tests. |
 | `test_package.py` | Package metadata/import/version tests. |
 | `test_release_workflow.py` | Release workflow and package publication contract tests. |

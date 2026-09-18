@@ -23,7 +23,7 @@
 ## For AI Agents
 
 ### Working In This Directory
-- Keep issue forms scoped to this Python CLI/MCP project.
+- Keep issue forms scoped to this Python CLI project.
 - Preserve valid GitHub issue form YAML structure.
 - Ordering is controlled by numbered filenames; `config.yml` has no `issue_templates` key.
 

@@ -4,7 +4,7 @@
 # core tests
 
 ## Purpose
-`tests/core` verifies focus, import, split, metadata, query, report, and skill services between CLI/API/MCP callers and lower-level config, context, query, and snapshot modules.
+`tests/core` verifies focus, import, split, metadata, query, report, and skill services between CLI/API callers and lower-level config, context, query, and snapshot modules.
 
 ## Key Files
 | File | Description |

@@ -4,7 +4,7 @@
 # templates
 
 ## Purpose
-`templates` contains the packaged YAML query templates used by the registry and CLI/API/MCP query execution. Templates are grouped by category and define metadata, parameters, SQL, and output schemas.
+`templates` contains the packaged YAML query templates used by the registry and CLI/API query execution. Templates are grouped by category and define metadata, parameters, SQL, and output schemas.
 
 ## Key Files
 | File | Description |

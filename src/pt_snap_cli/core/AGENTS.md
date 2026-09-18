@@ -4,7 +4,7 @@
 # core
 
 ## Purpose
-`core` contains the product service layer shared by CLI, Python API, and MCP adapters. It owns focus, import publication and metadata, snapshot splitting, query orchestration, reports, CLI-only agent-skill install/list, stable result models, and domain-specific errors over lower-level config, context, query, and snapshot modules.
+`core` contains the product service layer shared by CLI and Python API adapters. It owns focus, import publication and metadata, snapshot splitting, query orchestration, reports, CLI-only agent-skill install/list, stable result models, and domain-specific errors over lower-level config, context, query, and snapshot modules.
 
 ## Key Files
 | File | Description |
@@ -32,7 +32,7 @@
 ### Working In This Directory
 - Translate low-level exceptions into `core.errors` so CLI and API callers receive consistent failures.
 - Preserve explicit device precedence over focused device, and validate devices against `Context.device_ids`.
-- Keep service models stable when changing CLI/API/MCP output shapes.
+- Keep service models stable when changing CLI/API output shapes.
 - Preserve existing import destinations when publication or the requested focus update fails, and never replace an existing split destination.
 
 ### Testing Requirements

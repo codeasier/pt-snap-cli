@@ -264,7 +264,7 @@ class TestQueryExecutor:
         assert sql.endswith("LIMIT 5"), sql
 
     def test_jinja_template_compiled_once_per_template(self) -> None:
-        """Long-lived executors (MCP server) must avoid re-parsing the
+        """Long-lived executors (a long-lived SnapshotAnalyzer) must avoid re-parsing the
         same template body on every render call."""
         template = QueryTemplate(
             name="cached",
