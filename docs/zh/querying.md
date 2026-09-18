@@ -226,12 +226,12 @@ CLI 和 Python API 的查询结果包含原始 SQLite 值。模板的 `output_sc
 - `queries`: 查询定义，包含描述、支持的设备、参数、SQL（Jinja2 模板语法）和输出 schema
 - 每个参数声明 `type`、`default`、`required`、`description`，以及可选的 `choices`（允许取值的封闭列表；会被渲染为 SQL 标识符或关键字的参数必须声明它）
 - 查询可选声明 `semantics_version`（正整数）和 `interpretation_limits`；`output_schema` 各列还可声明 `units`、`metric_semantics`、`scope`、`denominator`、`sentinel`、`interpretation_limits`
-- `semantics_version` 是 Agent 应引用的解释契约。同一模板的 v1/v2 SQL 变体共享该契约。未声明时模板仍有效，`output_schema` 只保留 `column` 与 `type`
+- `semantics_version` 是 Agent 应引用的解释契约。同一模板的 v1/v2 SQL 变体共享该契约。未同时声明两者时模板仍有效；未注解的 `output_schema` 条目仅含 `column` 与 `type`
 
 封闭词表：
 
 - `units`：`bytes`、`gib`、`percent`、`event_id`、`count`、`address`、`flag`、`text`
-- `metric_semantics`：`instantaneous_occupancy`、`cumulative_allocation`、`peak`、`same_event_gap`、`share_of_included_rows`、`identifier`、`classification`、`ordering_marker`
+- `metric_semantics`：`instantaneous_occupancy`、`same_event_gap`、`share_of_included_rows`、`identifier`、`classification`、`ordering_marker`
 - `scope`：`dynamic`、`static`、`preexisting`、`mixed`、`captured_range`、`same_event`。一列按行混合多种范围时用 `mixed`（见 `active_memory_callstack_at_event` 的 `category`）
 
 显式传给 `ResultMapper` 时，可识别的映射类型包括 `int`、`float`、`str`、

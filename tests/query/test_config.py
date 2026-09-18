@@ -336,6 +336,25 @@ class TestTemplateSemantics:
         assert template.interpretation_limits == []
         assert template.output_schema == [{"column": "id", "type": "int"}]
 
+    def test_from_dict_loads_field_semantics_without_semantics_version(self):
+        template = QueryTemplate.from_dict(
+            {
+                "name": "units_only",
+                "query": "SELECT 1",
+                "output_schema": [
+                    {
+                        "column": "size",
+                        "type": "int",
+                        "units": "bytes",
+                        "metric_semantics": "instantaneous_occupancy",
+                    }
+                ],
+            }
+        )
+        assert template.semantics_version is None
+        assert template.output_schema[0]["units"] == "bytes"
+        assert template.output_schema[0]["metric_semantics"] == "instantaneous_occupancy"
+
     def test_from_dict_loads_field_and_template_semantics(self):
         template = QueryTemplate.from_dict(
             {
@@ -390,6 +409,23 @@ class TestTemplateSemantics:
                     "output_schema": [{"column": "id", "type": "int", "units": "milliseconds"}],
                 }
             )
+
+    def test_from_dict_rejects_unused_metric_semantics(self):
+        for value in ("peak", "cumulative_allocation"):
+            with pytest.raises(ValueError, match="metric_semantics must be one of"):
+                QueryTemplate.from_dict(
+                    {
+                        "name": "bad",
+                        "query": "SELECT 1",
+                        "output_schema": [
+                            {
+                                "column": "size",
+                                "type": "int",
+                                "metric_semantics": value,
+                            }
+                        ],
+                    }
+                )
 
     def test_from_dict_rejects_non_int_sentinel(self):
         with pytest.raises(ValueError, match="sentinel must be an integer"):

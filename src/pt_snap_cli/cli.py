@@ -60,6 +60,7 @@ from pt_snap_cli.core.skill_service import (
     human_skill_summary,
     parse_host_option,
 )
+from pt_snap_cli.query.config import OUTPUT_COLUMN_OPTIONAL
 from pt_snap_cli.query.registry import discover_categories
 
 AGENT_HELP_EPILOG = (
@@ -89,19 +90,9 @@ def _query_service() -> QueryService:
     return QueryService(_focus_service())
 
 
-_OUTPUT_SCHEMA_DETAIL_KEYS = (
-    "units",
-    "metric_semantics",
-    "scope",
-    "denominator",
-    "sentinel",
-    "interpretation_limits",
-)
-
-
 def _echo_output_schema_column(column: Mapping[str, Any]) -> None:
     typer.echo(f"  {column['column']}: {column['type']}")
-    for key in _OUTPUT_SCHEMA_DETAIL_KEYS:
+    for key in OUTPUT_COLUMN_OPTIONAL:
         if key not in column:
             continue
         value = column[key]

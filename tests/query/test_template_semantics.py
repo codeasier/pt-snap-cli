@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 
+from pt_snap_cli.query.config import OUTPUT_SCHEMA_METRIC_SEMANTICS
 from pt_snap_cli.query.registry import (
     QueryRegistry,
     _load_all_templates,
     get_query,
     get_template_info,
+    list_queries,
 )
 
 
@@ -30,6 +32,18 @@ def _column(template_name: str, column: str) -> dict[str, object]:
     assert template is not None
     match = next(item for item in template.output_schema if item["column"] == column)
     return match
+
+
+def test_packaged_metric_semantics_match_published_vocabulary() -> None:
+    used: set[str] = set()
+    for name in list_queries():
+        template = get_query(name)
+        assert template is not None
+        for column in template.output_schema:
+            value = column.get("metric_semantics")
+            if value is not None:
+                used.add(value)
+    assert used == OUTPUT_SCHEMA_METRIC_SEMANTICS
 
 
 def test_legacy_templates_remain_loadable_without_semantics() -> None:

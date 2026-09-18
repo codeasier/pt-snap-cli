@@ -13,7 +13,7 @@ _CALLSTACK_VARIANTS = ("v1", "v2")
 # Field/template interpretation contract, independent of YAML ``version`` and
 # SnapshotDB schema / callstack layout. v1/v2 SQL variants share one contract.
 _OUTPUT_COLUMN_REQUIRED = ("column", "type")
-_OUTPUT_COLUMN_OPTIONAL = (
+OUTPUT_COLUMN_OPTIONAL = (
     "units",
     "metric_semantics",
     "scope",
@@ -21,15 +21,13 @@ _OUTPUT_COLUMN_OPTIONAL = (
     "sentinel",
     "interpretation_limits",
 )
-_OUTPUT_COLUMN_KEYS = frozenset(_OUTPUT_COLUMN_REQUIRED + _OUTPUT_COLUMN_OPTIONAL)
+_OUTPUT_COLUMN_KEYS = frozenset(_OUTPUT_COLUMN_REQUIRED + OUTPUT_COLUMN_OPTIONAL)
 OUTPUT_SCHEMA_UNITS = frozenset(
     {"bytes", "gib", "percent", "event_id", "count", "address", "flag", "text"}
 )
 OUTPUT_SCHEMA_METRIC_SEMANTICS = frozenset(
     {
         "instantaneous_occupancy",
-        "cumulative_allocation",
-        "peak",
         "same_event_gap",
         "share_of_included_rows",
         "identifier",
@@ -303,7 +301,7 @@ def _parse_output_schema(template_name: str, raw: Any) -> list[dict[str, Any]]:
             )
 
         parsed: dict[str, Any] = {"column": column, "type": column_type}
-        for key in _OUTPUT_COLUMN_OPTIONAL:
+        for key in OUTPUT_COLUMN_OPTIONAL:
             if key not in item:
                 continue
             value = item[key]

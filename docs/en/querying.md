@@ -236,12 +236,12 @@ Query templates are defined in YAML format with:
 - `queries`: Query definitions with description, supported devices, parameters, SQL (Jinja2 templated), and output schema
 - Each parameter declares `type`, `default`, `required`, `description`, and optionally `choices`, a closed list of accepted values that is mandatory for parameters rendered as SQL identifiers or keywords
 - Optional `semantics_version` (positive integer) and `interpretation_limits` on the query, plus optional field keys on each `output_schema` entry: `units`, `metric_semantics`, `scope`, `denominator`, `sentinel`, and `interpretation_limits`
-- `semantics_version` is the interpretation contract agents should cite. v1/v2 SQL variants of the same template share that contract. Templates that omit it remain valid; their `output_schema` still has `column` and `type` only
+- `semantics_version` is the interpretation contract agents should cite. v1/v2 SQL variants of the same template share that contract. Templates that omit both remain valid; unannotated `output_schema` entries carry `column` and `type` only
 
 Closed vocabularies:
 
 - `units`: `bytes`, `gib`, `percent`, `event_id`, `count`, `address`, `flag`, `text`
-- `metric_semantics`: `instantaneous_occupancy`, `cumulative_allocation`, `peak`, `same_event_gap`, `share_of_included_rows`, `identifier`, `classification`, `ordering_marker`
+- `metric_semantics`: `instantaneous_occupancy`, `same_event_gap`, `share_of_included_rows`, `identifier`, `classification`, `ordering_marker`
 - `scope`: `dynamic`, `static`, `preexisting`, `mixed`, `captured_range`, `same_event`. Use `mixed` when a column contains more than one of those per row (see `category` on `active_memory_callstack_at_event`)
 
 When passed explicitly to `ResultMapper`, recognized mapping types are `int`,
