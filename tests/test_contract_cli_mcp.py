@@ -426,7 +426,7 @@ def test_missing_template_error_contract_matches_cli_and_mcp_semantics(
 ) -> None:
     template_name = "does_not_exist"
     cli_result = runner.invoke(app, ["query", "--template-info", template_name])
-    assert cli_result.exit_code == 0
+    assert cli_result.exit_code == 1
 
     assert _normalize_cli_missing_template(cli_result.stdout) == mcp_server.get_template_info(
         template_name

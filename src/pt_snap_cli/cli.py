@@ -413,9 +413,8 @@ def query_database(
     if template_info:
         try:
             info = query_service.get_template_info(template_info)
-        except TemplateNotFoundError:
-            typer.secho(f"Error: Template '{template_info}' not found", fg=typer.colors.RED)
-            raise typer.Exit() from None
+        except TemplateNotFoundError as e:
+            _error(str(e))
 
         typer.secho(f"Template: {info.name}", fg=typer.colors.GREEN, bold=True)
         typer.echo(f"Description: {info.description}")
