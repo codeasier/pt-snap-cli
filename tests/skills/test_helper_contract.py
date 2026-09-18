@@ -1,8 +1,12 @@
 from pathlib import Path
 
-SKILL_PATH = Path("skills/pt-snap-helper/SKILL.md")
-AGENTS_PATH = Path("skills/AGENTS.md")
-CLI_PATH = Path("src/pt_snap_cli/cli.py")
+from typer.main import get_command
+
+from pt_snap_cli.cli import app
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SKILL_PATH = REPO_ROOT / "skills" / "pt-snap-helper" / "SKILL.md"
+AGENTS_PATH = REPO_ROOT / "skills" / "AGENTS.md"
 
 ROUTED_SKILLS = (
     "pt-snap-setup",
@@ -12,9 +16,32 @@ ROUTED_SKILLS = (
     "pt-snap-memory-fragmentation",
 )
 
+JSON_COMMANDS = (
+    ("metadata",),
+    ("report", "peak-memory"),
+    ("skill", "list"),
+    ("skill", "install"),
+    ("skill", "upgrade"),
+    ("skill", "uninstall"),
+)
+NO_JSON_COMMANDS = (
+    ("query",),
+    ("focus",),
+    ("import",),
+    ("split",),
+    ("config",),
+)
+
 
 def _skill() -> str:
     return SKILL_PATH.read_text(encoding="utf-8")
+
+
+def _command_has_option(*path: str, option: str) -> bool:
+    command = get_command(app)
+    for name in path:
+        command = command.commands[name]
+    return any(option in param.opts for param in command.params)
 
 
 def test_helper_skill_frontmatter_and_index() -> None:
@@ -41,7 +68,6 @@ def test_helper_skill_checks_availability_and_restart() -> None:
 
 def test_helper_skill_uses_current_json_capability() -> None:
     skill = _skill()
-    cli = CLI_PATH.read_text(encoding="utf-8")
 
     assert "Prefer `--json` where supported" in skill
     assert "pt-snap metadata '<db_path>' --json" in skill
@@ -51,8 +77,11 @@ def test_helper_skill_uses_current_json_capability() -> None:
     assert "pt-snap query --json" not in skill
     assert "pt-snap import --json" not in skill
     assert "pt-snap focus --json" not in skill
-    assert '@app.command("query")' in cli
-    assert "json_output" in cli
+    for path in JSON_COMMANDS:
+        assert _command_has_option(*path, option="--json")
+    for path in NO_JSON_COMMANDS:
+        assert not _command_has_option(*path, option="--json")
+    assert not _command_has_option(option="--json")
 
 
 def test_helper_skill_routes_by_goal_and_input_type() -> None:
