@@ -61,6 +61,8 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 | `pt-snap skill` | 列出并安装随包 agent skill |
 | `pt-snap-mcp` | 启动 MCP 服务器以支持 Agent 集成 |
 
+`pt-snap --help` 含 Agent 提示：在当前已支持的命令上优先使用 `--json`，从 `pt-snap-helper` skill 开始，并用 `pt-snap skill list --json` 检查是否已安装。
+
 ## MCP 服务器
 
 `pt-snap-cli` 提供了 MCP（Model Context Protocol）服务器，使 AI Agent 能够以编程方式与 PyTorch 内存快照交互。

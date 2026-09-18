@@ -2,7 +2,7 @@
 
 [English](../en/skills.md) | 中文
 
-`pt-snap-cli` 附带用于环境安装、昇腾 NPU 采集和内存诊断的 agent skill。`pt-snap skill` 命令会把这些 skill 复制到共享的 Agent Skills 目录，以及 Claude Code 仍然需要的独立目录。
+`pt-snap-cli` 附带用于路由（`pt-snap-helper`）、环境安装、昇腾 NPU 采集和内存诊断的 agent skill。Agent 应先使用 `pt-snap-helper`，并在当前已支持的命令上优先使用 `--json`。`pt-snap skill` 命令会把这些 skill 复制到共享的 Agent Skills 目录，以及 Claude Code 仍然需要的独立目录。
 
 ## 列出 skill
 
@@ -79,6 +79,7 @@ pt-snap skill uninstall --project --target cursor
 
 | Skill | 适用场景 |
 |-------|----------|
+| `pt-snap-helper` | 根据用户目标和输入类型选择下一步 skill |
 | `pt-snap-setup` | 在当前 Python 环境安装或验证 `pt-snap-cli` |
 | `pt-snap-ascend-npu-collect` | 采集昇腾 NPU 内存快照 pickle |
 | `pt-snap-memory-leak` | 在 SnapshotDB 中诊断仍存活分配和泄漏候选 |

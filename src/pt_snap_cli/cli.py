@@ -62,9 +62,16 @@ from pt_snap_cli.core.skill_service import (
 )
 from pt_snap_cli.query.registry import discover_categories
 
+AGENT_HELP_EPILOG = (
+    "Agents: prefer --json where supported. "
+    "Start with the pt-snap-helper skill; "
+    "check availability with pt-snap skill list --json."
+)
+
 app = typer.Typer(
     name="pt-snap",
     help="PyTorch Memory Snapshot Analysis Tool",
+    epilog=AGENT_HELP_EPILOG,
     add_completion=True,
     context_settings={"help_option_names": ["-h", "--help"]},
 )

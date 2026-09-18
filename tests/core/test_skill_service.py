@@ -417,11 +417,13 @@ def test_default_catalog_includes_repo_skills() -> None:
     names = {spec.name for spec in SkillService(catalog_dir=catalog).list_catalog()}
     assert names == {
         "pt-snap-ascend-npu-collect",
+        "pt-snap-helper",
         "pt-snap-memory-fragmentation",
         "pt-snap-memory-leak",
         "pt-snap-memory-peak-breakdown",
         "pt-snap-setup",
     }
+    assert (catalog / "pt-snap-helper" / "SKILL.md").is_file()
     assert (catalog / "pt-snap-setup" / "SKILL.md").is_file()
 
 

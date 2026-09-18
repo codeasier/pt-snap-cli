@@ -3,7 +3,8 @@
 # skills
 
 ## Purpose
-`skills` contains agent workflows shipped with the repository. Setup owns the
+`skills` contains agent workflows shipped with the repository. The helper
+skill is a read-only router by user goal and input type. Setup owns the
 only Python-environment mutation boundary and installs after explicit approval;
 collection skills guide Ascend NPU snapshot capture without importing
 or diagnosing the pickle; diagnostic skills consume installed `pt-snap`
@@ -12,6 +13,7 @@ surfaces against existing SnapshotDB data without writes.
 ## Scope
 | Path | Responsibility |
 | --- | --- |
+| `pt-snap-helper/SKILL.md` | Routes by user goal and input type to the five skills; checks `pt-snap skill list --json`; does not install, import, or persist focus. |
 | `pt-snap-setup/SKILL.md` | Detect the active interpreter, verify CLI ownership, request install approval, and re-verify the same environment. |
 | `pt-snap-ascend-npu-collect/SKILL.md` | Collect Ascend NPU pickles via native APIs, framework config, or OOM env; inventory artifacts without import or diagnosis. |
 | `pt-snap-memory-leak/SKILL.md` | Diagnose end-of-trace live allocations, peak survival, callstack attribution, and release evidence without persisting analysis state. |
@@ -32,6 +34,8 @@ surfaces against existing SnapshotDB data without writes.
   turn allocator gaps into definitive fragmentation claims.
 - Diagnostic skills pass the database and device explicitly and delegate missing
   tooling to `pt-snap-setup`.
+- Helper skills stay read-only navigation. They must not install packages, copy
+  skills, import pickle, persist focus, or run diagnostic analysis.
 - Prefer packaged query templates for diagnostics. Any raw SQLite fallback must
   document why a template is insufficient and enforce read-only access.
 
@@ -45,6 +49,9 @@ an explicit `--dir`. After install or upgrade, the host agent must be
 restarted.
 
 ## Focused Tests
+- Run `pytest tests/skills/test_helper_contract.py` after helper-skill changes.
+  Static coverage checks routing names, current `--json` capability, skill-list
+  availability, and the pickle/focus/install read-only boundary.
 - Run `pytest tests/skills/test_setup_contract.py` after setup-skill changes. The current executable test covers active-interpreter path preservation; review the remaining approval and reporting instructions statically.
 - Run `pytest tests/skills/test_ascend_npu_collect_contract.py` after
   collection-skill changes. The v1 evaluation harness accepts only

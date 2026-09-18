@@ -13,7 +13,7 @@
 | `focus-management.md` | Focus resolution, project focus files, environment variables, and global config behavior. |
 | `querying.md` | Query listing, template info, parameter usage, result limits, and built-in templates. |
 | `splitting.md` | Snapshot slicing strategies, output formats, replay validation, and publication guarantees. |
-| `skills.md` | Bundled agent-skill listing, install destinations, and status meanings. |
+| `skills.md` | Bundled agent-skill listing, helper entry, install destinations, and status meanings. |
 | `mcp.md` | MCP server setup, tools, resources, prompts, and agent usage. |
 | `database.md` | Snapshot SQLite table/schema reference. |
 | `snapshot-analyzer-api.md` | High-level Python API for focus, template discovery, queries, and import metadata. |
