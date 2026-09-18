@@ -7,6 +7,7 @@ from pathlib import Path
 from .harness.artifacts import write_run_artifacts
 from .harness.descriptors import load_suite
 from .harness.grader import RunRecord, grade_run
+from .harness.metrics import collect_case_metrics, summarize_metrics
 
 
 def _validate(args: argparse.Namespace) -> int:
@@ -38,6 +39,28 @@ def _grade(args: argparse.Namespace) -> int:
     return 0 if grade.passed else 1
 
 
+def _baseline(args: argparse.Namespace) -> int:
+    suite = load_suite(args.suite)
+    rows = []
+    missing = []
+    for case in suite.cases:
+        run_path = args.runs / f"{case.id}.json"
+        if not run_path.is_file():
+            missing.append(str(run_path))
+            continue
+        run = RunRecord.from_mapping(json.loads(run_path.read_text()))
+        grade = grade_run(suite, case, run)
+        rows.append(collect_case_metrics(case, run, grade))
+    if missing:
+        raise SystemExit("missing run records:\n" + "\n".join(missing))
+    summary = summarize_metrics(suite.id, rows)
+    payload = json.dumps(summary.to_mapping(), indent=2, sort_keys=True)
+    if args.output is not None:
+        args.output.write_text(payload + "\n")
+    print(payload)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate and grade local skill evaluations")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -52,6 +75,18 @@ def main() -> int:
     grade_parser.add_argument("run", type=Path)
     grade_parser.add_argument("--output", type=Path)
     grade_parser.set_defaults(handler=_grade)
+
+    baseline_parser = subparsers.add_parser(
+        "baseline", help="score a directory of recorded runs and emit comparison metrics"
+    )
+    baseline_parser.add_argument("suite", type=Path)
+    baseline_parser.add_argument(
+        "runs",
+        type=Path,
+        help="directory containing <case-id>.json run records",
+    )
+    baseline_parser.add_argument("--output", type=Path)
+    baseline_parser.set_defaults(handler=_baseline)
 
     args = parser.parse_args()
     return args.handler(args)

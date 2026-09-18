@@ -9,6 +9,7 @@ from pt_snap_cli.query.registry import QueryRegistry, _load_all_templates
 from tests.skills.harness.fixtures import build_snapshotdb, load_fixture_definition
 
 FIXTURE_DIRECTORY = Path("tests/skills/suites/pt-snap-memory-leak/fixtures")
+E2E_FIXTURE_DIRECTORY = Path("tests/skills/suites/pt-snap-agent-e2e/fixtures")
 
 
 @pytest.fixture(autouse=True)
@@ -59,6 +60,59 @@ def test_pending_free_fixture_exposes_requested_but_incomplete_release(tmp_path:
 
     assert [(row["size"], row["allocEventId"]) for row in candidates] == [(4096, 1)]
     assert [(row["id"], row["action"]) for row in events] == [(1, 4), (2, 5)]
+
+
+@pytest.mark.parametrize(
+    "definition_name",
+    ["events.yaml", "multi-device.yaml", "live-blocks.yaml"],
+)
+def test_agent_e2e_definitions_build_read_only_snapshotdbs(
+    tmp_path: Path, definition_name: str
+) -> None:
+    definition_path = E2E_FIXTURE_DIRECTORY / definition_name
+    output_path = tmp_path / definition_name.replace(".yaml", ".db")
+
+    load_fixture_definition(definition_path)
+    build_snapshotdb(definition_path, output_path)
+
+    assert not output_path.stat().st_mode & stat.S_IWUSR
+    assert Context(output_path).device_ids[0] == 0
+
+
+def test_events_fixture_has_four_trace_rows(tmp_path: Path) -> None:
+    output_path = tmp_path / "events.db"
+    build_snapshotdb(E2E_FIXTURE_DIRECTORY / "events.yaml", output_path)
+    executor = QueryExecutor(Context(output_path))
+
+    events = executor.execute_template("event", params={}, device_id=0)
+    candidates = executor.execute_template("leak_detection", params={"min_size": 0}, device_id=0)
+
+    assert [row["id"] for row in events] == [1, 2, 3, 4]
+    assert [row["size"] for row in candidates] == [64, 48, 32, 16]
+
+
+def test_multi_device_fixture_keeps_device_evidence_distinct(tmp_path: Path) -> None:
+    output_path = tmp_path / "target.db"
+    build_snapshotdb(E2E_FIXTURE_DIRECTORY / "multi-device.yaml", output_path)
+    context = Context(output_path)
+    executor = QueryExecutor(context)
+
+    assert context.device_ids == [0, 1]
+    device_0 = executor.execute_template("leak_detection", params={"min_size": 0}, device_id=0)
+    device_1 = executor.execute_template("leak_detection", params={"min_size": 0}, device_id=1)
+
+    assert [row["size"] for row in device_0] == [1024]
+    assert [row["size"] for row in device_1] == [4096]
+
+
+def test_live_blocks_fixture_exposes_end_of_trace_retention(tmp_path: Path) -> None:
+    output_path = tmp_path / "live-blocks.db"
+    build_snapshotdb(E2E_FIXTURE_DIRECTORY / "live-blocks.yaml", output_path)
+    executor = QueryExecutor(Context(output_path))
+
+    candidates = executor.execute_template("leak_detection", params={"min_size": 0}, device_id=0)
+
+    assert [(row["size"], row["allocEventId"]) for row in candidates] == [(4096, 1)]
 
 
 def test_address_reuse_fixture_keeps_allocation_identities_separate(tmp_path: Path) -> None:

@@ -47,8 +47,8 @@ restarted.
 ## Focused Tests
 - Run `pytest tests/skills/test_setup_contract.py` after setup-skill changes. The current executable test covers active-interpreter path preservation; review the remaining approval and reporting instructions statically.
 - Run `pytest tests/skills/test_ascend_npu_collect_contract.py` after
-  collection-skill changes. The v1 evaluation harness accepts only
-  `diagnostic-readonly` suites, so collection coverage stays in the static
+  collection-skill changes. Collection workflows are not `diagnostic-readonly`
+  or `agent-cli` eval suites, so collection coverage stays in the static
   contract.
 - Run `pytest tests/skills` after diagnostic-skill changes. Static contracts
   check current surfaces and safety boundaries; suite/case evaluations cover

@@ -1,0 +1,36 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.import",
+      "arguments": {
+        "json": true
+      },
+      "status": "success",
+      "output": {
+        "db_path": "/fixtures/imported.db",
+        "focus_updated": true,
+        "reused": false
+      }
+    }
+  ],
+  "result": {
+    "classification": "import-complete",
+    "facts": {
+      "db_path": "/fixtures/imported.db",
+      "focus_updated": true
+    },
+    "claims": [
+      {
+        "id": "db_path",
+        "evidence_call_ids": ["call-1"]
+      },
+      {
+        "id": "focus_updated",
+        "evidence_call_ids": ["call-1"]
+      }
+    ],
+    "unknowns": []
+  },
+  "final_response": "Imported database published at /fixtures/imported.db and project focus was updated."
+}

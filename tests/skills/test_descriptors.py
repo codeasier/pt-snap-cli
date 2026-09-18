@@ -121,3 +121,33 @@ def test_case_rejects_non_mapping_expect_output(tmp_path: Path) -> None:
 
     with pytest.raises(DescriptorError, match="expect_output must be a mapping"):
         load_suite(copied_suite / "suite.yaml")
+
+
+def test_case_rejects_an_unsupported_action_status(tmp_path: Path) -> None:
+    copied_suite = tmp_path / "suite"
+    copytree(SUITE_DIRECTORY, copied_suite)
+    case_path = copied_suite / "cases" / "allocator-cache.yaml"
+    data = yaml.safe_load(case_path.read_text())
+    data["expected_tools"]["actions"][0]["status"] = "denied"
+    case_path.write_text(yaml.safe_dump(data, sort_keys=False))
+
+    with pytest.raises(DescriptorError, match="status must be one of"):
+        load_suite(copied_suite / "suite.yaml")
+
+
+def test_suite_rejects_an_unknown_profile(tmp_path: Path) -> None:
+    copied_suite = tmp_path / "suite"
+    copytree(SUITE_DIRECTORY, copied_suite)
+    suite_path = copied_suite / "suite.yaml"
+    data = yaml.safe_load(suite_path.read_text())
+    data["skill"]["profile"] = "collection-write"
+    suite_path.write_text(yaml.safe_dump(data, sort_keys=False))
+
+    with pytest.raises(DescriptorError, match="v1 supports only"):
+        load_suite(suite_path)
+
+
+def test_leak_suite_actions_default_to_success_status() -> None:
+    suite = load_suite(SUITE_PATH)
+
+    assert {action.status for action in suite.case("allocator-cache").actions} == {"success"}

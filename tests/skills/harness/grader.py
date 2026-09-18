@@ -118,7 +118,7 @@ def _match_actions(case: EvalCase, run: RunRecord) -> tuple[dict[str, str], dict
             if call.id in used_calls:
                 continue
             if (
-                call.status == "success"
+                call.status == action.status
                 and call.operation == action.operation
                 and _is_subset(action.match, call.arguments)
                 and _output_contains(action.expect_output, call.output)

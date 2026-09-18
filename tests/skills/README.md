@@ -10,17 +10,20 @@ Each suite has one `suite.yaml` and explicit case references under
 `suites/<skill>/`. The versioned contracts are documented in `schemas/` and
 enforced by `harness/descriptors.py` with unknown fields rejected.
 
-- A suite identifies the `SKILL.md`, result classifications, scored objectives,
-  required decision branches, sandbox defaults, semantic tool policy, and cases.
-  Runner defaults (`runner`, `repetitions`, `timeout_seconds`, `sandbox`) are
-  validated and exposed as typed values on the loaded suite so adapters can
-  enforce them.
+- A suite identifies the skill or evaluation contract, result classifications,
+  scored objectives, required decision branches, sandbox defaults, semantic tool
+  policy, and cases. Supported profiles are `diagnostic-readonly` and
+  `agent-cli`. Runner defaults (`runner`, `repetitions`, `timeout_seconds`,
+  `sandbox`) are validated and exposed as typed values on the loaded suite so
+  adapters can enforce them.
 - A case identifies its prompt, optional synthetic SnapshotDB, covered branches,
   required tool actions, partial ordering, forbidden actions, oracle facts,
   classification bounds, unknowns, and claim-to-tool evidence links. Actions may
   declare `expect_output`, a mapping that must appear in the matched call's
-  recorded output before the action counts as matched. Cases may cap the total
-  call count with `expected_tools.max_calls`; zero enforces refusal-only cases.
+  recorded output before the action counts as matched. Actions may also declare
+  `status` (`success` or `error`; default `success`) so recovery cases can
+  require structured failures. Cases may cap the total call count with
+  `expected_tools.max_calls`; zero enforces refusal-only cases.
 - Descriptor paths are repository-relative and cannot contain `..`. Fixture
   mount paths must be normalized absolute POSIX paths under `/fixtures/`.
 - Diagnostic fixtures are declarative SQLite databases. Pickle inputs are never
@@ -30,6 +33,7 @@ Validate a suite locally:
 
 ```bash
 python -m tests.skills validate tests/skills/suites/pt-snap-memory-leak/suite.yaml
+python -m tests.skills validate tests/skills/suites/pt-snap-agent-e2e/suite.yaml
 ```
 
 ## Tool Gateway
@@ -86,6 +90,26 @@ and per case), oracle facts, classifications, required unknowns, and evidence
 call IDs. Runs that omit required result fields or submit malformed result
 shapes also hard-fail. Formatting and prose style receive no deterministic
 score.
+
+## Agent CLI baseline (issue #136)
+
+`tests/skills/suites/pt-snap-agent-e2e/` grades the parent issue's seven
+end-to-end scenarios. It is an `agent-cli` evaluation contract, not a shipped
+skill. Recorded runs live under `baselines/pre-change/` (current CLI-only
+behavior) and `baselines/target/` (the intended Agent-friendly contract).
+
+Comparison metrics are task success rate, mean call count, mean output bytes,
+and error-conclusion rate:
+
+```bash
+python -m tests.skills baseline \
+  tests/skills/suites/pt-snap-agent-e2e/suite.yaml \
+  tests/skills/suites/pt-snap-agent-e2e/baselines/pre-change \
+  --output .skill-evals/baselines/pre-change.json
+```
+
+Diagnostic fixtures remain declarative SQLite databases. The import scenario
+records `pt_snap.import` semantically and never materializes a pickle.
 
 Generated transcripts and reports belong under `.skill-evals/`, which is
 ignored by Git. Normal `pytest` runs never invoke a live model.

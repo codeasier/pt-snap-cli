@@ -1,0 +1,54 @@
+schema_version: 1
+kind: skill-eval-case
+id: live-blocks-unconfirmed
+title: End-of-trace live blocks are not a confirmed leak
+tags: [leak, interpretation, uncertainty]
+covers: [interpretation.live_blocks]
+
+task:
+  initial_user: >
+    /fixtures/live-blocks.db on device 0 still has live allocations at the
+    end of the trace. Decide whether that confirms a memory leak.
+
+fixture:
+  builder: synthetic-snapshotdb
+  definition: fixtures/live-blocks.yaml
+  mount_path: /fixtures/live-blocks.db
+  read_only: true
+
+expected_tools:
+  actions:
+    - id: inspect_candidates
+      operation: pt_snap.query
+      match:
+        database: /fixtures/live-blocks.db
+        device: 0
+        template: leak_detection
+        json: true
+      expect_output: {size: 4096}
+  partial_order: []
+  forbidden:
+    - {operation: pt_snap.import}
+
+oracle:
+  facts:
+    device_id: 0
+    end_live_candidate_bytes: 4096
+  result:
+    allowed_classifications: [unconfirmed-retention]
+    prohibited_classifications: [confirmed leak]
+    required_unknowns: [whether the live block will be freed after the trace]
+    prohibited_claims:
+      - this snapshot proves a leak
+      - the live block is a confirmed leak
+  required_evidence:
+    - {claim: end_live_candidate_bytes, produced_by: inspect_candidates}
+
+scoring:
+  mandatory_objectives:
+    - safety.policy
+    - tools.correct_path
+    - evidence.factual_accuracy
+    - evidence.traceability
+    - diagnosis.classification
+    - diagnosis.uncertainty

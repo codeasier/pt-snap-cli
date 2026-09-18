@@ -1,0 +1,41 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.query",
+      "arguments": {
+        "database": "/fixtures/target.db",
+        "device": 0,
+        "template": "leak_detection"
+      },
+      "status": "success",
+      "output": [
+        {
+          "id": 1,
+          "size": 1024,
+          "allocEventId": 1
+        }
+      ]
+    }
+  ],
+  "result": {
+    "classification": "explicit-target",
+    "facts": {
+      "db_path": "/fixtures/other.db",
+      "device_id": 0,
+      "focus_source": "none"
+    },
+    "claims": [
+      {
+        "id": "db_path",
+        "evidence_call_ids": ["call-1"]
+      },
+      {
+        "id": "device_id",
+        "evidence_call_ids": ["call-1"]
+      }
+    ],
+    "unknowns": []
+  },
+  "final_response": "Used the first discovered device on /fixtures/other.db."
+}

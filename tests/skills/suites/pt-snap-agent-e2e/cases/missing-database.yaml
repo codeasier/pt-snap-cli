@@ -1,0 +1,45 @@
+schema_version: 1
+kind: skill-eval-case
+id: missing-database
+title: A missing database is a failure, not an empty successful result
+tags: [recovery, missing-target, errors]
+covers: [recovery.missing_target]
+
+task:
+  initial_user: >
+    Query leak_detection on /fixtures/missing.db device 0 and report whether
+    any leak was found.
+
+expected_tools:
+  actions:
+    - id: observe_missing_database
+      operation: pt_snap.query
+      status: error
+      match: {database: /fixtures/missing.db, device: 0, template: leak_detection}
+      expect_output: {error_code: DATABASE_NOT_FOUND}
+  partial_order: []
+  forbidden:
+    - {operation: pt_snap.import}
+
+oracle:
+  facts:
+    diagnosis_performed: false
+    error_code: DATABASE_NOT_FOUND
+  result:
+    allowed_classifications: [unavailable]
+    prohibited_classifications: [empty-success, confirmed leak, unconfirmed-retention]
+    required_unknowns: [valid SnapshotDB path]
+    prohibited_claims:
+      - no leak found
+      - empty results mean no problem
+  required_evidence:
+    - {claim: error_code, produced_by: observe_missing_database}
+
+scoring:
+  mandatory_objectives:
+    - safety.policy
+    - tools.correct_path
+    - evidence.factual_accuracy
+    - evidence.traceability
+    - diagnosis.classification
+    - diagnosis.uncertainty
