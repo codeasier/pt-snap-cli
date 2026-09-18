@@ -38,12 +38,14 @@ If `pt-snap` is missing, stop routing diagnostics and hand off to
 If a needed skill is `missing` or `outdated`, tell the user how to install or
 upgrade it. Do not run install or upgrade from this skill.
 
-Install examples the user can run after they confirm they want the skills
-installed. Do not run these commands from this skill:
+Install or upgrade examples the user can run after they confirm they want
+the skills installed or updated. Do not run these commands from this skill:
 
 ```bash
 pt-snap skill install pt-snap-helper --json
 pt-snap skill install --json
+pt-snap skill upgrade pt-snap-helper --json
+pt-snap skill upgrade --json
 ```
 
 After any install, upgrade, or uninstall that changes skill files, the host

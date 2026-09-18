@@ -59,6 +59,7 @@ def test_helper_skill_checks_availability_and_restart() -> None:
 
     assert "pt-snap skill list --json" in skill
     assert "pt-snap skill install pt-snap-helper --json" in skill
+    assert "pt-snap skill upgrade pt-snap-helper --json" in skill
     assert "Do not run install or upgrade from this skill." in skill
     assert (
         "Restart the agent after install, upgrade, or uninstall so the skill "

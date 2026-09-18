@@ -236,6 +236,10 @@ class TestCLI:
         assert version.exit_code == 0
         assert "Agents: prefer --json where supported" not in unstyle(version.stdout)
 
+        query_help = runner.invoke(app, ["query", "-h"])
+        assert query_help.exit_code == 0
+        assert "Agents: prefer --json where supported" not in unstyle(query_help.stdout)
+
     def test_subcommand_short_help_flag(self) -> None:
         """Test -h flag for subcommands."""
         result = runner.invoke(app, ["query", "-h"])
