@@ -38,7 +38,7 @@
 - 依赖 `pt-snap-cli[rag]` 的安装命令会失败；该 extra 从未启用任何功能。
 - 拼错或多余的查询参数、以及不在 `choices` 内的 `order_by` / `order_dir` 现在会报错，而不再静默得到错误结果或 SQLite 语法错误。
 - 用户自写查询模板若在 `output_schema` 列上使用未登记键，加载会失败；仅含 `column`/`type` 的旧模板仍然有效。`execute_query()` 返回字典新增 `template`、`semantics_version` 键。
-- 本版本未扩展 `--json` 覆盖面；JSON 仍限于已支持的子命令（如 `metadata`、`report peak-memory`、`skill list`）。`--template-info` 的机器可读形态仍是结构化 API dict 与 CLI 文本。
+- 本版本未扩展 `--json` 覆盖面。当前支持 `--json` 的是 `metadata`、`report peak-memory`，以及 `skill list` / `install` / `upgrade` / `uninstall`。`query`、`focus`、`import`、`split`、`config` 仍无 `--json`；`--template-info` 的机器可读形态仍是结构化 API dict 与 CLI 文本。
 
 ## [0.3.0] - 2026-09-17
 
