@@ -1,0 +1,45 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.query",
+      "arguments": {
+        "database": "/fixtures/target.db",
+        "device": 1,
+        "template": "leak_detection",
+        "json": true
+      },
+      "status": "success",
+      "output": {
+        "db_path": "/fixtures/target.db",
+        "device_id": 1,
+        "focus_source": "explicit",
+        "returned": 1,
+        "has_more": false,
+        "rows": [
+          {"id": 1, "size": 4096, "allocEventId": 1}
+        ]
+      }
+    }
+  ],
+  "result": {
+    "classification": "explicit-target",
+    "facts": {
+      "db_path": "/fixtures/target.db",
+      "device_id": 1,
+      "focus_source": "explicit"
+    },
+    "claims": [
+      {
+        "id": "db_path",
+        "evidence_call_ids": ["call-1"]
+      },
+      {
+        "id": "device_id",
+        "evidence_call_ids": ["call-1"]
+      }
+    ],
+    "unknowns": []
+  },
+  "final_response": "Queried /fixtures/target.db on device 1 as requested."
+}

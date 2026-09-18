@@ -1,0 +1,8 @@
+schema_version: 1
+kind: synthetic-snapshotdb
+devices:
+  0:
+    trace:
+      - {id: 1, action: 4, address: 8192, size: 4096, stream: 0, allocated: 4096, active: 4096, reserved: 8192, callstack: "live.py:10"}
+    blocks:
+      - {id: 1, address: 8192, size: 4096, requestedSize: 4000, state: 1, allocEventId: 1, freeEventId: -1}

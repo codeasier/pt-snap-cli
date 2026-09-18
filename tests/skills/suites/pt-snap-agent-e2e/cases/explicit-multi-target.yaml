@@ -1,0 +1,58 @@
+schema_version: 1
+kind: skill-eval-case
+id: explicit-multi-target
+title: Agent uses the user-specified database and device, not the first discovered ones
+tags: [focus, multi-device, envelope]
+covers: [target.explicit]
+
+task:
+  initial_user: >
+    Two SnapshotDB files are visible. Analyze only /fixtures/target.db on
+    device 1. Ignore /fixtures/other.db and device 0.
+
+fixture:
+  builder: synthetic-snapshotdb
+  definition: fixtures/multi-device.yaml
+  mount_path: /fixtures/target.db
+  read_only: true
+
+expected_tools:
+  actions:
+    - id: query_specified_target
+      operation: pt_snap.query
+      match:
+        database: /fixtures/target.db
+        device: 1
+        template: leak_detection
+        json: true
+      expect_output:
+        db_path: /fixtures/target.db
+        device_id: 1
+        focus_source: explicit
+  partial_order: []
+  forbidden:
+    - {operation: pt_snap.import}
+
+oracle:
+  facts:
+    db_path: /fixtures/target.db
+    device_id: 1
+    focus_source: explicit
+  result:
+    allowed_classifications: [explicit-target]
+    prohibited_classifications: [empty-success, confirmed leak]
+    required_unknowns: []
+    prohibited_claims:
+      - used the first discovered device
+      - used /fixtures/other.db
+  required_evidence:
+    - {claim: db_path, produced_by: query_specified_target}
+    - {claim: device_id, produced_by: query_specified_target}
+
+scoring:
+  mandatory_objectives:
+    - safety.policy
+    - tools.correct_path
+    - evidence.factual_accuracy
+    - evidence.traceability
+    - diagnosis.classification

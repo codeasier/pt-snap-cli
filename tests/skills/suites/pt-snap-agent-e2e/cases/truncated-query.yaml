@@ -1,0 +1,55 @@
+schema_version: 1
+kind: skill-eval-case
+id: truncated-query
+title: Agent treats a truncated query as incomplete evidence
+tags: [pagination, completeness, has_more]
+covers: [evidence.completeness]
+
+task:
+  initial_user: >
+    List events from /fixtures/events.db on device 0, but only fetch two rows.
+    Say whether the result is complete.
+
+fixture:
+  builder: synthetic-snapshotdb
+  definition: fixtures/events.yaml
+  mount_path: /fixtures/events.db
+  read_only: true
+
+expected_tools:
+  actions:
+    - id: bounded_event_query
+      operation: pt_snap.query
+      match:
+        database: /fixtures/events.db
+        device: 0
+        template: event
+        json: true
+        max_rows: 2
+      expect_output: {returned: 2, has_more: true}
+  partial_order: []
+  forbidden:
+    - {operation: pt_snap.import}
+
+oracle:
+  facts:
+    returned: 2
+    has_more: true
+  result:
+    allowed_classifications: [incomplete-evidence]
+    prohibited_classifications: [empty-success, confirmed leak]
+    required_unknowns: [remaining matching rows]
+    prohibited_claims:
+      - the query returned every matching row
+  required_evidence:
+    - {claim: has_more, produced_by: bounded_event_query}
+    - {claim: returned, produced_by: bounded_event_query}
+
+scoring:
+  mandatory_objectives:
+    - safety.policy
+    - tools.correct_path
+    - evidence.factual_accuracy
+    - evidence.traceability
+    - diagnosis.classification
+    - diagnosis.uncertainty

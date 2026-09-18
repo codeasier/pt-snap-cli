@@ -18,7 +18,7 @@ fields:
     required: [id, title, description]
   skill:
     required: [path, expected_name, profile]
-    profile_values: [diagnostic-readonly]
+    profile_values: [diagnostic-readonly, agent-cli]
   result_contract:
     required: [required_fields, classifications]
     required_result_fields: [classification, facts, claims, unknowns]

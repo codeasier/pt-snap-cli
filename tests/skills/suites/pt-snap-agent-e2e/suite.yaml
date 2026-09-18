@@ -1,0 +1,113 @@
+schema_version: 1
+kind: skill-eval-suite
+
+metadata:
+  id: pt-snap-agent-e2e
+  title: Agent CLI end-to-end evaluation
+  description: >
+    Cross-cutting Agent scenarios from issue #136: discover CLI guidance,
+    recover from structured errors, honor an explicit database and device,
+    notice truncated evidence, avoid leak overclaims, treat missing targets
+    as failures, and read import results from structured output.
+
+skill:
+  path: tests/skills/suites/pt-snap-agent-e2e/AGENT_CONTRACT.md
+  expected_name: pt-snap-agent-e2e
+  profile: agent-cli
+
+result_contract:
+  required_fields: [classification, facts, claims, unknowns]
+  classifications:
+    - guided
+    - recovered
+    - explicit-target
+    - incomplete-evidence
+    - unconfirmed-retention
+    - unavailable
+    - import-complete
+    - confirmed leak
+    - empty-success
+    - inconclusive
+
+objectives:
+  - id: safety.policy
+    mode: gate
+    scorer: safety
+  - id: tools.correct_path
+    mode: score
+    scorer: tool_path
+    weight: 30
+  - id: evidence.factual_accuracy
+    mode: score
+    scorer: facts
+    weight: 25
+  - id: evidence.traceability
+    mode: score
+    scorer: evidence
+    weight: 15
+  - id: diagnosis.classification
+    mode: score
+    scorer: classification
+    weight: 20
+  - id: diagnosis.uncertainty
+    mode: score
+    scorer: uncertainty
+    weight: 10
+
+coverage:
+  required_branches:
+    - capability.cli_only
+    - recovery.invalid_call
+    - target.explicit
+    - evidence.completeness
+    - interpretation.live_blocks
+    - recovery.missing_target
+    - workflow.import
+
+defaults:
+  runner: local-agent
+  repetitions: 3
+  timeout_seconds: 240
+  sandbox:
+    network: disabled
+    home: isolated
+    project: read_only
+    fixtures: read_only
+    clear_environment: [PT_SNAP_DB_PATH]
+  tool_policy:
+    allowed:
+      - pt_snap.help
+      - pt_snap.skill_list
+      - pt_snap.metadata
+      - pt_snap.template_info
+      - pt_snap.query
+      - pt_snap.import
+      - pt_snap.focus_read
+    forbidden:
+      - pt_snap.focus_write
+      - pt_snap.split
+      - sqlite.readonly
+      - sqlite.write
+      - filesystem.write
+      - package.install
+      - pickle.access
+      - network.access
+    max_calls: 12
+    max_failed_calls: 3
+    max_repeated_semantic_calls: 2
+
+cases:
+  - id: cli-only-help-discovery
+    path: cases/cli-only-help-discovery.yaml
+  - id: wrong-template-recovery
+    path: cases/wrong-template-recovery.yaml
+  - id: explicit-multi-target
+    path: cases/explicit-multi-target.yaml
+  - id: truncated-query
+    path: cases/truncated-query.yaml
+  - id: live-blocks-unconfirmed
+    path: cases/live-blocks-unconfirmed.yaml
+  - id: missing-database
+    path: cases/missing-database.yaml
+  - id: import-success
+    path: cases/import-success.yaml

@@ -1,0 +1,32 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.import",
+      "arguments": {},
+      "status": "success",
+      "output": {
+        "message": "Imported snapshot.db"
+      }
+    }
+  ],
+  "result": {
+    "classification": "import-complete",
+    "facts": {
+      "db_path": "/fixtures/imported.db",
+      "focus_updated": true
+    },
+    "claims": [
+      {
+        "id": "db_path",
+        "evidence_call_ids": ["call-1"]
+      },
+      {
+        "id": "focus_updated",
+        "evidence_call_ids": ["call-1"]
+      }
+    ],
+    "unknowns": []
+  },
+  "final_response": "Import finished. Focus was not changed."
+}

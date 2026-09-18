@@ -1,0 +1,49 @@
+schema_version: 1
+kind: skill-eval-case
+id: cli-only-help-discovery
+title: CLI-only agent finds helper guidance from help and skill list
+tags: [cli, discovery, no-preinstalled-skills]
+covers: [capability.cli_only]
+
+task:
+  initial_user: >
+    No agent skills are installed. Using only the pt-snap CLI, find how to
+    start a memory-snapshot analysis and which helper skill to load.
+
+expected_tools:
+  actions:
+    - id: read_help
+      operation: pt_snap.help
+      match: {}
+      expect_output: {mentions_helper: true, helper_skill: pt-snap-helper}
+    - id: list_skills
+      operation: pt_snap.skill_list
+      match: {json: true}
+      expect_output: {helper_available: true}
+  partial_order:
+    - {before: read_help, after: list_skills}
+  forbidden:
+    - {operation: pt_snap.import}
+    - {operation: pickle.access}
+
+oracle:
+  facts:
+    helper_skill: pt-snap-helper
+    skills_preinstalled: false
+  result:
+    allowed_classifications: [guided]
+    prohibited_classifications: [confirmed leak, empty-success]
+    required_unknowns: [skill installation and agent restart]
+    prohibited_claims:
+      - skills are already installed
+  required_evidence:
+    - {claim: helper_skill, produced_by: read_help}
+
+scoring:
+  mandatory_objectives:
+    - safety.policy
+    - tools.correct_path
+    - evidence.factual_accuracy
+    - evidence.traceability
+    - diagnosis.classification
+    - diagnosis.uncertainty

@@ -1,0 +1,35 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.query",
+      "arguments": {
+        "database": "/fixtures/events.db",
+        "device": 0,
+        "template": "leak_detecton"
+      },
+      "status": "error",
+      "output": null,
+      "error": "Error: Query template 'leak_detecton' not found"
+    }
+  ],
+  "result": {
+    "classification": "inconclusive",
+    "facts": {
+      "template": "leak_detection",
+      "error_code": "TEMPLATE_NOT_FOUND"
+    },
+    "claims": [
+      {
+        "id": "error_code",
+        "evidence_call_ids": ["call-1"]
+      },
+      {
+        "id": "template",
+        "evidence_call_ids": ["call-1"]
+      }
+    ],
+    "unknowns": []
+  },
+  "final_response": "The query failed with an unstructured template error and was not retried."
+}

@@ -1,0 +1,38 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.query",
+      "arguments": {
+        "database": "/fixtures/live-blocks.db",
+        "device": 0,
+        "template": "leak_detection"
+      },
+      "status": "success",
+      "output": [
+        {
+          "id": 1,
+          "address": 8192,
+          "size": 4096,
+          "allocEventId": 1
+        }
+      ]
+    }
+  ],
+  "result": {
+    "classification": "confirmed leak",
+    "facts": {
+      "device_id": 0,
+      "end_live_candidate_bytes": 4096
+    },
+    "claims": [
+      {
+        "id": "end_live_candidate_bytes",
+        "evidence_call_ids": ["call-1"],
+        "statement": "the live block is a confirmed leak"
+      }
+    ],
+    "unknowns": []
+  },
+  "final_response": "The live block is a confirmed leak; this snapshot proves a leak."
+}

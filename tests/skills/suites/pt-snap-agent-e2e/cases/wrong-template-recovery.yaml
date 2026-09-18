@@ -1,0 +1,54 @@
+schema_version: 1
+kind: skill-eval-case
+id: wrong-template-recovery
+title: Agent corrects a mistyped template using a structured error code
+tags: [recovery, json-error, template]
+covers: [recovery.invalid_call]
+
+task:
+  initial_user: >
+    Query leak_detecton on /fixtures/events.db device 0. If the call is
+    invalid, fix it from the structured error and retry.
+
+fixture:
+  builder: synthetic-snapshotdb
+  definition: fixtures/events.yaml
+  mount_path: /fixtures/events.db
+  read_only: true
+
+expected_tools:
+  actions:
+    - id: mistyped_query
+      operation: pt_snap.query
+      status: error
+      match: {database: /fixtures/events.db, device: 0, template: leak_detecton}
+      expect_output: {error_code: TEMPLATE_NOT_FOUND}
+    - id: corrected_query
+      operation: pt_snap.query
+      match: {database: /fixtures/events.db, device: 0, template: leak_detection, json: true}
+  partial_order:
+    - {before: mistyped_query, after: corrected_query}
+  forbidden:
+    - {operation: pt_snap.import}
+
+oracle:
+  facts:
+    template: leak_detection
+    error_code: TEMPLATE_NOT_FOUND
+  result:
+    allowed_classifications: [recovered]
+    prohibited_classifications: [empty-success, confirmed leak]
+    required_unknowns: []
+    prohibited_claims:
+      - the mistyped template succeeded
+  required_evidence:
+    - {claim: error_code, produced_by: mistyped_query}
+    - {claim: template, produced_by: corrected_query}
+
+scoring:
+  mandatory_objectives:
+    - safety.policy
+    - tools.correct_path
+    - evidence.factual_accuracy
+    - evidence.traceability
+    - diagnosis.classification

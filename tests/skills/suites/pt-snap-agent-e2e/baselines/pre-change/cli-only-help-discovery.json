@@ -1,0 +1,29 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.help",
+      "arguments": {},
+      "status": "success",
+      "output": {
+        "mentions_helper": false,
+        "text": "PyTorch Memory Snapshot Analysis Tool"
+      }
+    }
+  ],
+  "result": {
+    "classification": "guided",
+    "facts": {
+      "helper_skill": "pt-snap-helper",
+      "skills_preinstalled": false
+    },
+    "claims": [
+      {
+        "id": "helper_skill",
+        "evidence_call_ids": ["call-1"]
+      }
+    ],
+    "unknowns": ["skill installation and agent restart"]
+  },
+  "final_response": "pt-snap --help lists commands. Skills are already installed."
+}

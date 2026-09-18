@@ -12,13 +12,13 @@ tool-call traces, deterministic grading, and runner adapters.
 | --- | --- |
 | `schemas/` | Human-readable v1 suite and case descriptor contracts. |
 | `harness/` | Strict descriptor loading, synthetic fixture construction, trace grading, runner protocols, and local artifacts. |
-| `suites/` | Reviewed skill-specific objectives, decision branches, cases, and declarative SQLite fixtures. |
+| `suites/` | Reviewed skill-specific and Agent CLI e2e objectives, decision branches, cases, and declarative SQLite fixtures. |
 | `README.md` | Descriptor, gateway, run-record, grading, and local command reference. |
 | `test_*_contract.py` | Static and executable contracts for shipped `SKILL.md` files. |
 
 ## Invariants
 - Keep evaluation definitions declarative; do not embed shell, Python, Jinja, or arbitrary expressions in YAML.
-- Diagnostic suites use generated SnapshotDB files only. Never expose, import, or deserialize pickle fixtures in an agent run.
+- Diagnostic suites use generated SnapshotDB files only. Never expose, import, or deserialize pickle fixtures in an agent run. The `agent-cli` e2e suite may require semantic `pt_snap.import`; still do not materialize pickle inputs.
 - Treat forbidden operations as hard failures and grade allowed tool calls by normalized semantics rather than shell text.
 - Keep live model execution local and explicit. Normal pytest coverage must not require network access, provider credentials, or a model runtime.
 - Write generated transcripts, databases, scores, and reports only under temporary directories or the ignored `.skill-evals/` directory.
@@ -26,3 +26,4 @@ tool-call traces, deterministic grading, and runner adapters.
 ## Focused Tests
 - Run `pytest tests/skills` for harness, descriptor, fixture, grader, or skill contract changes.
 - Run `python -m tests.skills validate tests/skills/suites/<skill>/suite.yaml` after editing a suite or case descriptor.
+- Run `python -m tests.skills baseline tests/skills/suites/pt-snap-agent-e2e/suite.yaml <runs-dir>` to emit task success rate, call count, output size, and error-conclusion metrics.

@@ -25,7 +25,9 @@ fields:
     optional: [max_calls]
     max_calls_minimum: 0
     action_required: [id, operation, match]
-    action_optional: [expect_output]
+    action_optional: [expect_output, status]
+    action_status_values: [success, error]
+    action_status_default: success
     order_required: [before, after]
     forbidden_required: [operation]
   oracle:

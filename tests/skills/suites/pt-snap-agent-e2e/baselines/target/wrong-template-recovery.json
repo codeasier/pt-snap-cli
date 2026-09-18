@@ -1,0 +1,61 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.query",
+      "arguments": {
+        "database": "/fixtures/events.db",
+        "device": 0,
+        "template": "leak_detecton"
+      },
+      "status": "error",
+      "output": {
+        "error_code": "TEMPLATE_NOT_FOUND",
+        "hint": "Did you mean leak_detection?"
+      },
+      "error": "TEMPLATE_NOT_FOUND: leak_detecton"
+    },
+    {
+      "id": "call-2",
+      "operation": "pt_snap.query",
+      "arguments": {
+        "database": "/fixtures/events.db",
+        "device": 0,
+        "template": "leak_detection",
+        "json": true
+      },
+      "status": "success",
+      "output": {
+        "db_path": "/fixtures/events.db",
+        "device_id": 0,
+        "returned": 4,
+        "has_more": false,
+        "rows": [
+          {"id": 4, "size": 64},
+          {"id": 3, "size": 48},
+          {"id": 2, "size": 32},
+          {"id": 1, "size": 16}
+        ]
+      }
+    }
+  ],
+  "result": {
+    "classification": "recovered",
+    "facts": {
+      "template": "leak_detection",
+      "error_code": "TEMPLATE_NOT_FOUND"
+    },
+    "claims": [
+      {
+        "id": "error_code",
+        "evidence_call_ids": ["call-1"]
+      },
+      {
+        "id": "template",
+        "evidence_call_ids": ["call-2"]
+      }
+    ],
+    "unknowns": []
+  },
+  "final_response": "The mistyped template returned TEMPLATE_NOT_FOUND; leak_detection succeeded after correction."
+}

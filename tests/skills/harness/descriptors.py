@@ -8,6 +8,8 @@ from typing import Any
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+SUPPORTED_PROFILES = frozenset({"diagnostic-readonly", "agent-cli"})
+SUPPORTED_ACTION_STATUSES = frozenset({"success", "error"})
 
 
 class DescriptorError(ValueError):
@@ -28,6 +30,7 @@ class ExpectedAction:
     operation: str
     match: dict[str, Any]
     expect_output: dict[str, Any] = field(default_factory=dict)
+    status: str = "success"
 
 
 @dataclass(frozen=True)
@@ -241,18 +244,25 @@ def _load_case(
             raw_action,
             context=f"{path}: action {index}",
             required={"id", "operation", "match"},
-            allowed={"id", "operation", "match", "expect_output"},
+            allowed={"id", "operation", "match", "expect_output", "status"},
         )
         if not isinstance(action["match"], dict):
             raise DescriptorError(f"{path}: action {index}.match must be a mapping")
         if "expect_output" in action and not isinstance(action["expect_output"], dict):
             raise DescriptorError(f"{path}: action {index}.expect_output must be a mapping")
+        status = _string(action.get("status", "success"), f"{path}: action {index}.status")
+        if status not in SUPPORTED_ACTION_STATUSES:
+            raise DescriptorError(
+                f"{path}: action {index}.status must be one of "
+                f"{', '.join(sorted(SUPPORTED_ACTION_STATUSES))}"
+            )
         actions.append(
             ExpectedAction(
                 id=_string(action["id"], f"{path}: action id"),
                 operation=_string(action["operation"], f"{path}: action operation"),
                 match=dict(action["match"]),
                 expect_output=dict(action.get("expect_output", {})),
+                status=status,
             )
         )
     action_ids = {action.id for action in actions}
@@ -473,8 +483,10 @@ def load_suite(path: Path, *, repo_root: Path = REPO_ROOT) -> EvalSuite:
     if f"name: {skill_name}" not in skill_path.read_text():
         raise DescriptorError(f"{path}: expected skill name is not present in {skill_path}")
     profile = _string(skill["profile"], f"{path}: skill.profile")
-    if profile != "diagnostic-readonly":
-        raise DescriptorError(f"{path}: v1 supports only diagnostic-readonly suites")
+    if profile not in SUPPORTED_PROFILES:
+        raise DescriptorError(
+            f"{path}: v1 supports only {', '.join(sorted(SUPPORTED_PROFILES))} suites"
+        )
 
     result_contract = _strict_mapping(
         data["result_contract"],
@@ -568,7 +580,7 @@ def load_suite(path: Path, *, repo_root: Path = REPO_ROOT) -> EvalSuite:
     }
     for key, expected in expected_sandbox.items():
         if sandbox[key] != expected:
-            raise DescriptorError(f"{path}: diagnostic sandbox requires {key}: {expected}")
+            raise DescriptorError(f"{path}: evaluation sandbox requires {key}: {expected}")
     sandbox_policy = SandboxPolicy(
         network=sandbox["network"],
         home=sandbox["home"],

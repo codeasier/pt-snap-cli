@@ -1,0 +1,38 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.query",
+      "arguments": {
+        "database": "/fixtures/events.db",
+        "device": 0,
+        "template": "event",
+        "max_rows": 2
+      },
+      "status": "success",
+      "output": [
+        {"id": 1, "size": 16},
+        {"id": 2, "size": 32}
+      ]
+    }
+  ],
+  "result": {
+    "classification": "incomplete-evidence",
+    "facts": {
+      "returned": 2,
+      "has_more": false
+    },
+    "claims": [
+      {
+        "id": "has_more",
+        "evidence_call_ids": ["call-1"]
+      },
+      {
+        "id": "returned",
+        "evidence_call_ids": ["call-1"]
+      }
+    ],
+    "unknowns": []
+  },
+  "final_response": "The query returned every matching row."
+}

@@ -1,0 +1,33 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.query",
+      "arguments": {
+        "database": "/fixtures/missing.db",
+        "device": 0,
+        "template": "leak_detection"
+      },
+      "status": "error",
+      "output": {
+        "error_code": "DATABASE_NOT_FOUND"
+      },
+      "error": "DATABASE_NOT_FOUND: /fixtures/missing.db"
+    }
+  ],
+  "result": {
+    "classification": "unavailable",
+    "facts": {
+      "diagnosis_performed": false,
+      "error_code": "DATABASE_NOT_FOUND"
+    },
+    "claims": [
+      {
+        "id": "error_code",
+        "evidence_call_ids": ["call-1"]
+      }
+    ],
+    "unknowns": ["valid SnapshotDB path"]
+  },
+  "final_response": "The database is missing. This is a failed lookup, not an empty leak result."
+}
