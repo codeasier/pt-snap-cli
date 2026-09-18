@@ -204,6 +204,7 @@ def get_template_info(name: str) -> dict[str, Any] | None:
                 "default": param.default,
                 "required": param.required,
                 "description": param.description,
+                "choices": param.choices,
             }
             for param_name, param in template.parameters.items()
         },

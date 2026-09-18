@@ -69,11 +69,13 @@ queries:
         type: str
         default: "size"
         required: false
+        choices: [id, address, size, requestedSize, state, allocEventId, freeEventId]
         description: Column to order by
       order_dir:
         type: str
         default: "DESC"
         required: false
+        choices: [ASC, DESC]
         description: Sort direction (ASC or DESC)
       limit:
         type: int

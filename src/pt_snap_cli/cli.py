@@ -432,13 +432,18 @@ def query_database(
         if info.parameters:
             for param_name, param_details in info.parameters.items():
                 required_str = " (required)" if param_details.required else " (optional)"
+                choices_str = (
+                    f" [choices: {', '.join(str(choice) for choice in param_details.choices)}]"
+                    if param_details.choices
+                    else ""
+                )
                 default_str = (
                     f" [default: {param_details.default}]"
                     if param_details.default is not None
                     else ""
                 )
                 typer.secho(
-                    f"  {param_name}: {param_details.type}{required_str}{default_str}",
+                    f"  {param_name}: {param_details.type}{required_str}{choices_str}{default_str}",
                     fg=typer.colors.YELLOW,
                 )
                 typer.echo(f"    {param_details.description}")
@@ -464,9 +469,12 @@ def query_database(
                     param_details.default if param_details.default is not None else 0.0
                 )
             elif param_details.type == "str":
-                example_params[param_name] = (
-                    param_details.default if param_details.default is not None else "example"
-                )
+                if param_details.default is not None:
+                    example_params[param_name] = param_details.default
+                elif param_details.choices:
+                    example_params[param_name] = param_details.choices[0]
+                else:
+                    example_params[param_name] = "example"
             elif param_details.type == "bool":
                 example_params[param_name] = True
         if example_params:

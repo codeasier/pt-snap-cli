@@ -72,6 +72,7 @@ class TemplateParameter:
     default: object | None
     required: bool
     description: str
+    choices: list[object] | None = None
 
 
 @dataclass(frozen=True)
