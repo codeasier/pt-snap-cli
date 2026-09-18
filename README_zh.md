@@ -59,20 +59,12 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 | `pt-snap report` | 生成高层内存分析报告 |
 | `pt-snap config` | 管理全局配置 |
 | `pt-snap skill` | 列出并安装随包 agent skill |
-| `pt-snap-mcp` | 启动 MCP 服务器以支持 Agent 集成 |
 
 `pt-snap --help` 含 Agent 提示：在当前已支持的命令上优先使用 `--json`，从 `pt-snap-helper` skill 开始，并用 `pt-snap skill list --json` 检查是否已安装。
 
-## MCP 服务器
+## Agent Skills
 
-`pt-snap-cli` 提供了 MCP（Model Context Protocol）服务器，使 AI Agent 能够以编程方式与 PyTorch 内存快照交互。
-
-```bash
-# 启动 MCP 服务器
-pt-snap-mcp
-```
-
-详见 [MCP 指南](docs/zh/mcp.md)。
+使用 `pt-snap skill install` 安装随包诊断工作流。Agent 集成入口是 skills 与 CLI，不再提供 MCP 服务器。详见 [Agent Skills 指南](docs/zh/skills.md)。
 
 ## 文档
 
@@ -85,7 +77,6 @@ pt-snap-mcp
 | 运行查询 | [Querying](docs/zh/querying.md) |
 | 拆分快照 | [拆分快照](docs/zh/splitting.md) |
 | Agent skill | [Agent Skills](docs/zh/skills.md) |
-| MCP 服务器 | [MCP 指南](docs/zh/mcp.md) |
 | 数据库格式 | [SnapshotDB Schema](docs/zh/database.md) |
 | Python API | [SnapshotAnalyzer API](docs/zh/snapshot-analyzer-api.md) |
 | 结果映射工具 | [ResultMapper API](docs/zh/result-mapper-api.md) |

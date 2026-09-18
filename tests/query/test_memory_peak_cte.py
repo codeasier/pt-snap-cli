@@ -198,8 +198,8 @@ def test_memory_peak_null_start_and_end_runs_via_query_service(
     memory_peak_db: Path,
 ) -> None:
     """End-to-end smoke test: the rewritten template is reachable through
-    the QueryService -> QueryExecutor pipeline used by the CLI, MCP server
-    and SnapshotAnalyzer."""
+    the QueryService -> QueryExecutor pipeline used by the CLI and
+    SnapshotAnalyzer."""
     from pt_snap_cli.config import Config
     from pt_snap_cli.core.query_service import QueryService
 

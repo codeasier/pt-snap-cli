@@ -326,7 +326,7 @@ CREATE TABLE callstack (
 模板名、参数和输出契约。查询引擎按识别到的布局选择 v1 或 v2 SQL。其他模板不依赖
 这次拆分。
 
-识别过程是只读的：`focus`、`query`、报告、Python API 和 MCP 都以 SQLite
+识别过程是只读的：`focus`、`query`、报告和 Python API 都以 SQLite
 `mode=ro` 打开数据库。布局不会写入 `.pt-snap/focus.json`。列冲突、设备布局不一致、
 损坏的 `callstack` 表，或 metadata 与物理结构不一致时，布局保持无法识别，并且
 只有调用栈模板会报错；不会猜测布局，也不会阻止 focus、metadata 和其他查询。

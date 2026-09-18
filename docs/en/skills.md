@@ -86,4 +86,4 @@ After an install, upgrade, or uninstall that changes skill files, restart the ag
 | `pt-snap-memory-peak-breakdown` | Explaining active memory at a peak event |
 | `pt-snap-memory-fragmentation` | Diagnosing allocator gaps and reserved-pool pressure |
 
-Skill management is CLI-only. The MCP server does not install, upgrade, or uninstall skills.
+Skill management is CLI-only.

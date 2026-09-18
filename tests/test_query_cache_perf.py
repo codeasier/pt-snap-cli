@@ -1,7 +1,7 @@
 """Performance regression test for :class:`SnapshotAnalyzer` connection reuse.
 
-The MCP server keeps one :class:`SnapshotAnalyzer` alive across many
-``execute_query`` tool calls. Without caching, every call would pay for
+A long-lived :class:`SnapshotAnalyzer` keeps one instance alive across many
+``execute_query`` calls. Without caching, every call would pay for
 schema validation and a fresh ``sqlite3.connect`` URI handshake. This test
 exercises the caching path and asserts that ten consecutive calls against
 the same database are not catastrophically slower than one call -- a
