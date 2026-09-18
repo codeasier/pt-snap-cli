@@ -45,8 +45,10 @@ Repository `skills/*/SKILL.md` is the authoring source. Wheel installs read
 same `SKILL.md` into that packaged tree. `pt-snap skill list`, `install`,
 `upgrade`, and `uninstall` manage copies in the shared `.agents/skills`
 tree, Claude's independent directories, optional Cursor/Codex extras, or
-an explicit `--dir`. After install or upgrade, the host agent must be
-restarted.
+an explicit `--dir`. Unfiltered `uninstall` (no `--target`, `--project`,
+or `--dir`) removes every installed copy that `list` would report.
+`--target` / `--project` / `--dir` keep narrower destinations. After
+install or upgrade, the host agent must be restarted.
 
 ## Focused Tests
 - Run `pytest tests/skills/test_helper_contract.py` after helper-skill changes.

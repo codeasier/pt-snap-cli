@@ -67,11 +67,16 @@ pt-snap skill upgrade pt-snap-setup --target claude
 
 ```bash
 pt-snap skill uninstall
+pt-snap skill uninstall pt-snap-setup
 pt-snap skill uninstall pt-snap-setup --target claude
 pt-snap skill uninstall --project --target cursor
 ```
 
-`uninstall` 会删除已经包含 `SKILL.md` 的随包 skill 目录。未安装的 skill 会报告为 `not_installed`。同名路径存在但没有 `SKILL.md` 时不会删除。
+不带 `--target`、`--project` 或 `--dir` 时，`uninstall` 会删除 `list` 会报告为已安装或过期的每一份随包 skill 副本，覆盖全部内置宿主以及用户级和项目级目录。如果任何位置都没有副本，则在默认的用户级 `agents` 和 `claude` 目录上报告 `not_installed`。
+
+`--target`、`--project` 和 `--dir` 仍只作用于更窄的目标：`--project` 默认使用 `agents` 和 `claude` 项目目录，可用 `--target` 改宿主；`--dir` 只处理该文件夹。
+
+`uninstall` 会删除已经包含 `SKILL.md` 的随包 skill 目录。同名路径存在但没有 `SKILL.md` 时不会删除。
 
 仅在 install、upgrade 或 uninstall 实际改动 skill 之后，才需要重启 agent 让变更生效。`list` 不会提示重启。
 

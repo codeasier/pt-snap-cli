@@ -67,11 +67,16 @@ pt-snap skill upgrade pt-snap-setup --target claude
 
 ```bash
 pt-snap skill uninstall
+pt-snap skill uninstall pt-snap-setup
 pt-snap skill uninstall pt-snap-setup --target claude
 pt-snap skill uninstall --project --target cursor
 ```
 
-`uninstall` removes bundled skill directories that contain `SKILL.md`. Skills that are not installed are reported as `not_installed`. A same-named path that exists without `SKILL.md` is left untouched.
+Without `--target`, `--project`, or `--dir`, `uninstall` removes every bundled-skill copy that `list` would report as installed or outdated, across all built-in hosts and both user and project scopes. If no copy exists anywhere, it reports `not_installed` at the default user-level `agents` and `claude` destinations.
+
+`--target`, `--project`, and `--dir` keep narrower destinations: `--project` uses the default `agents` and `claude` project directories unless `--target` selects hosts, and `--dir` only touches that folder.
+
+`uninstall` removes bundled skill directories that contain `SKILL.md`. A same-named path that exists without `SKILL.md` is left untouched.
 
 After an install, upgrade, or uninstall that changes skill files, restart the agent so it picks up the change.
 

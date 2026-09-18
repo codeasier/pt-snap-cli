@@ -1519,6 +1519,36 @@ class TestSkillCommands:
         assert missing_payload["restart_required"] is False
         assert missing_payload["restart_hint"] is None
 
+    def test_skill_uninstall_without_flags_removes_all_listed_copies(self, tmp_path: Path) -> None:
+        cursor_install = runner.invoke(
+            app, ["skill", "install", "pt-snap-setup", "--target", "cursor"]
+        )
+        project_install = runner.invoke(app, ["skill", "install", "pt-snap-setup", "--project"])
+        assert cursor_install.exit_code == 0
+        assert project_install.exit_code == 0
+        cursor = tmp_path / ".cursor" / "skills" / "pt-snap-setup"
+        agents = tmp_path / ".agents" / "skills" / "pt-snap-setup"
+        claude = tmp_path / ".claude" / "skills" / "pt-snap-setup"
+        assert cursor.joinpath("SKILL.md").is_file()
+        assert agents.joinpath("SKILL.md").is_file()
+        assert claude.joinpath("SKILL.md").is_file()
+
+        removed = runner.invoke(app, ["skill", "uninstall", "pt-snap-setup", "--json"])
+        assert removed.exit_code == 0
+        payload = json.loads(removed.stdout)
+        actions = {(item["host"], item["scope"], item["action"]) for item in payload["results"]}
+        assert ("cursor", "user", "uninstalled") in actions
+        assert {item["action"] for item in payload["results"]} == {"uninstalled"}
+        assert not cursor.exists()
+        assert not agents.exists()
+        assert not claude.exists()
+
+        listed = runner.invoke(app, ["skill", "list", "--json"])
+        setup = next(
+            item for item in json.loads(listed.stdout)["skills"] if item["name"] == "pt-snap-setup"
+        )
+        assert setup["status"] == "missing"
+
     def test_skill_dir_install_and_list(self, tmp_path: Path) -> None:
         dest = tmp_path / "other-agent" / "skills"
         installed = runner.invoke(

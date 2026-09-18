@@ -155,8 +155,18 @@ class SkillService:
         hosts: Iterable[str] | None = None,
         scope: str = "user",
         dest_dir: Path | str | None = None,
+        all_locations: bool = False,
     ) -> SkillInstallReport:
-        jobs = self._mutation_jobs(names, hosts, scope, dest_dir)
+        if all_locations:
+            if dest_dir is not None or hosts is not None:
+                raise InvalidSkillTargetError(
+                    "Removing every installed copy cannot be combined with --target or --dir."
+                )
+            jobs = self._discovered_uninstall_jobs(names)
+            if not jobs:
+                jobs = self._mutation_jobs(names, None, "user", None)
+        else:
+            jobs = self._mutation_jobs(names, hosts, scope, dest_dir)
         for spec, _host, _selected_scope, dest in jobs:
             if _non_skill_destination(dest):
                 raise SkillInstallError(_non_skill_delete_message(spec.name, dest))
@@ -250,6 +260,24 @@ class SkillService:
             (host, selected_scope, self._host_root(host, selected_scope) / name)
             for host in selected_hosts
         ]
+
+    def _discovered_uninstall_jobs(
+        self, names: Iterable[str] | None
+    ) -> list[tuple[SkillSpec, SkillHost, SkillScope, Path]]:
+        catalog = {spec.name: spec for spec in self.list_catalog()}
+        requested = self._resolve_names(names, catalog)
+        jobs: list[tuple[SkillSpec, SkillHost, SkillScope, Path]] = []
+        seen: set[Path] = set()
+        for name in requested:
+            spec = catalog[name]
+            for selected_scope in SKILL_SCOPES:
+                for host in SKILL_HOSTS:
+                    dest = self._host_root(host, selected_scope) / name
+                    if dest in seen or not (dest.exists() or dest.is_symlink()):
+                        continue
+                    seen.add(dest)
+                    jobs.append((spec, host, selected_scope, dest))
+        return jobs
 
     def _location_status(
         self, spec: SkillSpec, host: SkillHost, scope: SkillScope
