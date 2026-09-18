@@ -322,9 +322,8 @@ class TestQueryCommandErrors:
     def test_query_template_info_not_found(self, sample_db: Path) -> None:
         """Test 'query --template-info' with non-existent template."""
         result = runner.invoke(app, ["query", str(sample_db), "--template-info", "nonexistent"])
-        assert result.exit_code == 0
-        assert "Error" in result.stdout
-        assert "not found" in result.stdout
+        assert result.exit_code == 1
+        assert "Error: Template 'nonexistent' not found" in result.stdout
 
     def test_query_without_template_use(self, sample_db: Path) -> None:
         """Test 'query' command without --template-use raises error."""
