@@ -411,7 +411,7 @@ class QueryExecutor:
     def validate_output(
         self,
         result: list[dict[str, Any]],
-        schema: list[dict[str, str]],
+        schema: list[dict[str, Any]],
     ) -> bool:
         """Validate query result against output schema.
 
