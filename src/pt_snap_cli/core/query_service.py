@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -38,8 +39,8 @@ class QueryService:
         context_cache: ContextCache | None = None,
     ) -> None:
         self._focus_service = focus_service or FocusService()
-        # Cache Context instances across calls so long-lived owners (MCP
-        # server, SnapshotAnalyzer) skip the per-call schema validation and
+        # Cache Context instances across calls so long-lived SnapshotAnalyzer
+        # owners skip the per-call schema validation and
         # SQLite connect/close handshake. See ContextCache for the LRU and
         # mtime invalidation semantics.
         self._context_cache = context_cache if context_cache is not None else ContextCache()
@@ -112,7 +113,7 @@ class QueryService:
                 )
                 for param_name, param_details in info["parameters"].items()
             },
-            output_schema=info["output_schema"],
+            output_schema=copy.deepcopy(info["output_schema"]),
             semantics_version=info.get("semantics_version"),
             interpretation_limits=(
                 [str(item) for item in info["interpretation_limits"]]

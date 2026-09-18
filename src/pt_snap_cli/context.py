@@ -33,7 +33,7 @@ class Context:
     By default the underlying SQLite connection is opened and closed for every
     ``connect()`` context. Pass ``persistent=True`` to keep the connection
     alive across calls so that long-lived owners (e.g. a ``ContextCache``
-    shared by an MCP server) can avoid the per-query open/close cost.
+    shared by a long-lived SnapshotAnalyzer) can avoid the per-query open/close cost.
     Persistent contexts still close their connection when ``close()`` is
     invoked explicitly.
     """

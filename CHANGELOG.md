@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0] - Unreleased
+
+本次发布将 Agent 集成入口统一到 bundled skills 与 CLI，并关闭 MCP 产品面。这是 0.x 阶段的 breaking 变更。
+
+### 破坏性变更
+
+- 移除 `pt-snap-mcp` 控制台入口、`src/pt_snap_cli/mcp/` 与核心依赖 `mcp`。安装 `pt-snap-cli`（无 extra）后依赖树不再包含 `mcp`、`starlette` 或 `uvicorn`。
+- Agent 集成改为 skills + `pt-snap` CLI。`SnapshotAnalyzer` Python API 保留；`execute_query()` 默认仍为 `max_rows=None`（不截断），缺模板时 `get_template_info()` 仍返回 `None`。
+
+### 兼容性提示
+
+- 已配置 `pt-snap-mcp` 或 MCP 客户端的调用方需改用 CLI、bundled skills 或 Python API。历史 CHANGELOG 中的 MCP 条目仅作记录，不再对应已发布入口。
+
 ## [0.3.0] - 2026-09-17
 
 本次发布聚焦 Agent 诊断技能与查询/导入性能：新增内存泄漏、碎片、峰值拆解与 Ascend NPU 采集等诊断 skill、`pt-snap skill` 共享安装命令及本地 skill 评测框架；SnapshotDB 采用去重 callstack 存储，叠加查询执行层优化，使导入、拆分与查询获得数量级加速，同时只读兼容 v1/v2 两种 callstack 布局；pickle 加载收敛到内建类型白名单，进一步降低反序列化风险。

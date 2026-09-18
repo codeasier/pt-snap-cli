@@ -1,7 +1,7 @@
 """End-to-end tests for :class:`SnapshotAnalyzer` connection reuse.
 
-These exercise the path that the MCP server takes: keep one
-:class:`SnapshotAnalyzer` alive and call ``execute_query`` repeatedly
+These exercise the path that a long-lived :class:`SnapshotAnalyzer` takes:
+keep one analyzer alive and call ``execute_query`` repeatedly
 against the same database. We assert that:
 
 * the analyzer reuses a single cached :class:`Context` across calls,

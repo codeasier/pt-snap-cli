@@ -7,7 +7,7 @@ queries:
     semantics_version: 1
     interpretation_limits:
       - "Rows mix dynamic, static, and preexisting groups. Use the category column for per-row scope; do not label the whole result as dynamic."
-      - "percent_of_active_blocks is a 0-100 byte percentage of the returned rows after min_size, include_static, and top_n truncation of dynamic groups, not of all active memory and not of block counts."
+      - "percent_of_active_blocks is a 0-100 byte percentage of the rows included in the SQL result after min_size, include_static, and top_n truncation of dynamic groups; caller-side max_rows (-n) may truncate further after the percentage is computed. Not of all active memory and not of block counts."
       - "Static and preexisting groups have no captured allocation callstack."
       - "Event IDs are ordering markers, not elapsed time."
     parameters:
@@ -243,7 +243,8 @@ queries:
         units: percent
         metric_semantics: share_of_included_rows
         scope: mixed
-        denominator: "SUM(size_bytes) over the returned rows after min_size filtering, include_static grouping, and top_n truncation of dynamic callstack groups. Static and preexisting groups are always included when include_static is true. This is not all active memory in the snapshot."
+        denominator: "SUM(size_bytes) over the rows included in the SQL result after min_size filtering, include_static grouping, and top_n truncation of dynamic callstack groups. Static and preexisting groups are always included when include_static is true. Caller-side max_rows (-n) truncation happens after this percentage is computed. This is not all active memory in the snapshot."
         interpretation_limits:
           - "0-100 byte percentage despite the column name; not a share of block count."
           - "Changing include_static, min_size, or top_n changes the denominator."
+          - "Caller-side max_rows (-n) may return fewer rows than the denominator covers."

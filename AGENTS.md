@@ -6,8 +6,8 @@ facts here; user-facing behavior belongs in `README.md` and `docs/`.
 ## Project Scope
 
 `pt-snap-cli` is a Python 3.10+ package for importing, splitting, inspecting,
-and querying PyTorch memory snapshots. It exposes a Typer CLI, a Python API,
-and an MCP server over shared service-layer behavior.
+and querying PyTorch memory snapshots. It exposes a Typer CLI and a Python API
+over shared service-layer behavior.
 
 ## Development Commands
 
@@ -53,7 +53,6 @@ when they exist.
 | --- | --- | --- |
 | CLI | `src/pt_snap_cli/cli.py` via `pt_snap_cli.cli:_safe_call` | Typer commands for focus, import, split, metadata, query, reports, config, and skill install/list |
 | Python API | `src/pt_snap_cli/api.py` (`SnapshotAnalyzer`) | Programmatic focus, query, and metadata facade |
-| MCP | `src/pt_snap_cli/mcp/server.py` via `pt_snap_cli.mcp.server:main` | Agent tools/resources backed by `SnapshotAnalyzer` |
 | Product services | `src/pt_snap_cli/core/` | Shared focus, import, split, query, report, metadata, and error semantics |
 | Database access | `src/pt_snap_cli/context.py` | Read-only SQLite validation, connection management, and device discovery |
 | Query engine | `src/pt_snap_cli/query/` | YAML loading, registry, parameter validation, SQL rendering/execution, and result mapping |
@@ -66,12 +65,12 @@ templates under category subdirectories are included by
 
 ## Repository Invariants
 
-### CLI, API, and MCP
+### CLI and Python API
 
-- Keep normalized CLI and MCP behavior in shared API/core services; adapters may
-  format output differently but must not redefine focus, query, metadata, or
-  error semantics.
-- Update `tests/test_contract_cli_mcp.py` when a shared CLI/MCP capability or
+- Keep normalized CLI and `SnapshotAnalyzer` behavior in shared API/core
+  services; adapters may format output differently but must not redefine focus,
+  query, metadata, or error semantics.
+- Update `tests/test_contract_cli_api.py` when a shared CLI/API capability or
   normalized result changes.
 
 ### Focus and database selection
@@ -100,7 +99,7 @@ templates under category subdirectories are included by
   leave `callstack_layout` unset and fail only variant templates. Do not
   persist layout in `focus.json` or migrate databases on open.
 - When template metadata or behavior changes, review the YAML, config, registry,
-  executor, `core/query_service.py`, CLI/MCP presentation, and focused tests
+  executor, `core/query_service.py`, CLI/API presentation, and focused tests
   together.
 
 ### Agent skills
@@ -114,8 +113,7 @@ templates under category subdirectories are included by
   Agent Skills hosts) plus Claude's independent `~/.claude/skills` or
   `$CLAUDE_CONFIG_DIR/skills`. `--target cursor` and `--target codex` keep
   the host-native extras; `--dir` covers anything else. List reports
-  `installed`, `outdated`, or `missing`. Skill management is CLI-only and
-  is not exposed on the MCP server.
+  `installed`, `outdated`, or `missing`. Skill management is CLI-only.
 
 ### Snapshot import and split
 
@@ -140,7 +138,7 @@ templates under category subdirectories are included by
 | Focus precedence or persistence | `src/pt_snap_cli/config.py`, `src/pt_snap_cli/core/focus_service.py`, `src/pt_snap_cli/context.py` | `tests/test_config.py`, `tests/test_context.py`, `tests/core/test_focus_service.py` |
 | Context/executor caching | `src/pt_snap_cli/core/context_cache.py`, `src/pt_snap_cli/api.py`, `src/pt_snap_cli/core/query_service.py` | `tests/core/test_context_cache.py`, `tests/test_snapshot_analyzer_cache.py`, `tests/test_query_cache_perf.py` |
 | Query schema, SQL, or categories | `src/pt_snap_cli/query/`, `src/pt_snap_cli/core/query_service.py` | `tests/query/`, `tests/core/test_query_service.py` |
-| MCP or Python API behavior | `src/pt_snap_cli/api.py`, `src/pt_snap_cli/mcp/server.py` | `tests/test_api.py`, `tests/test_mcp_server.py`, `tests/test_contract_cli_mcp.py` |
+| Python API behavior | `src/pt_snap_cli/api.py` | `tests/test_api.py`, `tests/test_contract_cli_api.py` |
 | Snapshot import or metadata | `src/pt_snap_cli/core/import_service.py`, `src/pt_snap_cli/core/import_metadata.py`, `src/pt_snap_cli/core/snapshot_import_backend.py` | `tests/core/test_import_*.py`, `tests/test_snapshot_db.py` |
 | Snapshot splitting or replay | `src/pt_snap_cli/core/split_service.py`, `src/pt_snap_cli/snapshot/` | `tests/core/test_split_service.py`, `tests/snapshot/` |
 | Reports | `src/pt_snap_cli/core/report_service.py`, report commands in `src/pt_snap_cli/cli.py` | `tests/core/test_report_service.py`, report cases in `tests/test_cli.py` |

@@ -222,8 +222,6 @@ USER_INSTALL_DOCS = (
     Path("README_zh.md"),
     Path("docs/en/quickstart.md"),
     Path("docs/zh/quickstart.md"),
-    Path("docs/en/mcp.md"),
-    Path("docs/zh/mcp.md"),
 )
 PYPI_INSTALL = "pip install pt-snap-cli"
 EDITABLE_DEV_INSTALL = 'pip install -e ".[dev]"'

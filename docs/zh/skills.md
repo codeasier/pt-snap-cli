@@ -86,4 +86,4 @@ pt-snap skill uninstall --project --target cursor
 | `pt-snap-memory-peak-breakdown` | 解释峰值事件上的 active 内存 |
 | `pt-snap-memory-fragmentation` | 诊断分配器空洞和 reserved 池压力 |
 
-Skill 管理只通过 CLI 提供。MCP 服务器不负责安装、升级或卸载 skill。
+Skill 管理只通过 CLI 提供。

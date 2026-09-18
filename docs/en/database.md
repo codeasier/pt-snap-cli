@@ -339,7 +339,7 @@ on each `trace_entry_<device>` table and have no shared `callstack` table
 template name, parameter set, and output schema. The query engine selects v1 or
 v2 SQL from the detected layout. Other templates do not depend on this split.
 
-Detection is read-only: `focus`, `query`, reports, the Python API, and MCP all
+Detection is read-only: `focus`, `query`, reports, and the Python API all
 open the database with SQLite `mode=ro`. Layout is not stored in
 `.pt-snap/focus.json`. Conflicting columns, mixed devices, a damaged
 `callstack` table, or metadata that disagrees with the physical schema leave

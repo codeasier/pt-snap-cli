@@ -46,7 +46,7 @@ class SnapshotAnalyzer:
         self._device_id = device_id
         self._focus_service = FocusService(self._config)
         # Share one context cache across the analyzer so that long-lived
-        # analyzers (e.g. the MCP server singleton) reuse a single
+        # SnapshotAnalyzer instances reuse a single
         # SQLite connection and skip schema validation on every query.
         # Explicit ``is not None`` because an empty cache is falsy via
         # ``__len__`` and would be silently replaced otherwise.

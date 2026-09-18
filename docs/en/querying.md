@@ -98,8 +98,8 @@ pt-snap query --template-info allocation
 pt-snap query --template-use allocation --params '{"order_by": "reserved", "order_dir": "desc"}' -n 5
 ```
 
-The same rules apply to `SnapshotAnalyzer.execute_query()` and the MCP
-`execute_query` tool, which raise `TemplateRenderError` with the same message.
+The same rules apply to `SnapshotAnalyzer.execute_query()`, which raises
+`TemplateRenderError` with the same message.
 
 ## Peak Memory Attribution Workflow
 
@@ -217,17 +217,16 @@ Found 150 results, showing 2:
   ... and 148 more (use -n to show more)
 ```
 
-The "Found N" count is exact even when output is capped. Note that the MCP
-`execute_query` tool applies a default cap of 100 rows, unlike the CLI; see
-[MCP Server: Query Results and Row Limits](mcp.md#query-results-and-row-limits).
+The "Found N" count is exact even when output is capped. `SnapshotAnalyzer.execute_query()`
+defaults to `max_rows=None` (no cap), matching the CLI unless `-n` / `max_rows` is set.
 
-CLI, Python API, and MCP query results contain raw SQLite values. A template's
+CLI and Python API query results contain raw SQLite values. A template's
 `output_schema` is metadata and is not applied automatically during query
 execution. Use `ResultMapper` explicitly when converted values such as
 hexadecimal address strings are required. Result rows do not repeat field
 explanations; look up `semantics_version` and interpretation limits with
 `--template-info` (or `get_template_info`) for the template that produced the
-rows. The Python API and MCP `execute_query` results also include `template`
+rows. `SnapshotAnalyzer.execute_query()` results also include `template`
 and `semantics_version` so that lookup stays tied to the rows.
 
 ## Template Architecture

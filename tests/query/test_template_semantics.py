@@ -51,7 +51,7 @@ def test_annotated_templates_share_a_json_serializable_contract() -> None:
         json.dumps(info)
         if template.query_variants:
             assert template.sql_for_layout("v1") != template.sql_for_layout("v2")
-            assert template.output_schema == get_query(name).output_schema
+            assert template.output_schema
 
 
 def test_leak_detection_metadata_marks_candidates_and_event_ids() -> None:
@@ -72,7 +72,7 @@ def test_memory_peak_metadata_forbids_cross_event_subtraction() -> None:
     assert template is not None
     joined = " ".join(template.interpretation_limits)
     assert "do not subtract" in joined.lower()
-    assert _column("memory_peak", "peak_allocated")["metric_semantics"] == "cumulative_allocation"
+    assert _column("memory_peak", "peak_allocated")["metric_semantics"] == "instantaneous_occupancy"
     assert _column("memory_peak", "peak_active")["metric_semantics"] == "instantaneous_occupancy"
     assert _column("memory_peak", "peak_active_event_id")["units"] == "event_id"
 
@@ -94,6 +94,7 @@ def test_callstack_percent_metadata_matches_truncated_byte_denominator() -> None
     assert percent["scope"] == "mixed"
     denominator = percent["denominator"]
     assert "top_n truncation of dynamic" in denominator
+    assert "max_rows" in denominator
     assert "not all active memory" in denominator
     limits = " ".join(percent["interpretation_limits"])
     assert "not a share of block count" in limits

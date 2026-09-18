@@ -1,7 +1,7 @@
 """LRU cache for read-only SQLite ``Context`` instances.
 
-The cache exists so that long-lived owners (e.g. the MCP server, which keeps
-a single :class:`SnapshotAnalyzer` alive across many tool calls) can reuse a
+The cache exists so that long-lived owners (e.g. a long-lived
+:class:`~pt_snap_cli.api.SnapshotAnalyzer`) can reuse a
 single :class:`pt_snap_cli.context.Context` -- and its persistent read-only
 SQLite connection -- instead of paying the cost of ``dictionary`` schema
 validation, device discovery, and a fresh ``sqlite3.connect`` URI handshake on

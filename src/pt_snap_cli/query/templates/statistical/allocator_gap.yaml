@@ -76,7 +76,7 @@ queries:
       - column: peak_allocated
         type: int
         units: bytes
-        metric_semantics: cumulative_allocation
+        metric_semantics: instantaneous_occupancy
         scope: captured_range
       - column: active_at_allocated_peak
         type: int
@@ -113,7 +113,7 @@ queries:
       - column: allocated_at_active_peak
         type: int
         units: bytes
-        metric_semantics: cumulative_allocation
+        metric_semantics: instantaneous_occupancy
         scope: same_event
       - column: reserved_at_active_peak
         type: int
@@ -145,7 +145,7 @@ queries:
       - column: allocated_at_reserved_peak
         type: int
         units: bytes
-        metric_semantics: cumulative_allocation
+        metric_semantics: instantaneous_occupancy
         scope: same_event
       - column: active_at_reserved_peak
         type: int

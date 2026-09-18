@@ -4,7 +4,7 @@
 # en
 
 ## Purpose
-`docs/en` contains the English documentation set for installing and using `pt-snap-cli`, managing focus, querying and splitting snapshots, installing bundled agent skills, running the MCP server, understanding the SQLite schema, and using the high-level and result mapping Python APIs.
+`docs/en` contains the English documentation set for installing and using `pt-snap-cli`, managing focus, querying and splitting snapshots, installing bundled agent skills, understanding the SQLite schema, and using the high-level and result mapping Python APIs.
 
 ## Key Files
 | File | Description |
@@ -14,7 +14,6 @@
 | `querying.md` | Query listing, template info, parameter usage, result limits, and built-in templates. |
 | `splitting.md` | Snapshot slicing strategies, output formats, replay validation, and publication guarantees. |
 | `skills.md` | Bundled agent-skill listing, helper entry, install destinations, and status meanings. |
-| `mcp.md` | MCP server setup, tools, resources, prompts, and agent usage. |
 | `database.md` | Snapshot SQLite table/schema reference. |
 | `snapshot-analyzer-api.md` | High-level Python API for focus, template discovery, queries, and import metadata. |
 | `result-mapper-api.md` | Result mapping API documentation. |
@@ -41,7 +40,7 @@
 ## Dependencies
 
 ### Internal
-- CLI, MCP, query template, and schema details should be checked against `src/pt_snap_cli/` before editing.
+- CLI, query template, and schema details should be checked against `src/pt_snap_cli/` before editing.
 
 ### External
 - Markdown only.

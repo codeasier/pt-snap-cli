@@ -56,7 +56,7 @@ class QueryExecutor:
             autoescape=False,
         )
         # Cache of compiled Jinja templates keyed by template name so that
-        # long-lived executors (e.g. the MCP server) avoid re-parsing
+        # long-lived executors (e.g. a long-lived SnapshotAnalyzer) avoid re-parsing
         # identical template bodies on every query.
         self._compiled_cache: dict[tuple[str, str], Template] = {}
 

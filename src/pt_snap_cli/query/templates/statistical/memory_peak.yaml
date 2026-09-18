@@ -60,10 +60,10 @@ queries:
       - column: peak_allocated
         type: int
         units: bytes
-        metric_semantics: cumulative_allocation
+        metric_semantics: instantaneous_occupancy
         scope: captured_range
         interpretation_limits:
-          - "Maximum of the allocated counter in the filtered range, not a point-in-time occupancy."
+          - "Maximum of the allocated counter in the filtered range. Do not subtract this from a peak recorded at a different event."
       - column: peak_allocated_event_id
         type: int
         units: event_id

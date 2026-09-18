@@ -46,7 +46,7 @@ an isolated `HOME`, no network, a read-only project, read-only fixture mounts,
 and cleared focus environment variables.
 
 The gateway operation names are transport-independent. An adapter may implement
-them with a CLI wrapper, MCP server, or another local agent tool, but raw command
+them with a CLI wrapper or another local agent tool, but raw command
 spelling is not part of the grading contract.
 
 ## Run Record
