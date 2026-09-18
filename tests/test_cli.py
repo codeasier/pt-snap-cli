@@ -481,6 +481,28 @@ class TestQueryTemplateInfo:
         assert "  order_dir: str (optional) [choices: ASC, DESC] [default: ASC]" in output
         assert "  limit: int (optional) [default: -1]" in output
 
+    def test_template_info_example_uses_first_choice_when_str_has_no_default(
+        self, sample_db: Path
+    ) -> None:
+        from pt_snap_cli.query.config import QueryParameter
+
+        register_query(
+            QueryTemplate(
+                name="choice_example",
+                query="SELECT 1 ORDER BY {{ order_by }}",
+                parameters={
+                    "order_by": QueryParameter(name="order_by", type="str", choices=["id", "size"]),
+                },
+            )
+        )
+
+        result = runner.invoke(app, ["query", str(sample_db), "--template-info", "choice_example"])
+
+        assert result.exit_code == 0
+        output = unstyle(result.stdout)
+        assert '"order_by": "id"' in output
+        assert '"order_by": "example"' not in output
+
     def test_template_info_without_parameters(self, sample_db: Path) -> None:
         """Test template info with no parameters."""
         template = QueryTemplate(

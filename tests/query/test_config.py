@@ -74,6 +74,17 @@ class TestQueryParameter:
         param = QueryParameter(name="order_dir", type="str", default="ASC", choices=["ASC", "DESC"])
         assert param.validate(None) == "ASC"
 
+    def test_choices_default_is_canonicalized(self):
+        param = QueryParameter(
+            name="order_dir", type="str", default="desc", choices=["ASC", "DESC"]
+        )
+        assert param.default == "DESC"
+        assert param.validate(None) == "DESC"
+
+    def test_optional_choices_without_default_may_be_omitted(self):
+        param = QueryParameter(name="order_by", type="str", choices=["id", "size"])
+        assert param.validate(None) is None
+
     def test_choices_default_must_be_a_choice(self):
         with pytest.raises(ValueError, match="default 'name' is not one of its choices"):
             QueryParameter(name="order_by", type="str", default="name", choices=["id", "size"])

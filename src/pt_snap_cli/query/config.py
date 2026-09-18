@@ -30,10 +30,14 @@ class QueryParameter:
             return
         if not isinstance(self.choices, list) or not self.choices:
             raise ValueError(f"Parameter '{self.name}' choices must be a non-empty list")
-        if self.default is not None and self._match_choice(self.default) is None:
+        if self.default is None:
+            return
+        matched = self._match_choice(self.default)
+        if matched is None:
             raise ValueError(
                 f"Parameter '{self.name}' default {self.default!r} is not one of its choices"
             )
+        self.default = matched
 
     def _match_choice(self, value: Any) -> Any | None:
         """Return the canonical choice equal to ``value``, or None when not allowed."""

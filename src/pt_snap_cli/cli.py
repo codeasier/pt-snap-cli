@@ -462,9 +462,12 @@ def query_database(
                     param_details.default if param_details.default is not None else 0.0
                 )
             elif param_details.type == "str":
-                example_params[param_name] = (
-                    param_details.default if param_details.default is not None else "example"
-                )
+                if param_details.default is not None:
+                    example_params[param_name] = param_details.default
+                elif param_details.choices:
+                    example_params[param_name] = param_details.choices[0]
+                else:
+                    example_params[param_name] = "example"
             elif param_details.type == "bool":
                 example_params[param_name] = True
         if example_params:

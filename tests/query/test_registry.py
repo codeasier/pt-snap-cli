@@ -1,9 +1,14 @@
 """Tests for query registry."""
 
+from pathlib import Path
+
+import pytest
+
 from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.registry import (
     QueryRegistry,
     _load_all_templates,
+    _load_yaml_templates,
     get_query,
     get_template_info,
     list_by_category,
@@ -260,6 +265,32 @@ class TestListByCategory:
         assert (
             checked >= 8
         ), "expected order_by/order_dir on allocation, block, event, active_blocks"
+
+    def test_invalid_choices_yaml_is_warned_and_skipped(self, tmp_path: Path) -> None:
+        yaml_file = tmp_path / "broken_choices.yaml"
+        yaml_file.write_text(
+            "\n".join(
+                [
+                    'version: "1.0"',
+                    "queries:",
+                    "  broken_choices:",
+                    "    description: empty choices must not register",
+                    "    parameters:",
+                    "      order_dir:",
+                    "        type: str",
+                    "        default: ASC",
+                    "        choices: []",
+                    "    query: SELECT 1",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.warns(UserWarning, match="Failed to load query template from"):
+            _load_yaml_templates(tmp_path)
+
+        assert get_query("broken_choices") is None
 
     def test_template_info_exposes_choices(self):
         info = get_template_info("allocation")

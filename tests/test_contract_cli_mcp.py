@@ -278,17 +278,24 @@ def test_template_info_contract_matches_cli_and_mcp_semantics(
 ) -> None:
     cli_result = runner.invoke(
         app,
-        ["query", str(contract_db), "--template-info", "leak_detection"],
+        ["query", str(contract_db), "--template-info", "allocation"],
     )
     assert cli_result.exit_code == 0
-    assert "Category: business" in cli_result.stdout
-    assert "Devices: all, 0, 1" in cli_result.stdout
+    assert "Category: basic" in cli_result.stdout
+    assert "Devices: all" in cli_result.stdout
 
     server = _set_mcp_focus(mcp_server, contract_db)
     cli_info = _normalize_cli_template_info(cli_result.stdout)
-    mcp_info = server.get_template_info("leak_detection")
+    mcp_info = server.get_template_info("allocation")
 
     assert cli_info == mcp_info
+    assert cli_info["parameters"]["order_by"]["choices"] == [
+        "id",
+        "allocated",
+        "active",
+        "reserved",
+    ]
+    assert cli_info["parameters"]["order_dir"]["choices"] == ["ASC", "DESC"]
 
 
 def test_leak_detection_template_does_not_advertise_device_id(
