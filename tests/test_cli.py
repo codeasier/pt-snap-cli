@@ -10,7 +10,7 @@ import pytest
 from click import unstyle
 from typer.testing import CliRunner
 
-from pt_snap_cli.cli import app
+from pt_snap_cli.cli import AGENT_HELP_EPILOG, app
 from pt_snap_cli.query.config import QueryTemplate
 from pt_snap_cli.query.registry import QueryRegistry, register_query
 
@@ -212,6 +212,29 @@ class TestCLI:
         result = runner.invoke(app, ["-h"])
         assert result.exit_code == 0
         assert "PyTorch Memory Snapshot Analysis Tool" in result.stdout
+
+    def test_root_help_includes_agent_epilog(self) -> None:
+        for flag in ("--help", "-h"):
+            result = runner.invoke(app, [flag])
+            assert result.exit_code == 0
+            normalized = " ".join(unstyle(result.stdout).split())
+            assert AGENT_HELP_EPILOG in normalized
+            assert normalized.index(AGENT_HELP_EPILOG) > normalized.index(
+                "PyTorch Memory Snapshot Analysis Tool"
+            )
+
+    def test_json_output_excludes_agent_help_epilog(self) -> None:
+        listed = runner.invoke(app, ["skill", "list", "--json", "--user", "--target", "claude"])
+        assert listed.exit_code == 0
+        listed_out = unstyle(listed.stdout)
+        assert "Agents: prefer --json where supported" not in listed_out
+        payload = json.loads(listed.stdout)
+        names = {item["name"] for item in payload["skills"]}
+        assert "pt-snap-helper" in names
+
+        version = runner.invoke(app, ["--version"])
+        assert version.exit_code == 0
+        assert "Agents: prefer --json where supported" not in unstyle(version.stdout)
 
     def test_subcommand_short_help_flag(self) -> None:
         """Test -h flag for subcommands."""
@@ -1245,6 +1268,7 @@ class TestSkillCommands:
         payload = json.loads(listed.stdout)
         names = {item["name"] for item in payload["skills"]}
         assert "pt-snap-setup" in names
+        assert "pt-snap-helper" in names
         setup = next(item for item in payload["skills"] if item["name"] == "pt-snap-setup")
         assert setup["status"] == "missing"
         assert setup["description"]

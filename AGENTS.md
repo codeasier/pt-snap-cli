@@ -45,7 +45,7 @@ when they exist.
 | Package source | [src/AGENTS.md](src/AGENTS.md) | Installable package boundaries and source-layout rules |
 | Tests | [tests/AGENTS.md](tests/AGENTS.md) | Cross-surface contracts, service/query/runtime suites, and reviewed executable fixtures |
 | Benchmarks | [benchmarks/AGENTS.md](benchmarks/AGENTS.md) | Import and SQLite performance measurement with temporary outputs |
-| Agent skills | [skills/AGENTS.md](skills/AGENTS.md) | Installation approval, Ascend NPU collection, and read-only memory-diagnostic workflows |
+| Agent skills | [skills/AGENTS.md](skills/AGENTS.md) | Helper routing, installation approval, Ascend NPU collection, and read-only memory-diagnostic workflows |
 
 ## Runtime Topology
 

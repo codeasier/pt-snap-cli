@@ -13,7 +13,7 @@
 | `focus-management.md` | Chinese guide to focus resolution and persistence. |
 | `querying.md` | Chinese guide to query templates, parameters, and output. |
 | `splitting.md` | Chinese guide to snapshot slicing, formats, replay validation, and publication. |
-| `skills.md` | Chinese guide to bundled agent-skill listing and installation. |
+| `skills.md` | Chinese guide to bundled agent-skill listing, helper entry, and installation. |
 | `mcp.md` | Chinese MCP server setup and tool reference. |
 | `database.md` | Chinese snapshot SQLite schema reference. |
 | `snapshot-analyzer-api.md` | Chinese guide to the high-level focus, query, and metadata Python API. |

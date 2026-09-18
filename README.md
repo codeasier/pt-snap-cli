@@ -66,6 +66,8 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 | `pt-snap skill` | List and install bundled agent skills |
 | `pt-snap-mcp` | Start the MCP server for agent integration |
 
+`pt-snap --help` includes an agent hint: prefer `--json` where supported, start with the `pt-snap-helper` skill, and check availability with `pt-snap skill list --json`.
+
 ## MCP Server
 
 `pt-snap-cli` provides an MCP (Model Context Protocol) server so AI agents can interact with PyTorch memory snapshots programmatically.

@@ -2,7 +2,7 @@
 
 [中文](../zh/skills.md) | English
 
-`pt-snap-cli` ships agent skills for setup, Ascend NPU collection, and memory diagnostics. The `pt-snap skill` commands copy those skills into the shared Agent Skills directory and into host-specific directories that Claude Code still requires.
+`pt-snap-cli` ships agent skills for routing (`pt-snap-helper`), setup, Ascend NPU collection, and memory diagnostics. Agents should start with `pt-snap-helper` and prefer `--json` on commands that currently support it. The `pt-snap skill` commands copy those skills into the shared Agent Skills directory and into host-specific directories that Claude Code still requires.
 
 ## List skills
 
@@ -79,6 +79,7 @@ After an install, upgrade, or uninstall that changes skill files, restart the ag
 
 | Skill | Use when |
 |-------|----------|
+| `pt-snap-helper` | Choosing the next skill from the user goal and input type |
 | `pt-snap-setup` | Installing or verifying `pt-snap-cli` in the active Python environment |
 | `pt-snap-ascend-npu-collect` | Collecting an Ascend NPU memory snapshot pickle |
 | `pt-snap-memory-leak` | Diagnosing live allocations and leak candidates in a SnapshotDB |

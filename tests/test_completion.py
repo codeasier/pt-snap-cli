@@ -95,6 +95,7 @@ class TestCompleteSkillNames:
     def test_returns_bundled_skills(self) -> None:
         result = complete_skill_names()
         assert "pt-snap-setup" in result
+        assert "pt-snap-helper" in result
         assert result == sorted(result)
 
 
