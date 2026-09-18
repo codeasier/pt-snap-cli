@@ -56,6 +56,7 @@ def _baseline(args: argparse.Namespace) -> int:
     summary = summarize_metrics(suite.id, rows)
     payload = json.dumps(summary.to_mapping(), indent=2, sort_keys=True)
     if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(payload + "\n")
     print(payload)
     return 0

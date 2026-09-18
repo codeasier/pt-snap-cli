@@ -106,7 +106,7 @@ def test_agent_cli_gateway_allows_import_and_denies_pickle_access() -> None:
 def test_baseline_cli_writes_metrics(tmp_path: Path, monkeypatch, capsys) -> None:
     from tests.skills import __main__ as skills_main
 
-    output = tmp_path / "metrics.json"
+    output = tmp_path / "baselines" / "pre-change.json"
     monkeypatch.setattr(
         "sys.argv",
         [
@@ -125,4 +125,7 @@ def test_baseline_cli_writes_metrics(tmp_path: Path, monkeypatch, capsys) -> Non
     assert payload == printed
     assert payload["task_success_rate"] == 0.0
     assert payload["error_conclusion_rate"] == 0.8571
+    assert payload["mean_output_bytes"] > 0
+    case_bytes = [case["output_bytes"] for case in payload["cases"]]
+    assert payload["mean_output_bytes"] == round(sum(case_bytes) / len(case_bytes), 4)
     assert [case["case_id"] for case in payload["cases"]] == list(CASE_IDS)
