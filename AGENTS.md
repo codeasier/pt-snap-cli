@@ -98,6 +98,12 @@ templates under category subdirectories are included by
   `QueryExecutor` selects the matching SQL. Conflicting or damaged layouts
   leave `callstack_layout` unset and fail only variant templates. Do not
   persist layout in `focus.json` or migrate databases on open.
+- Field semantics (`units`, `metric_semantics`, `scope`, `denominator`,
+  `sentinel`, `interpretation_limits`) and template-level `semantics_version`
+  ride the same YAML → config → registry → core → CLI/API path as `choices`.
+  Do not add a second schema. `semantics_version` is distinct from YAML
+  `version` and SnapshotDB / callstack layout; v1/v2 SQL variants share one
+  contract. Unannotated templates remain valid with `column`/`type` only.
 - When template metadata or behavior changes, review the YAML, config, registry,
   executor, `core/query_service.py`, CLI/API presentation, and focused tests
   together.

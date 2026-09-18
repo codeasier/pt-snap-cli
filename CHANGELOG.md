@@ -2,16 +2,43 @@
 
 ## [0.4.0] - Unreleased
 
-本次发布将 Agent 集成入口统一到 bundled skills 与 CLI，并关闭 MCP 产品面。这是 0.x 阶段的 breaking 变更。
+相对 v0.3.0：关闭 MCP 产品面，Agent 集成入口收敛到 bundled skills 与 CLI；并补上 helper 引导技能、查询参数白名单，以及易误读字段的语义元数据。本段覆盖 `v0.3.0` 之后已合入 `main` 的全部用户可见变更。
 
 ### 破坏性变更
 
-- 移除 `pt-snap-mcp` 控制台入口、`src/pt_snap_cli/mcp/` 与核心依赖 `mcp`。安装 `pt-snap-cli`（无 extra）后依赖树不再包含 `mcp`、`starlette` 或 `uvicorn`。
+- 移除 `pt-snap-mcp` 控制台入口、`src/pt_snap_cli/mcp/` 与核心依赖 `mcp`。安装 `pt-snap-cli`（无 extra）后依赖树不再包含 `mcp`、`starlette` 或 `uvicorn`；发布的 console script 只剩 `pt-snap`。
 - Agent 集成改为 skills + `pt-snap` CLI。`SnapshotAnalyzer` Python API 保留；`execute_query()` 默认仍为 `max_rows=None`（不截断），缺模板时 `get_template_info()` 仍返回 `None`。
+- 删除从未被代码使用的可选依赖组 `rag`（`chromadb` / `langchain`）。`dev` 现在是唯一 extra；`pip install "pt-snap-cli[rag]"` 不再有效。
+
+### 新增
+
+- 新增 `pt-snap-helper` 引导技能，并在 `pt-snap --help` 末尾加入 Agent 提示（优先使用已支持的 `--json`，用 `pt-snap skill list --json` 检查技能）。helper 只读路由，不自动安装包、导入 pickle 或改写 focus；随包分发走 `pt-snap skill`。
+- `--template-info` 与 `get_template_info()` 展示参数 `choices`。`order_by` / `order_dir` 等会写入 SQL 标识符或关键字的参数必须声明封闭取值列表；字符串 `choices` 大小写不敏感，并规范化为声明拼写（如 `desc` → `DESC`）。
+- `output_schema` 可声明字段语义（`units`、`metric_semantics`、`scope`、`denominator`、`sentinel`、`interpretation_limits`），查询级可声明 `semantics_version` 与解释限制。`--template-info` 与 `get_template_info()` 透出同一份契约。`execute_query()` 结果增加 `template` 与 `semantics_version`，行数据仍为原始 SQLite 值。优先覆盖 `leak_detection`、`memory_peak`、`allocator_gap`、`active_memory_callstack_at_event`。
+- `leak_detection` 的对外描述改为「捕获范围内无释放完成记录的候选」，不再写成已确认泄漏。
+
+### 修复
+
+- `query --template-info` 在模板不存在时走与其他 CLI 失败相同的 `_error()` 路径，退出码为 1（此前 `typer.Exit()` 默认 0）。
+- 未声明的 `--params` 键不再静默进入渲染上下文（例如 `min_sze` 不再当成未过滤结果）；查询在渲染 SQL 前失败，并列出已接受参数名。
+- `allocation` / `block` / `event` / `active_blocks_at_event` 的 `order_by`、`order_dir` 不再接受任意 SQL 片段；非法取值在进数据库前被拒绝，而不再以 SQLite syntax error 暴露。
+
+### 移除
+
+- 删除 `QueryExecutor` 中从未匹配到分类子目录模板的非递归加载路径；打包 YAML 只由 `query.registry` 递归加载。运行时仍可用 `load_config()` / `register_template()` 显式挂模板。
+
+### 稳定性与工程
+
+- 增加 Agent CLI 端到端评估基线（`tests/skills/suites/pt-snap-agent-e2e`），记录当前 CLI 行为，供后续改造对比；不改变产品 CLI/API。
+- 原 CLI/MCP 跨表面契约测试改写为 CLI ↔ `SnapshotAnalyzer`，文件名为 `tests/test_contract_cli_api.py`。
 
 ### 兼容性提示
 
 - 已配置 `pt-snap-mcp` 或 MCP 客户端的调用方需改用 CLI、bundled skills 或 Python API。历史 CHANGELOG 中的 MCP 条目仅作记录，不再对应已发布入口。
+- 依赖 `pt-snap-cli[rag]` 的安装命令会失败；该 extra 从未启用任何功能。
+- 拼错或多余的查询参数、以及不在 `choices` 内的 `order_by` / `order_dir` 现在会报错，而不再静默得到错误结果或 SQLite 语法错误。
+- 用户自写查询模板若在 `output_schema` 列上使用未登记键，加载会失败；仅含 `column`/`type` 的旧模板仍然有效。`execute_query()` 返回字典新增 `template`、`semantics_version` 键。
+- 本版本未扩展 `--json` 覆盖面。当前支持 `--json` 的是 `metadata`、`report peak-memory`，以及 `skill list` / `install` / `upgrade` / `uninstall`。`query`、`focus`、`import`、`split`、`config` 仍无 `--json`；`--template-info` 的机器可读形态仍是结构化 API dict 与 CLI 文本。
 
 ## [0.3.0] - 2026-09-17
 
