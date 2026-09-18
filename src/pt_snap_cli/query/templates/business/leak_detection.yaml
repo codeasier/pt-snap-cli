@@ -1,7 +1,7 @@
 version: "1.0"
 queries:
   leak_detection:
-    description: Detect memory leaks by finding allocations without free events
+    description: Find captured allocations with no recorded free-completion event (leak candidates)
     devices:
       - all
       - "0"
@@ -17,6 +17,10 @@ queries:
         default: -1
         required: false
         description: Maximum rows to return (-1 for unlimited). Mirrored from the caller-side ``max_rows`` for SQL pushdown.
+    semantics_version: 1
+    interpretation_limits:
+      - "Rows are candidates still without a free-completion event in the captured range; end-of-trace survival is not a confirmed leak."
+      - "Event IDs and ID distances are ordering markers, not elapsed time."
     query: |
       SELECT id, address, size, allocEventId
       FROM {{ device_block_table }}
@@ -27,9 +31,23 @@ queries:
     output_schema:
       - column: id
         type: int
+        metric_semantics: identifier
       - column: address
         type: hex
+        units: address
+        metric_semantics: identifier
+        interpretation_limits:
+          - "The same address can be reused by later allocations; address equality is not allocation identity."
       - column: size
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: dynamic
       - column: allocEventId
         type: int
+        units: event_id
+        metric_semantics: ordering_marker
+        sentinel: -1
+        interpretation_limits:
+          - "Points to the captured allocation event. This template keeps only allocEventId >= 0, so the uncaptured sentinel -1 is excluded."
+          - "Event IDs are ordering markers, not timestamps."

@@ -152,8 +152,12 @@ def test_attribution_caveats_prevent_reserved_and_static_overclaim() -> None:
     assert "Attribution always describes blocks active at the selected event" in skill
     assert "when the selected event is the allocated or reserved peak" in normalized
     assert "It does not assign reserved/cache bytes" in skill
-    assert "`percent_of_active_blocks` is a byte percentage despite its name" in skill
-    assert "Excluding static memory changes the percentage denominator" in skill
+    assert (
+        "Interpret `percent_of_active_blocks` using `--template-info active_memory_callstack_at_event`"
+        in skill
+    )
+    assert "Do not infer a block-count share from the column name" in skill
+    assert "`percent_of_active_blocks` is a byte percentage despite its name" not in skill
     assert (
         "Keep `static`, `preexisting_live_at_event`, and `dynamic_live_at_event`\n  groups separate"
         in skill

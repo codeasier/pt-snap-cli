@@ -209,6 +209,8 @@ def get_template_info(name: str) -> dict[str, Any] | None:
             for param_name, param in template.parameters.items()
         },
         "output_schema": template.output_schema,
+        "semantics_version": template.semantics_version,
+        "interpretation_limits": template.interpretation_limits,
         "query": template.query,
     }
 

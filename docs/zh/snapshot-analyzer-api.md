@@ -76,7 +76,12 @@ if info is not None:
 
 `list_templates()` 返回包含 `name`、`description` 和 `category` 的字典。
 `get_template_info()` 返回完整模板 metadata；仅当指定模板不存在时返回 `None`，registry
-内部错误会继续向调用方抛出。
+内部错误会继续向调用方抛出。返回值包含 `parameters`、`output_schema`、
+`semantics_version` 和 `interpretation_limits`。`semantics_version` 是字段解释契约，
+有别于 YAML `version` 以及 SnapshotDB schema / callstack 布局。未标注的模板
+`semantics_version` 为 `null`，列上只有 `column`/`type`；已标注列还可包含
+`units`、`metric_semantics`、`scope`、`denominator`、`sentinel` 以及字段级
+`interpretation_limits`。该字典可直接 JSON 序列化。
 
 ## 执行查询
 
@@ -101,7 +106,9 @@ for row in result["rows"]:
 | `total` | 限制显示行数前产生的结果总数 |
 | `returned` | `rows` 中实际返回的行数 |
 | `device_id` | 本次执行选择的设备 |
-| `rows` | 字典形式的查询行 |
+| `rows` | 字典形式的查询行（原始 SQLite 值，不含长说明） |
+| `template` | 产生这些行的模板名 |
+| `semantics_version` | 通过 `get_template_info()` 查阅的解释契约，未声明时为 `None` |
 
 向 `execute_query()` 传入 `device_id` 可以仅覆盖本次调用的 analyzer 设备。否则依次使用
 analyzer 设备；未设置显式 analyzer 数据库时，再使用已解析项目或全局 focus 的设备；

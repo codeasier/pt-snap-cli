@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -112,7 +113,13 @@ class QueryService:
                 )
                 for param_name, param_details in info["parameters"].items()
             },
-            output_schema=info["output_schema"],
+            output_schema=copy.deepcopy(info["output_schema"]),
+            semantics_version=info.get("semantics_version"),
+            interpretation_limits=(
+                [str(item) for item in info["interpretation_limits"]]
+                if isinstance(info.get("interpretation_limits"), list)
+                else []
+            ),
         )
 
     def execute_query(
@@ -150,11 +157,14 @@ class QueryService:
                 raise TemplateNotFoundError(f"Template '{template}' not found") from exc
             raise QueryExecutionError(str(exc)) from exc
 
+        template_obj = get_query(template)
         return QueryResult(
             total=total,
             returned=len(rows),
             device_id=target_device,
             rows=rows,
+            template=template,
+            semantics_version=template_obj.semantics_version if template_obj is not None else None,
         )
 
     def _get_executor(self, ctx: Context) -> QueryExecutor:

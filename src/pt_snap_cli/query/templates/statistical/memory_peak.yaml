@@ -4,6 +4,11 @@ queries:
     description: Get peak memory metrics from trace events with corresponding event IDs
     devices:
       - all
+    semantics_version: 1
+    interpretation_limits:
+      - "Each peak is the maximum of that counter in the filtered event range; ties resolve to the earliest event ID."
+      - "Peaks of allocated, active, and reserved may occur at different events; do not subtract them as if they were simultaneous."
+      - "Event IDs are ordering markers, not elapsed time."
     parameters:
       start_id:
         type: int
@@ -54,13 +59,37 @@ queries:
     output_schema:
       - column: peak_allocated
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: captured_range
+        interpretation_limits:
+          - "Maximum of the allocated counter in the filtered range. Do not subtract this from a peak recorded at a different event."
       - column: peak_allocated_event_id
         type: int
+        units: event_id
+        metric_semantics: ordering_marker
+        scope: captured_range
       - column: peak_active
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: captured_range
+        interpretation_limits:
+          - "Maximum of the active counter in the filtered range. Do not subtract this from a peak recorded at a different event."
       - column: peak_active_event_id
         type: int
+        units: event_id
+        metric_semantics: ordering_marker
+        scope: captured_range
       - column: peak_reserved
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: captured_range
+        interpretation_limits:
+          - "Maximum of the reserved counter in the filtered range. A large reserved value is not itself fragmentation."
       - column: peak_reserved_event_id
         type: int
+        units: event_id
+        metric_semantics: ordering_marker
+        scope: captured_range

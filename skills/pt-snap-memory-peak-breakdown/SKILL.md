@@ -192,10 +192,7 @@ their event ID carries the range selection forward.
 - It does not assign reserved/cache bytes, allocator gaps, or inactive allocated
   bytes to callstacks. A large gap is evidence of counter separation at one
   event, not proof of fragmentation, caching policy, or an OOM cause.
-- `percent_of_active_blocks` is a byte percentage despite its name. It is based
-  on `size_bytes`, not block count.
-- Excluding static memory changes the percentage denominator. State the
-  inclusion choice whenever percentages are reported.
+- Interpret `percent_of_active_blocks` using `--template-info active_memory_callstack_at_event` (units, denominator, and limits). Do not infer a block-count share from the column name. State the `include_static` choice whenever percentages are reported.
 
 ### Static, preexisting, and dynamic memory
 

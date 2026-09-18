@@ -82,7 +82,14 @@ if info is not None:
 
 `list_templates()` returns dictionaries containing `name`, `description`, and
 `category`. `get_template_info()` returns full template metadata or `None` only
-when the named template does not exist; registry failures are propagated.
+when the named template does not exist; registry failures are propagated. The
+payload includes `parameters`, `output_schema`, `semantics_version`, and
+`interpretation_limits`. `semantics_version` is the field-interpretation
+contract and is distinct from YAML `version` and the SnapshotDB schema /
+callstack layout. Unannotated templates use `semantics_version: null` and
+`column`/`type` only; annotated columns may also declare `units`,
+`metric_semantics`, `scope`, `denominator`, `sentinel`, and per-field
+`interpretation_limits`. The dict is JSON-serializable.
 
 ## Execute Queries
 
@@ -107,7 +114,9 @@ The result contains:
 | `total` | Number of rows produced before display limiting |
 | `returned` | Number of rows included in `rows` |
 | `device_id` | Device selected for execution |
-| `rows` | Query rows as dictionaries |
+| `rows` | Query rows as dictionaries (raw SQLite values, without long field explanations) |
+| `template` | Template that produced the rows |
+| `semantics_version` | Interpretation contract to look up via `get_template_info()`, or `None` |
 
 Pass `device_id` to `execute_query()` to override the analyzer's device for one
 call. Otherwise selection uses the analyzer device, then the device from resolved

@@ -45,7 +45,7 @@ class ResultMapper:
     def map(
         self,
         row: dict[str, Any],
-        schema: list[dict[str, str]] | None = None,
+        schema: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Map a single row according to schema.
 
@@ -79,7 +79,7 @@ class ResultMapper:
     def map_all(
         self,
         rows: list[dict[str, Any]],
-        schema: list[dict[str, str]] | None = None,
+        schema: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         """Map all rows according to schema.
 
@@ -136,7 +136,7 @@ _default_mapper = ResultMapper()
 
 def map_result(
     row: dict[str, Any],
-    schema: list[dict[str, str]] | None = None,
+    schema: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Map a result row using default mapper.
 
@@ -152,7 +152,7 @@ def map_result(
 
 def map_results(
     rows: list[dict[str, Any]],
-    schema: list[dict[str, str]] | None = None,
+    schema: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Map all result rows using default mapper.
 

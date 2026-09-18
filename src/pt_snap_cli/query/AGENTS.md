@@ -25,7 +25,8 @@
 ## For AI Agents
 
 ### Working In This Directory
-- When changing template behavior, check YAML templates, `config.py`, `registry.py`, `executor.py`, and CLI template metadata output together.
+- When changing template behavior, check YAML templates, `config.py`, `registry.py`, `executor.py`, and CLI template metadata output together. Field semantics ride the same YAML → config → registry → core → API/CLI path as `choices`; do not add a second schema.
+- `semantics_version` is independent of YAML `version` and SnapshotDB schema / callstack layout. v1/v2 SQL variants share one semantic contract.
 - Keep SQL value filters parameterized where using builder/condition APIs.
 - Device-specific template SQL should use injected table names such as `device_trace_table` and `device_block_table`.
 - Keep direct `QueryParameter` validation errors local; `QueryExecutor` must normalize them to its `TemplateRenderError` before the core boundary.

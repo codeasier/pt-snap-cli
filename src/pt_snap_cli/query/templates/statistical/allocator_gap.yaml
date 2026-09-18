@@ -4,6 +4,11 @@ queries:
     description: Compare allocated, active, and reserved peak events and same-event gaps
     devices:
       - all
+    semantics_version: 1
+    interpretation_limits:
+      - "Gaps are computed from counters at the same peak event. A reserved-active gap is not itself fragmentation."
+      - "Allocated, active, and reserved may peak at different events; use the same-event flags before comparing across metrics."
+      - "Event IDs are ordering markers, not elapsed time."
     parameters:
       start_id:
         type: int
@@ -65,45 +70,113 @@ queries:
     output_schema:
       - column: peak_allocated_event_id
         type: int
+        units: event_id
+        metric_semantics: ordering_marker
+        scope: captured_range
       - column: peak_allocated
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: captured_range
       - column: active_at_allocated_peak
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: same_event
       - column: reserved_at_allocated_peak
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: same_event
       - column: reserved_active_gap_at_allocated_peak
         type: int
+        units: bytes
+        metric_semantics: same_event_gap
+        scope: same_event
+        interpretation_limits:
+          - "Same-event reserved minus active at the allocated peak. Not a direct fragmentation measurement."
       - column: reserved_allocated_gap_at_allocated_peak
         type: int
+        units: bytes
+        metric_semantics: same_event_gap
+        scope: same_event
       - column: peak_active_event_id
         type: int
+        units: event_id
+        metric_semantics: ordering_marker
+        scope: captured_range
       - column: peak_active
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: captured_range
       - column: allocated_at_active_peak
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: same_event
       - column: reserved_at_active_peak
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: same_event
       - column: reserved_active_gap_at_active_peak
         type: int
+        units: bytes
+        metric_semantics: same_event_gap
+        scope: same_event
+        interpretation_limits:
+          - "Same-event reserved minus active at the active peak. Not a direct fragmentation measurement."
       - column: reserved_allocated_gap_at_active_peak
         type: int
+        units: bytes
+        metric_semantics: same_event_gap
+        scope: same_event
       - column: peak_reserved_event_id
         type: int
+        units: event_id
+        metric_semantics: ordering_marker
+        scope: captured_range
       - column: peak_reserved
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: captured_range
       - column: allocated_at_reserved_peak
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: same_event
       - column: active_at_reserved_peak
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: same_event
       - column: reserved_active_gap_at_reserved_peak
         type: int
+        units: bytes
+        metric_semantics: same_event_gap
+        scope: same_event
+        interpretation_limits:
+          - "Same-event reserved minus active at the reserved peak. Not a direct fragmentation measurement."
       - column: reserved_allocated_gap_at_reserved_peak
         type: int
+        units: bytes
+        metric_semantics: same_event_gap
+        scope: same_event
       - column: all_peaks_same_event
         type: int
+        units: flag
+        metric_semantics: classification
       - column: allocated_active_same_event
         type: int
+        units: flag
+        metric_semantics: classification
       - column: active_reserved_same_event
         type: int
+        units: flag
+        metric_semantics: classification
       - column: allocated_reserved_same_event
         type: int
+        units: flag
+        metric_semantics: classification
