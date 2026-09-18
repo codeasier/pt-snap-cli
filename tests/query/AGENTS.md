@@ -20,6 +20,7 @@
 | `test_callstack_schema_compat.py` | Tests v1/v2 callstack layout detection and dual-schema template results. |
 | `test_query_max_rows_pushdown.py` | Executes packaged leak/callstack templates against SQLite and tests SQL limit pushdown and stable ordering. |
 | `test_registry.py` | Tests template registration, lookup, category listing, and registry reset behavior. |
+| `test_template_semantics.py` | Tests packaged field-semantics metadata, JSON serializability, and unannotated-template compatibility. |
 
 ## Subdirectories
 | Directory | Purpose |

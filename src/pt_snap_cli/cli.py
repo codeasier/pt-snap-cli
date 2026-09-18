@@ -9,7 +9,7 @@ import textwrap
 from collections.abc import Mapping
 from dataclasses import asdict
 from pathlib import Path
-from typing import Annotated, Literal, NoReturn, cast
+from typing import Annotated, Any, Literal, NoReturn, cast
 
 import typer
 
@@ -87,6 +87,30 @@ def _focus_service() -> FocusService:
 
 def _query_service() -> QueryService:
     return QueryService(_focus_service())
+
+
+_OUTPUT_SCHEMA_DETAIL_KEYS = (
+    "units",
+    "metric_semantics",
+    "scope",
+    "denominator",
+    "sentinel",
+    "interpretation_limits",
+)
+
+
+def _echo_output_schema_column(column: Mapping[str, Any]) -> None:
+    typer.echo(f"  {column['column']}: {column['type']}")
+    for key in _OUTPUT_SCHEMA_DETAIL_KEYS:
+        if key not in column:
+            continue
+        value = column[key]
+        if key == "interpretation_limits":
+            typer.echo("    interpretation_limits:")
+            for item in value:
+                typer.echo(f"      - {item}")
+        else:
+            typer.echo(f"    {key}: {value}")
 
 
 def _skill_service() -> SkillService:
@@ -371,7 +395,7 @@ def query_database(
         str | None,
         typer.Option(
             "--template-info",
-            help="Show detailed information about a template (including parameters and output schema)",
+            help="Show detailed information about a template (including parameters, output schema, and field semantics)",
             autocompletion=complete_template_names,
         ),
     ] = None,
@@ -427,6 +451,10 @@ def query_database(
         typer.echo(f"Description: {info.description}")
         typer.echo(f"Category: {info.category}")
         typer.echo(f"Devices: {info.devices}")
+        typer.echo(
+            "Semantics Version: "
+            f"{info.semantics_version if info.semantics_version is not None else 'none'}"
+        )
         typer.echo()
         typer.echo("Parameters:")
         if info.parameters:
@@ -453,9 +481,14 @@ def query_database(
         typer.echo("Output Schema:")
         if info.output_schema:
             for col in info.output_schema:
-                typer.echo(f"  {col['column']}: {col['type']}")
+                _echo_output_schema_column(col)
         else:
             typer.echo("  Dynamic (depends on query)")
+        if info.interpretation_limits:
+            typer.echo()
+            typer.echo("Interpretation Limits:")
+            for limit in info.interpretation_limits:
+                typer.echo(f"  - {limit}")
         typer.echo()
         typer.echo("Example Usage:")
         example_params = {}

@@ -321,3 +321,94 @@ queries:
     def test_load_yaml_file_not_found(self):
         with pytest.raises(FileNotFoundError):
             QueryConfig.load_yaml("/nonexistent/path.yaml")
+
+
+class TestTemplateSemantics:
+    def test_from_dict_omits_undeclared_semantics(self):
+        template = QueryTemplate.from_dict(
+            {
+                "name": "legacy",
+                "query": "SELECT 1",
+                "output_schema": [{"column": "id", "type": "int"}],
+            }
+        )
+        assert template.semantics_version is None
+        assert template.interpretation_limits == []
+        assert template.output_schema == [{"column": "id", "type": "int"}]
+
+    def test_from_dict_loads_field_and_template_semantics(self):
+        template = QueryTemplate.from_dict(
+            {
+                "name": "annotated",
+                "query": "SELECT 1",
+                "semantics_version": 1,
+                "interpretation_limits": ["Candidates are not confirmed leaks."],
+                "output_schema": [
+                    {
+                        "column": "percent_of_active_blocks",
+                        "type": "float",
+                        "units": "percent",
+                        "metric_semantics": "share_of_included_rows",
+                        "scope": "mixed",
+                        "denominator": "SUM(size_bytes) over returned rows",
+                        "interpretation_limits": ["Byte percentage despite the column name."],
+                    },
+                    {
+                        "column": "allocEventId",
+                        "type": "int",
+                        "units": "event_id",
+                        "metric_semantics": "ordering_marker",
+                        "sentinel": -1,
+                    },
+                ],
+            }
+        )
+        assert template.semantics_version == 1
+        assert template.interpretation_limits == ["Candidates are not confirmed leaks."]
+        percent = template.output_schema[0]
+        assert percent["units"] == "percent"
+        assert percent["denominator"] == "SUM(size_bytes) over returned rows"
+        assert percent["interpretation_limits"] == ["Byte percentage despite the column name."]
+        assert template.output_schema[1]["sentinel"] == -1
+
+    def test_from_dict_rejects_unknown_output_schema_key(self):
+        with pytest.raises(ValueError, match="unsupported keys: mystery"):
+            QueryTemplate.from_dict(
+                {
+                    "name": "bad",
+                    "query": "SELECT 1",
+                    "output_schema": [{"column": "id", "type": "int", "mystery": "x"}],
+                }
+            )
+
+    def test_from_dict_rejects_invalid_units(self):
+        with pytest.raises(ValueError, match="units must be one of"):
+            QueryTemplate.from_dict(
+                {
+                    "name": "bad",
+                    "query": "SELECT 1",
+                    "output_schema": [{"column": "id", "type": "int", "units": "milliseconds"}],
+                }
+            )
+
+    def test_from_dict_rejects_non_int_sentinel(self):
+        with pytest.raises(ValueError, match="sentinel must be an integer"):
+            QueryTemplate.from_dict(
+                {
+                    "name": "bad",
+                    "query": "SELECT 1",
+                    "output_schema": [
+                        {"column": "id", "type": "int", "sentinel": "-1"},
+                    ],
+                }
+            )
+
+    def test_from_dict_rejects_invalid_semantics_version(self):
+        with pytest.raises(ValueError, match="positive integer"):
+            QueryTemplate.from_dict({"name": "bad", "query": "SELECT 1", "semantics_version": 0})
+
+    def test_from_dict_rejects_empty_interpretation_limits(self):
+        with pytest.raises(ValueError, match="non-empty list of strings"):
+            QueryTemplate.from_dict(
+                {"name": "bad", "query": "SELECT 1", "interpretation_limits": []}
+            )

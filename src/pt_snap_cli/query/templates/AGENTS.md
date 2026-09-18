@@ -23,6 +23,8 @@
 ### Working In This Directory
 - Keep each YAML template's `queries` entry name aligned with the file/topic and documented template name.
 - Include accurate parameter defaults, required flags, descriptions, and output schema entries.
+- Field semantics (`units`, `metric_semantics`, `scope`, `denominator`, `sentinel`, `interpretation_limits`) and template-level `semantics_version` / `interpretation_limits` are optional and validated by `QueryTemplate.from_dict`. Omit them on templates that do not yet declare an interpretation contract. v1/v2 SQL variants must share one `output_schema`.
+- `semantics_version` is the field-interpretation contract, distinct from YAML `version` and SnapshotDB schema / callstack layout.
 - Any parameter rendered as a SQL identifier or keyword (`order_by`, `order_dir`, or similar) must declare `choices`; `order_by` choices must be columns present in `output_schema`. `tests/query/test_registry.py` enforces this for packaged templates. Empty `choices`, a non-list `choices`, or a default outside the list raise at `QueryParameter` construction; `_load_yaml_templates` warns and skips that YAML file, so the template is absent rather than listed.
 - Callers cannot pass undeclared parameters; `QueryTemplate.validate_params()` rejects unknown names, so declare every input the SQL reads.
 - Use Jinja variables provided by `QueryExecutor`, especially device-specific table names.

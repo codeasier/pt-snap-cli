@@ -157,9 +157,15 @@ def _normalize_cli_template_list(output: str) -> list[dict[str, str]]:
 
 
 def _normalize_cli_template_info(output: str) -> dict[str, object]:
-    info: dict[str, object] = {"parameters": {}, "output_schema": []}
+    info: dict[str, object] = {
+        "parameters": {},
+        "output_schema": [],
+        "semantics_version": None,
+        "interpretation_limits": [],
+    }
     section: str | None = None
     current_param: str | None = None
+    current_column: dict[str, object] | None = None
 
     for raw_line in output.splitlines():
         line = raw_line.rstrip()
@@ -172,12 +178,21 @@ def _normalize_cli_template_info(output: str) -> dict[str, object]:
             info["category"] = stripped.removeprefix("Category: ")
         elif stripped.startswith("Devices: "):
             info["devices"] = stripped.removeprefix("Devices: ")
+        elif stripped.startswith("Semantics Version: "):
+            text = stripped.removeprefix("Semantics Version: ")
+            info["semantics_version"] = None if text == "none" else int(text)
         elif stripped == "Parameters:":
             section = "parameters"
+            current_column = None
         elif stripped == "Output Schema:":
             section = "output_schema"
+            current_column = None
+        elif stripped == "Interpretation Limits:":
+            section = "template_interpretation_limits"
+            current_column = None
         elif stripped == "Example Usage:":
             section = None
+            current_column = None
         elif section == "parameters" and line.startswith("  ") and not line.startswith("    "):
             name, metadata = stripped.split(": ", 1)
             param_type = metadata.split(" ", 1)[0]
@@ -200,13 +215,32 @@ def _normalize_cli_template_info(output: str) -> dict[str, object]:
             current_param = name
         elif section == "parameters" and current_param and line.startswith("    "):
             info["parameters"][current_param]["description"] = stripped
+        elif section == "output_schema" and stripped == "Dynamic (depends on query)":
+            continue
+        elif section == "output_schema" and line.startswith("      - "):
+            assert current_column is not None
+            limits = current_column.setdefault("interpretation_limits", [])
+            assert isinstance(limits, list)
+            limits.append(stripped[2:])
         elif (
-            section == "output_schema"
-            and line.startswith("  ")
-            and stripped != "Dynamic (depends on query)"
+            section == "output_schema" and line.startswith("    ") and not line.startswith("     ")
         ):
+            assert current_column is not None
+            if stripped.endswith(":") and ": " not in stripped:
+                current_column[stripped[:-1]] = []
+            else:
+                key, value = stripped.split(": ", 1)
+                current_column[key] = _coerce_cli_default(value) if key == "sentinel" else value
+        elif section == "output_schema" and line.startswith("  ") and not line.startswith("    "):
             column, column_type = stripped.split(": ", 1)
-            info["output_schema"].append({"column": column, "type": column_type})
+            current_column = {"column": column, "type": column_type}
+            schema = info["output_schema"]
+            assert isinstance(schema, list)
+            schema.append(current_column)
+        elif section == "template_interpretation_limits" and stripped.startswith("- "):
+            limits = info["interpretation_limits"]
+            assert isinstance(limits, list)
+            limits.append(stripped[2:])
 
     return info
 
@@ -218,6 +252,18 @@ def _normalize_cli_query_result(output: str, device_id: int) -> dict[str, object
     returned = int(header.split("showing ", 1)[1].split(":", 1)[0])
     rows = [ast.literal_eval(line.strip()) for line in lines[1:] if line.startswith("  {")]
     return {"total": total, "returned": returned, "device_id": device_id, "rows": rows}
+
+
+def _assert_query_execution_contract(
+    cli_query: dict[str, object],
+    mcp_query: dict[str, object],
+    template: str,
+    semantics_version: int | None,
+) -> None:
+    shared = {key: mcp_query[key] for key in ("total", "returned", "device_id", "rows")}
+    assert cli_query == shared
+    assert mcp_query["template"] == template
+    assert mcp_query["semantics_version"] == semantics_version
 
 
 def _normalize_cli_missing_template(output: str) -> dict[str, str]:
@@ -289,6 +335,9 @@ def test_template_info_contract_matches_cli_and_mcp_semantics(
     mcp_info = server.get_template_info("allocation")
 
     assert cli_info == mcp_info
+    json.dumps(mcp_info)
+    assert cli_info["semantics_version"] is None
+    assert cli_info["interpretation_limits"] == []
     assert cli_info["parameters"]["order_by"]["choices"] == [
         "id",
         "allocated",
@@ -296,6 +345,30 @@ def test_template_info_contract_matches_cli_and_mcp_semantics(
         "reserved",
     ]
     assert cli_info["parameters"]["order_dir"]["choices"] == ["ASC", "DESC"]
+
+
+def test_template_semantics_contract_matches_cli_and_mcp(
+    contract_db: Path, mcp_server: ModuleType
+) -> None:
+    """Issue #141: field units and interpretation limits pass through unchanged."""
+    server = _set_mcp_focus(mcp_server, contract_db)
+    for name in (
+        "leak_detection",
+        "memory_peak",
+        "allocator_gap",
+        "active_memory_callstack_at_event",
+    ):
+        cli_result = runner.invoke(
+            app,
+            ["query", str(contract_db), "--template-info", name],
+        )
+        assert cli_result.exit_code == 0, cli_result.stdout
+        cli_info = _normalize_cli_template_info(cli_result.stdout)
+        mcp_info = server.get_template_info(name)
+        assert cli_info == mcp_info
+        json.dumps(mcp_info)
+        assert mcp_info["semantics_version"] == 1
+        assert mcp_info["interpretation_limits"]
 
 
 def test_leak_detection_template_does_not_advertise_device_id(
@@ -352,7 +425,7 @@ def test_query_execution_contract_matches_cli_and_mcp_semantics(
         "leak_detection", params=params, device_id=device_id, max_rows=0
     )
 
-    assert cli_query == mcp_query
+    _assert_query_execution_contract(cli_query, mcp_query, "leak_detection", 1)
 
 
 def test_event_query_contract_reads_v1_inline_callstack(
@@ -391,7 +464,7 @@ def test_event_query_contract_reads_v1_inline_callstack(
     cli_query = _normalize_cli_query_result(cli_result.stdout, device_id=1)
     mcp_query = server.execute_query("event", params={"id": 1}, device_id=1, max_rows=0)
 
-    assert cli_query == mcp_query
+    _assert_query_execution_contract(cli_query, mcp_query, "event", None)
     assert mcp_query["rows"][0]["callstack"] == "train.py:10"
 
 

@@ -130,4 +130,6 @@ def test_memory_leak_skill_interprets_percent_column_as_byte_share() -> None:
     skill = SKILL_PATH.read_text()
 
     assert "share of included active bytes" in skill
-    assert "byte share (`size_bytes / total size_bytes`) despite its name" in skill
+    assert "--template-info active_memory_callstack_at_event" in skill
+    assert "rather than inferring them from the column name" in skill
+    assert "byte share (`size_bytes / total size_bytes`) despite its name" not in skill

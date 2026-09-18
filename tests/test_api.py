@@ -1,5 +1,6 @@
 """Tests for the high-level SnapshotAnalyzer API."""
 
+import json
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -208,6 +209,22 @@ class TestSnapshotAnalyzerWithDB:
         assert info is not None
         assert info["name"] == "leak_detection"
         assert "description" in info
+        assert info["semantics_version"] == 1
+        assert info["interpretation_limits"]
+        json.dumps(info)
+        alloc = next(
+            column for column in info["output_schema"] if column["column"] == "allocEventId"
+        )
+        assert alloc["units"] == "event_id"
+        assert alloc["sentinel"] == -1
+
+    def test_get_template_info_legacy_template_omits_semantics(self) -> None:
+        analyzer = SnapshotAnalyzer()
+        info = analyzer.get_template_info("allocation")
+        assert info is not None
+        assert info["semantics_version"] is None
+        assert info["interpretation_limits"] == []
+        assert info["output_schema"][0] == {"column": "id", "type": "int"}
 
     def test_get_template_info_not_found(self) -> None:
         analyzer = SnapshotAnalyzer()
@@ -242,6 +259,8 @@ class TestSnapshotAnalyzerWithDB:
         assert "returned" in result
         assert "device_id" in result
         assert "rows" in result
+        assert result["template"] == "leak_detection"
+        assert result["semantics_version"] == 1
         assert isinstance(result["rows"], list)
 
     def test_execute_query_max_rows_zero(self, valid_db: Path) -> None:

@@ -28,7 +28,7 @@ pt-snap-mcp
 | `get_focus` | 获取当前分析焦点（数据库路径、设备 ID、来源） |
 | `set_focus` | 设置焦点到指定数据库和可选设备。运行查询前使用。 |
 | `list_templates` | 列出可用的查询模板，可按类别筛选 |
-| `get_template_info` | 获取模板详情，包括参数信息 |
+| `get_template_info` | 获取模板详情，包括参数、输出 schema 和字段语义 |
 | `execute_query` | 对焦点数据库执行查询模板。最多返回 `max_rows` 行（默认 **100**；传 `0` 表示不限制）。见[查询结果与行数限制](#查询结果与行数限制)。 |
 | `get_database_metadata` | 查看焦点或指定数据库的导入来源 metadata |
 
@@ -85,6 +85,8 @@ get_database_metadata()
 | `returned` | `rows` 中实际包含的行数。 |
 | `device_id` | 查询实际使用的设备（显式 `device_id`，否则为焦点设备，否则为数据库中的第一个设备）。 |
 | `rows` | 结果行，每行是原始 SQLite 值组成的字典。 |
+| `template` | 产生这些行的模板名。 |
+| `semantics_version` | 通过 `get_template_info` 查阅的字段解释契约；未声明时为 `null`。 |
 
 **MCP 的默认值是 `max_rows=100`，与 CLI 不同。** `pt-snap query` 在没有 `-n` 时
 显示全部行；MCP 工具则限制输出，避免大结果集撑爆 agent 的上下文。把

@@ -561,6 +561,17 @@ class TestQueryTemplateInfo:
         assert result.exit_code == 0
         assert "Output Schema:" in result.stdout
         assert "Dynamic" in result.stdout
+        assert "Semantics Version: none" in result.stdout
+
+    def test_template_info_shows_packaged_semantics(self, sample_db: Path) -> None:
+        result = runner.invoke(app, ["query", str(sample_db), "--template-info", "leak_detection"])
+        output = unstyle(result.stdout)
+        assert result.exit_code == 0
+        assert "Semantics Version: 1" in output
+        assert "units: event_id" in output
+        assert "sentinel: -1" in output
+        assert "Interpretation Limits:" in output
+        assert "not a confirmed leak" in output
 
     def test_focus_database_success(self, sample_db: Path) -> None:
         """Test 'focus' command writes project focus by default."""

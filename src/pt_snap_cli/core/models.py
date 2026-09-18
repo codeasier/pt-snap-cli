@@ -89,7 +89,9 @@ class TemplateInfo:
     category: str | None
     devices: str | None
     parameters: dict[str, TemplateParameter]
-    output_schema: list[dict[str, str]] | None
+    output_schema: list[dict[str, Any]] | None
+    semantics_version: int | None = None
+    interpretation_limits: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,8 @@ class QueryResult:
     returned: int
     device_id: int | None
     rows: list[dict[str, Any]]
+    template: str | None = None
+    semantics_version: int | None = None
 
 
 @dataclass(frozen=True)

@@ -223,6 +223,7 @@ class TestListByCategory:
         assert info is not None
         assert "min_size" in info["parameters"]
         assert "device_id" not in info["parameters"]
+        assert info["semantics_version"] == 1
 
     def test_block_template_schema_includes_every_selected_column(self):
         info = get_template_info("block")

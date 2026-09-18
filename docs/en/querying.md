@@ -22,7 +22,7 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 | `--device` | Device ID |
 | `--list` | List available query templates |
 | `--category` | Filter templates by category: `basic`, `statistical`, `business` |
-| `--template-info` | Show template details (parameters and output schema) |
+| `--template-info` | Show template details (parameters, output schema, and field semantics) |
 | `-n` | Maximum displayed rows; zero or a negative value means unlimited |
 
 ## Query Templates
@@ -60,7 +60,7 @@ Domain-specific analysis.
 
 | Template | Description |
 |----------|-------------|
-| `leak_detection` | Find allocations without matching free events |
+| `leak_detection` | Find captured allocations with no recorded free-completion event (leak candidates) |
 | `active_memory_callstack_at_event` | Aggregate blocks active at a specific event by allocation callstack, with static and preexisting memory classified separately |
 
 ## Leak Detection
@@ -71,6 +71,9 @@ pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 
 `min_size` is the minimum candidate size in bytes and defaults to `0`. Select
 the target device with the command-level `--device` option, not inside `--params`.
+`leak_detection` returns candidates that were still live in the captured range,
+not confirmed leaks. Read field units and interpretation limits with
+`pt-snap query --template-info leak_detection`.
 
 ## Parameter Validation
 
@@ -221,14 +224,26 @@ The "Found N" count is exact even when output is capped. Note that the MCP
 CLI, Python API, and MCP query results contain raw SQLite values. A template's
 `output_schema` is metadata and is not applied automatically during query
 execution. Use `ResultMapper` explicitly when converted values such as
-hexadecimal address strings are required.
+hexadecimal address strings are required. Result rows do not repeat field
+explanations; look up `semantics_version` and interpretation limits with
+`--template-info` (or `get_template_info`) for the template that produced the
+rows. The Python API and MCP `execute_query` results also include `template`
+and `semantics_version` so that lookup stays tied to the rows.
 
 ## Template Architecture
 
 Query templates are defined in YAML format with:
-- `version`: Template version
+- `version`: YAML file format version, not the field-semantics contract and not the SnapshotDB schema version
 - `queries`: Query definitions with description, supported devices, parameters, SQL (Jinja2 templated), and output schema
 - Each parameter declares `type`, `default`, `required`, `description`, and optionally `choices`, a closed list of accepted values that is mandatory for parameters rendered as SQL identifiers or keywords
+- Optional `semantics_version` (positive integer) and `interpretation_limits` on the query, plus optional field keys on each `output_schema` entry: `units`, `metric_semantics`, `scope`, `denominator`, `sentinel`, and `interpretation_limits`
+- `semantics_version` is the interpretation contract agents should cite. v1/v2 SQL variants of the same template share that contract. Templates that omit it remain valid; their `output_schema` still has `column` and `type` only
+
+Closed vocabularies:
+
+- `units`: `bytes`, `gib`, `percent`, `event_id`, `count`, `address`, `flag`, `text`
+- `metric_semantics`: `instantaneous_occupancy`, `cumulative_allocation`, `peak`, `same_event_gap`, `share_of_included_rows`, `identifier`, `classification`, `ordering_marker`
+- `scope`: `dynamic`, `static`, `preexisting`, `mixed`, `captured_range`, `same_event`. Use `mixed` when a column contains more than one of those per row (see `category` on `active_memory_callstack_at_event`)
 
 When passed explicitly to `ResultMapper`, recognized mapping types are `int`,
 `float`, `str`, `bool`, `hex`, and `datetime`; `datetime` is currently a

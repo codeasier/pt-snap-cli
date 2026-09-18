@@ -1,0 +1,102 @@
+"""Packaged query template semantic metadata."""
+
+from __future__ import annotations
+
+import json
+
+from pt_snap_cli.query.registry import (
+    QueryRegistry,
+    _load_all_templates,
+    get_query,
+    get_template_info,
+)
+
+
+def setup_function() -> None:
+    QueryRegistry.reset()
+    _load_all_templates()
+
+
+_ANNOTATED = (
+    "leak_detection",
+    "memory_peak",
+    "allocator_gap",
+    "active_memory_callstack_at_event",
+)
+
+
+def _column(template_name: str, column: str) -> dict[str, object]:
+    template = get_query(template_name)
+    assert template is not None
+    match = next(item for item in template.output_schema if item["column"] == column)
+    return match
+
+
+def test_legacy_templates_remain_loadable_without_semantics() -> None:
+    info = get_template_info("allocation")
+    assert info is not None
+    assert info["semantics_version"] is None
+    assert info["interpretation_limits"] == []
+    assert info["output_schema"][0] == {"column": "id", "type": "int"}
+
+
+def test_annotated_templates_share_a_json_serializable_contract() -> None:
+    for name in _ANNOTATED:
+        template = get_query(name)
+        assert template is not None
+        assert template.semantics_version == 1
+        assert template.interpretation_limits
+        info = get_template_info(name)
+        assert info is not None
+        json.dumps(info)
+        if template.query_variants:
+            assert template.sql_for_layout("v1") != template.sql_for_layout("v2")
+            assert template.output_schema == get_query(name).output_schema
+
+
+def test_leak_detection_metadata_marks_candidates_and_event_ids() -> None:
+    template = get_query("leak_detection")
+    assert template is not None
+    joined = " ".join(template.interpretation_limits)
+    assert "not a confirmed leak" in joined
+    alloc = _column("leak_detection", "allocEventId")
+    assert alloc["units"] == "event_id"
+    assert alloc["sentinel"] == -1
+    assert alloc["metric_semantics"] == "ordering_marker"
+    address = _column("leak_detection", "address")
+    assert "not allocation identity" in " ".join(address["interpretation_limits"])
+
+
+def test_memory_peak_metadata_forbids_cross_event_subtraction() -> None:
+    template = get_query("memory_peak")
+    assert template is not None
+    joined = " ".join(template.interpretation_limits)
+    assert "do not subtract" in joined.lower()
+    assert _column("memory_peak", "peak_allocated")["metric_semantics"] == "cumulative_allocation"
+    assert _column("memory_peak", "peak_active")["metric_semantics"] == "instantaneous_occupancy"
+    assert _column("memory_peak", "peak_active_event_id")["units"] == "event_id"
+
+
+def test_allocator_gap_metadata_is_same_event_not_fragmentation() -> None:
+    template = get_query("allocator_gap")
+    assert template is not None
+    joined = " ".join(template.interpretation_limits)
+    assert "not itself fragmentation" in joined
+    gap = _column("allocator_gap", "reserved_active_gap_at_active_peak")
+    assert gap["metric_semantics"] == "same_event_gap"
+    assert gap["units"] == "bytes"
+
+
+def test_callstack_percent_metadata_matches_truncated_byte_denominator() -> None:
+    percent = _column("active_memory_callstack_at_event", "percent_of_active_blocks")
+    assert percent["units"] == "percent"
+    assert percent["metric_semantics"] == "share_of_included_rows"
+    assert percent["scope"] == "mixed"
+    denominator = percent["denominator"]
+    assert "top_n truncation of dynamic" in denominator
+    assert "not all active memory" in denominator
+    limits = " ".join(percent["interpretation_limits"])
+    assert "not a share of block count" in limits
+    category = _column("active_memory_callstack_at_event", "category")
+    assert category["scope"] == "mixed"
+    assert "Per-row scope" in " ".join(category["interpretation_limits"])

@@ -166,6 +166,9 @@ class TestMCPToolFunctions:
         info = server_mod.get_template_info("leak_detection")
         assert "name" in info
         assert "parameters" in info
+        assert info["semantics_version"] == 1
+        assert info["interpretation_limits"]
+        json.dumps(info)
 
     def test_get_template_info_not_found(self) -> None:
         """Test get_template_info handles missing template."""
@@ -186,6 +189,8 @@ class TestMCPToolFunctions:
         assert "returned" in result
         assert "device_id" in result
         assert "rows" in result
+        assert result["template"] == "leak_detection"
+        assert result["semantics_version"] == 1
 
     def test_execute_query_default_max_rows_caps_rows_but_keeps_exact_total(
         self, valid_db: Path

@@ -67,6 +67,8 @@ class TestQueryService:
         assert result.device_id == 0
         assert result.total == 2
         assert result.returned == 2
+        assert result.template == "size_query"
+        assert result.semantics_version is None
 
     def test_execute_query_explicit_device_zero_wins(self, sample_db: Path) -> None:
         config = Config()

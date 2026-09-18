@@ -4,6 +4,12 @@ queries:
     description: Aggregate active memory blocks at an event by allocation callstack, including static memory classification
     devices:
       - all
+    semantics_version: 1
+    interpretation_limits:
+      - "Rows mix dynamic, static, and preexisting groups. Use the category column for per-row scope; do not label the whole result as dynamic."
+      - "percent_of_active_blocks is a 0-100 byte percentage of the returned rows after min_size, include_static, and top_n truncation of dynamic groups, not of all active memory and not of block counts."
+      - "Static and preexisting groups have no captured allocation callstack."
+      - "Event IDs are ordering markers, not elapsed time."
     parameters:
       event_id:
         type: int
@@ -196,17 +202,48 @@ queries:
     output_schema:
       - column: callstack
         type: str
+        units: text
+        metric_semantics: identifier
+        scope: mixed
+        interpretation_limits:
+          - "Static and preexisting groups use synthetic labels rather than a captured allocation callstack. Dynamic rows may be '[missing callstack]' when the alloc event has no callstack."
       - column: category
         type: str
+        units: text
+        metric_semantics: classification
+        scope: mixed
+        interpretation_limits:
+          - "Per-row scope: dynamic_live_at_event, static, or preexisting_live_at_event."
       - column: block_count
         type: int
+        units: count
+        scope: mixed
       - column: size_bytes
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: mixed
       - column: size_gib
         type: float
+        units: gib
+        metric_semantics: instantaneous_occupancy
+        scope: mixed
       - column: requested_bytes
         type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: mixed
       - column: requested_gib
         type: float
+        units: gib
+        metric_semantics: instantaneous_occupancy
+        scope: mixed
       - column: percent_of_active_blocks
         type: float
+        units: percent
+        metric_semantics: share_of_included_rows
+        scope: mixed
+        denominator: "SUM(size_bytes) over the returned rows after min_size filtering, include_static grouping, and top_n truncation of dynamic callstack groups. Static and preexisting groups are always included when include_static is true. This is not all active memory in the snapshot."
+        interpretation_limits:
+          - "0-100 byte percentage despite the column name; not a share of block count."
+          - "Changing include_static, min_size, or top_n changes the denominator."

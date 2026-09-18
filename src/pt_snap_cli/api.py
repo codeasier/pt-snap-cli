@@ -137,6 +137,8 @@ class SnapshotAnalyzer:
                 for param_name, param in info.parameters.items()
             },
             "output_schema": info.output_schema,
+            "semantics_version": info.semantics_version,
+            "interpretation_limits": info.interpretation_limits,
         }
 
     def execute_query(
@@ -161,6 +163,8 @@ class SnapshotAnalyzer:
             "returned": result.returned,
             "device_id": result.device_id,
             "rows": result.rows,
+            "template": result.template,
+            "semantics_version": result.semantics_version,
         }
 
     def get_database_metadata(self, db_path: str | None = None) -> dict[str, Any]:

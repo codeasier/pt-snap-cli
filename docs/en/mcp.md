@@ -29,7 +29,7 @@ This starts a FastMCP server that exposes tools for analyzing PyTorch memory sna
 | `get_focus` | Get the current analysis focus (database path, device ID, source) |
 | `set_focus` | Set focus to a database and optional device. Use before running queries. |
 | `list_templates` | List available query templates, optionally filtered by category |
-| `get_template_info` | Get detailed information about a template including parameters |
+| `get_template_info` | Get detailed information about a template including parameters, output schema, and field semantics |
 | `execute_query` | Execute a query template against the focused database. Returns at most `max_rows` rows (default **100**; pass `0` for unlimited). See [Query Results and Row Limits](#query-results-and-row-limits). |
 | `get_database_metadata` | Inspect import provenance for the focused or specified database |
 
@@ -86,6 +86,8 @@ get_database_metadata()
 | `returned` | Number of rows actually included in `rows`. |
 | `device_id` | The device the query ran against (explicit `device_id`, else the focused device, else the first device in the database). |
 | `rows` | The result rows as dictionaries of raw SQLite values. |
+| `template` | Template that produced the rows. |
+| `semantics_version` | Field-interpretation contract to look up with `get_template_info`, or `null`. |
 
 **The MCP default is `max_rows=100`, which differs from the CLI.** `pt-snap query`
 shows every row unless `-n` is given; the MCP tool caps output so a large result

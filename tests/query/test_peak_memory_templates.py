@@ -390,3 +390,17 @@ def test_allocator_gap_reports_peak_events_and_same_event_gaps(peak_memory_db: P
     assert row["active_reserved_same_event"] == 0
     assert row["reserved_active_gap_at_active_peak"] == 2560
     assert row["reserved_active_gap_at_reserved_peak"] == 7168
+
+
+def test_callstack_percent_metadata_describes_truncated_denominator() -> None:
+    """The percent column metadata must match the SQL that top_n already covers."""
+    template = get_query("active_memory_callstack_at_event")
+    assert template is not None
+    percent = next(
+        column
+        for column in template.output_schema
+        if column["column"] == "percent_of_active_blocks"
+    )
+    assert percent["units"] == "percent"
+    assert "top_n truncation of dynamic" in percent["denominator"]
+    assert percent["scope"] == "mixed"

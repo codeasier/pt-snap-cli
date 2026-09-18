@@ -96,7 +96,7 @@ Run an initial ranked query, keeping the result bounded while retaining the repo
 pt-snap query '<db_path>' --device <device_id> --template-use leak_detection --params '{"min_size":<min_size>}' -n 100
 ```
 
-`leak_detection` includes only dynamic blocks with a recorded allocation and no recorded free completion. It intentionally excludes static blocks whose allocation predates tracing.
+`leak_detection` includes only dynamic blocks with a recorded allocation and no recorded free completion. It intentionally excludes static blocks whose allocation predates tracing. Interpret its columns from `pt-snap query --template-info leak_detection`; do not treat candidates as confirmed leaks.
 
 Record candidate count, largest sizes, addresses, and allocation event IDs. Do not infer simultaneous live bytes by summing cumulative allocation activity from `callstack_analysis`.
 
@@ -108,7 +108,7 @@ Use the final event ID from Step 1:
 pt-snap query '<db_path>' --device <device_id> --template-use active_memory_callstack_at_event --params '{"event_id":<final_event_id>,"include_static":true,"min_size":0,"top_n":20}'
 ```
 
-Keep static memory separate from dynamic live memory. Rank dynamic groups by `size_bytes`, then compare block count, requested bytes, and each group's share of included active bytes. The `percent_of_active_blocks` column is a byte share (`size_bytes / total size_bytes`) despite its name; it is not the share of block count. A group containing many small blocks can be important even when no individual block appears near the top of `leak_detection`.
+Keep static memory separate from dynamic live memory. Rank dynamic groups by `size_bytes`, then compare block count, requested bytes, and each group's share of included active bytes. Read `percent_of_active_blocks` units, denominator, and interpretation limits from `pt-snap query --template-info active_memory_callstack_at_event` rather than inferring them from the column name. A group containing many small blocks can be important even when no individual block appears near the top of `leak_detection`.
 
 ### 4. Compare occupancy at the active peak
 

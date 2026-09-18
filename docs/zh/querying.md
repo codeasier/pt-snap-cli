@@ -22,7 +22,7 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 | `--device` | 设备 ID |
 | `--list` | 列出可用的查询模板 |
 | `--category` | 按分类过滤模板：`basic`、`statistical`、`business` |
-| `--template-info` | 显示模板详情（参数和输出 schema） |
+| `--template-info` | 显示模板详情（参数、输出 schema 和字段语义） |
 | `-n` | 最大显示行数；零或负数表示不限制 |
 
 ## 查询模板
@@ -60,7 +60,7 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 
 | 模板 | 说明 |
 |------|------|
-| `leak_detection` | 查找未匹配释放事件的分配 |
+| `leak_detection` | 查找已采集分配且没有释放完成记录的候选（不是已确认泄漏） |
 | `active_memory_callstack_at_event` | 对某个事件时刻的活跃内存块按分配调用栈做聚合，并单独标识静态与 preexisting 内存 |
 
 ## 泄漏检测
@@ -70,7 +70,9 @@ pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 ```
 
 `min_size` 表示候选泄漏的最小字节数，默认值为 `0`。目标设备应通过命令级
-`--device` 选项指定，而不是放进 `--params`。
+`--device` 选项指定，而不是放进 `--params`。`leak_detection` 返回的是捕获范围内
+仍存活的候选，不是已确认泄漏。用 `pt-snap query --template-info leak_detection`
+读取字段单位与解释限制。
 
 ## 参数校验
 
@@ -212,14 +214,25 @@ Found 150 results, showing 2:
 
 CLI、Python API 和 MCP 的查询结果包含原始 SQLite 值。模板的 `output_schema`
 只是 metadata，查询执行时不会自动应用。需要十六进制地址字符串等转换值时，
-应显式调用 `ResultMapper`。
+应显式调用 `ResultMapper`。结果行不重复字段说明；用 `--template-info`
+（或 `get_template_info`）按产生这些行的模板查阅 `semantics_version` 与解释限制。
+Python API 和 MCP 的 `execute_query` 结果还包含 `template` 与 `semantics_version`，
+便于把行与契约对应起来。
 
 ## 模板架构
 
 查询模板使用 YAML 格式定义，包含：
-- `version`: 模板版本
+- `version`: YAML 文件格式版本，既不是字段语义契约，也不是 SnapshotDB schema 版本
 - `queries`: 查询定义，包含描述、支持的设备、参数、SQL（Jinja2 模板语法）和输出 schema
 - 每个参数声明 `type`、`default`、`required`、`description`，以及可选的 `choices`（允许取值的封闭列表；会被渲染为 SQL 标识符或关键字的参数必须声明它）
+- 查询可选声明 `semantics_version`（正整数）和 `interpretation_limits`；`output_schema` 各列还可声明 `units`、`metric_semantics`、`scope`、`denominator`、`sentinel`、`interpretation_limits`
+- `semantics_version` 是 Agent 应引用的解释契约。同一模板的 v1/v2 SQL 变体共享该契约。未声明时模板仍有效，`output_schema` 只保留 `column` 与 `type`
+
+封闭词表：
+
+- `units`：`bytes`、`gib`、`percent`、`event_id`、`count`、`address`、`flag`、`text`
+- `metric_semantics`：`instantaneous_occupancy`、`cumulative_allocation`、`peak`、`same_event_gap`、`share_of_included_rows`、`identifier`、`classification`、`ordering_marker`
+- `scope`：`dynamic`、`static`、`preexisting`、`mixed`、`captured_range`、`same_event`。一列按行混合多种范围时用 `mixed`（见 `active_memory_callstack_at_event` 的 `category`）
 
 显式传给 `ResultMapper` 时，可识别的映射类型包括 `int`、`float`、`str`、
 `bool`、`hex` 和 `datetime`；当前 `datetime` 只是透传声明，不执行解析。

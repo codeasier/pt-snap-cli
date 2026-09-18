@@ -10,6 +10,42 @@ import yaml
 
 _CALLSTACK_VARIANTS = ("v1", "v2")
 
+# Field/template interpretation contract, independent of YAML ``version`` and
+# SnapshotDB schema / callstack layout. v1/v2 SQL variants share one contract.
+_OUTPUT_COLUMN_REQUIRED = ("column", "type")
+_OUTPUT_COLUMN_OPTIONAL = (
+    "units",
+    "metric_semantics",
+    "scope",
+    "denominator",
+    "sentinel",
+    "interpretation_limits",
+)
+_OUTPUT_COLUMN_KEYS = frozenset(_OUTPUT_COLUMN_REQUIRED + _OUTPUT_COLUMN_OPTIONAL)
+OUTPUT_SCHEMA_UNITS = frozenset(
+    {"bytes", "gib", "percent", "event_id", "count", "address", "flag", "text"}
+)
+OUTPUT_SCHEMA_METRIC_SEMANTICS = frozenset(
+    {
+        "instantaneous_occupancy",
+        "cumulative_allocation",
+        "peak",
+        "same_event_gap",
+        "share_of_included_rows",
+        "identifier",
+        "classification",
+        "ordering_marker",
+    }
+)
+OUTPUT_SCHEMA_SCOPES = frozenset(
+    {"dynamic", "static", "preexisting", "mixed", "captured_range", "same_event"}
+)
+_ENUM_FIELDS = {
+    "units": OUTPUT_SCHEMA_UNITS,
+    "metric_semantics": OUTPUT_SCHEMA_METRIC_SEMANTICS,
+    "scope": OUTPUT_SCHEMA_SCOPES,
+}
+
 
 @dataclass
 class QueryParameter:
@@ -105,8 +141,13 @@ class QueryTemplate:
     parameters: dict[str, QueryParameter] = field(default_factory=dict)
     query: str = ""
     query_variants: dict[str, str] = field(default_factory=dict)
-    output_schema: list[dict[str, str]] = field(default_factory=list)
+    output_schema: list[dict[str, Any]] = field(default_factory=list)
     category: str = "basic"
+    # Interpretation contract for agents. Distinct from YAML ``version`` and
+    # SnapshotDB schema / callstack layout; omitted on templates that have not
+    # declared field semantics yet.
+    semantics_version: int | None = None
+    interpretation_limits: list[str] = field(default_factory=list)
 
     def sql_for_layout(self, layout: str | None) -> str | None:
         """Return SQL for a detected callstack layout.
@@ -195,9 +236,107 @@ class QueryTemplate:
             parameters=parameters,
             query=query,
             query_variants=query_variants,
-            output_schema=data.get("output_schema", []),
+            output_schema=_parse_output_schema(template_name, data.get("output_schema")),
             category=data.get("category") or default_category or "basic",
+            semantics_version=_parse_semantics_version(
+                template_name, data.get("semantics_version")
+            ),
+            interpretation_limits=_parse_interpretation_limits(
+                f"template '{template_name}'", data.get("interpretation_limits")
+            ),
         )
+
+
+def _parse_semantics_version(template_name: str, raw: Any) -> int | None:
+    if raw is None:
+        return None
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
+        raise ValueError(
+            f"semantics_version for '{template_name}' must be a positive integer, got {raw!r}"
+        )
+    return raw
+
+
+def _parse_interpretation_limits(label: str, raw: Any) -> list[str]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not raw:
+        raise ValueError(f"interpretation_limits for {label} must be a non-empty list of strings")
+    limits: list[str] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(
+                f"interpretation_limits[{index}] for {label} must be a non-empty string"
+            )
+        limits.append(item.strip())
+    return limits
+
+
+def _parse_output_schema(template_name: str, raw: Any) -> list[dict[str, Any]]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError(f"output_schema for '{template_name}' must be a list of column mappings")
+
+    columns: list[dict[str, Any]] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            raise ValueError(
+                f"output_schema[{index}] for '{template_name}' must be a mapping with column and type"
+            )
+        unknown = set(item) - _OUTPUT_COLUMN_KEYS
+        if unknown:
+            raise ValueError(
+                f"output_schema[{index}] for '{template_name}' has unsupported keys: "
+                f"{', '.join(sorted(str(key) for key in unknown))}"
+            )
+        column = item.get("column")
+        column_type = item.get("type")
+        if not isinstance(column, str) or not column.strip():
+            raise ValueError(
+                f"output_schema[{index}] for '{template_name}' must declare a non-empty column name"
+            )
+        if not isinstance(column_type, str) or not column_type.strip():
+            raise ValueError(
+                f"output_schema[{index}] column '{column}' for '{template_name}' "
+                "must declare a non-empty type"
+            )
+
+        parsed: dict[str, Any] = {"column": column, "type": column_type}
+        for key in _OUTPUT_COLUMN_OPTIONAL:
+            if key not in item:
+                continue
+            value = item[key]
+            if key == "interpretation_limits":
+                parsed[key] = _parse_interpretation_limits(
+                    f"'{template_name}' column '{column}'", value
+                )
+                continue
+            if key == "sentinel":
+                if isinstance(value, bool) or not isinstance(value, int):
+                    raise ValueError(
+                        f"output_schema column '{column}' for '{template_name}' "
+                        f"sentinel must be an integer, got {value!r}"
+                    )
+                parsed[key] = value
+                continue
+            if key == "denominator":
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError(
+                        f"output_schema column '{column}' for '{template_name}' "
+                        "denominator must be a non-empty string"
+                    )
+                parsed[key] = value.strip()
+                continue
+            allowed = _ENUM_FIELDS[key]
+            if not isinstance(value, str) or value not in allowed:
+                raise ValueError(
+                    f"output_schema column '{column}' for '{template_name}' {key} "
+                    f"must be one of: {', '.join(sorted(allowed))} (got {value!r})"
+                )
+            parsed[key] = value
+        columns.append(parsed)
+    return columns
 
 
 def _parse_query_variants(template_name: str, raw: Any) -> dict[str, str]:
