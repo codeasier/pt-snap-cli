@@ -30,7 +30,7 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 
 ## Query Templates
 
-Templates are organized into three categories. Use `pt-snap query --list` to see them all, or filter with `--category`.
+Templates are organized into three categories. Use `pt-snap capabilities --json` for the full catalog (CLI version, every template contract, and bundled skills), or `pt-snap query --list` to see names and descriptions. Filter with `--category`.
 
 ### Basic Queries
 
@@ -65,6 +65,8 @@ Domain-specific analysis.
 |----------|-------------|
 | `leak_detection` | Find captured allocations with no recorded free-completion event (leak candidates) |
 | `active_memory_callstack_at_event` | Aggregate blocks active at a specific event by allocation callstack, with static and preexisting memory classified separately |
+| `preexisting_live` | Count preexisting-live blocks at an event (`allocEventId=-1` still live, including `freeEventId IS NULL`) |
+| `freed_block_lifetime` | Bucket successfully freed blocks by `freeEventId - allocEventId` distance (not elapsed time) |
 
 ## Leak Detection
 
@@ -206,6 +208,8 @@ and prints either a human-readable summary or JSON.
 | Execute | `db_path`, `focus_source`, `device_id`, `template`, `effective_params`, `semantics_version`, `total`, `returned`, `has_more`, `truncated`, `total_is_exact`, `timeout_s`, `rows` |
 | `--list` | `category`, `templates` (`name`, `description`, `category`) |
 | `--template-info` | Template metadata matching `get_template_info()`, plus `template` |
+| `capabilities` | `cli_version`, full `templates` contracts, and `skills` |
+| `overview` | `db_path`, `focus_source`, `devices` (`device_id`, `first_event_id`, `last_event_id`), `import_metadata` |
 
 `-n` still caps `rows` and `returned`. By default `total` equals `returned`
 (this page's row count) and `total_is_exact` is true only when the page is

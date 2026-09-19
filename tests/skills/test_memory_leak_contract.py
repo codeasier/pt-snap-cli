@@ -17,8 +17,12 @@ def test_memory_leak_skill_uses_current_pt_snap_surfaces() -> None:
         "block",
         "leak_detection",
         "active_memory_callstack_at_event",
+        "preexisting_live",
+        "freed_block_lifetime",
     ):
         assert f"--template-use {template}" in skill or f"--template-info {template}" in skill
+    assert "pt-snap capabilities --json" in skill
+    assert "pt-snap overview '<db_path>' --json" in skill
 
 
 def test_memory_leak_skill_preserves_diagnostic_boundaries() -> None:
@@ -95,19 +99,15 @@ def test_memory_leak_skill_cross_checks_preexisting_bucket_exactly() -> None:
     skill = SKILL_PATH.read_text()
 
     assert "cannot express the `freeEventId IS NULL` case" in skill
-    assert "non-negative decimal integer matching `^[0-9]+$`" in skill
-    assert "COALESCE(SUM(size), 0) AS size_bytes" in skill
-    assert "freeEventId IS NULL" in skill
-    assert "OR freeEventId > <peak_active_event_id>" in skill
-    assert "(freeEventId < 0 AND freeEventId <> -1)" in skill
+    assert "--template-use preexisting_live" in skill
+    assert '"event_id":<peak_active_event_id>' in skill
+    assert "sqlite3 -readonly" not in skill
     assert "returns a single row" in skill
     assert "nothing is silently undercounted" in skill
-
-    guardrail = "two documented read-only aggregates that templates do not expose"
-    assert guardrail in skill
-    assert "only for the optional lifetime aggregate" not in skill
-    assert "the freed-block lifetime baseline (Step 6)" in skill
-    assert "the exact `[preexisting live]` total (Step 4)" in skill
+    assert "--template-use freed_block_lifetime" in skill
+    assert "Do not use the `sqlite3` CLI or hand-assembled SQL" in skill
+    assert "`preexisting_live` (Step 4)" in skill
+    assert "`freed_block_lifetime` (Step 6)" in skill
 
 
 def test_memory_leak_skill_has_no_incomplete_bucket_scan() -> None:
@@ -134,6 +134,14 @@ def test_memory_leak_skill_interprets_percent_column_as_byte_share() -> None:
     skill = SKILL_PATH.read_text()
 
     assert "share of included active bytes" in skill
-    assert "--template-info active_memory_callstack_at_event" in skill
+    assert "active_memory_callstack_at_event` entry in `pt-snap capabilities --json" in skill
     assert "rather than inferring them from the column name" in skill
     assert "byte share (`size_bytes / total size_bytes`) despite its name" not in skill
+
+
+def test_memory_leak_skill_records_reduced_prerequisite_probes() -> None:
+    skill = SKILL_PATH.read_text()
+
+    assert "previously 7 calls" in skill
+    assert "Now 2 calls" in skill
+    assert "Do not probe templates one-by-one with `--template-info`" in skill

@@ -51,7 +51,7 @@ when they exist.
 
 | Surface | Entry point | Responsibility |
 | --- | --- | --- |
-| CLI | `src/pt_snap_cli/cli.py` via `pt_snap_cli.cli:_safe_call` | Typer commands for focus, import, split, metadata, query, reports, config, and skill install/list |
+| CLI | `src/pt_snap_cli/cli.py` via `pt_snap_cli.cli:_safe_call` | Typer commands for focus, import, split, metadata, capabilities, overview, query, reports, config, and skill install/list |
 | Python API | `src/pt_snap_cli/api.py` (`SnapshotAnalyzer`) | Programmatic focus, query, and metadata facade |
 | Product services | `src/pt_snap_cli/core/` | Shared focus, import, split, query, report, metadata, and error semantics |
 | Database access | `src/pt_snap_cli/context.py` | Read-only SQLite validation, connection management, and device discovery |

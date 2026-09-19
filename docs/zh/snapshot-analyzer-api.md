@@ -2,8 +2,9 @@
 
 [English](../en/snapshot-analyzer-api.md) | 中文
 
-`SnapshotAnalyzer` 是用于查看 focus、发现模板、执行查询和检查 SnapshotDB 导入
-metadata 的高层 Python 门面。应从 `pt_snap_cli.api` 导入；包根目录不会重新导出它。
+`SnapshotAnalyzer` 是用于查看 focus、发现模板、列出能力清单、查看数据库概览、
+执行查询和检查 SnapshotDB 导入 metadata 的高层 Python 门面。应从
+`pt_snap_cli.api` 导入；包根目录不会重新导出它。
 
 ## 创建 Analyzer
 
@@ -61,6 +62,19 @@ focus 中的设备。没有显式 `db_path` 时，已验证的 analyzer 设备�
 | `callstack_layout_error` | 布局无法使用时的冲突原因，否则为 `None` |
 
 完整解析和持久化模型见 [Focus 管理](focus-management.md)。
+
+## 列出能力清单
+
+```python
+catalog = analyzer.list_capabilities()
+print(catalog["cli_version"])
+print([item["name"] for item in catalog["templates"]])
+print([item["name"] for item in catalog["skills"]])
+```
+
+`list_capabilities()` 返回与 `pt-snap capabilities --json` 相同的清单（不含 CLI
+信封）：`cli_version`、完整模板契约（与 `get_template_info()` 一致）以及随包
+skill 列表。
 
 ## 发现模板
 
@@ -127,6 +141,17 @@ CTE 上限。
 
 查询行包含原始 SQLite 值，不会自动应用模板的 `output_schema` metadata。需要转换后的值
 或模型映射时，使用可选的 [ResultMapper API](result-mapper-api.md)。
+
+## 检查数据库概览
+
+```python
+overview = analyzer.get_database_overview()
+print(overview["devices"])
+print(overview["import_metadata"]["status"])
+```
+
+`get_database_overview()` 是 `pt-snap overview` 使用的只读概览：设备列表、各设备
+首/末 event id，以及导入 metadata 状态。它不会持久化 focus，也不会写入数据库。
 
 ## 检查导入 Metadata
 

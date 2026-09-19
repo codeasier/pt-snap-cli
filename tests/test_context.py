@@ -119,6 +119,14 @@ class TestContext:
         ctx = Context(valid_db)
         assert ctx.device_ids == [0]
 
+    def test_device_trace_bounds_empty_and_populated(self, valid_db: Path) -> None:
+        ctx = Context(valid_db)
+        assert ctx.device_trace_bounds() == [(0, None, None)]
+        with sqlite3.connect(str(valid_db)) as conn:
+            conn.execute("INSERT INTO trace_entry_0 (id, action) VALUES (3, 4), (9, 4)")
+            conn.commit()
+        assert Context(valid_db).device_trace_bounds() == [(0, 3, 9)]
+
     def test_device_filter(self, valid_db: Path) -> None:
         """Test device filtering."""
         ctx = Context(valid_db, devices=[0])

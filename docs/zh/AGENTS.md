@@ -15,7 +15,7 @@
 | `splitting.md` | Chinese guide to snapshot slicing, formats, replay validation, and publication. |
 | `skills.md` | Chinese guide to bundled agent-skill listing, helper entry, and installation. |
 | `database.md` | Chinese snapshot SQLite schema reference. |
-| `snapshot-analyzer-api.md` | Chinese guide to the high-level focus, query, and metadata Python API. |
+| `snapshot-analyzer-api.md` | Chinese guide to the high-level focus, query, capabilities, overview, and metadata Python API. |
 | `result-mapper-api.md` | Chinese result mapping API guide. |
 
 ## Subdirectories

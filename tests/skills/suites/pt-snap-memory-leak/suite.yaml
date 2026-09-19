@@ -7,6 +7,8 @@ metadata:
   description: >
     Evaluate read-only routing, evidence collection, tool use, conservative
     classification, and uncertainty handling for memory retention diagnosis.
+    Prerequisite probes should be capabilities + overview (2 calls) instead of
+    metadata plus six --template-info probes (7 calls).
 
 skill:
   path: skills/pt-snap-memory-leak/SKILL.md
@@ -73,14 +75,16 @@ defaults:
   tool_policy:
     allowed:
       - pt_snap.focus_read
+      - pt_snap.capabilities
+      - pt_snap.overview
       - pt_snap.metadata
       - pt_snap.template_info
       - pt_snap.query
-      - sqlite.readonly
     forbidden:
       - pt_snap.import
       - pt_snap.focus_write
       - pt_snap.split
+      - sqlite.readonly
       - sqlite.write
       - filesystem.write
       - package.install

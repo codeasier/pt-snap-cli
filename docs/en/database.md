@@ -41,6 +41,10 @@ existing target only when the full source SHA-256, import format version, and de
 Package version changes alone do not invalidate the cache.
 
 ```bash
+# Inspect devices, trace bounds, and import-metadata status
+pt-snap overview snapshot.pkl.db
+pt-snap overview snapshot.pkl.db --json
+
 # Inspect provenance and compatibility metadata
 pt-snap metadata snapshot.pkl.db
 pt-snap metadata snapshot.pkl.db --json
@@ -77,7 +81,8 @@ pt-snap query --template-use memory_peak
 pt-snap query --template-use block --params '{"min_size": 1048576}'
 ```
 
-Use `pt-snap query --list` and `pt-snap query --template-info <name>` to inspect
+Use `pt-snap capabilities --json` for the full template catalog, or
+`pt-snap query --list` and `pt-snap query --template-info <name>` to inspect
 the supported query surface. `event`, `callstack_analysis`, and
 `active_memory_callstack_at_event` work on both the current deduplicated
 callstack schema and older inline-text databases; see

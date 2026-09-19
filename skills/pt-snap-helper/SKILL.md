@@ -64,6 +64,8 @@ on `pt-snap`; add the option to the specific command:
 - `pt-snap skill install --json`
 - `pt-snap skill upgrade --json`
 - `pt-snap skill uninstall --json`
+- `pt-snap capabilities --json`
+- `pt-snap overview '<db_path>' --json`
 - `pt-snap metadata '<db_path>' --json`
 - `pt-snap report peak-memory '<db_path>' --device <device_id> --json`
 - `pt-snap focus --json`
@@ -92,7 +94,10 @@ value; `--opt=value` and numeric tokens do not consume the next
 argument). Text mode still writes `Error:` lines to stdout.
 
 This skill itself does not run analysis queries. The diagnostic skills own
-those commands.
+those commands. For an existing SnapshotDB, point the next skill at
+`pt-snap capabilities --json` and `pt-snap overview '<db_path>' --json`
+before diagnosis so it does not need per-template `--template-info` or a
+separate metadata probe.
 
 ## Routing matrix
 
@@ -124,13 +129,17 @@ A SnapshotDB is a pt-snap SQLite database (typically `.db`) with a
 `dictionary` table. When the user already has one:
 
 1. Confirm the goal is leak, peak, or fragmentation.
-2. Hand off to the matching diagnostic skill. Pass the database path and
-   device if the user supplied them.
-3. Do not run `pt-snap focus <database_path>` to persist a new focus from this
+2. Tell the next skill to start with `pt-snap capabilities --json` and
+   `pt-snap overview '<db_path>' --json` (overview first, then diagnose).
+   Pass the database path and device if the user supplied them.
+3. Hand off to the matching diagnostic skill. Do not run leak, peak, or
+   fragmentation query templates from this helper.
+4. Do not run `pt-snap focus <database_path>` to persist a new focus from this
    skill. Diagnostic skills may read the current focus with no arguments.
 
-This helper may mention that `pt-snap metadata '<db_path>' --json` exists.
-Running that check belongs to the diagnostic skill.
+This helper may mention that `pt-snap overview '<db_path>' --json` and
+`pt-snap capabilities --json` exist. Running those orientation commands
+belongs to the diagnostic skill. Do not import pickle or persist focus.
 
 ### Only pickle
 

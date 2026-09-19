@@ -55,12 +55,14 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 | `pt-snap import <snapshot.pkl>` | 将 PyTorch 原始内存快照导入 SnapshotDB |
 | `pt-snap split <snapshot.pkl>` | 创建可回放的逐设备快照切片 |
 | `pt-snap metadata [database.db]` | 查看 SnapshotDB 的导入来源与兼容性 metadata |
+| `pt-snap capabilities` | 列出 CLI 版本、查询模板契约和随包 skill |
+| `pt-snap overview [database.db]` | 只读输出设备列表、各设备 event id 边界和导入 metadata 状态 |
 | `pt-snap query` | 运行内存分析查询 |
 | `pt-snap report` | 生成高层内存分析报告 |
 | `pt-snap config` | 管理全局配置 |
 | `pt-snap skill` | 列出并安装随包 agent skill |
 
-`pt-snap --help` 含 Agent 提示：在支持该选项的命令上优先使用 `--json`，从 `pt-snap-helper` skill 开始，并用 `pt-snap skill list --json` 检查是否已安装。`focus`、`import`、`split`、`query`、`config`、`metadata`、`report peak-memory` 和 `skill list/install/upgrade/uninstall` 均接受 `--json`。
+`pt-snap --help` 含 Agent 提示：在支持该选项的命令上优先使用 `--json`，从 `pt-snap-helper` skill 开始，诊断前先用 `pt-snap capabilities --json` 和 `pt-snap overview --json`，并用 `pt-snap skill list --json` 检查是否已安装。`focus`、`import`、`split`、`query`、`config`、`capabilities`、`overview`、`metadata`、`report peak-memory` 和 `skill list/install/upgrade/uninstall` 均接受 `--json`。
 
 ## Agent Skills
 

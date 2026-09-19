@@ -40,6 +40,8 @@ pt-snap query --list
 才会复用已有 DB；仅升级 `pt-snap-cli` 包版本不会让缓存失效。
 
 ```bash
+pt-snap overview snapshot.pkl.db
+pt-snap overview snapshot.pkl.db --json
 pt-snap metadata snapshot.pkl.db
 pt-snap metadata snapshot.pkl.db --json
 pt-snap import snapshot.pkl --force
@@ -69,7 +71,8 @@ pt-snap query --template-use memory_peak
 pt-snap query --template-use block --params '{"min_size": 1048576}'
 ```
 
-使用 `pt-snap query --list` 和 `pt-snap query --template-info <name>` 查看受支持的
+使用 `pt-snap capabilities --json` 查看完整模板清单，或用
+`pt-snap query --list` 和 `pt-snap query --template-info <name>` 查看受支持的
 查询入口。`event`、`callstack_analysis` 和 `active_memory_callstack_at_event`
 同时支持当前去重调用栈结构和旧版内联文本库；见
 [调用栈布局兼容](database.md#调用栈布局兼容)。完整流程见[运行查询](querying.md)。

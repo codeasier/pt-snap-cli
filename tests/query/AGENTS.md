@@ -22,6 +22,7 @@
 | `test_query_completeness.py` | Tests `has_more` extra-row probing, inner `top_n` completeness, `total` vs `--exact-total`, event/block/allocation/`leak_detection` stable pagination, and query timeout. |
 | `test_registry.py` | Tests template registration, lookup, category listing, and registry reset behavior. |
 | `test_template_semantics.py` | Tests packaged field-semantics metadata, JSON serializability, and unannotated-template compatibility. |
+| `test_leak_fallback_templates.py` | Tests `preexisting_live` and `freed_block_lifetime` replacements for leak-skill sqlite3 fallbacks. |
 
 ## Subdirectories
 | Directory | Purpose |

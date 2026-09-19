@@ -206,6 +206,8 @@ class TestCLI:
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
         assert "PyTorch Memory Snapshot Analysis Tool" in result.stdout
+        assert "capabilities" in result.stdout
+        assert "overview" in result.stdout
 
     def test_short_help_flag(self) -> None:
         """Test -h flag."""
@@ -1665,3 +1667,27 @@ class TestSkillCommands:
         )
         assert result.exit_code == 1
         assert "--dir cannot be combined with --project" in unstyle(result.stdout)
+
+
+class TestCapabilitiesAndOverviewCommands:
+    def test_capabilities_text_lists_templates_and_skills(self) -> None:
+        result = runner.invoke(app, ["capabilities"])
+        assert result.exit_code == 0
+        assert "CLI version:" in result.stdout
+        assert "leak_detection" in result.stdout
+        assert "preexisting_live" in result.stdout
+        assert "freed_block_lifetime" in result.stdout
+        assert "pt-snap-helper" in result.stdout
+        assert "Use --json for full parameter contracts" in result.stdout
+
+    def test_overview_text_reports_devices_and_metadata(self, sample_db: Path) -> None:
+        result = runner.invoke(app, ["overview", str(sample_db)])
+        assert result.exit_code == 0
+        assert f"Database: {sample_db.resolve()}" in result.stdout
+        assert "Import metadata: unavailable" in result.stdout
+        assert "0: events 1..1" in result.stdout
+
+    def test_overview_requires_database(self) -> None:
+        result = runner.invoke(app, ["overview"])
+        assert result.exit_code == 1
+        assert "No database path specified" in unstyle(result.stdout)

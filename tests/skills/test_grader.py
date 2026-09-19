@@ -12,7 +12,7 @@ def _passing_allocator_cache_run() -> RunRecord:
         tool_calls=(
             ToolCall(
                 "call-1",
-                "pt_snap.metadata",
+                "pt_snap.overview",
                 {"database": "/fixtures/cache.db", "json": True},
                 output={"status": "unavailable", "reason": "metadata_missing", "metadata": None},
             ),

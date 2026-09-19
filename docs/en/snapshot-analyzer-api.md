@@ -3,8 +3,9 @@
 [中文](../zh/snapshot-analyzer-api.md) | English
 
 `SnapshotAnalyzer` is the high-level Python facade for focus inspection,
-template discovery, query execution, and SnapshotDB import metadata. Import it
-from `pt_snap_cli.api`; it is not re-exported from the package root.
+template discovery, capability listing, database overview, query execution, and
+SnapshotDB import metadata. Import it from `pt_snap_cli.api`; it is not
+re-exported from the package root.
 
 ## Create an Analyzer
 
@@ -67,6 +68,19 @@ explicit `db_path`, a validated device-only analyzer override is reported by
 
 See [Focus Management](focus-management.md) for the complete resolution and
 persistence model.
+
+## List Capabilities
+
+```python
+catalog = analyzer.list_capabilities()
+print(catalog["cli_version"])
+print([item["name"] for item in catalog["templates"]])
+print([item["name"] for item in catalog["skills"]])
+```
+
+`list_capabilities()` returns the same catalog as `pt-snap capabilities --json`
+without the CLI envelope: `cli_version`, full template contracts (matching
+`get_template_info()`), and bundled skill listings.
 
 ## Discover Templates
 
@@ -138,6 +152,18 @@ raise that CTE cap.
 Rows contain raw SQLite values. Template `output_schema` metadata is not applied
 automatically; use the optional [ResultMapper API](result-mapper-api.md) when
 converted values or model mapping are required.
+
+## Inspect Database Overview
+
+```python
+overview = analyzer.get_database_overview()
+print(overview["devices"])
+print(overview["import_metadata"]["status"])
+```
+
+`get_database_overview()` is the read-only orientation used by
+`pt-snap overview`: device list, per-device first/last event id, and import
+metadata status. It does not persist focus or write the database.
 
 ## Inspect Import Metadata
 

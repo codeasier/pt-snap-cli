@@ -84,7 +84,7 @@ After an install, upgrade, or uninstall that changes skill files, restart the ag
 
 | Skill | Use when |
 |-------|----------|
-| `pt-snap-helper` | Choosing the next skill from the user goal and input type |
+| `pt-snap-helper` | Choosing the next skill from the user goal and input type; for an existing SnapshotDB, start with `capabilities` then `overview` before diagnosis |
 | `pt-snap-setup` | Installing or verifying `pt-snap-cli` in the active Python environment |
 | `pt-snap-ascend-npu-collect` | Collecting an Ascend NPU memory snapshot pickle |
 | `pt-snap-memory-leak` | Diagnosing live allocations and leak candidates in a SnapshotDB |

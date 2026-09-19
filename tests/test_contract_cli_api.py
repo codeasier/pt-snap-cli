@@ -640,3 +640,27 @@ def test_json_error_contract_keeps_text_errors_on_stdout(contract_db: Path) -> N
     error = json.loads(json_result.stderr)["error"]
     assert error["code"] == "TEMPLATE_NOT_FOUND"
     assert "does_not_exist" in error["message"]
+
+
+def test_capabilities_contract_matches_cli_and_api_semantics(analyzer: SnapshotAnalyzer) -> None:
+    cli_result = runner.invoke(app, ["capabilities", "--json"])
+    payload = _json_stdout(cli_result)
+    api = analyzer.list_capabilities()
+    assert payload["cli_version"] == api["cli_version"]
+    assert payload["templates"] == api["templates"]
+    assert payload["skills"] == api["skills"]
+    assert {item["name"] for item in api["templates"]} >= {
+        "leak_detection",
+        "preexisting_live",
+        "freed_block_lifetime",
+    }
+
+
+def test_overview_contract_matches_cli_and_api_semantics(contract_db: Path) -> None:
+    cli_result = runner.invoke(app, ["overview", str(contract_db), "--json"])
+    payload = _json_stdout(cli_result)
+    api = _focused_analyzer(contract_db).get_database_overview()
+    assert payload["db_path"] == api["db_path"]
+    assert payload["devices"] == api["devices"]
+    assert payload["import_metadata"] == api["import_metadata"]
+    assert payload["focus_source"] == "explicit"
