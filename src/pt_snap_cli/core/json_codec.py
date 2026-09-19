@@ -16,9 +16,10 @@ JsonValue = None | bool | int | float | str | list["JsonValue"] | dict[str, "Jso
 def to_jsonable(value: object) -> JsonValue:
     """Convert service models into JSON-safe values.
 
-    ``Path`` becomes a string, nested dataclasses and mappings are walked,
-    sequences become lists, and ``None`` stays ``null``. Numbers and booleans
-    keep their JSON types.
+    ``Path`` becomes a string, bytes-like values decode as UTF-8 with
+    replacement, nested dataclasses and mappings are walked, sequences
+    become lists, and ``None`` stays ``null``. Numbers and booleans keep
+    their JSON types.
     """
     if value is None or isinstance(value, bool):
         return value
@@ -26,6 +27,10 @@ def to_jsonable(value: object) -> JsonValue:
         return value
     if isinstance(value, Path):
         return str(value)
+    if isinstance(value, memoryview):
+        value = value.tobytes()
+    if isinstance(value, (bytes, bytearray)):
+        return value.decode("utf-8", "replace")
     if is_dataclass(value) and not isinstance(value, type):
         return {item.name: to_jsonable(getattr(value, item.name)) for item in fields(value)}
     if isinstance(value, Mapping):

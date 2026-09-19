@@ -216,6 +216,15 @@ def test_focus_read_set_device_global_and_session_json(tmp_path: Path, sample_db
     assert env["export"].startswith(f"export {ENV_DB_PATH}=")
     assert f"export {ENV_DB_PATH}=" not in session.stdout.split("{", 1)[0]
 
+    session_read = runner.invoke(app, ["focus", "--session", "--json"])
+    session_read_payload = _assert_clean_json_success(session_read)
+    assert session_read_payload["action"] == "read"
+    assert session_read_payload["configured"] is True
+
+    global_read = runner.invoke(app, ["focus", "--global", "--json"])
+    global_read_payload = _assert_clean_json_success(global_read)
+    assert global_read_payload["action"] == "read"
+
 
 def test_focus_json_errors_use_stderr(tmp_path: Path, sample_db: Path) -> None:
     missing = runner.invoke(app, ["focus", str(tmp_path / "missing.db"), "--json"])
@@ -228,6 +237,12 @@ def test_focus_json_errors_use_stderr(tmp_path: Path, sample_db: Path) -> None:
         app, ["focus", str(sample_db), "--session", "--device", "0", "--json"]
     )
     _assert_json_error(device_conflict, "INVALID_PARAMETER")
+
+    focus_dir = tmp_path / ".pt-snap"
+    focus_dir.mkdir()
+    (focus_dir / "focus.json").write_text("not-json", encoding="utf-8")
+    invalid = runner.invoke(app, ["focus", "--json"])
+    _assert_json_error(invalid, "FOCUS_FILE_INVALID")
 
 
 def test_config_json_show_path_and_clear(tmp_path: Path, sample_db: Path) -> None:
@@ -370,6 +385,14 @@ def test_import_json_fresh_and_reuse(tmp_path: Path) -> None:
     assert second_payload["cache_miss_reason"] is None
     assert second_payload["db_path"] == first_payload["db_path"]
 
+    focused = runner.invoke(app, ["import", str(snapshot), "--json"])
+    focused_payload = _assert_clean_json_success(focused)
+    assert focused_payload["reused"] is True
+    assert focused_payload["focus_state"] is not None
+    assert focused_payload["focus_source"] == "project"
+    assert focused_payload["focus_state"]["focus_source"] == "project"
+    assert focused_payload["focus_state"]["db_path"] == focused_payload["db_path"]
+
 
 def test_split_json_is_independent_of_format(tmp_path: Path) -> None:
     source = FIXTURES / "snapshot_expandable.pkl"
@@ -458,6 +481,17 @@ def test_metadata_and_report_json_success_fields_stay_compatible(
 
     missing = runner.invoke(app, ["metadata", "--json"])
     _assert_json_error(missing, "FOCUS_NOT_CONFIGURED")
+
+    missing_report = runner.invoke(app, ["report", "peak-memory", "--json"])
+    _assert_json_error(missing_report, "FOCUS_NOT_CONFIGURED")
+
+
+def test_skill_json_rejects_dir_with_target(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["skill", "list", "--dir", str(tmp_path / "skills"), "--target", "claude", "--json"],
+    )
+    _assert_json_error(result, "INVALID_PARAMETER")
 
 
 def test_text_mode_errors_still_use_stdout(tmp_path: Path) -> None:

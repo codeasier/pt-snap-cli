@@ -70,6 +70,13 @@ def test_json_success_and_error_envelopes_keep_native_types() -> None:
     assert failure["error"]["hint"] == "list templates"
 
 
+def test_to_jsonable_decodes_bytes_and_memoryview() -> None:
+    assert to_jsonable(b"blob") == "blob"
+    assert to_jsonable(bytearray(b"abc")) == "abc"
+    assert to_jsonable(memoryview(b"xyz")) == "xyz"
+    assert "\ufffd" in to_jsonable(b"\xff")
+
+
 def test_to_jsonable_rejects_unknown_types() -> None:
     @dataclass
     class Holder:

@@ -7,12 +7,12 @@ import shlex
 import shutil
 import textwrap
 from collections.abc import Mapping
+from contextvars import ContextVar
 from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, Any, Literal, NoReturn, cast
 
 import typer
-from click import get_current_context
 
 from pt_snap_cli import __version__
 from pt_snap_cli.completion import (
@@ -63,7 +63,7 @@ from pt_snap_cli.core import (
     json_error,
     json_success,
 )
-from pt_snap_cli.core.error_codes import ERROR, INVALID_PARAMETER
+from pt_snap_cli.core.error_codes import DATABASE_NOT_FOUND, ERROR, INVALID_PARAMETER
 from pt_snap_cli.core.models import SKILL_RESTART_ACTIONS, SKILL_RESTART_HINT
 from pt_snap_cli.core.skill_service import (
     format_skill_install_target,
@@ -93,18 +93,37 @@ app.add_typer(report_app, name="report")
 app.add_typer(skill_app, name="skill")
 
 
+# Typer 0.27+ vendors Click as typer._click. Reading click.get_current_context()
+# therefore misses the live command and would keep JSON errors on stdout.
+_JSON_MODE: ContextVar[bool] = ContextVar("pt_snap_json_mode", default=False)
+
+
 def _json_mode() -> bool:
-    ctx = get_current_context(silent=True)
-    current = ctx
-    while current is not None:
-        if "json_output" in current.params:
-            return bool(current.params["json_output"])
-        current = current.parent
-    return False
+    return _JSON_MODE.get()
+
+
+def _set_json_mode(value: bool) -> bool:
+    _JSON_MODE.set(bool(value))
+    return value
+
+
+def _json_flag() -> Any:
+    return typer.Option(
+        "--json",
+        help="Emit machine-readable JSON",
+        callback=_set_json_mode,
+    )
 
 
 def _emit_json(payload: object) -> None:
-    typer.echo(dumps_json(payload))
+    try:
+        typer.echo(dumps_json(payload))
+    except TypeError as exc:
+        _error(
+            str(exc),
+            code=ERROR,
+            hint="Result contained a value that cannot be serialized to JSON.",
+        )
 
 
 def _focus_fields(state: FocusState) -> dict[str, object]:
@@ -174,7 +193,10 @@ def _effective_query_params(template: str, params: dict[str, object]) -> dict[st
     query_template = get_query(template)
     if query_template is None:
         return params
-    return query_template.validate_params(params)
+    try:
+        return query_template.validate_params(params)
+    except (TypeError, ValueError):
+        return params
 
 
 def _focus_service() -> FocusService:
@@ -247,6 +269,7 @@ def main(
     ] = None,
 ) -> None:
     """PyTorch Memory Snapshot Analysis Tool."""
+    _JSON_MODE.set(False)
 
 
 @app.command("focus")
@@ -264,7 +287,7 @@ def focus_database(
     global_focus: Annotated[
         bool, typer.Option("--global", help="Store the focus in legacy global config")
     ] = False,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Set the current analysis focus (database and optional device)."""
     focus_service = _focus_service()
@@ -386,7 +409,7 @@ def import_snapshot(
     device: Annotated[int | None, typer.Option("--device", "-d")] = None,
     no_focus: Annotated[bool, typer.Option("--no-focus", help="Skip focus update")] = False,
     force: Annotated[bool, typer.Option("--force", help="Rebuild even when cache matches")] = False,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Import a PyTorch memory snapshot into a SQLite database."""
     try:
@@ -439,7 +462,7 @@ def split_snapshot(
             metavar="{pickle,json}",
         ),
     ] = "pickle",
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Split a snapshot into independently replayable device slices."""
     try:
@@ -470,7 +493,7 @@ def show_database_metadata(
     db_path: Annotated[
         Path | None, typer.Argument(help="Path to database file (optional if configured)")
     ] = None,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Show import metadata for a SnapshotDB."""
     focus_service = _focus_service()
@@ -549,7 +572,7 @@ def query_database(
             help="Maximum number of result rows to display (<= 0 for unlimited, default: unlimited)",
         ),
     ] = None,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Execute queries on the memory snapshot database."""
     focus_service = _focus_service()
@@ -752,7 +775,7 @@ def query_database(
         )
         _error(
             f"Database from {source} focus not found: {path}",
-            code="DATABASE_NOT_FOUND",
+            code=DATABASE_NOT_FOUND,
             hint="Use 'pt-snap focus <new_database_path>' or pass a database path that exists.",
             extra_lines=tuple(extra),
         )
@@ -795,7 +818,7 @@ def report_peak_memory(
         typer.Option("--include-static/--exclude-static", help="Include static memory group"),
     ] = True,
     limit: Annotated[int, typer.Option("--limit", "-n", help="Maximum callstack groups")] = 20,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Generate a peak memory attribution report."""
     focus_service = _focus_service()
@@ -834,7 +857,7 @@ def report_peak_memory(
         )
         _error(
             f"Database from {source} focus not found: {path}",
-            code="DATABASE_NOT_FOUND",
+            code=DATABASE_NOT_FOUND,
             hint="Use 'pt-snap focus <new_database_path>' or pass a database path that exists.",
             extra_lines=tuple(extra),
         )
@@ -929,7 +952,7 @@ def skill_list(
             help="Inspect this skills directory instead of built-in agent/Claude/Cursor/Codex paths",
         ),
     ] = None,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """List bundled agent skills and whether they are installed."""
     if project and user:
@@ -995,7 +1018,7 @@ def skill_install(
             help="Install into this skills directory (Windows, other agents, or a custom path)",
         ),
     ] = None,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Install bundled agent skills into shared agent, Claude, Cursor, Codex, or custom directories."""
     custom_dir = _skill_dest_dir(dest_dir, target, project=project)
@@ -1051,7 +1074,7 @@ def skill_upgrade(
             help="Upgrade skills in this directory instead of a built-in host",
         ),
     ] = None,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Replace outdated installed skills with the bundled copies."""
     custom_dir = _skill_dest_dir(dest_dir, target, project=project)
@@ -1109,7 +1132,7 @@ def skill_uninstall(
             help="Uninstall skills from this directory instead of a built-in host",
         ),
     ] = None,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Remove bundled agent skills.
 
@@ -1203,7 +1226,7 @@ def _print_skill_mutation_report(report: SkillInstallReport) -> None:
 def show_config(
     clear: Annotated[bool, typer.Option("--clear", help="Clear all configuration")] = False,
     show_path: Annotated[bool, typer.Option("--path", help="Show config file path")] = False,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Show or manage pt-snap configuration."""
     focus_service = _focus_service()

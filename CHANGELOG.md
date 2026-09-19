@@ -11,7 +11,7 @@
 ### 兼容性提示
 
 - 文本模式保持原样：人类可读输出不变，`_error()` 与查询/报告说明行仍写 stdout。缺失模板的 `query --template-info` 已在 0.4.0 以退出码 1 失败。数据库无设备时，文本模式查询仍退出 0；JSON 模式改为 `DEVICE_NOT_FOUND` 且退出码非零。
-- 已有 `metadata --json` 与 `report peak-memory --json` 成功字段保持兼容，不包进新信封。它们在 `--json` 失败时改走 stderr 错误信封。
+- 已有 `metadata --json`、`report peak-memory --json` 与 `skill list/install/upgrade/uninstall --json` 成功字段保持兼容，不包进新信封。它们在 `--json` 失败时改走 stderr 错误信封。
 
 ## [0.4.0] - Unreleased
 

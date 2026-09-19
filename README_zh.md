@@ -60,7 +60,7 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 | `pt-snap config` | 管理全局配置 |
 | `pt-snap skill` | 列出并安装随包 agent skill |
 
-`pt-snap --help` 含 Agent 提示：在支持该选项的命令上优先使用 `--json`，从 `pt-snap-helper` skill 开始，并用 `pt-snap skill list --json` 检查是否已安装。`focus`、`import`、`split`、`query`、`config`、`metadata`、`report peak-memory` 和 `skill` 均接受 `--json`。
+`pt-snap --help` 含 Agent 提示：在支持该选项的命令上优先使用 `--json`，从 `pt-snap-helper` skill 开始，并用 `pt-snap skill list --json` 检查是否已安装。`focus`、`import`、`split`、`query`、`config`、`metadata`、`report peak-memory` 和 `skill list/install/upgrade/uninstall` 均接受 `--json`。
 
 ## Agent Skills
 

@@ -65,7 +65,7 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 | `pt-snap config` | Manage global configuration |
 | `pt-snap skill` | List and install bundled agent skills |
 
-`pt-snap --help` includes an agent hint: prefer `--json` on the command that supports it, start with the `pt-snap-helper` skill, and check availability with `pt-snap skill list --json`. `focus`, `import`, `split`, `query`, `config`, `metadata`, `report peak-memory`, and `skill` accept `--json`.
+`pt-snap --help` includes an agent hint: prefer `--json` on the command that supports it, start with the `pt-snap-helper` skill, and check availability with `pt-snap skill list --json`. `focus`, `import`, `split`, `query`, `config`, `metadata`, `report peak-memory`, and `skill list/install/upgrade/uninstall` accept `--json`.
 
 ## Agent Skills
 
