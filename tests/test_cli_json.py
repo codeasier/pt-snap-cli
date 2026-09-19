@@ -290,6 +290,9 @@ def test_query_list_info_execute_empty_and_limit_json(
     assert info_payload["interpretation_limits"]
     assert "min_size" in info_payload["parameters"]
     assert "device_id" not in info_payload["parameters"]
+    columns = {column["column"]: column for column in info_payload["output_schema"]}
+    assert columns["size"]["units"] == "bytes"
+    assert columns["address"]["units"] == "address"
 
     register_query(QueryTemplate(name="empty_rows", query="SELECT 1 AS x WHERE 0"))
     empty = runner.invoke(
@@ -400,8 +403,28 @@ def test_import_json_error_for_missing_snapshot(tmp_path: Path) -> None:
     _assert_json_error(missing, "SNAPSHOT_INVALID")
 
 
-def test_effective_params_limit_matches_top_n_sql_cap() -> None:
+def test_effective_params_limit_matches_trailing_sql_not_inner_top_n() -> None:
     from pt_snap_cli.cli import _effective_query_params
+    from pt_snap_cli.query.config import QueryTemplate
+    from pt_snap_cli.query.executor import _TRAILING_LIMIT_RE, QueryExecutor
+    from pt_snap_cli.query.registry import get_query
+
+    template = get_query("active_memory_callstack_at_event")
+    assert template is not None
+    body = template.query_variants["v1"]
+    clone = QueryTemplate(
+        name=template.name,
+        query=body,
+        parameters=template.parameters,
+    )
+    executor = QueryExecutor.__new__(QueryExecutor)
+    executor._env = QueryExecutor(context=None)._env
+    executor._compiled_cache = {}
+    sql = executor.render(clone, {"event_id": 1}, device_id=0, max_rows=50)
+    match = _TRAILING_LIMIT_RE.search(sql)
+    assert match is not None
+    trailing = int(match.group("limit"))
+    assert trailing == 50
 
     wide = _effective_query_params(
         "active_memory_callstack_at_event",
@@ -409,7 +432,7 @@ def test_effective_params_limit_matches_top_n_sql_cap() -> None:
         max_rows=50,
     )
     assert wide["top_n"] == 20
-    assert wide["limit"] == 20
+    assert wide["limit"] == trailing
 
     tight = _effective_query_params(
         "active_memory_callstack_at_event",
@@ -429,6 +452,8 @@ def test_argv_requests_json_is_flag_not_option_value() -> None:
     assert _argv_requests_json(["query", "--params", "--json"]) is False
     assert _argv_requests_json(["query", "--", "--json"]) is False
     assert _argv_requests_json(["query", "-n", "abc"]) is False
+    assert _argv_requests_json(["query", "--template-use=missing", "--json"]) is True
+    assert _argv_requests_json(["query", "-n", "-1", "--json"]) is True
 
 
 def test_safe_call_json_usage_error_uses_stderr_envelope(
@@ -476,18 +501,16 @@ def test_safe_call_json_abort_uses_stderr_envelope(
     assert "hint" in payload["error"]
 
 
-def test_safe_call_json_sigint_uses_stderr_envelope(
+def test_safe_call_json_sigint_uses_returned_exit_code(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     from unittest.mock import patch
-
-    from typer.exceptions import Exit
 
     from pt_snap_cli.cli import _safe_call
 
     with (
         patch("sys.argv", ["pt-snap", "focus", "--json"]),
-        patch("pt_snap_cli.cli.app", side_effect=Exit(130)),
+        patch("pt_snap_cli.cli.app", return_value=130),
     ):
         code = _safe_call()
     captured = capsys.readouterr()
@@ -497,6 +520,39 @@ def test_safe_call_json_sigint_uses_stderr_envelope(
     assert payload["ok"] is False
     assert payload["error"]["code"] == "ERROR"
     assert payload["error"]["message"] == "Aborted!"
+
+
+def test_safe_call_json_domain_error_returns_nonzero(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from unittest.mock import patch
+
+    from pt_snap_cli.cli import _safe_call
+
+    with patch("sys.argv", ["pt-snap", "query", "--template-info", "does_not_exist", "--json"]):
+        code = _safe_call()
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.out == ""
+    payload = json.loads(captured.err)
+    assert payload["schema_version"] == JSON_SCHEMA_VERSION
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "TEMPLATE_NOT_FOUND"
+
+
+def test_safe_call_text_domain_error_returns_nonzero(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from unittest.mock import patch
+
+    from pt_snap_cli.cli import _safe_call
+
+    with patch("sys.argv", ["pt-snap", "query", "--template-info", "does_not_exist"]):
+        code = _safe_call()
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "not found" in captured.out.lower()
+    assert captured.err == ""
 
 
 def test_split_json_is_independent_of_format(tmp_path: Path) -> None:

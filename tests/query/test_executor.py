@@ -263,20 +263,33 @@ class TestQueryExecutor:
         assert sql.upper().count("LIMIT") == 1
         assert sql.endswith("LIMIT 5"), sql
 
-    def test_reported_sql_limit_matches_top_n_apply_limit(self) -> None:
-        """CLI effective_params.limit must follow _apply_limit, not raw -n."""
-        from pt_snap_cli.query.executor import reported_sql_limit
+    def test_reported_sql_limit_is_trailing_not_inner_top_n(self) -> None:
+        """Inner top_n is not a trailing LIMIT; -n is appended."""
+        from pt_snap_cli.query.executor import _TRAILING_LIMIT_RE, reported_sql_limit
 
         parameters = {"top_n": QueryParameter(name="top_n", type="int", default=20)}
         validated = {"top_n": 20}
-        assert reported_sql_limit(validated, 50, parameters=parameters) == 20
+        assert reported_sql_limit(validated, 50, parameters=parameters) == 50
         assert reported_sql_limit(validated, 5, parameters=parameters) == 5
-        assert reported_sql_limit({"top_n": -1}, 50, parameters=parameters) == 50
         assert reported_sql_limit(validated, None, parameters=parameters) is None
 
         limit_parameters = {"limit": QueryParameter(name="limit", type="int", default=-1)}
         assert reported_sql_limit({"limit": -1}, 50, parameters=limit_parameters) == 50
         assert reported_sql_limit({"limit": 10}, 50, parameters=limit_parameters) == 10
+
+        template = QueryTemplate(
+            name="inner_top_n",
+            query=("WITH x AS (SELECT 1 AS n LIMIT {{ top_n|int }}) " "SELECT * FROM x ORDER BY n"),
+            parameters=parameters,
+        )
+        executor = QueryExecutor.__new__(QueryExecutor)
+        executor._env = QueryExecutor(context=None)._env
+        executor._compiled_cache = {}
+        sql = executor.render(template, {}, max_rows=50)
+        match = _TRAILING_LIMIT_RE.search(sql)
+        assert match is not None
+        assert int(match.group("limit")) == 50
+        assert sql.upper().count("LIMIT") == 2
 
     def test_jinja_template_compiled_once_per_template(self) -> None:
         """Long-lived executors (a long-lived SnapshotAnalyzer) must avoid re-parsing the

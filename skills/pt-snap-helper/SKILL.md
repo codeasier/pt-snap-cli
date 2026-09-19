@@ -82,9 +82,11 @@ On `--json` failure, stdout is empty, stderr is a JSON object with
 exit code is nonzero. The `pt-snap` console entry also converts Click
 usage/parse errors (for example `query -n abc --json`) into
 `INVALID_PARAMETER` with exit code 2, and Ctrl-C / EOF into `ERROR`
-with message `Aborted!`. Usage-error `--json` detection is a
+with message `Aborted!`. The console entry returns the Typer/Click
+exit code (nonzero on failure). Usage-error `--json` detection is a
 best-effort argv scan (exact `--json` before `--`, not an option
-value). Text mode still writes `Error:` lines to stdout.
+value; `--opt=value` and numeric tokens do not consume the next
+argument). Text mode still writes `Error:` lines to stdout.
 
 This skill itself does not run analysis queries. The diagnostic skills own
 those commands.

@@ -1344,20 +1344,31 @@ _FLAG_ONLY_OPTIONS = frozenset(
 )
 
 
+def _argv_token_takes_value(token: str | None) -> bool:
+    """True when the next argv token would be this option's value."""
+    if token is None or token in _FLAG_ONLY_OPTIONS or "=" in token:
+        return False
+    try:
+        _ = float(token)
+    except ValueError:
+        return token.startswith("-")
+    return False
+
+
 def _argv_requests_json(argv: Sequence[str]) -> bool:
     """Best-effort pre-parse scan for a ``--json`` flag.
 
     ContextVar state is not set when Click fails before the option callback.
     Tokens after ``--`` are ignored. ``--json`` immediately after a
     value-taking option is treated as that option's value, not as the flag.
+    ``--opt=value`` and numeric tokens such as ``-1`` do not consume the
+    next argument.
     """
     previous: str | None = None
     for arg in argv:
         if arg == "--":
             break
-        if arg == "--json" and (
-            previous is None or previous in _FLAG_ONLY_OPTIONS or not previous.startswith("-")
-        ):
+        if arg == "--json" and not _argv_token_takes_value(previous):
             return True
         previous = arg
     return False
@@ -1385,8 +1396,10 @@ def _emit_aborted() -> None:
 
 def _safe_call() -> int:
     try:
-        app(standalone_mode=False)
-        return 0
+        # Typer 0.27's non-standalone _main catches Exit and returns the
+        # code. Discarding that value made every domain _error() exit 0.
+        rv = app(standalone_mode=False)
+        code = rv if isinstance(rv, int) else 0
     except ClickException as exc:
         if _json_requested():
             typer.echo(
@@ -1404,10 +1417,6 @@ def _safe_call() -> int:
         return exc.exit_code
     except Exit as exc:
         code = int(exc.exit_code)
-        # Typer 0.27 turns Ctrl-C into Exit(130) instead of Abort.
-        if code == 130:
-            _emit_aborted()
-        return code
     except (Abort, ClickAbort):
         _emit_aborted()
         return 1
@@ -1415,6 +1424,9 @@ def _safe_call() -> int:
         if str(e) in ("'COMP_WORDS'", "'COMP_LINE'", "'COMP_POINT'"):
             return 1
         raise
+    if code == 130:
+        _emit_aborted()
+    return code
 
 
 if __name__ == "__main__":

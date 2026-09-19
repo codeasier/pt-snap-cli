@@ -49,22 +49,16 @@ def reported_sql_limit(
     max_rows: int | None,
     parameters: Mapping[str, Any],
 ) -> int | None:
-    """Best-effort trailing SQL LIMIT after render and ``_apply_limit``.
+    """Trailing SQL LIMIT after the same merge ``render()`` injects.
 
-    Templates that declare ``limit`` use the injected merge. Templates that
-    cap via ``top_n`` keep that existing trailing LIMIT unless ``max_rows``
-    is smaller (or ``top_n`` is negative, which is replaced). Other
-    templates receive an appended ``LIMIT max_rows``.
+    Inner caps such as ``top_n`` (often inside a CTE) are not trailing
+    LIMIT clauses, so ``_apply_limit`` appends ``max_rows``. That appended
+    value is what this helper reports; ``top_n`` stays its own parameter.
+    ``parameters`` is the template parameter map so callers can pass it
+    without a second helper; the merge itself reads ``validated``.
     """
-    injected = injected_row_limit(validated, max_rows)
-    if injected is None:
-        return None
-    if "limit" in parameters:
-        return injected
-    existing = validated.get("top_n")
-    if isinstance(existing, int):
-        return tighten_existing_limit(existing, injected)
-    return injected
+    _ = parameters
+    return injected_row_limit(validated, max_rows)
 
 
 class QueryExecutionError(Exception):

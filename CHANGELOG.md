@@ -5,7 +5,7 @@
 ### 新增
 
 - `focus`、`import`、`split`、`query`、`config` 支持 `--json`。成功结果带 `schema_version` / `ok` 信封，以及 `db_path`、`focus_source`、`device_id`、`template`、`effective_params` 等上下文。`query --list` / `--template-info` / 执行共用该选项；`--template-info --json` 透出 #147 字段语义。
-- JSON 模式失败时 stdout 为空，stderr 为带稳定错误码的结构化对象（如 `TEMPLATE_NOT_FOUND`、`INVALID_PARAMETER`、`DATABASE_NOT_FOUND`、`DEVICE_NOT_FOUND`），退出码非零。`pt-snap` 控制台入口在检测到 `--json` 时，也会把 Click 用法/解析错误写成 `INVALID_PARAMETER` 信封（退出码 2），并把 Ctrl-C / EOF 写成 `ERROR` / `Aborted!`。解析失败时的 `--json` 判定是 argv 词法扫描（best-effort）：忽略 `--` 之后的词，且不把前一个取值选项的值当成 flag。`query --json` 的 `effective_params.limit` 是最终 SQL `LIMIT`（含 `top_n` 与 `-n` 收紧），不是未收紧的 `-n` 推入值。
+- JSON 模式失败时 stdout 为空，stderr 为带稳定错误码的结构化对象（如 `TEMPLATE_NOT_FOUND`、`INVALID_PARAMETER`、`DATABASE_NOT_FOUND`、`DEVICE_NOT_FOUND`），退出码非零。`pt-snap` 控制台入口返回 Typer/Click 的退出码（不再丢弃非 standalone 返回值），在检测到 `--json` 时也会把 Click 用法/解析错误写成 `INVALID_PARAMETER` 信封（退出码 2），并把 Ctrl-C / EOF 写成 `ERROR` / `Aborted!`。解析失败时的 `--json` 判定是 argv 词法扫描（best-effort）：忽略 `--` 之后的词，`--opt=value` 与数字词不吞后续参数。`query --json` 的 `effective_params.limit` 是尾部 SQL `LIMIT`（模板 `limit` 与 `-n` 的合并，或追加的 `-n`）；CTE 内的 `top_n` 仍是独立参数。
 - `split --json` 只控制 stdout 清单，与 `--format json` 的分片文件格式相互独立。`focus --session --json` 返回验证结果与 `PT_SNAP_DB_PATH` 赋值信息，不暗示已修改父 shell。
 
 ### 兼容性提示
