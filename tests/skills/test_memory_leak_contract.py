@@ -124,6 +124,9 @@ def test_memory_leak_skill_keeps_result_listings_bounded() -> None:
     assert "-n 0` and other unlimited settings materialize" in skill
     assert "the `offset` parameter" in skill
     assert "never request unlimited rows from a query" in skill
+    assert "has_more" in skill
+    assert "--json" in skill
+    assert "--exact-total" in skill
 
 
 def test_memory_leak_skill_interprets_percent_column_as_byte_share() -> None:

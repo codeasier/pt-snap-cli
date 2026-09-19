@@ -147,6 +147,9 @@ class SnapshotAnalyzer:
         params: dict[str, Any] | None = None,
         device_id: int | None = None,
         max_rows: int | None = None,
+        *,
+        exact_total: bool = False,
+        timeout_s: float | None = None,
     ) -> dict[str, Any]:
         try:
             result = self._query_service.execute_query(
@@ -155,6 +158,8 @@ class SnapshotAnalyzer:
                 db_path=self._db_path,
                 device_id=device_id if device_id is not None else self._device_id,
                 max_rows=max_rows,
+                exact_total=exact_total,
+                timeout_s=timeout_s,
             )
         except FocusNotConfiguredError as exc:
             raise RuntimeError("No database configured. Call set_focus() first.") from exc
@@ -165,6 +170,10 @@ class SnapshotAnalyzer:
             "rows": result.rows,
             "template": result.template,
             "semantics_version": result.semantics_version,
+            "has_more": result.has_more,
+            "truncated": result.truncated,
+            "total_is_exact": result.total_is_exact,
+            "timeout_s": result.timeout_s,
         }
 
     def get_database_metadata(self, db_path: str | None = None) -> dict[str, Any]:

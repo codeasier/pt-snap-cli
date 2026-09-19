@@ -147,7 +147,9 @@ pt-snap query "<DB>" --device <DEVICE> --template-use active_blocks_at_event --p
 
 If all three peaks need block examples, run this once per distinct metric event
 and label the event/metric association. Reuse results when metrics share an
-event.
+event. Prefer `--json`. Keep `<LIMIT>` and `-n` positive; if `has_more` or
+`truncated` is true, do not treat the listing as complete. Default `total`
+equals `returned` unless `--exact-total` is set.
 
 ## Event-Range Workflow
 
@@ -261,3 +263,5 @@ and do not run point-in-time attribution with a fabricated event ID.
   callstack strings.
 - Do not turn point-in-time active-block attribution into leak, fragmentation,
   cache-ownership, or OOM root-cause claims.
+- Keep listing queries bounded with `<LIMIT>` and `-n`. Prefer `--json` and do
+  not treat a page as complete when `has_more` or `truncated` is true.

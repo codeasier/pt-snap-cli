@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from pt_snap_cli.core.errors import (
     InvalidCategoryError,
     InvalidDeviceError,
     QueryExecutionError,
+    QueryTimeoutError,
     TemplateNotFoundError,
     TemplateRenderError,
 )
@@ -21,6 +23,7 @@ from pt_snap_cli.core.focus_service import FocusService
 from pt_snap_cli.core.models import QueryResult, TemplateInfo, TemplateParameter, TemplateSummary
 from pt_snap_cli.query.executor import QueryExecutionError as ExecutorQueryExecutionError
 from pt_snap_cli.query.executor import QueryExecutor
+from pt_snap_cli.query.executor import QueryTimeoutError as ExecutorQueryTimeoutError
 from pt_snap_cli.query.executor import TemplateRenderError as ExecutorTemplateRenderError
 from pt_snap_cli.query.registry import (
     discover_categories,
@@ -29,6 +32,31 @@ from pt_snap_cli.query.registry import (
     list_by_category_with_details,
     list_queries_with_details,
 )
+
+QUERY_TIMEOUT_ENV = "PT_SNAP_QUERY_TIMEOUT"
+
+
+def resolve_query_timeout(explicit: float | None) -> float | None:
+    """Return a positive timeout in seconds, or ``None`` when unbounded.
+
+    An explicit argument wins. ``<= 0`` disables the timeout. Otherwise
+    ``PT_SNAP_QUERY_TIMEOUT`` is read. Row limits (``max_rows`` / ``LIMIT``)
+    are not a substitute for this value.
+    """
+    if explicit is not None:
+        if isinstance(explicit, bool):
+            raise QueryExecutionError("Query timeout must be a number of seconds")
+        return float(explicit) if explicit > 0 else None
+    raw = os.environ.get(QUERY_TIMEOUT_ENV)
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise QueryExecutionError(
+            f"{QUERY_TIMEOUT_ENV} must be a number of seconds, got {raw!r}"
+        ) from exc
+    return value if value > 0 else None
 
 
 class QueryService:
@@ -130,6 +158,9 @@ class QueryService:
         device_id: int | None = None,
         start_dir: Path | None = None,
         max_rows: int | None = None,
+        *,
+        exact_total: bool = False,
+        timeout_s: float | None = None,
     ) -> QueryResult:
         resolved = self._focus_service.resolve_focus(
             explicit_db_path=db_path,
@@ -142,16 +173,36 @@ class QueryService:
         ctx = self._validated_context(resolved.db_path)
         target_device = self._resolve_device_id(ctx, resolved.device_id, device_id)
         executor = self._get_executor(ctx)
+        query_params = params or {}
+        timeout_s = resolve_query_timeout(timeout_s)
 
         try:
-            rows = executor.execute_template(
-                template, params or {}, device_id=target_device, max_rows=max_rows
+            rows, has_more, _applied_limit = executor.execute_template_page(
+                template,
+                query_params,
+                device_id=target_device,
+                max_rows=max_rows,
+                timeout_s=timeout_s,
             )
-            total = len(rows)
-            if max_rows is not None and max_rows > 0 and len(rows) == max_rows:
-                total = executor.count_template(template, params or {}, device_id=target_device)
+            offset = _validated_offset(template, query_params)
+            returned = len(rows)
+            if exact_total:
+                total = executor.count_template(
+                    template,
+                    query_params,
+                    device_id=target_device,
+                    timeout_s=timeout_s,
+                    ignore_row_window=True,
+                )
+                total_is_exact = True
+            else:
+                total = returned
+                total_is_exact = (not has_more) and offset == 0
+            truncated = has_more or offset > 0 or (exact_total and total > returned)
         except ExecutorTemplateRenderError as exc:
             raise TemplateRenderError(str(exc)) from exc
+        except ExecutorQueryTimeoutError as exc:
+            raise QueryTimeoutError(str(exc)) from exc
         except ExecutorQueryExecutionError as exc:
             if get_query(template) is None:
                 raise TemplateNotFoundError(f"Template '{template}' not found") from exc
@@ -160,11 +211,15 @@ class QueryService:
         template_obj = get_query(template)
         return QueryResult(
             total=total,
-            returned=len(rows),
+            returned=returned,
             device_id=target_device,
             rows=rows,
             template=template,
             semantics_version=template_obj.semantics_version if template_obj is not None else None,
+            has_more=has_more,
+            truncated=truncated,
+            total_is_exact=total_is_exact,
+            timeout_s=timeout_s,
         )
 
     def _get_executor(self, ctx: Context) -> QueryExecutor:
@@ -209,3 +264,15 @@ class QueryService:
             raise DatabaseMissingError(str(exc)) from exc
         except (SchemaVersionError, sqlite3.DatabaseError) as exc:
             raise DatabaseSchemaError(str(exc)) from exc
+
+
+def _validated_offset(template: str, params: dict[str, Any]) -> int:
+    template_obj = get_query(template)
+    if template_obj is None or "offset" not in template_obj.parameters:
+        return 0
+    try:
+        validated = template_obj.validate_params(params)
+    except (TypeError, ValueError):
+        return 0
+    raw = validated.get("offset")
+    return raw if isinstance(raw, int) and raw > 0 else 0

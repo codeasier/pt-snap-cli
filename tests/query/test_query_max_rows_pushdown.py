@@ -139,9 +139,17 @@ class TestLeakDetectionMaxRowsPushdown:
         config.write_project_focus(leak_db, device_id=0)
 
         result = QueryService().execute_query("leak_detection", max_rows=3)
-        assert result.total == 10
+        assert result.total == 3
         assert result.returned == 3
+        assert result.has_more is True
+        assert result.total_is_exact is False
         assert len(result.rows) == 3
+
+        exact = QueryService().execute_query("leak_detection", max_rows=3, exact_total=True)
+        assert exact.total == 10
+        assert exact.returned == 3
+        assert exact.has_more is True
+        assert exact.total_is_exact is True
 
     def test_explicit_limit_param_pushes_down(self, leak_db: Path) -> None:
         """Users can still pass ``params['limit']`` directly to the
@@ -171,8 +179,10 @@ class TestCallstackAnalysisMaxRowsPushdown:
         config = Config()
         config.write_project_focus(callstack_db, device_id=0)
         result = QueryService().execute_query("callstack_analysis", max_rows=2)
-        assert result.total == 4
+        assert result.total == 2
         assert result.returned == 2
+        assert result.has_more is True
+        assert result.total_is_exact is False
 
     def test_min_size_filter_combines_with_limit(self, callstack_db: Path) -> None:
         rows = _execute_template(

@@ -102,6 +102,10 @@ class QueryResult:
     rows: list[dict[str, Any]]
     template: str | None = None
     semantics_version: int | None = None
+    has_more: bool = False
+    truncated: bool = False
+    total_is_exact: bool = False
+    timeout_s: float | None = None
 
 
 @dataclass(frozen=True)

@@ -324,7 +324,12 @@ def test_query_list_info_execute_empty_and_limit_json(
     )
     limited_payload = _assert_clean_json_success(limited)
     assert limited_payload["returned"] == 1
-    assert limited_payload["total"] >= 1
+    assert limited_payload["total"] == 1
+    # Device 0 has a single leak candidate, so -n 1 is a complete page.
+    assert limited_payload["has_more"] is False
+    assert limited_payload["truncated"] is False
+    assert limited_payload["total_is_exact"] is True
+    assert limited_payload["timeout_s"] is None
     assert limited_payload["effective_params"]["min_size"] == 0
     assert limited_payload["effective_params"]["limit"] == 1
     assert limited_payload["device_id"] == 0
@@ -454,6 +459,7 @@ def test_argv_requests_json_is_flag_not_option_value() -> None:
     assert _argv_requests_json(["query", "-n", "abc"]) is False
     assert _argv_requests_json(["query", "--template-use=missing", "--json"]) is True
     assert _argv_requests_json(["query", "-n", "-1", "--json"]) is True
+    assert _argv_requests_json(["query", "--exact-total", "--json"]) is True
 
 
 def test_safe_call_json_usage_error_uses_stderr_envelope(

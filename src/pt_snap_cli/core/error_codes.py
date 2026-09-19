@@ -14,6 +14,7 @@ from pt_snap_cli.core.errors import (
     InvalidCategoryError,
     InvalidDeviceError,
     QueryExecutionError,
+    QueryTimeoutError,
     SkillError,
     SnapshotFileInvalidError,
     SplitError,
@@ -29,6 +30,7 @@ FOCUS_NOT_CONFIGURED = "FOCUS_NOT_CONFIGURED"
 FOCUS_FILE_INVALID = "FOCUS_FILE_INVALID"
 DATABASE_SCHEMA_INVALID = "DATABASE_SCHEMA_INVALID"
 QUERY_FAILED = "QUERY_FAILED"
+QUERY_TIMEOUT = "QUERY_TIMEOUT"
 IMPORT_FAILED = "IMPORT_FAILED"
 IMPORT_BACKEND_MISSING = "IMPORT_BACKEND_MISSING"
 SNAPSHOT_INVALID = "SNAPSHOT_INVALID"
@@ -78,6 +80,11 @@ def classify_error(exc: BaseException) -> tuple[str, str | None]:
         return (
             DATABASE_SCHEMA_INVALID,
             "Confirm the file is a SnapshotDB with a dictionary table.",
+        )
+    if isinstance(exc, QueryTimeoutError):
+        return (
+            QUERY_TIMEOUT,
+            "Retry with a higher --timeout, or tighten -n / filters so the query does less work.",
         )
     if isinstance(exc, QueryExecutionError):
         return (

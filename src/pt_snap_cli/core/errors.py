@@ -44,6 +44,12 @@ class QueryExecutionError(PtSnapCoreError):
     pass
 
 
+class QueryTimeoutError(QueryExecutionError):
+    """Raised when a query exceeds its configured execution timeout."""
+
+    pass
+
+
 class ImportToolMissingError(PtSnapCoreError):
     """Raised when the built-in snapshot import backend is unavailable.
 

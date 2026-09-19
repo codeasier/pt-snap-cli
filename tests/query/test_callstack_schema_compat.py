@@ -243,9 +243,12 @@ def test_v1_callstack_analysis_pagination_and_total(v1_db: Path) -> None:
         params={"min_count": 1, "min_size": 0},
         db_path=v1_db,
         max_rows=2,
+        exact_total=True,
     )
     assert result.total == 4
     assert result.returned == 2
+    assert result.has_more is True
+    assert result.total_is_exact is True
     assert [row["callstack"] for row in result.rows] == ["after.py:40", "free.py:30"]
 
 

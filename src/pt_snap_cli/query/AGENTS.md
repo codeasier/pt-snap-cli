@@ -44,6 +44,10 @@
 - `StrictUndefined` is used during template rendering so missing template variables fail loudly.
 - Template categories are inferred from directory structure when not explicitly declared in YAML.
 - `QueryService` translates executor errors to `core.errors` and owns cached Context/QueryExecutor reuse.
+- Finite trailing ``LIMIT`` pages fetch one extra row to set ``has_more``. Exact
+  ``total`` is opt-in (``exact_total`` / ``--exact-total``). Execution timeout
+  is a SQLite progress handler (``timeout_s`` / ``--timeout`` /
+  ``PT_SNAP_QUERY_TIMEOUT``) and is not a row cap.
 
 ## Dependencies
 

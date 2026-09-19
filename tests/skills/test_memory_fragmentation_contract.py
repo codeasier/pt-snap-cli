@@ -57,6 +57,7 @@ def test_memory_fragmentation_skill_uses_paginated_runtime_evidence() -> None:
     assert "`2=segment_alloc` and `3=segment_free`" in skill
     assert "negative IDs are synthetic reconstruction events" in " ".join(skill.split())
     assert "Event size sums are operation volume, not retained bytes or" in skill
+    assert "has_more" in skill
 
 
 def test_memory_fragmentation_skill_limits_raw_sql_to_read_only_aggregates() -> None:

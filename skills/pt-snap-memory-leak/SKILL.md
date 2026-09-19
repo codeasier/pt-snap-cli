@@ -90,10 +90,14 @@ Treat a large `reserved - active` gap without corresponding active growth as an 
 
 ### 2. Find end-of-trace dynamic candidates
 
-Run an initial ranked query, keeping the result bounded while retaining the reported total count:
+Run an initial ranked query, keeping the result bounded. Prefer `--json`. Default
+`total` equals this page's `returned` count; do not treat it as the full
+matching set. If `has_more` or `truncated` is true, continue with `offset` or a
+larger `-n` instead of concluding from the first page. Add `--exact-total` only
+when a matching-row count is required. `--timeout` is independent of `-n`.
 
 ```bash
-pt-snap query '<db_path>' --device <device_id> --template-use leak_detection --params '{"min_size":<min_size>}' -n 100
+pt-snap query '<db_path>' --device <device_id> --template-use leak_detection --params '{"min_size":<min_size>}' -n 100 --json
 ```
 
 `leak_detection` includes only dynamic blocks with a recorded allocation and no recorded free completion. It intentionally excludes static blocks whose allocation predates tracing. Interpret its columns from `pt-snap query --template-info leak_detection`; do not treat candidates as confirmed leaks.
@@ -153,7 +157,7 @@ pt-snap query '<db_path>' --device <device_id> --template-use block --params '{"
 pt-snap query '<db_path>' --device <device_id> --template-use event --params '{"address":<address>,"order_by":"id","order_dir":"ASC"}' -n 100
 ```
 
-Keep address-event listings bounded. `-n 0` and other unlimited settings materialize every matching row in memory, which can exhaust resources on a heavily reused address; start with `-n 100` and continue with the `offset` parameter, or narrow the window with `min_id`/`max_id` around the allocation event ID instead of requesting all rows at once.
+Keep address-event listings bounded. `-n 0` and other unlimited settings materialize every matching row in memory, which can exhaust resources on a heavily reused address; start with `-n 100` and continue with the `offset` parameter while `has_more` is true, or narrow the window with `min_id`/`max_id` around the allocation event ID instead of requesting all rows at once. `event` / `block` pages stay stable because `id` is the sort tie-break.
 
 Interpret event actions as `4=alloc`, `5=free_requested`, and `6=free_completed`. Address reuse can produce multiple lifecycles, so correlate address, size, stream, allocation event ID, and event ordering before pairing events.
 
@@ -224,7 +228,7 @@ Useful validation experiments include repeated snapshots at equivalent workload 
 - Keep static memory separate from dynamic candidates.
 - Do not treat event IDs as timestamps or event-ID distance as elapsed time.
 - Do not generalize from one address, callstack, size class, or capture to all allocations.
-- Keep result listings bounded; never request unlimited rows from a query.
+- Keep result listings bounded; never request unlimited rows from a query. Prefer `--json` and do not treat a page as complete when `has_more` or `truncated` is true.
 - Treat peak-versus-final callstack aggregates as occupancy evidence only; claim persistence solely from identity-matched blocks.
 - Label evidence, inference, and unknowns separately.
 
@@ -238,7 +242,7 @@ Useful validation experiments include repeated snapshots at equivalent workload 
 - Active-peak and final-event callstack attribution used the same device.
 - Peak-versus-final comparisons were reported as occupancy, and persistence claims relied on identity-matched blocks.
 - Preexisting-live memory was reported separately from static and dynamic groups, with exact totals taken only from the documented read-only aggregates.
-- Address-event listings stayed bounded with paging or event-ID windows.
+- Address-event listings stayed bounded with paging or event-ID windows, and `has_more` was honored.
 - Database paths were single-quoted or passed through argument arrays without shell re-parsing.
 - Representative lifecycle events were checked for address reuse and ambiguous pairing.
 - Dynamic block state was not used as leak evidence.

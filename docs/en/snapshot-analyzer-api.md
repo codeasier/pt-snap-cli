@@ -111,8 +111,12 @@ The result contains:
 
 | Key | Meaning |
 | --- | --- |
-| `total` | Number of rows produced before display limiting |
+| `total` | Matching-row `COUNT` when `exact_total=True`; otherwise the returned-row count |
 | `returned` | Number of rows included in `rows` |
+| `has_more` | True when a later page exists (detected by fetching one extra row when a limit is set) |
+| `truncated` | True when this response is not the complete matching set |
+| `total_is_exact` | True when `total` is a `COUNT`, or when the page is the complete matching set |
+| `timeout_s` | Effective execution timeout in seconds, or `None` when unbounded |
 | `device_id` | Device selected for execution |
 | `rows` | Query rows as dictionaries (raw SQLite values, without long field explanations) |
 | `template` | Template that produced the rows |
@@ -123,7 +127,9 @@ call. Otherwise selection uses the analyzer device, then the device from resolve
 project or global focus when no explicit analyzer database is set, then the first
 discovered device. An explicit analyzer database without an analyzer device does
 not inherit a configured device. `max_rows=None`, zero, or a negative value is
-unlimited.
+unlimited. Pass `exact_total=True` for a matching-row `COUNT`. `timeout_s`
+is a wall-clock execution timeout in seconds (or `PT_SNAP_QUERY_TIMEOUT`);
+it does not change the row cap.
 
 Rows contain raw SQLite values. Template `output_schema` metadata is not applied
 automatically; use the optional [ResultMapper API](result-mapper-api.md) when

@@ -71,6 +71,9 @@ on `pt-snap`; add the option to the specific command:
 - `pt-snap query --list --json`
 - `pt-snap query --template-info <name> --json`
 - `pt-snap query --template-use <name> --json`
+
+  Execute results include `has_more` / `truncated`. Diagnostic skills keep
+  listings bounded; do not treat a page as the complete matching set.
 - `pt-snap import <snapshot.pkl> --json`
 - `pt-snap split <snapshot.pkl> --output <dir> --slices <n> --json`
 
