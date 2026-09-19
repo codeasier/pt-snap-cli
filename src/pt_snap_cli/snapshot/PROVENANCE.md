@@ -186,7 +186,7 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
   follow-up also propagates `_raw_frames` through NPU workspace adaptation,
   maps legacy callstack-schema SQLite errors to an actionable re-import
   message, and uses a left join with a missing-callstack placeholder in
-  statistical analysis.   These are local fixes to the issue #113 runtime;
+  statistical analysis. These are local fixes to the issue #113 runtime;
   audited upstream source mappings and license terms remain unchanged.
 - On 2026-09-19, issue #122 phase 3 tightened first-party type annotations in
   the snapshot runtime (`dict[str, Any]`, `int | None`, `Literal` defaults,
