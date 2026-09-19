@@ -18,6 +18,10 @@
 - 已有 `metadata --json`、`report peak-memory --json` 与 `skill list/install/upgrade/uninstall --json` 成功字段保持兼容，不包进新信封。它们在 `--json` 失败时改走 stderr 错误信封。新的 `capabilities --json` 与 `overview --json` 使用 #138 成功/失败信封。`capabilities` 在技能目录不可读时走 `SKILL_ERROR`；`overview` 把损坏的设备表/边界查询翻译为 `DATABASE_SCHEMA_INVALID`，并把损坏的 focus 文件翻译为 `FOCUS_FILE_INVALID`。
 - 查询默认 `total` 不再在触达 `-n` 时自动变成匹配集合 `COUNT`。依赖该旧语义的调用方必须显式传 `--exact-total` / `exact_total=True`。
 
+### 稳定性与工程
+
+- basedpyright 对 `src/pt_snap_cli/snapshot/` 与其余包路径同一套 error 门槛：补齐注解后移除 snapshot `executionEnvironments` 降级列表（#122 阶段 3）。
+
 ## [0.4.0] - Unreleased
 
 相对 v0.3.0：关闭 MCP 产品面，Agent 集成入口收敛到 bundled skills 与 CLI；并补上 helper 引导技能、查询参数白名单，以及易误读字段的语义元数据。本段覆盖 `v0.3.0` 之后已合入 `main` 的全部用户可见变更。

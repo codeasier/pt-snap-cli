@@ -40,7 +40,7 @@ class SafeUnpickler(pickle.Unpickler):
         )
 
 
-def load_pickle_to_dict(pickle_file: Path) -> dict:
+def load_pickle_to_dict(pickle_file: Path) -> dict[Any, Any]:
     """
     从指定路径加载 pickle 文件，并确保其内容为 dict 类型。
 
@@ -122,9 +122,7 @@ def check_dir_valid(
         >>> check_dir_valid('/nonexistent')
         False
     """
-    _path = path
-    if not isinstance(path, Path):
-        _path = Path(_path)
+    _path = path if isinstance(path, Path) else Path(path)
     if not _path.is_dir():
         return False
     if need_readable and not os.access(_path, os.R_OK):
@@ -154,9 +152,7 @@ def check_file_valid(
         >>> check_file_valid('/nonexistent.txt')
         False
     """
-    _path = path
-    if not isinstance(path, Path):
-        _path = Path(_path)
+    _path = path if isinstance(path, Path) else Path(path)
     if not _path.is_file():
         return False
     if need_readable and not os.access(_path, os.R_OK):

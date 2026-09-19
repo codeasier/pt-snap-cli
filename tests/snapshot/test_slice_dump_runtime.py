@@ -76,6 +76,13 @@ def test_slice_dump_hooker_rejects_strategy_init_before_event_count(tmp_path: Pa
         hooker._init_splitting_strategy()
 
 
+def test_slice_dump_hooker_rejects_dump_before_previous_segments(tmp_path: Path) -> None:
+    hooker = SliceDumpHooker(str(tmp_path), num_of_slices=2, max_entries=3)
+
+    with pytest.raises(RuntimeError, match="before capturing previous segments"):
+        hooker.dump(device=0)
+
+
 def test_slice_dump_hooker_json_dump_uses_utf8(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
