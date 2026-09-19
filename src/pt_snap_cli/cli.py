@@ -595,6 +595,20 @@ def query_database(
             help="Maximum number of result rows to display (<= 0 for unlimited, default: unlimited)",
         ),
     ] = None,
+    exact_total: Annotated[
+        bool,
+        typer.Option(
+            "--exact-total",
+            help="Compute an exact matching-row total with a COUNT query (default: total equals returned rows)",
+        ),
+    ] = False,
+    timeout: Annotated[
+        float | None,
+        typer.Option(
+            "--timeout",
+            help="Query execution timeout in seconds (separate from -n; <= 0 disables; default: PT_SNAP_QUERY_TIMEOUT or unlimited)",
+        ),
+    ] = None,
     json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Execute queries on the memory snapshot database."""
@@ -746,6 +760,8 @@ def query_database(
             db_path=db_path,
             device_id=device,
             max_rows=max_rows,
+            exact_total=exact_total,
+            timeout_s=timeout,
         )
         if json_output:
             resolved = focus_service.resolve_focus(
@@ -764,6 +780,10 @@ def query_database(
                     semantics_version=result.semantics_version,
                     total=result.total,
                     returned=result.returned,
+                    has_more=result.has_more,
+                    truncated=result.truncated,
+                    total_is_exact=result.total_is_exact,
+                    timeout_s=result.timeout_s,
                     rows=result.rows,
                 )
             )
@@ -772,8 +792,13 @@ def query_database(
             typer.echo(f"Found {result.total} results, showing {result.returned}:")
             for row in result.rows:
                 typer.echo(f"  {row}")
-            if result.returned < result.total:
-                typer.echo(f"  ... and {result.total - result.returned} more (use -n to show more)")
+            if result.has_more:
+                if result.total_is_exact and result.total > result.returned:
+                    typer.echo(
+                        f"  ... and {result.total - result.returned} more (use -n to show more)"
+                    )
+                else:
+                    typer.echo("  ... more available (use -n, offset, top_n, or --exact-total)")
         else:
             typer.echo("No results found.")
     except FocusFileInvalidError as e:
@@ -1340,6 +1365,7 @@ _FLAG_ONLY_OPTIONS = frozenset(
         "-h",
         "--include-static",
         "--exclude-static",
+        "--exact-total",
     }
 )
 

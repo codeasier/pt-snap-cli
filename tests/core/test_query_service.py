@@ -109,12 +109,20 @@ class TestQueryService:
 
         result = QueryService().execute_query("size_query", max_rows=1)
 
-        # ``max_rows`` is pushed down to SQL as a ``LIMIT`` clause, so the
-        # executor returns exactly ``max_rows`` rows and Python never slices
-        # the result set.
-        assert result.total == 2
+        # Default ``total`` is the returned-row count. ``has_more`` comes from
+        # fetching one extra row, not from an automatic COUNT.
+        assert result.total == 1
         assert result.returned == 1
+        assert result.has_more is True
+        assert result.truncated is True
+        assert result.total_is_exact is False
         assert len(result.rows) == 1
+
+        exact = QueryService().execute_query("size_query", max_rows=1, exact_total=True)
+        assert exact.total == 2
+        assert exact.returned == 1
+        assert exact.has_more is True
+        assert exact.total_is_exact is True
 
     def test_execute_query_explicit_zero_limit_is_not_relaxed(self, sample_db: Path) -> None:
         config = Config()

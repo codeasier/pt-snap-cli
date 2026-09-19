@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from collections.abc import Mapping
+import time
+from collections.abc import Generator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,9 @@ from jinja2 import Environment, StrictUndefined, Template, TemplateSyntaxError
 
 from pt_snap_cli.context import Context
 from pt_snap_cli.query.config import QueryConfig, QueryTemplate
+
+# How often the SQLite progress handler samples wall-clock time.
+_PROGRESS_HANDLER_INTERVAL = 1000
 
 # Match a trailing numeric LIMIT clause (with optional OFFSET) at the end of a SQL string.
 # Numeric limits let the executor tighten template-owned caps when the caller provides
@@ -44,6 +49,30 @@ def tighten_existing_limit(existing_limit: int, injected: int) -> int:
     return min(existing_limit, injected)
 
 
+def trailing_sql_limit(sql: str) -> int | None:
+    """Return the trailing numeric ``LIMIT``, or ``None`` when absent."""
+    match = _TRAILING_LIMIT_RE.search(sql)
+    if match is None:
+        return None
+    return int(match.group("limit"))
+
+
+def bump_trailing_limit(sql: str, extra: int = 1) -> str:
+    """Increase a finite trailing ``LIMIT`` by ``extra`` so callers can probe ``has_more``.
+
+    Unlimited (``LIMIT -1``) and SQL with no trailing limit are left unchanged.
+    """
+    match = _TRAILING_LIMIT_RE.search(sql)
+    if match is None:
+        return sql
+    existing_limit = int(match.group("limit"))
+    if existing_limit < 0:
+        return sql
+    offset = match.group("offset") or ""
+    suffix = match.group("suffix") or ""
+    return f"{sql[: match.start()]}LIMIT {existing_limit + extra}{offset}{suffix}"
+
+
 def reported_sql_limit(
     validated: Mapping[str, Any],
     max_rows: int | None,
@@ -67,10 +96,47 @@ class QueryExecutionError(Exception):
     pass
 
 
+class QueryTimeoutError(QueryExecutionError):
+    """Raised when a query exceeds its configured execution timeout."""
+
+    pass
+
+
 class TemplateRenderError(Exception):
     """Raised when template rendering fails."""
 
     pass
+
+
+def _is_sqlite_interrupt(error: BaseException) -> bool:
+    detail = str(error).lower()
+    return "interrupted" in detail or "cancelled" in detail
+
+
+@contextmanager
+def _sqlite_timeout(
+    conn: sqlite3.Connection, timeout_s: float | None
+) -> Generator[None, None, None]:
+    """Abort the current SQLite statement after ``timeout_s`` wall-clock seconds.
+
+    Uses a progress handler so the row cap (``LIMIT`` / ``max_rows``) stays
+    independent of execution time. ``timeout_s`` is None or non-positive when
+    the query should run without a time bound. The handler is always cleared
+    so persistent connections do not leak a deadline into the next statement.
+    """
+    if timeout_s is None or timeout_s <= 0:
+        yield
+        return
+    deadline = time.monotonic() + float(timeout_s)
+
+    def _handler() -> int:
+        return 1 if time.monotonic() >= deadline else 0
+
+    conn.set_progress_handler(_handler, _PROGRESS_HANDLER_INTERVAL)
+    try:
+        yield
+    finally:
+        conn.set_progress_handler(None, 0)
 
 
 class QueryExecutor:
@@ -175,6 +241,9 @@ class QueryExecutor:
             trimmed = trimmed[:-1].rstrip()
         return f"{trimmed} LIMIT {int(limit)}"
 
+    def _timeout_error(self, timeout_s: float) -> QueryTimeoutError:
+        return QueryTimeoutError(f"Query timed out after {timeout_s} seconds")
+
     def _execution_error(self, error: sqlite3.OperationalError) -> QueryExecutionError:
         detail = str(error)
         if "no such table: callstack" in detail or re.search(
@@ -256,45 +325,58 @@ class QueryExecutor:
         self,
         sql: str,
         params: list[Any] | None = None,
+        timeout_s: float | None = None,
     ) -> list[dict[str, Any]]:
         """Execute raw SQL query.
 
         Args:
             sql: SQL query string.
             params: Optional list of parameters.
+            timeout_s: Optional wall-clock execution timeout in seconds.
 
         Returns:
             List of result rows as dictionaries.
 
         Raises:
+            QueryTimeoutError: If ``timeout_s`` elapses before the statement finishes.
             QueryExecutionError: If query execution fails.
         """
         try:
             with self._context.connect() as conn:
-                cursor = conn.cursor()
-                if params:
-                    cursor.execute(sql, params)
-                else:
-                    cursor.execute(sql)
-                columns = [desc[0] for desc in cursor.description]
-                return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+                with _sqlite_timeout(conn, timeout_s):
+                    cursor = conn.cursor()
+                    if params:
+                        cursor.execute(sql, params)
+                    else:
+                        cursor.execute(sql)
+                    columns = [desc[0] for desc in cursor.description]
+                    return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
         except sqlite3.OperationalError as e:
+            if timeout_s is not None and timeout_s > 0 and _is_sqlite_interrupt(e):
+                raise self._timeout_error(timeout_s) from e
             raise self._execution_error(e) from e
+        except QueryTimeoutError:
+            raise
         except Exception as e:
             raise QueryExecutionError(f"Query execution failed: {e}") from e
 
-    def count(self, sql: str) -> int:
+    def count(self, sql: str, timeout_s: float | None = None) -> int:
         """Count the rows produced by a rendered query without materializing them."""
         query = sql.strip().rstrip(";").rstrip()
         count_sql = f"SELECT COUNT(*) FROM ({query}) AS pt_snap_count"
         try:
             with self._context.connect() as conn:
-                cursor = conn.cursor()
-                cursor.execute(count_sql)
-                row = cursor.fetchone()
-                return int(row[0]) if row is not None else 0
+                with _sqlite_timeout(conn, timeout_s):
+                    cursor = conn.cursor()
+                    cursor.execute(count_sql)
+                    row = cursor.fetchone()
+                    return int(row[0]) if row is not None else 0
         except sqlite3.OperationalError as e:
+            if timeout_s is not None and timeout_s > 0 and _is_sqlite_interrupt(e):
+                raise self._timeout_error(timeout_s) from e
             raise self._execution_error(e) from e
+        except QueryTimeoutError:
+            raise
         except Exception as e:
             raise QueryExecutionError(f"Query execution failed: {e}") from e
 
@@ -305,6 +387,7 @@ class QueryExecutor:
         device_id: int | None = None,
         config_name: str | None = None,
         max_rows: int | None = None,
+        timeout_s: float | None = None,
     ) -> list[dict[str, Any]]:
         """Execute a named template query.
 
@@ -314,24 +397,66 @@ class QueryExecutor:
             device_id: Optional device ID to filter results.
             config_name: Optional config name if multiple configs loaded.
             max_rows: Optional row limit pushed down to SQL when positive.
+            timeout_s: Optional wall-clock execution timeout in seconds.
 
         Returns:
             List of result rows as dictionaries.
 
         Raises:
             QueryExecutionError: If template not found or execution fails.
+            QueryTimeoutError: If ``timeout_s`` elapses before the statement finishes.
             TemplateRenderError: If template rendering fails.
+        """
+        rows, _, _ = self.execute_template_page(
+            name,
+            params=params,
+            device_id=device_id,
+            config_name=config_name,
+            max_rows=max_rows,
+            timeout_s=timeout_s,
+            probe_has_more=False,
+        )
+        return rows
+
+    def execute_template_page(
+        self,
+        name: str,
+        params: dict[str, Any] | None = None,
+        device_id: int | None = None,
+        config_name: str | None = None,
+        max_rows: int | None = None,
+        timeout_s: float | None = None,
+        *,
+        probe_has_more: bool = True,
+    ) -> tuple[list[dict[str, Any]], bool, int | None]:
+        """Execute a named template and report whether more rows exist.
+
+        When ``probe_has_more`` is true and the rendered SQL has a finite
+        trailing ``LIMIT``, one extra row is fetched to set ``has_more``
+        without a ``COUNT(*)``. The extra row is dropped from the returned
+        page. Execution timeout is independent of that row cap.
         """
         template = self._find_template(name, config_name)
         if template is None:
             raise QueryExecutionError(f"Template not found: {name}")
 
-        sql = self.render(template, params or {}, device_id, max_rows=max_rows)
-
+        # Preserve the historical execute_template short-circuit: unknown
+        # devices yield an empty page without rendering. CLI/API validate
+        # devices first, so only direct executor callers see this path.
         if device_id is not None and device_id not in self._context.device_ids:
-            return []
+            return [], False, None
 
-        return self.execute(sql)
+        sql = self.render(template, params or {}, device_id, max_rows=max_rows)
+        display_limit = trailing_sql_limit(sql)
+        applied_limit = display_limit if display_limit is not None and display_limit >= 0 else None
+        fetch_sql = (
+            bump_trailing_limit(sql, 1) if probe_has_more and applied_limit is not None else sql
+        )
+        rows = self.execute(fetch_sql, timeout_s=timeout_s)
+        has_more = applied_limit is not None and len(rows) > applied_limit
+        if has_more and applied_limit is not None:
+            rows = rows[:applied_limit]
+        return rows, has_more, applied_limit
 
     def count_template(
         self,
@@ -339,8 +464,16 @@ class QueryExecutor:
         params: dict[str, Any] | None = None,
         device_id: int | None = None,
         config_name: str | None = None,
+        timeout_s: float | None = None,
+        *,
+        ignore_row_window: bool = False,
     ) -> int:
-        """Count rows returned by a named template without materializing them."""
+        """Count rows returned by a named template without materializing them.
+
+        When ``ignore_row_window`` is true, template ``limit`` / ``offset`` /
+        ``top_n`` caps are neutralized so the count is the matching set rather
+        than the current page.
+        """
         template = self._find_template(name, config_name)
         if template is None:
             raise QueryExecutionError(f"Template not found: {name}")
@@ -348,8 +481,16 @@ class QueryExecutor:
         if device_id is not None and device_id not in self._context.device_ids:
             return 0
 
-        sql = self.render(template, params or {}, device_id)
-        return self.count(sql)
+        count_params = dict(params or {})
+        if ignore_row_window:
+            if "limit" in template.parameters:
+                count_params["limit"] = -1
+            if "offset" in template.parameters:
+                count_params["offset"] = 0
+            if "top_n" in template.parameters:
+                count_params["top_n"] = -1
+        sql = self.render(template, count_params, device_id)
+        return self.count(sql, timeout_s=timeout_s)
 
     def execute_on_all_devices(
         self,

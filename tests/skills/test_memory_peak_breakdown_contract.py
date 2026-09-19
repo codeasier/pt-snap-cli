@@ -42,6 +42,9 @@ def test_skill_references_current_report_and_templates() -> None:
     for name, path in templates.items():
         assert f"  {name}:" in path.read_text(encoding="utf-8")
         assert f"--template-info {name}" in skill
+    assert "has_more" in skill
+    assert "-n <LIMIT>" in skill
+    assert "increase `top_n`" in skill
 
 
 def test_skill_delegates_setup_and_forbids_files_or_pickle_import() -> None:

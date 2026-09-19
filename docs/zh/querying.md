@@ -9,7 +9,7 @@
 ```bash
 pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
   [--device <id>] [--list] [--category <category>] \
-  [--template-info <template>] [-n <rows>] [--json]
+  [--template-info <template>] [-n <rows>] [--exact-total] [--timeout <seconds>] [--json]
 ```
 
 **参数说明：**
@@ -23,7 +23,9 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 | `--list` | 列出可用的查询模板 |
 | `--category` | 按分类过滤模板：`basic`、`statistical`、`business` |
 | `--template-info` | 显示模板详情（参数、输出 schema 和字段语义） |
-| `-n` | 最大显示行数；零或负数表示不限制 |
+| `-n` | 最大显示行数；零或负数表示不限制。与 `--timeout` 相互独立。 |
+| `--exact-total` | 对匹配集合做 `COUNT`。默认 `total` 等于已返回行数。 |
+| `--timeout` | 一次 `query` / `QueryService` 调用的墙钟预算（页面查询与可选 `--exact-total` COUNT 共用），经 SQLite progress handler 生效。`<= 0` 表示关闭。默认：`PT_SNAP_QUERY_TIMEOUT` 或不限制。该环境变量作用于所有模板查询，包括 `report peak-memory`。 |
 | `--json` | 输出机器可读 JSON（执行、`--list` 与 `--template-info`） |
 
 ## 查询模板
@@ -193,17 +195,35 @@ pt-snap report peak-memory /path/to/snapshot.db --json
 
 | 分支 | 额外字段 |
 |------|----------|
-| 执行 | `db_path`、`focus_source`、`device_id`、`template`、`effective_params`、`semantics_version`、`total`、`returned`、`rows` |
+| 执行 | `db_path`、`focus_source`、`device_id`、`template`、`effective_params`、`semantics_version`、`total`、`returned`、`has_more`、`truncated`、`total_is_exact`、`timeout_s`、`rows` |
 | `--list` | `category`、`templates`（`name`、`description`、`category`） |
 | `--template-info` | 与 `get_template_info()` 对齐的模板元数据，另加 `template` |
 
-`-n` 仍然限制 `rows` 与 `returned`。`total` 仍是未截断的总数。
+`-n` 仍然限制 `rows` 与 `returned`。默认 `total` 等于 `returned`（本页行数）；
+仅当本页就是完整匹配集合（`has_more` 为 false 且 `offset` 为 0）时
+`total_is_exact` 为 true。`--exact-total` 会对匹配集合做 `COUNT`（忽略
+`limit` / `offset` / `top_n`）并把 `total_is_exact` 设为 true。存在有限
+尾部 `LIMIT` 时，执行器会多取一行来设置 `has_more`，不必先做计数。CTE
+内部的有限 `top_n` 不是尾部 `LIMIT`：排名窗口已满时会置 `has_more` /
+`truncated`，避免把默认页报成完整集合；精确 `COUNT` 若等于 `returned`
+则可清除该信号。`truncated` 表示本次响应不是完整匹配集合（`has_more`、
+正 `offset`，或精确 `total` 大于 `returned`）。`timeout_s` 是生效的执行
+超时秒数，未限制时为 `null`。`--timeout` / `PT_SNAP_QUERY_TIMEOUT` 是一次
+QueryService 调用的共享预算（页面查询与可选 COUNT 共用），作用于所有
+模板查询（含 `report peak-memory`），不改变行数上限。非数字的
+`PT_SNAP_QUERY_TIMEOUT` 归为 `INVALID_PARAMETER`，不是 `QUERY_FAILED`。
+
 `effective_params` 是应用默认值并按 `choices` 规范化后的参数。带 `-n` 时，
 `limit` 是与执行器相同的**尾部** SQL `LIMIT`：已声明的模板 `limit` 与 `-n`
 取较小值；渲染后的 SQL 没有尾部 `LIMIT` 时追加 `-n`。CTE 内部的 `top_n`
 仍是独立参数，不会改写 `limit`。
 `--template-info --json` 包含 `semantics_version`、`interpretation_limits`
 以及 `output_schema` 上的字段语义。
+
+`event`、`block`、`allocation` 与 `leak_detection` 在主排序后用 `id` 做稳定
+次序。带 `limit` / `offset` 的截断列表应带着相同排序键提高 `offset`
+（或 `-n`）续页。`active_memory_callstack_at_event` 没有 `offset`，`-n`
+也无法突破 CTE 内的 `top_n`；该模板应增大 `top_n` 续页。
 
 `--json` 失败时 stdout 为空，stderr 为：
 
@@ -247,17 +267,19 @@ pt-snap query --template-use leak_detection -n 5
 pt-snap query --template-use leak_detection -n 0
 ```
 
-示例输出（使用 `-n 2`）：
+示例输出（使用 `-n 2`，默认 `total` 语义）：
 
 ```
-Found 150 results, showing 2:
+Found 2 results, showing 2:
   {'id': 1, 'address': 4096, 'size': 2048, ...}
   {'id': 2, 'address': 8192, 'size': 4096, ...}
-  ... and 148 more (use -n to show more)
+  ... more available (use -n, offset, top_n, or --exact-total)
 ```
 
-即使输出被截断，"Found N" 的计数也是精确的。`SnapshotAnalyzer.execute_query()`
-默认 `max_rows=None`（不截断），与 CLI 在未指定 `-n` / `max_rows` 时一致。
+加上 `--exact-total` 时，"Found N" 是匹配行总数，页脚可以给出剩余行数。
+`SnapshotAnalyzer.execute_query()` 默认 `max_rows=None`（不截断）且
+`exact_total=False`，与 CLI 在未指定 `-n` / `max_rows` 或 `--exact-total` /
+`exact_total` 时一致。`timeout_s` 与行数上限相互独立。
 
 CLI 和 Python API 的查询结果包含原始 SQLite 值。模板的 `output_schema`
 只是 metadata，查询执行时不会自动应用。需要十六进制地址字符串等转换值时，

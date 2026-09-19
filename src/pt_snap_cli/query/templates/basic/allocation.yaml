@@ -61,7 +61,7 @@ queries:
         {% if min_allocated is not none %}AND allocated >= {{ min_allocated }}{% endif %}
         {% if min_active is not none %}AND active >= {{ min_active }}{% endif %}
         {% if min_reserved is not none %}AND reserved >= {{ min_reserved }}{% endif %}
-      ORDER BY {{ order_by }} {{ order_dir }}
+      ORDER BY {{ order_by }} {{ order_dir }}{% if order_by != 'id' %}, id {{ order_dir }}{% endif %}
       LIMIT {{ limit }}
       {% if offset > 0 %}OFFSET {{ offset }}{% endif %}
     output_schema:

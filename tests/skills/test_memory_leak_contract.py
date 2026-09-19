@@ -77,6 +77,7 @@ def test_memory_leak_skill_reports_occupancy_with_identity_evidence() -> None:
     assert "occupancy comparison" in skill
     assert "not a block-identity survival test" in skill
     assert "`top_n` truncation applies to dynamic callstack groups only" in skill
+    assert "increase `top_n` instead of concluding from" in skill
     assert "static and preexisting groups are always returned in full" in skill
     assert "Match representative blocks by identity" in skill
 
@@ -124,6 +125,9 @@ def test_memory_leak_skill_keeps_result_listings_bounded() -> None:
     assert "-n 0` and other unlimited settings materialize" in skill
     assert "the `offset` parameter" in skill
     assert "never request unlimited rows from a query" in skill
+    assert "has_more" in skill
+    assert "--json" in skill
+    assert "--exact-total" in skill
 
 
 def test_memory_leak_skill_interprets_percent_column_as_byte_share() -> None:

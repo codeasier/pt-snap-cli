@@ -147,7 +147,9 @@ pt-snap query "<DB>" --device <DEVICE> --template-use active_blocks_at_event --p
 
 If all three peaks need block examples, run this once per distinct metric event
 and label the event/metric association. Reuse results when metrics share an
-event.
+event. Prefer `--json`. Keep `<LIMIT>` and `-n` positive; if `has_more` or
+`truncated` is true, do not treat the listing as complete. Default `total`
+equals `returned` unless `--exact-total` is set.
 
 ## Event-Range Workflow
 
@@ -172,6 +174,11 @@ attribution there:
 pt-snap query "<DB>" --device <DEVICE> --template-use active_memory_callstack_at_event --params '{"event_id": <EVENT_ID>, "include_static": true, "top_n": <LIMIT>}' -n <LIMIT>
 pt-snap query "<DB>" --device <DEVICE> --template-use active_blocks_at_event --params '{"event_id": <EVENT_ID>, "include_static": true, "limit": <LIMIT>}' -n <LIMIT>
 ```
+
+`active_memory_callstack_at_event` has no `offset`, and `-n` cannot raise the
+CTE `top_n` cap. If `has_more` or `truncated` is true on that template,
+increase `top_n` (keep `-n` at least as large) instead of treating the ranked
+page as the full dynamic set.
 
 The selected event must be one returned by the bounded `memory_peak` and
 `allocator_gap` results. The point-in-time queries do not accept range bounds;
@@ -261,3 +268,5 @@ and do not run point-in-time attribution with a fabricated event ID.
   callstack strings.
 - Do not turn point-in-time active-block attribution into leak, fragmentation,
   cache-ownership, or OOM root-cause claims.
+- Keep listing queries bounded with `<LIMIT>` and `-n`. Prefer `--json` and do
+  not treat a page as complete when `has_more` or `truncated` is true.

@@ -9,7 +9,7 @@ Run memory analysis queries against your snapshot database.
 ```bash
 pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
   [--device <id>] [--list] [--category <category>] \
-  [--template-info <template>] [-n <rows>] [--json]
+  [--template-info <template>] [-n <rows>] [--exact-total] [--timeout <seconds>] [--json]
 ```
 
 **Parameters:**
@@ -23,7 +23,9 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 | `--list` | List available query templates |
 | `--category` | Filter templates by category: `basic`, `statistical`, `business` |
 | `--template-info` | Show template details (parameters, output schema, and field semantics) |
-| `-n` | Maximum displayed rows; zero or a negative value means unlimited |
+| `-n` | Maximum displayed rows; zero or a negative value means unlimited. Separate from `--timeout`. |
+| `--exact-total` | Run a `COUNT` of the matching set. Default `total` is the returned-row count. |
+| `--timeout` | Wall-clock budget for one `query` / `QueryService` call (page query and optional `--exact-total` COUNT share it) via a SQLite progress handler. `<= 0` disables. Default: `PT_SNAP_QUERY_TIMEOUT` or unlimited. The environment variable applies to every template query, including `report peak-memory`. |
 | `--json` | Emit machine-readable JSON (execute, `--list`, and `--template-info`) |
 
 ## Query Templates
@@ -201,11 +203,29 @@ and prints either a human-readable summary or JSON.
 
 | Branch | Extra fields |
 |--------|----------------|
-| Execute | `db_path`, `focus_source`, `device_id`, `template`, `effective_params`, `semantics_version`, `total`, `returned`, `rows` |
+| Execute | `db_path`, `focus_source`, `device_id`, `template`, `effective_params`, `semantics_version`, `total`, `returned`, `has_more`, `truncated`, `total_is_exact`, `timeout_s`, `rows` |
 | `--list` | `category`, `templates` (`name`, `description`, `category`) |
 | `--template-info` | Template metadata matching `get_template_info()`, plus `template` |
 
-`-n` still caps `rows` and `returned`. `total` remains the untruncated count.
+`-n` still caps `rows` and `returned`. By default `total` equals `returned`
+(this page's row count) and `total_is_exact` is true only when the page is
+the complete matching set (`has_more` is false and `offset` is 0).
+`--exact-total` runs a `COUNT` of the matching set (ignoring `limit` /
+`offset` / `top_n`) and sets `total_is_exact` to true. When a finite
+trailing `LIMIT` is in effect, the executor fetches one extra row to set
+`has_more` without that count. A finite inner `top_n` (for example inside
+a CTE) is not a trailing `LIMIT`: when that ranked window is full,
+`has_more` / `truncated` are set so a default page is not reported as
+complete. An exact `COUNT` that equals `returned` can clear that signal.
+`truncated` is true when this response is not the complete matching set
+(`has_more`, a positive `offset`, or an exact `total` greater than
+`returned`). `timeout_s` is the effective execution timeout in seconds, or
+`null` when unbounded. `--timeout` / `PT_SNAP_QUERY_TIMEOUT` are one
+QueryService-call budget shared by the page query and optional COUNT; they
+apply to every template query, including `report peak-memory`, and do not
+change the row cap. A non-numeric `PT_SNAP_QUERY_TIMEOUT` is
+`INVALID_PARAMETER`, not `QUERY_FAILED`.
+
 `effective_params` is the validated parameter set after defaults and `choices`
 normalization. When `-n` is set, `limit` is the trailing SQL LIMIT after the
 same merge the executor applies: `min` of a declared template `limit` and
@@ -214,6 +234,12 @@ caps such as `top_n` stay their own parameters; they do not rewrite
 `limit` when they sit inside a CTE. `--template-info --json` includes
 `semantics_version`, `interpretation_limits`, and field semantics from
 `output_schema`.
+
+`event`, `block`, `allocation`, and `leak_detection` paginate with a stable
+`id` tie-break after the primary sort. Continue a truncated `limit` /
+`offset` listing with the same sort keys and a higher `offset` (or `-n`).
+`active_memory_callstack_at_event` has no `offset`; `-n` cannot raise the
+CTE `top_n` cap. Continue that template by increasing `top_n`.
 
 On `--json` failure, stdout is empty. stderr is:
 
@@ -263,17 +289,20 @@ pt-snap query --template-use leak_detection -n 5
 pt-snap query --template-use leak_detection -n 0
 ```
 
-Example output (with `-n 2`):
+Example output (with `-n 2`, default `total` semantics):
 
 ```
-Found 150 results, showing 2:
+Found 2 results, showing 2:
   {'id': 1, 'address': 4096, 'size': 2048, ...}
   {'id': 2, 'address': 8192, 'size': 4096, ...}
-  ... and 148 more (use -n to show more)
+  ... more available (use -n, offset, top_n, or --exact-total)
 ```
 
-The "Found N" count is exact even when output is capped. `SnapshotAnalyzer.execute_query()`
-defaults to `max_rows=None` (no cap), matching the CLI unless `-n` / `max_rows` is set.
+With `--exact-total`, "Found N" is the matching-row count and the footer can
+show how many rows remain. `SnapshotAnalyzer.execute_query()` defaults to
+`max_rows=None` (no cap) and `exact_total=False`, matching the CLI unless
+`-n` / `max_rows` or `--exact-total` / `exact_total` is set. `timeout_s` is
+independent of the row cap.
 
 CLI and Python API query results contain raw SQLite values. A template's
 `output_schema` is metadata and is not applied automatically during query

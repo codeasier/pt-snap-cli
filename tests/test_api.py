@@ -259,6 +259,9 @@ class TestSnapshotAnalyzerWithDB:
         assert "returned" in result
         assert "device_id" in result
         assert "rows" in result
+        assert "has_more" in result
+        assert "truncated" in result
+        assert "total_is_exact" in result
         assert result["template"] == "leak_detection"
         assert result["semantics_version"] == 1
         assert isinstance(result["rows"], list)

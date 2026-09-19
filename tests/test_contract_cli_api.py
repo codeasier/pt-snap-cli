@@ -608,9 +608,23 @@ def test_query_json_contract_matches_api_semantics(contract_db: Path) -> None:
     api_query = _focused_analyzer(contract_db).execute_query(
         "leak_detection", params=params, device_id=1, max_rows=0
     )
-    for key in ("total", "returned", "device_id", "rows", "template", "semantics_version"):
+    for key in (
+        "total",
+        "returned",
+        "device_id",
+        "rows",
+        "template",
+        "semantics_version",
+        "has_more",
+        "truncated",
+        "total_is_exact",
+        "timeout_s",
+    ):
         assert payload[key] == api_query[key]
     assert payload["effective_params"]["min_size"] == 1024
+    assert payload["has_more"] is False
+    assert payload["truncated"] is False
+    assert payload["total_is_exact"] is True
 
 
 def test_json_error_contract_keeps_text_errors_on_stdout(contract_db: Path) -> None:

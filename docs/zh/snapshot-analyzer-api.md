@@ -103,8 +103,12 @@ for row in result["rows"]:
 
 | 键 | 含义 |
 | --- | --- |
-| `total` | 限制显示行数前产生的结果总数 |
+| `total` | `exact_total=True` 时为匹配集合的 `COUNT`；否则等于已返回行数 |
 | `returned` | `rows` 中实际返回的行数 |
+| `has_more` | 还有后续页时为 true（尾部 `LIMIT` 多取一行，或内部 `top_n` 窗口已满） |
+| `truncated` | 本次响应不是完整匹配集合时为 true |
+| `total_is_exact` | `total` 来自 `COUNT`，或本页就是完整匹配集合时为 true |
+| `timeout_s` | 生效的执行超时秒数；未限制时为 `None` |
 | `device_id` | 本次执行选择的设备 |
 | `rows` | 字典形式的查询行（原始 SQLite 值，不含长说明） |
 | `template` | 产生这些行的模板名 |
@@ -113,7 +117,13 @@ for row in result["rows"]:
 向 `execute_query()` 传入 `device_id` 可以仅覆盖本次调用的 analyzer 设备。否则依次使用
 analyzer 设备；未设置显式 analyzer 数据库时，再使用已解析项目或全局 focus 的设备；
 最后使用发现的第一个设备。只有显式 analyzer 数据库而没有 analyzer 设备时，不会继承
-配置中的设备。`max_rows=None`、零或负数均表示不限制行数。
+配置中的设备。`max_rows=None`、零或负数均表示不限制行数。传入
+`exact_total=True` 可得到匹配行 `COUNT`。`timeout_s` 是一次
+`execute_query()` 调用的墙钟预算（秒），也可由 `PT_SNAP_QUERY_TIMEOUT`
+提供；页面查询与可选 COUNT 共用该预算。该环境变量作用于所有模板查询，
+包括 `report peak-memory`。它不改变行数上限。
+`active_memory_callstack_at_event` 应增大 `top_n` 续页，`-n` 无法突破
+CTE 上限。
 
 查询行包含原始 SQLite 值，不会自动应用模板的 `output_schema` metadata。需要转换后的值
 或模型映射时，使用可选的 [ResultMapper API](result-mapper-api.md)。

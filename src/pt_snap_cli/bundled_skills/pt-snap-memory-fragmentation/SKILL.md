@@ -129,10 +129,13 @@ increasing offsets:
 pt-snap query "<db_path>" --device <device_id> --template-use allocation --params '{"min_id":<range_start>,"order_by":"id","order_dir":"ASC","limit":<page_size>,"offset":<offset>}'
 ```
 
-Start with offset `0`, increase it by `<page_size>`, and stop when a page has no
-rows. Preserve event order while examining the allocated, active, and reserved
-curve. Add `"max_id":<range_end>` consistently on every page when the scope has
-an upper event bound.
+Start with offset `0`, increase it by `<page_size>`, and stop when `has_more` is
+false (or a page has no rows). Prefer `--json` so `has_more` / `truncated` are
+explicit. Do not treat a partial page as the complete curve. `allocation` and
+`event` keep a stable `id` tie-break after `order_by`. Preserve event order
+while examining the allocated, active, and reserved curve. Add
+`"max_id":<range_end>` consistently on every page when the scope has an upper
+event bound.
 
 Look for sustained rather than isolated gaps, reserved plateaus after active
 memory falls, repeated reserve growth, and whether later allocation activity
@@ -161,7 +164,7 @@ Interpret the operation pairs separately:
 - `2=segment_alloc` and `3=segment_free` describe runtime segment acquisition
   and release operations.
 
-Repeat pagination for each action until no rows remain. The non-negative
+Repeat pagination for each action until `has_more` is false. The non-negative
 `min_id` filter is mandatory here because negative IDs are synthetic
 reconstruction events for segments that existed before collection; they are not
 runtime segment operations.
@@ -235,7 +238,9 @@ pt-snap query "<db_path>" --device <device_id> --template-use active_memory_call
 
 Use these results only to describe active blocks at a selected event. They do
 not attribute reserved bytes, cached bytes, or the `reserved - active` gap to
-those callstacks. Keep static and dynamic active-block groups distinct.
+those callstacks. Keep static and dynamic active-block groups distinct. The
+callstack template has no `offset`; if `has_more` or `truncated` is true,
+increase `top_n` instead of treating the ranked page as complete.
 
 Do not use `callstack_analysis` as segment-source attribution. Its query has no
 action filter, so it mixes event types and cannot identify which callstack
@@ -330,7 +335,7 @@ experiment needs size-bin or contiguous-free-region evidence.
   ordered curve, segment operation pairs, optional aggregates, and
   attribution inputs.
 - The allocated/active/reserved curve used paginated, event-ordered `allocation`
-  queries.
+  queries, stopping when `has_more` was false.
 - Runtime `segment_map`/`segment_unmap` and `segment_alloc`/`segment_free` were
   both inspected with synthetic events excluded.
 - Optional raw SQL, if used, stayed read-only and within the aggregate boundary.

@@ -73,6 +73,8 @@ def test_helper_skill_uses_current_json_capability() -> None:
     assert "pt-snap report peak-memory '<db_path>' --device <device_id> --json" in skill
     assert "pt-snap query --list --json" in skill
     assert "pt-snap query --template-info <name> --json" in skill
+    assert "has_more" in skill
+    assert "truncated" in skill
     assert "pt-snap focus --json" in skill
     assert "pt-snap config --json" in skill
     assert "pt-snap import <snapshot.pkl> --json" in skill
