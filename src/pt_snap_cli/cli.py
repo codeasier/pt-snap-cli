@@ -889,7 +889,10 @@ def skill_uninstall(
         typer.Option(
             "--target",
             "-t",
-            help="Comma-separated hosts: agents,claude,cursor,codex (default: agents,claude)",
+            help=(
+                "Comma-separated hosts: agents,claude,cursor,codex. "
+                "Defaults to agents,claude when --project is set"
+            ),
             autocompletion=complete_skill_targets,
         ),
     ] = None,
@@ -905,15 +908,22 @@ def skill_uninstall(
     ] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
 ) -> None:
-    """Remove bundled agent skills from shared agent, Claude, Cursor, Codex, or custom directories."""
+    """Remove bundled agent skills.
+
+    Without --target, --project, or --dir, remove every SKILL.md copy that
+    `pt-snap skill list` would report. A same-named path without SKILL.md
+    aborts the whole uninstall. Use those flags to limit destinations.
+    """
     custom_dir = _skill_dest_dir(dest_dir, target, project=project)
     service = _skill_service()
     try:
+        unfiltered = custom_dir is None and target is None and not project
         report = service.uninstall_skills(
             names,
             hosts=None if custom_dir is not None else parse_host_option(target),
             scope="project" if project else "user",
             dest_dir=custom_dir,
+            all_locations=unfiltered,
         )
     except (
         SkillCatalogError,

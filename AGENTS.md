@@ -119,7 +119,15 @@ templates under category subdirectories are included by
   Agent Skills hosts) plus Claude's independent `~/.claude/skills` or
   `$CLAUDE_CONFIG_DIR/skills`. `--target cursor` and `--target codex` keep
   the host-native extras; `--dir` covers anything else. List reports
-  `installed`, `outdated`, or `missing`. Skill management is CLI-only.
+  `installed`, `outdated`, or `missing`. Unfiltered `pt-snap skill uninstall`
+  (no `--target`, `--project`, or `--dir`) removes every installed or outdated
+  copy that list would report and that contains `SKILL.md`, across all
+  built-in hosts and both scopes. A same-named path without `SKILL.md`
+  aborts the whole unfiltered uninstall before any deletion.
+  `uninstall_skills(all_locations=True)` rejects dest_dir, hosts, and
+  scope other than `user`. `--target` / `--project` / `--dir` keep the
+  narrower mutation destinations.
+  Skill management is CLI-only.
 
 ### Snapshot import and split
 

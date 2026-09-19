@@ -15,7 +15,7 @@ pt-snap skill list --target claude --user
 Each bundled skill is shown as its own block: name, status, install locations, and a short description. Status is one of:
 
 - `installed` — a matching copy is present in at least one inspected location
-- `outdated` — a copy exists but differs from the bundled skill
+- `outdated` — a copy exists but differs from the bundled skill, or the path exists without `SKILL.md`
 - `missing` — no copy was found
 
 `--target` accepts a comma-separated list of `agents`, `claude`, `cursor`, and `codex`. `--user` and `--project` limit the scan to user-level or project-local directories. Without those flags, `list` inspects both scopes.
@@ -67,11 +67,16 @@ pt-snap skill upgrade pt-snap-setup --target claude
 
 ```bash
 pt-snap skill uninstall
+pt-snap skill uninstall pt-snap-setup
 pt-snap skill uninstall pt-snap-setup --target claude
 pt-snap skill uninstall --project --target cursor
 ```
 
-`uninstall` removes bundled skill directories that contain `SKILL.md`. Skills that are not installed are reported as `not_installed`. A same-named path that exists without `SKILL.md` is left untouched.
+Without `--target`, `--project`, or `--dir`, `uninstall` removes every bundled-skill copy that contains `SKILL.md` and that `list` would report as installed or outdated, across all built-in hosts and both user and project scopes. Each requested name with no removable copy is reported as `not_installed` at the default user-level `agents` and `claude` destinations. Omitting names requests every bundled skill.
+
+`--target`, `--project`, and `--dir` keep narrower destinations: `--project` uses the default `agents` and `claude` project directories unless `--target` selects hosts, and `--dir` only touches that folder.
+
+`uninstall` only deletes directories that contain `SKILL.md`. `list` also marks a same-named path without `SKILL.md` as `outdated`. Uninstall leaves that path untouched and, if any such path is among the destinations, refuses the whole operation before deleting anything. Remove or replace the stray path, then re-run uninstall.
 
 After an install, upgrade, or uninstall that changes skill files, restart the agent so it picks up the change.
 

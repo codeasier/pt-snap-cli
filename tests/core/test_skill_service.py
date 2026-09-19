@@ -142,6 +142,103 @@ def test_uninstall_removes_installed_skill(service: SkillService) -> None:
     assert again.results[0].action == "not_installed"
 
 
+def test_all_locations_uninstall_removes_every_listed_copy(
+    service: SkillService,
+) -> None:
+    service.install_skills(["pt-snap-demo"], hosts=("cursor",), scope="user")
+    service.install_skills(["pt-snap-demo"], hosts=("agents", "claude"), scope="project")
+    cursor = service.skill_destination("cursor", "user", "pt-snap-demo")
+    agents_project = service.skill_destination("agents", "project", "pt-snap-demo")
+    claude_project = service.skill_destination("claude", "project", "pt-snap-demo")
+
+    report = service.uninstall_skills(["pt-snap-demo"], all_locations=True)
+    actions = {(item.host, item.scope, item.action) for item in report.results}
+    assert actions == {
+        ("cursor", "user", "uninstalled"),
+        ("agents", "project", "uninstalled"),
+        ("claude", "project", "uninstalled"),
+    }
+    assert not cursor.exists()
+    assert not agents_project.exists()
+    assert not claude_project.exists()
+
+
+def test_all_locations_uninstall_reports_default_not_installed(
+    service: SkillService,
+) -> None:
+    report = service.uninstall_skills(["pt-snap-demo"], all_locations=True)
+    actions = {(item.host, item.scope, item.action) for item in report.results}
+    assert actions == {
+        ("agents", "user", "not_installed"),
+        ("claude", "user", "not_installed"),
+    }
+
+
+def test_all_locations_uninstall_reports_missing_names_among_discovered(
+    service: SkillService,
+) -> None:
+    service.install_skills(["pt-snap-demo"], hosts=("cursor",), scope="user")
+
+    report = service.uninstall_skills(["pt-snap-demo", "pt-snap-other"], all_locations=True)
+    actions = {(item.name, item.host, item.scope, item.action) for item in report.results}
+    assert actions == {
+        ("pt-snap-demo", "cursor", "user", "uninstalled"),
+        ("pt-snap-other", "agents", "user", "not_installed"),
+        ("pt-snap-other", "claude", "user", "not_installed"),
+    }
+    assert not service.skill_destination("cursor", "user", "pt-snap-demo").exists()
+
+
+def test_default_python_uninstall_stays_on_install_destinations(
+    service: SkillService,
+) -> None:
+    service.install_skills(["pt-snap-demo"], hosts=("cursor",), scope="user")
+    service.install_skills(["pt-snap-demo"], hosts=("agents",), scope="project")
+
+    report = service.uninstall_skills(["pt-snap-demo"])
+    actions = {(item.host, item.scope, item.action) for item in report.results}
+    assert actions == {
+        ("agents", "user", "not_installed"),
+        ("claude", "user", "not_installed"),
+    }
+    assert (
+        service.skill_destination("cursor", "user", "pt-snap-demo").joinpath("SKILL.md").is_file()
+    )
+    assert (
+        service.skill_destination("agents", "project", "pt-snap-demo")
+        .joinpath("SKILL.md")
+        .is_file()
+    )
+
+
+def test_all_locations_uninstall_rejects_target_project_or_dir(
+    service: SkillService, tmp_path: Path
+) -> None:
+    with pytest.raises(InvalidSkillTargetError, match="--target, --project, or --dir"):
+        service.uninstall_skills(["pt-snap-demo"], hosts=("claude",), all_locations=True)
+    with pytest.raises(InvalidSkillTargetError, match="--target, --project, or --dir"):
+        service.uninstall_skills(["pt-snap-demo"], dest_dir=tmp_path / "skills", all_locations=True)
+    with pytest.raises(InvalidSkillTargetError, match="--target, --project, or --dir"):
+        service.uninstall_skills(["pt-snap-demo"], scope="project", all_locations=True)
+
+
+def test_all_locations_uninstall_refuses_before_mutating_conflict(
+    service: SkillService,
+) -> None:
+    service.install_skills(["pt-snap-demo"], hosts=("cursor",), scope="user")
+    dest = service.skill_destination("claude", "project", "pt-snap-demo")
+    dest.mkdir(parents=True)
+    notes = dest / "notes.txt"
+    notes.write_text("keep me\n", encoding="utf-8")
+
+    with pytest.raises(SkillInstallError, match="Refusing to delete"):
+        service.uninstall_skills(["pt-snap-demo"], all_locations=True)
+    assert (
+        service.skill_destination("cursor", "user", "pt-snap-demo").joinpath("SKILL.md").is_file()
+    )
+    assert notes.is_file()
+
+
 def test_human_skill_summary_keeps_first_sentence() -> None:
     text = (
         "Collect a snapshot by dumping a `.pkl` file. Not for diagnosing an "

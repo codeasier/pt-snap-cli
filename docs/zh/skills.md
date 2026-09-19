@@ -15,7 +15,7 @@ pt-snap skill list --target claude --user
 每个随包 skill 单独一块显示：名称、状态、安装位置，以及一句简短说明。状态为以下之一：
 
 - `installed` — 至少一个检查位置存在内容匹配的副本
-- `outdated` — 已有副本，但与随包版本不同
+- `outdated` — 已有副本但与随包版本不同，或路径存在但没有 `SKILL.md`
 - `missing` — 未找到副本
 
 `--target` 接受逗号分隔的 `agents`、`claude`、`cursor`、`codex`。`--user` 和 `--project` 分别只检查用户级或当前项目目录。不传这些选项时，`list` 会同时检查两个范围。
@@ -67,11 +67,16 @@ pt-snap skill upgrade pt-snap-setup --target claude
 
 ```bash
 pt-snap skill uninstall
+pt-snap skill uninstall pt-snap-setup
 pt-snap skill uninstall pt-snap-setup --target claude
 pt-snap skill uninstall --project --target cursor
 ```
 
-`uninstall` 会删除已经包含 `SKILL.md` 的随包 skill 目录。未安装的 skill 会报告为 `not_installed`。同名路径存在但没有 `SKILL.md` 时不会删除。
+不带 `--target`、`--project` 或 `--dir` 时，`uninstall` 会删除 `list` 会报告为已安装或过期、且含有 `SKILL.md` 的每一份随包 skill 副本，覆盖全部内置宿主以及用户级和项目级目录。每个没有可删除副本的请求名称，会在默认的用户级 `agents` 和 `claude` 目录上报告 `not_installed`。省略名称表示请求全部随包 skill。
+
+`--target`、`--project` 和 `--dir` 仍只作用于更窄的目标：`--project` 默认使用 `agents` 和 `claude` 项目目录，可用 `--target` 改宿主；`--dir` 只处理该文件夹。
+
+`uninstall` 只删除已经包含 `SKILL.md` 的目录。`list` 也会把同名但没有 `SKILL.md` 的路径标为 `outdated`。卸载不会删除这类路径；只要目标中出现任何一处，就会在删除任何副本之前整次拒绝。先自行移除或替换该杂散路径，再重新卸载。
 
 仅在 install、upgrade 或 uninstall 实际改动 skill 之后，才需要重启 agent 让变更生效。`list` 不会提示重启。
 
