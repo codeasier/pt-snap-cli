@@ -1,3 +1,5 @@
+from typing import Any
+
 from ....base import TraceEntry
 from .defs import CallstackFieldDefs
 
@@ -41,7 +43,7 @@ class CallstackInterner:
 
         return callstack_id
 
-    def records(self) -> list[dict]:
+    def records(self) -> list[dict[str, Any]]:
         """Return one record per distinct callstack, ordered by id."""
         return [
             {CallstackFieldDefs.ID: callstack_id, CallstackFieldDefs.CALLSTACK: text}

@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
-from ...base import DeviceSnapshot, TraceEntry
+from ...base import DeviceSnapshot, Segment, TraceEntry
 from ...simulate import SimulateHooker
 from ...util import get_logger
 from ...util.file_util import save_dict_to_pickle
@@ -42,7 +42,7 @@ class SliceDumpHooker(SimulateHooker):
         self.max_entries = max_entries
         self.num_of_events = -1
         self.events_buffer = []
-        self.prev_segments = None
+        self.prev_segments: list[Segment] | None = None
         self.dump_dir = dump_dir
         self.dump_count = 0
         self.dump_type = dump_type
@@ -94,9 +94,12 @@ class SliceDumpHooker(SimulateHooker):
 
     def dump(self, device: int):
         slice_snapshot_name = self._get_dump_filename()
+        prev_segments = self.prev_segments
+        if prev_segments is None:
+            raise RuntimeError("Cannot dump slice before capturing previous segments")
         slice_snapshot = DeviceSnapshot()
         slice_snapshot.device = device
-        slice_snapshot.segments = self.prev_segments
+        slice_snapshot.segments = prev_segments
         slice_snapshot.trace_entries = list(reversed(self.events_buffer))
         slice_snapshot_dict = slice_snapshot.to_dict(include_trace_ids=True)
         dump_logger.info(f"Start to dump snapshot slice: {slice_snapshot_name}")

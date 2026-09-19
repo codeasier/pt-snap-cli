@@ -1,12 +1,14 @@
 from logging import Logger
+from typing import Any
 
 from ..base import Block, BlockState, DeviceSnapshot
 from ..util import get_logger
-from . import snapshot_lookup, snapshot_mutator
 from .allocator_context import AllocatorContext
 from .hooker_defs import AllocatorHooker, SimulateHooker
 from .replay_executor import ReplayExecutor
 from .simulated_caching_allocator import SimulatedCachingAllocator
+from .snapshot_lookup import find_segment
+from .snapshot_mutator import attach_block
 
 loading_logger = get_logger("LOAD")
 replay_logger = get_logger("REPLAY")
@@ -20,12 +22,13 @@ class SimulateDeviceSnapshot:
     _loading_logger: Logger
     _replay_logger: Logger
 
-    def __init__(self, snapshot_dict: dict, device: int, *, _raw_frames: bool = False):
+    def __init__(self, snapshot_dict: dict[str, Any], device: int, *, _raw_frames: bool = False):
         # 基于device初始化logger
         self._loading_logger = loading_logger.getChild(f"{device}")
         self._replay_logger = replay_logger.getChild(f"{device}")
         if not snapshot_dict:
             raise RuntimeError("Cannot init snapshot from empty data.")
+        self.device = device
         self._loading_logger.info("Loading snapshot data...")
         self.device_snapshot = DeviceSnapshot.from_dict(
             snapshot_dict,
@@ -89,7 +92,7 @@ class SimulateDeviceSnapshot:
                     f"(stream {workspace_snapshot.stream}) is internally inconsistent"
                 )
                 break
-            _, existed_seg = snapshot_lookup.find_segment(
+            _, existed_seg = find_segment(
                 snapshot, workspace_snapshot.addr, workspace_snapshot.stream
             )
             if existed_seg is None:
@@ -118,7 +121,7 @@ class SimulateDeviceSnapshot:
             existed_seg.allocated_size = 0
             existed_seg.active_size = 0
             existed_seg.blocks = []
-            snapshot_mutator.attach_block(
+            attach_block(
                 snapshot,
                 existed_seg,
                 Block(

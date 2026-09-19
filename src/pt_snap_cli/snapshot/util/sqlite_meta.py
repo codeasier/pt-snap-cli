@@ -119,7 +119,7 @@ class SqliteColumn:
         not_null: bool = False,  # 是否不可为空
         unique: bool = False,  # 是否唯一
         default: Any | None = None,  # 缺省值,
-        value_map: dict[Any, Any] = None,
+        value_map: dict[Any, Any] | None = None,
     ):
         if autoincrement and not primary_key:
             raise ValueError("autoincrement requires primary_key=True")
@@ -204,7 +204,7 @@ class SqliteTable:
     column_dict: dict[str, SqliteColumn]
     _column_value_map: dict[str, dict[Any, Any]]
 
-    def __init__(self, table_name: str, columns: Iterable[SqliteColumn] = None):
+    def __init__(self, table_name: str, columns: Iterable[SqliteColumn] | None = None):
         self.name = table_name
         self.column_dict = {}
         self._column_value_map = {}

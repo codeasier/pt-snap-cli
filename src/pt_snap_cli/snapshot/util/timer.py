@@ -8,6 +8,7 @@ import logging
 import time
 from collections.abc import Callable
 from functools import wraps
+from typing import Any
 
 
 def timer(name: str | None = None, logger: logging.Logger | None = None):
@@ -38,7 +39,7 @@ def timer(name: str | None = None, logger: logging.Logger | None = None):
         2024-01-01 12:00:00 [ INFO ][ __main__ ]: 数据处理 took 0.5023 seconds
     """
 
-    def decorator(func: Callable):
+    def decorator(func: Callable[..., Any]):
         _name = func.__name__ if not name else name
 
         @wraps(func)

@@ -1,5 +1,6 @@
 import os.path
 from pathlib import Path
+from typing import Literal
 
 from ...representation import load_snapshot_representation, replay_snapshot
 from ...util import get_logger
@@ -14,7 +15,7 @@ def run_slice_dump(
     slices: int = 4,
     max_entries: int = 15000,
     dump_dir: str = "",
-    dump_type: str = "pkl",
+    dump_type: Literal["json", "pkl"] = "pkl",
 ):
     resolved_dump_dir = dump_dir or os.path.dirname(snapshot_file)
     dump_logger.info(f"Start to dump snapshot slice, reading pickle file '{snapshot_file}'.")
