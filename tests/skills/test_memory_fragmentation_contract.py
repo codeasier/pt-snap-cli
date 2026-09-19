@@ -161,3 +161,21 @@ def test_memory_fragmentation_skill_prevents_fragmentation_overclaims() -> None:
         "`Validation experiments`",
     ):
         assert section in skill
+
+
+def test_memory_fragmentation_skill_recovers_missing_focus_with_sibling_candidates() -> None:
+    skill = SKILL_PATH.read_text()
+    normalized = " ".join(skill.split())
+
+    assert "#### Missing focus target with sibling candidates" in skill
+    assert (
+        "A displayed path or exit code 0 from `pt-snap focus` does not mean " "the target is usable"
+    ) in normalized
+    assert "Do not auto-select by name, size, or mtime." in skill
+    assert "Even a single candidate requires an explicit user choice." in normalized
+    assert "Before the user confirms a path, do not run diagnostic queries" in skill
+    assert 'the next inspect step is `pt-snap metadata "<db_path>" --json`' in normalized
+    assert "Do not start with `pt-snap query`" in skill
+    assert "do not inherit the focused device from the missing target" in normalized
+    assert "`unavailable` with reason `metadata_missing`" in normalized
+    assert "not available during missing-focus recovery" in skill

@@ -8,7 +8,8 @@ metadata:
     Cross-cutting Agent scenarios from issue #136: discover CLI guidance,
     recover from structured errors, honor an explicit database and device,
     notice truncated evidence, avoid leak overclaims, treat missing targets
-    as failures, and read import results from structured output.
+    as failures, and read import results from structured output. Also covers
+    missing-focus sibling-database recovery from issue #151.
 
 skill:
   path: tests/skills/suites/pt-snap-agent-e2e/AGENT_CONTRACT.md
@@ -62,6 +63,7 @@ coverage:
     - evidence.completeness
     - interpretation.live_blocks
     - recovery.missing_target
+    - recovery.sibling_target
     - workflow.import
 
 defaults:
@@ -109,5 +111,7 @@ cases:
     path: cases/live-blocks-unconfirmed.yaml
   - id: missing-database
     path: cases/missing-database.yaml
+  - id: sibling-database-recovery
+    path: cases/sibling-database-recovery.yaml
   - id: import-success
     path: cases/import-success.yaml
