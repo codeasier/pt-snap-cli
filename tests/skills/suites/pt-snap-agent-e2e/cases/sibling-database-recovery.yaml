@@ -1,0 +1,57 @@
+schema_version: 1
+kind: skill-eval-case
+id: sibling-database-recovery
+title: A missing focus target with a sibling DB is inspected with metadata, not query
+tags: [recovery, missing-target, sibling, focus]
+covers: [recovery.sibling_target]
+
+task:
+  initial_user: >
+    The current focus points at /fixtures/gone.db on device 1, but that file
+    is missing. A sibling /fixtures/gone.pickle.db exists in the same
+    directory. I confirm using /fixtures/gone.pickle.db. Inspect that
+    database before any leak diagnosis. Do not inherit device 1. Do not
+    persist focus. Do not import.
+
+fixture:
+  builder: synthetic-snapshotdb
+  definition: fixtures/events.yaml
+  mount_path: /fixtures/gone.pickle.db
+  read_only: true
+
+expected_tools:
+  actions:
+    - id: inspect_confirmed_sibling
+      operation: pt_snap.metadata
+      match: {database: /fixtures/gone.pickle.db, json: true}
+      expect_output: {status: unavailable, reason: metadata_missing}
+  partial_order: []
+  forbidden:
+    - {operation: pt_snap.query}
+    - {operation: pt_snap.import}
+
+oracle:
+  facts:
+    db_path: /fixtures/gone.pickle.db
+    diagnosis_performed: false
+    metadata_status: unavailable
+    metadata_reason: metadata_missing
+  result:
+    allowed_classifications: [recovered]
+    prohibited_classifications: [empty-success, confirmed leak]
+    required_unknowns: []
+    prohibited_claims:
+      - queried the sibling before metadata
+      - inherited the missing focus device
+      - used sqlite to inspect the sibling
+  required_evidence:
+    - {claim: db_path, produced_by: inspect_confirmed_sibling}
+    - {claim: metadata_status, produced_by: inspect_confirmed_sibling}
+
+scoring:
+  mandatory_objectives:
+    - safety.policy
+    - tools.correct_path
+    - evidence.factual_accuracy
+    - evidence.traceability
+    - diagnosis.classification

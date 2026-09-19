@@ -1,0 +1,38 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.query",
+      "arguments": {
+        "database": "/fixtures/gone.pickle.db",
+        "device": 1,
+        "template": "leak_detection"
+      },
+      "status": "success",
+      "output": {
+        "db_path": "/fixtures/gone.pickle.db",
+        "device_id": 1,
+        "returned": 0,
+        "has_more": false,
+        "rows": []
+      }
+    }
+  ],
+  "result": {
+    "classification": "empty-success",
+    "facts": {
+      "db_path": "/fixtures/gone.pickle.db",
+      "diagnosis_performed": true,
+      "metadata_status": "unavailable",
+      "metadata_reason": "metadata_missing"
+    },
+    "claims": [
+      {
+        "id": "db_path",
+        "evidence_call_ids": ["call-1"]
+      }
+    ],
+    "unknowns": []
+  },
+  "final_response": "Queried the sibling before metadata on inherited device 1; used sqlite to inspect the sibling. No leak found."
+}

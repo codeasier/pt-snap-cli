@@ -93,10 +93,11 @@ score.
 
 ## Agent CLI baseline (issue #136)
 
-`tests/skills/suites/pt-snap-agent-e2e/` grades the parent issue's seven
-end-to-end scenarios. It is an `agent-cli` evaluation contract, not a shipped
-skill. Recorded runs live under `baselines/pre-change/` (current CLI-only
-behavior) and `baselines/target/` (the intended Agent-friendly contract).
+`tests/skills/suites/pt-snap-agent-e2e/` grades the issue #136 end-to-end
+scenarios plus sibling-database recovery when focus points at a missing file.
+It is an `agent-cli` evaluation contract, not a shipped skill. Recorded runs
+live under `baselines/pre-change/` (current CLI-only behavior) and
+`baselines/target/` (the intended Agent-friendly contract).
 
 Comparison metrics are task success rate, mean call count, mean output bytes,
 and error-conclusion rate:

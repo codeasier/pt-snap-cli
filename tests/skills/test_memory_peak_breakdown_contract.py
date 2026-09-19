@@ -73,6 +73,23 @@ def test_skill_requires_explicit_read_only_database_and_device_scope() -> None:
     assert "Perform this phase before running any analysis query" in skill
 
 
+def test_skill_recovers_missing_focus_with_sibling_candidates() -> None:
+    skill = _skill()
+    normalized = _normalized_skill()
+
+    assert "#### Missing focus target with sibling candidates" in skill
+    assert (
+        "A displayed path or exit code 0 from `pt-snap focus` does not mean " "the target is usable"
+    ) in normalized
+    assert "Do not auto-select by name, size, or mtime." in skill
+    assert "Even a single candidate requires an explicit user choice." in normalized
+    assert "Before the user confirms a path, do not run diagnostic queries" in skill
+    assert 'the next inspect step is `pt-snap metadata "<DB>" --json`' in normalized
+    assert "Do not start with `pt-snap query`" in skill
+    assert "do not inherit the focused device from the missing target" in normalized
+    assert "`unavailable` with reason `metadata_missing`" in normalized
+
+
 def test_placeholder_values_are_validated_before_shell_substitution() -> None:
     normalized = _normalized_skill()
 
