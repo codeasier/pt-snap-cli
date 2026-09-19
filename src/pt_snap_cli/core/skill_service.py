@@ -158,13 +158,15 @@ class SkillService:
         all_locations: bool = False,
     ) -> SkillInstallReport:
         if all_locations:
-            if dest_dir is not None or hosts is not None:
+            if dest_dir is not None or hosts is not None or self._resolve_scope(scope) != "user":
                 raise InvalidSkillTargetError(
-                    "Removing every installed copy cannot be combined with --target or --dir."
+                    "Removing every installed copy cannot be combined with "
+                    "--target, --project, or --dir."
                 )
             jobs = self._discovered_uninstall_jobs(names)
-            if not jobs:
-                jobs = self._mutation_jobs(names, None, "user", None)
+            missing = self._undiscovered_uninstall_names(names, jobs)
+            if missing:
+                jobs.extend(self._mutation_jobs(missing, None, "user", None))
         else:
             jobs = self._mutation_jobs(names, hosts, scope, dest_dir)
         for spec, _host, _selected_scope, dest in jobs:
@@ -278,6 +280,16 @@ class SkillService:
                     seen.add(dest)
                     jobs.append((spec, host, selected_scope, dest))
         return jobs
+
+    def _undiscovered_uninstall_names(
+        self,
+        names: Iterable[str] | None,
+        jobs: list[tuple[SkillSpec, SkillHost, SkillScope, Path]],
+    ) -> list[str]:
+        catalog = {spec.name: spec for spec in self.list_catalog()}
+        requested = self._resolve_names(names, catalog)
+        discovered = {spec.name for spec, _host, _selected_scope, _dest in jobs}
+        return [name for name in requested if name not in discovered]
 
     def _location_status(
         self, spec: SkillSpec, host: SkillHost, scope: SkillScope

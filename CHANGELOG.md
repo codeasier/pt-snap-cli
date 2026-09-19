@@ -19,7 +19,7 @@
 
 ### 修复
 
-- `pt-snap skill uninstall` 在不带 `--target` / `--project` / `--dir` 时，会删除 `skill list` 报告的每一份已安装或过期副本（全部内置宿主、用户级与项目级）。此前只检查默认的用户级 `agents` 与 `claude` 目录，因此 `cursor:user` 或 `--project` 副本会留下并继续显示为 `installed`。`--target` / `--project` / `--dir` 仍只作用于指定目标。
+- `pt-snap skill uninstall` 在不带 `--target` / `--project` / `--dir` 时，会删除 `skill list` 报告的、且含有 `SKILL.md` 的每一份已安装或过期副本（全部内置宿主、用户级与项目级）。此前只检查默认的用户级 `agents` 与 `claude` 目录，因此 `cursor:user` 或 `--project` 副本会留下并继续显示为 `installed`。`--target` / `--project` / `--dir` 仍只作用于指定目标。同名但缺少 `SKILL.md` 的路径不会删除，并且会让整次卸载在动手前失败。部分名称未安装时，会在默认用户级 `agents` 与 `claude` 上报告 `not_installed`。
 - `query --template-info` 在模板不存在时走与其他 CLI 失败相同的 `_error()` 路径，退出码为 1（此前 `typer.Exit()` 默认 0）。
 - 未声明的 `--params` 键不再静默进入渲染上下文（例如 `min_sze` 不再当成未过滤结果）；查询在渲染 SQL 前失败，并列出已接受参数名。
 - `allocation` / `block` / `event` / `active_blocks_at_event` 的 `order_by`、`order_dir` 不再接受任意 SQL 片段；非法取值在进数据库前被拒绝，而不再以 SQLite syntax error 暴露。
@@ -39,7 +39,7 @@
 - 依赖 `pt-snap-cli[rag]` 的安装命令会失败；该 extra 从未启用任何功能。
 - 拼错或多余的查询参数、以及不在 `choices` 内的 `order_by` / `order_dir` 现在会报错，而不再静默得到错误结果或 SQLite 语法错误。
 - 用户自写查询模板若在 `output_schema` 列上使用未登记键，加载会失败；仅含 `column`/`type` 的旧模板仍然有效。`execute_query()` 返回字典新增 `template`、`semantics_version` 键。
-- 不带 `--target` / `--project` / `--dir` 的 `pt-snap skill uninstall` 现在会删除 `skill list` 看到的全部已安装副本，而不再只检查默认的用户级 `agents` 与 `claude` 目录。需要窄范围卸载时请显式传这些选项。
+- 不带 `--target` / `--project` / `--dir` 的 `pt-snap skill uninstall` 现在会删除 `skill list` 看到的、含有 `SKILL.md` 的全部已安装副本，而不再只检查默认的用户级 `agents` 与 `claude` 目录。需要窄范围卸载时请显式传这些选项。同名但缺少 `SKILL.md` 的路径会让整次卸载失败且零删除。
 - 本版本未扩展 `--json` 覆盖面。当前支持 `--json` 的是 `metadata`、`report peak-memory`，以及 `skill list` / `install` / `upgrade` / `uninstall`。`query`、`focus`、`import`、`split`、`config` 仍无 `--json`；`--template-info` 的机器可读形态仍是结构化 API dict 与 CLI 文本。
 
 ## [0.3.0] - 2026-09-17

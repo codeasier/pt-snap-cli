@@ -174,6 +174,21 @@ def test_all_locations_uninstall_reports_default_not_installed(
     }
 
 
+def test_all_locations_uninstall_reports_missing_names_among_discovered(
+    service: SkillService,
+) -> None:
+    service.install_skills(["pt-snap-demo"], hosts=("cursor",), scope="user")
+
+    report = service.uninstall_skills(["pt-snap-demo", "pt-snap-other"], all_locations=True)
+    actions = {(item.name, item.host, item.scope, item.action) for item in report.results}
+    assert actions == {
+        ("pt-snap-demo", "cursor", "user", "uninstalled"),
+        ("pt-snap-other", "agents", "user", "not_installed"),
+        ("pt-snap-other", "claude", "user", "not_installed"),
+    }
+    assert not service.skill_destination("cursor", "user", "pt-snap-demo").exists()
+
+
 def test_default_python_uninstall_stays_on_install_destinations(
     service: SkillService,
 ) -> None:
@@ -196,13 +211,15 @@ def test_default_python_uninstall_stays_on_install_destinations(
     )
 
 
-def test_all_locations_uninstall_rejects_target_or_dir(
+def test_all_locations_uninstall_rejects_target_project_or_dir(
     service: SkillService, tmp_path: Path
 ) -> None:
-    with pytest.raises(InvalidSkillTargetError, match="--target or --dir"):
+    with pytest.raises(InvalidSkillTargetError, match="--target, --project, or --dir"):
         service.uninstall_skills(["pt-snap-demo"], hosts=("claude",), all_locations=True)
-    with pytest.raises(InvalidSkillTargetError, match="--target or --dir"):
+    with pytest.raises(InvalidSkillTargetError, match="--target, --project, or --dir"):
         service.uninstall_skills(["pt-snap-demo"], dest_dir=tmp_path / "skills", all_locations=True)
+    with pytest.raises(InvalidSkillTargetError, match="--target, --project, or --dir"):
+        service.uninstall_skills(["pt-snap-demo"], scope="project", all_locations=True)
 
 
 def test_all_locations_uninstall_refuses_before_mutating_conflict(

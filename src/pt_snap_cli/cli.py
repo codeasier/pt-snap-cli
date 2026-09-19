@@ -910,8 +910,9 @@ def skill_uninstall(
 ) -> None:
     """Remove bundled agent skills.
 
-    Without --target, --project, or --dir, remove every installed copy that
-    `pt-snap skill list` would report. Use those flags to limit destinations.
+    Without --target, --project, or --dir, remove every SKILL.md copy that
+    `pt-snap skill list` would report. A same-named path without SKILL.md
+    aborts the whole uninstall. Use those flags to limit destinations.
     """
     custom_dir = _skill_dest_dir(dest_dir, target, project=project)
     service = _skill_service()
