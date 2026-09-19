@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0] - Unreleased
+
+### 新增
+
+- `focus`、`import`、`split`、`query`、`config` 支持 `--json`。成功结果带 `schema_version` / `ok` 信封，以及 `db_path`、`focus_source`、`device_id`、`template`、`effective_params` 等上下文。`query --list` / `--template-info` / 执行共用该选项；`--template-info --json` 透出 #147 字段语义。
+- JSON 模式失败时 stdout 为空，stderr 为带稳定错误码的结构化对象（如 `TEMPLATE_NOT_FOUND`、`INVALID_PARAMETER`、`DATABASE_NOT_FOUND`、`DEVICE_NOT_FOUND`），退出码非零。
+- `split --json` 只控制 stdout 清单，与 `--format json` 的分片文件格式相互独立。`focus --session --json` 返回验证结果与 `PT_SNAP_DB_PATH` 赋值信息，不暗示已修改父 shell。
+
+### 兼容性提示
+
+- 文本模式保持原样：人类可读输出不变，`_error()` 与查询/报告说明行仍写 stdout。缺失模板的 `query --template-info` 已在 0.4.0 以退出码 1 失败。数据库无设备时，文本模式查询仍退出 0；JSON 模式改为 `DEVICE_NOT_FOUND` 且退出码非零。
+- 已有 `metadata --json` 与 `report peak-memory --json` 成功字段保持兼容，不包进新信封。它们在 `--json` 失败时改走 stderr 错误信封。
+
 ## [0.4.0] - Unreleased
 
 相对 v0.3.0：关闭 MCP 产品面，Agent 集成入口收敛到 bundled skills 与 CLI；并补上 helper 引导技能、查询参数白名单，以及易误读字段的语义元数据。本段覆盖 `v0.3.0` 之后已合入 `main` 的全部用户可见变更。

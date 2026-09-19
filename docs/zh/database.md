@@ -20,6 +20,7 @@ SnapshotDB 是内存快照数据的 SQLite 数据库存储格式，用于持久�
 
 ```bash
 pt-snap import snapshot.pkl
+pt-snap import snapshot.pkl --json
 ```
 
 默认情况下，内建快照运行时会在输入文件旁生成 `snapshot.pkl.db`，并更新当前项目的
@@ -43,6 +44,10 @@ pt-snap metadata snapshot.pkl.db
 pt-snap metadata snapshot.pkl.db --json
 pt-snap import snapshot.pkl --force
 ```
+
+`import --json` 报告 `db_path`、`reused`、`cache_miss_reason`、`metadata` 和
+`focus_state`。`metadata --json` 保持现有字段名（`db_path`、`status`、`reason`、
+`metadata`）以兼容已有调用方。
 
 旧版或外部生成且结构兼容的 DB 仍可查询不依赖可识别调用栈布局的模板。`pt-snap`
 根据表列识别调用栈布局，并把 `pt_snap_metadata.import_format_version` 当作辅助

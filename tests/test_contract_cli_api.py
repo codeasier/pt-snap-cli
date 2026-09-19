@@ -22,6 +22,7 @@ from typer.testing import CliRunner
 from pt_snap_cli.api import FocusState, SnapshotAnalyzer
 from pt_snap_cli.cli import app
 from pt_snap_cli.core import InvalidDeviceError, TemplateRenderError
+from pt_snap_cli.core.json_codec import JSON_SCHEMA_VERSION
 from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.registry import QueryRegistry, register_query
 
@@ -543,3 +544,85 @@ def test_metadata_contract_matches_cli_and_api_semantics(contract_db: Path) -> N
     assert cli_result.exit_code == 0
 
     assert json.loads(cli_result.stdout) == _focused_analyzer(contract_db).get_database_metadata()
+
+
+def _json_stdout(result) -> dict[str, object]:
+    assert result.exit_code == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["schema_version"] == JSON_SCHEMA_VERSION
+    assert payload["ok"] is True
+    return payload
+
+
+def test_focus_json_contract_matches_api_semantics(contract_db: Path) -> None:
+    cli_result = runner.invoke(app, ["focus", str(contract_db), "--device", "1", "--json"])
+    payload = _json_stdout(cli_result)
+    analyzer = SnapshotAnalyzer()
+    api_focus = _focus_payload(analyzer.set_focus(str(contract_db), device_id=1))
+
+    assert payload["db_path"] == api_focus["db_path"]
+    assert payload["device_id"] == api_focus["device_id"]
+    assert payload["available_devices"] == api_focus["available_devices"]
+    assert payload["callstack_layout"] == api_focus["callstack_layout"]
+    assert payload["callstack_layout_error"] == api_focus["callstack_layout_error"]
+
+
+def test_template_list_json_contract_matches_api_semantics(analyzer: SnapshotAnalyzer) -> None:
+    cli_result = runner.invoke(app, ["query", "--list", "--category", "basic", "--json"])
+    payload = _json_stdout(cli_result)
+    assert payload["templates"] == analyzer.list_templates("basic")
+
+
+def test_template_info_json_contract_matches_api_semantics(contract_db: Path) -> None:
+    cli_result = runner.invoke(
+        app, ["query", str(contract_db), "--template-info", "leak_detection", "--json"]
+    )
+    payload = _json_stdout(cli_result)
+    api_info = _focused_analyzer(contract_db).get_template_info("leak_detection")
+    assert api_info is not None
+    shared = {key: payload[key] for key in api_info}
+    assert shared == api_info
+    assert payload["template"] == "leak_detection"
+    assert payload["semantics_version"] == 1
+
+
+def test_query_json_contract_matches_api_semantics(contract_db: Path) -> None:
+    params = {"min_size": 1024}
+    cli_result = runner.invoke(
+        app,
+        [
+            "query",
+            str(contract_db),
+            "--template-use",
+            "leak_detection",
+            "--params",
+            json.dumps(params),
+            "--device",
+            "1",
+            "-n",
+            "0",
+            "--json",
+        ],
+    )
+    payload = _json_stdout(cli_result)
+    api_query = _focused_analyzer(contract_db).execute_query(
+        "leak_detection", params=params, device_id=1, max_rows=0
+    )
+    for key in ("total", "returned", "device_id", "rows", "template", "semantics_version"):
+        assert payload[key] == api_query[key]
+    assert payload["effective_params"]["min_size"] == 1024
+
+
+def test_json_error_contract_keeps_text_errors_on_stdout(contract_db: Path) -> None:
+    text = runner.invoke(app, ["query", str(contract_db), "--template-info", "does_not_exist"])
+    assert text.exit_code == 1
+    assert "Template 'does_not_exist' not found" in text.stdout
+
+    json_result = runner.invoke(
+        app, ["query", str(contract_db), "--template-info", "does_not_exist", "--json"]
+    )
+    assert json_result.exit_code == 1
+    assert json_result.stdout == ""
+    error = json.loads(json_result.stderr)["error"]
+    assert error["code"] == "TEMPLATE_NOT_FOUND"
+    assert "does_not_exist" in error["message"]

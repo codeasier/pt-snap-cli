@@ -58,6 +58,8 @@ pt-snap focus
 
 This shows the resolved database path, device ID, and where they came from (project focus, session env, or global config). `pt-snap focus`, `pt-snap focus <db>`, `pt-snap focus --global`, and `pt-snap focus --device` also print `Callstack layout: v1 (inline text)` or `v2 (deduplicated)` when the schema is recognized, or a warning when the layout conflicts. `pt-snap focus --session` prints only the `export PT_SNAP_DB_PATH=...` line so it can be evaluated by the shell. The layout is detected read-only from the database; it is not stored in `.pt-snap/focus.json`.
 
+`--json` covers read, set, device-only, `--global`, and `--session`. The success object includes `schema_version`, `ok`, `action`, `configured`, `db_path`, `focus_source`, `focus_file`, `device_id`, `available_devices`, `callstack_layout`, and `db_exists`. `focus --session --json` validates the database and returns `session_applied: false` plus `env.name` / `env.value` / `env.export`. It does not print a bare shell line and does not change the parent shell.
+
 ## Override Focus
 
 Even with focus configured, you can temporarily specify a different database or device on the command line:
@@ -85,7 +87,10 @@ pt-snap focus /path/to/your/snapshot.db --global
 pt-snap config          # View global configuration
 pt-snap config --path   # Show config file path
 pt-snap config --clear  # Clear global configuration
+pt-snap config --json   # Same actions as machine-readable JSON
 ```
+
+`config` still manages only the legacy global file. `--json` adds `action` (`show` / `path` / `clear`), `path`, and either `config` or `cleared`.
 
 ## Focus File Locations
 

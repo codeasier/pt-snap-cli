@@ -12,6 +12,8 @@
 | `__init__.py` | Re-exports service classes, models, and errors for package consumers. |
 | `context_cache.py` | Bounded Context reuse with path identity, file-signature invalidation, and explicit close/invalidate behavior. |
 | `errors.py` | Domain exception types used by CLI/API service boundaries. |
+| `error_codes.py` | Stable CLI JSON error codes and hints mapped from domain exceptions. |
+| `json_codec.py` | Shared Path/dataclass JSON serialization and success/error envelopes. |
 | `focus_service.py` | Focus resolution, validation, project/global focus writes, and device selection. |
 | `import_service.py` | Failure-safe snapshot import, cache reuse, metadata writes, and optional focus update. |
 | `import_metadata.py` | Import metadata schema, inspection, hashing, validation, and cache decisions. |

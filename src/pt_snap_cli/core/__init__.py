@@ -1,3 +1,4 @@
+from pt_snap_cli.core.error_codes import classify_error
 from pt_snap_cli.core.errors import (
     DatabaseMissingError,
     DatabaseSchemaError,
@@ -24,6 +25,14 @@ from pt_snap_cli.core.errors import (
 from pt_snap_cli.core.focus_service import FocusService
 from pt_snap_cli.core.import_metadata import ImportMetadataService
 from pt_snap_cli.core.import_service import ImportService
+from pt_snap_cli.core.json_codec import (
+    JSON_SCHEMA_VERSION,
+    JsonValue,
+    dumps_json,
+    json_error,
+    json_success,
+    to_jsonable,
+)
 from pt_snap_cli.core.models import (
     FocusState,
     ImportMetadata,
@@ -85,6 +94,13 @@ __all__ = [
     "SkillSpec",
     "SkillListing",
     "SkillInstallReport",
+    "classify_error",
+    "JSON_SCHEMA_VERSION",
+    "JsonValue",
+    "dumps_json",
+    "json_error",
+    "json_success",
+    "to_jsonable",
     "FocusService",
     "ImportMetadataService",
     "QueryService",

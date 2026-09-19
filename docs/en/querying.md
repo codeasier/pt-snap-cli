@@ -9,7 +9,7 @@ Run memory analysis queries against your snapshot database.
 ```bash
 pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
   [--device <id>] [--list] [--category <category>] \
-  [--template-info <template>] [-n <rows>]
+  [--template-info <template>] [-n <rows>] [--json]
 ```
 
 **Parameters:**
@@ -24,6 +24,7 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 | `--category` | Filter templates by category: `basic`, `statistical`, `business` |
 | `--template-info` | Show template details (parameters, output schema, and field semantics) |
 | `-n` | Maximum displayed rows; zero or a negative value means unlimited |
+| `--json` | Emit machine-readable JSON (execute, `--list`, and `--template-info`) |
 
 ## Query Templates
 
@@ -192,6 +193,45 @@ The report command combines:
 - `active_memory_callstack_at_event`
 
 and prints either a human-readable summary or JSON.
+
+## JSON Output
+
+`--json` writes one JSON object to stdout. Success payloads include
+`schema_version` (currently `1`), `ok: true`, and command fields:
+
+| Branch | Extra fields |
+|--------|----------------|
+| Execute | `db_path`, `focus_source`, `device_id`, `template`, `effective_params`, `semantics_version`, `total`, `returned`, `rows` |
+| `--list` | `category`, `templates` (`name`, `description`, `category`) |
+| `--template-info` | Template metadata matching `get_template_info()`, plus `template` |
+
+`-n` still caps `rows` and `returned`. `total` remains the untruncated count.
+`effective_params` is the validated parameter set after defaults and `choices`
+normalization. `--template-info --json` includes `semantics_version`,
+`interpretation_limits`, and field semantics from `output_schema`.
+
+On `--json` failure, stdout is empty. stderr is:
+
+```json
+{
+  "schema_version": 1,
+  "ok": false,
+  "error": {
+    "code": "TEMPLATE_NOT_FOUND",
+    "message": "Template 'missing' not found",
+    "hint": "Use 'pt-snap query --list --json' to list available templates."
+  }
+}
+```
+
+Stable codes include `TEMPLATE_NOT_FOUND`, `INVALID_PARAMETER`,
+`DATABASE_NOT_FOUND`, `DEVICE_NOT_FOUND`, and `FOCUS_NOT_CONFIGURED`. The
+exit code is nonzero. Text mode is unchanged: `Error:` lines still go to
+stdout (including missing-template `--template-info`, which already exits 1).
+
+Existing `metadata --json` and `report peak-memory --json` field names stay
+compatible. Those commands use the same stderr error envelope when `--json`
+is set.
 
 ## Output Format
 

@@ -2,7 +2,7 @@
 
 [中文](../zh/skills.md) | English
 
-`pt-snap-cli` ships agent skills for routing (`pt-snap-helper`), setup, Ascend NPU collection, and memory diagnostics. Agents should start with `pt-snap-helper` and prefer `--json` on commands that currently support it. The `pt-snap skill` commands copy those skills into the shared Agent Skills directory and into host-specific directories that Claude Code still requires.
+`pt-snap-cli` ships agent skills for routing (`pt-snap-helper`), setup, Ascend NPU collection, and memory diagnostics. Agents should start with `pt-snap-helper` and prefer `--json` on commands that accept it. The `pt-snap skill` commands copy those skills into the shared Agent Skills directory and into host-specific directories that Claude Code still requires.
 
 ## List skills
 

@@ -22,6 +22,7 @@ SnapshotDB is the SQLite database format for persisting PyTorch memory profiling
 
 ```bash
 pt-snap import snapshot.pkl
+pt-snap import snapshot.pkl --json
 ```
 
 The import command uses pt-snap-cli's first-party snapshot runtime to produce `snapshot.pkl.db` next to the input file by default, then updates project focus so subsequent commands can use it directly:
@@ -47,6 +48,10 @@ pt-snap metadata snapshot.pkl.db --json
 # Bypass a matching cache
 pt-snap import snapshot.pkl --force
 ```
+
+`import --json` reports `db_path`, `reused`, `cache_miss_reason`, `metadata`, and
+`focus_state`. `metadata --json` keeps its existing field names (`db_path`,
+`status`, `reason`, `metadata`) for compatibility.
 
 Legacy or externally generated compatible databases without this table remain
 queryable for templates that do not require a recognized callstack layout.
