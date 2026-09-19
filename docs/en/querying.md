@@ -207,8 +207,11 @@ and prints either a human-readable summary or JSON.
 
 `-n` still caps `rows` and `returned`. `total` remains the untruncated count.
 `effective_params` is the validated parameter set after defaults and `choices`
-normalization, including the `limit` actually applied when `-n` pushes a row
-cap into the SQL. `--template-info --json` includes `semantics_version`,
+normalization. When `-n` is set, `limit` is the trailing SQL LIMIT after the
+same merge the executor applies: `min` of a declared template `limit` and
+`-n`, or `-n` appended when the SQL has no LIMIT, or `min` of an existing
+`top_n` cap and `-n`. It is not a raw copy of `-n` when another parameter
+already limited the SQL. `--template-info --json` includes `semantics_version`,
 `interpretation_limits`, and field semantics from `output_schema`.
 
 On `--json` failure, stdout is empty. stderr is:
@@ -229,9 +232,14 @@ Stable codes include `TEMPLATE_NOT_FOUND`, `INVALID_PARAMETER`,
 `DATABASE_NOT_FOUND`, `DEVICE_NOT_FOUND`, and `FOCUS_NOT_CONFIGURED`. The
 exit code is nonzero. Usage and parse errors from the `pt-snap` console
 entry (for example `query -n abc --json`) also write this envelope with
-`INVALID_PARAMETER` and exit code 2. Text mode is unchanged: `Error:`
-lines still go to stdout (including missing-template `--template-info`,
-which already exits 1).
+`INVALID_PARAMETER` and exit code 2. When Click fails before the `--json`
+callback runs, that path is a best-effort argv scan: an exact `--json`
+token before `--`, and not the value of the previous option. Ctrl-C / EOF
+through the console entry write `Aborted!` to stderr in text mode (exit 1,
+or 130 on Typer 0.27 Ctrl-C). With `--json`, stdout stays empty and stderr
+is this envelope (`ERROR`, message `Aborted!`). Text mode is unchanged:
+`Error:` lines still go to stdout (including missing-template
+`--template-info`, which already exits 1).
 
 Existing `metadata --json` and `report peak-memory --json` field names stay
 compatible. Those commands use the same stderr error envelope when `--json`

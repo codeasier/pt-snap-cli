@@ -198,8 +198,10 @@ pt-snap report peak-memory /path/to/snapshot.db --json
 | `--template-info` | 与 `get_template_info()` 对齐的模板元数据，另加 `template` |
 
 `-n` 仍然限制 `rows` 与 `returned`。`total` 仍是未截断的总数。
-`effective_params` 是应用默认值并按 `choices` 规范化后的参数，并包含 `-n`
-实际写入 SQL 的 `limit`。
+`effective_params` 是应用默认值并按 `choices` 规范化后的参数。带 `-n` 时，
+`limit` 是与执行器相同的最终 SQL `LIMIT`：已声明的模板 `limit` 与 `-n`
+取较小值；SQL 没有 `LIMIT` 时追加 `-n`；已有 `top_n` 上限时再与 `-n`
+取较小值。当其它参数已经限制了 SQL 时，它不是 `-n` 的原样拷贝。
 `--template-info --json` 包含 `semantics_version`、`interpretation_limits`
 以及 `output_schema` 上的字段语义。
 
@@ -220,7 +222,11 @@ pt-snap report peak-memory /path/to/snapshot.db --json
 稳定错误码包括 `TEMPLATE_NOT_FOUND`、`INVALID_PARAMETER`、
 `DATABASE_NOT_FOUND`、`DEVICE_NOT_FOUND` 和 `FOCUS_NOT_CONFIGURED`，退出码非零。
 `pt-snap` 控制台入口的用法/解析错误（例如 `query -n abc --json`）也走同一信封，
-错误码为 `INVALID_PARAMETER`，退出码 2。
+错误码为 `INVALID_PARAMETER`，退出码 2。Click 在 `--json` 回调之前失败时，
+该路径是 best-effort 的 argv 扫描：`--` 之前的精确 `--json` 词，且不是前一个
+选项的值。控制台入口上的 Ctrl-C / EOF 在文本模式向 stderr 写 `Aborted!`
+（退出码 1；Typer 0.27 的 Ctrl-C 为 130）。带 `--json` 时 stdout 仍为空，
+stderr 为本信封（`ERROR`，message 为 `Aborted!`）。
 文本模式保持不变：`Error:` 仍写到 stdout（包括缺失模板的 `--template-info`，它已经以退出码 1 失败）。
 
 已有的 `metadata --json` 与 `report peak-memory --json` 字段名保持兼容。这两条命令在带 `--json` 失败时也使用同一套 stderr 错误信封。

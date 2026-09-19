@@ -400,6 +400,37 @@ def test_import_json_error_for_missing_snapshot(tmp_path: Path) -> None:
     _assert_json_error(missing, "SNAPSHOT_INVALID")
 
 
+def test_effective_params_limit_matches_top_n_sql_cap() -> None:
+    from pt_snap_cli.cli import _effective_query_params
+
+    wide = _effective_query_params(
+        "active_memory_callstack_at_event",
+        {"event_id": 1},
+        max_rows=50,
+    )
+    assert wide["top_n"] == 20
+    assert wide["limit"] == 20
+
+    tight = _effective_query_params(
+        "active_memory_callstack_at_event",
+        {"event_id": 1},
+        max_rows=5,
+    )
+    assert tight["top_n"] == 20
+    assert tight["limit"] == 5
+
+
+def test_argv_requests_json_is_flag_not_option_value() -> None:
+    from pt_snap_cli.cli import _argv_requests_json
+
+    assert _argv_requests_json(["query", "-n", "abc", "--json"]) is True
+    assert _argv_requests_json(["query", "--json"]) is True
+    assert _argv_requests_json(["query", "--list", "--json"]) is True
+    assert _argv_requests_json(["query", "--params", "--json"]) is False
+    assert _argv_requests_json(["query", "--", "--json"]) is False
+    assert _argv_requests_json(["query", "-n", "abc"]) is False
+
+
 def test_safe_call_json_usage_error_uses_stderr_envelope(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -418,6 +449,54 @@ def test_safe_call_json_usage_error_uses_stderr_envelope(
     assert payload["error"]["code"] == "INVALID_PARAMETER"
     assert "abc" in payload["error"]["message"]
     assert "hint" in payload["error"]
+
+
+def test_safe_call_json_abort_uses_stderr_envelope(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from unittest.mock import patch
+
+    from typer.exceptions import Abort
+
+    from pt_snap_cli.cli import _safe_call
+
+    with (
+        patch("sys.argv", ["pt-snap", "focus", "--json"]),
+        patch("pt_snap_cli.cli.app", side_effect=Abort()),
+    ):
+        code = _safe_call()
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.out == ""
+    payload = json.loads(captured.err)
+    assert payload["schema_version"] == JSON_SCHEMA_VERSION
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "ERROR"
+    assert payload["error"]["message"] == "Aborted!"
+    assert "hint" in payload["error"]
+
+
+def test_safe_call_json_sigint_uses_stderr_envelope(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from unittest.mock import patch
+
+    from typer.exceptions import Exit
+
+    from pt_snap_cli.cli import _safe_call
+
+    with (
+        patch("sys.argv", ["pt-snap", "focus", "--json"]),
+        patch("pt_snap_cli.cli.app", side_effect=Exit(130)),
+    ):
+        code = _safe_call()
+    captured = capsys.readouterr()
+    assert code == 130
+    assert captured.out == ""
+    payload = json.loads(captured.err)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "ERROR"
+    assert payload["error"]["message"] == "Aborted!"
 
 
 def test_split_json_is_independent_of_format(tmp_path: Path) -> None:

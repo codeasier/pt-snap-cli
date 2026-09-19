@@ -1194,6 +1194,23 @@ class TestSafeCall:
             with pytest.raises(KeyError, match="some_other_key"):
                 _safe_call()
 
+    def test_safe_call_abort_writes_aborted(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Non-standalone Abort must keep Click's Aborted! line on stderr."""
+        from unittest.mock import patch
+
+        from typer.exceptions import Abort
+
+        from pt_snap_cli.cli import _safe_call
+
+        with (
+            patch("sys.argv", ["pt-snap", "focus"]),
+            patch("pt_snap_cli.cli.app", side_effect=Abort()),
+        ):
+            assert _safe_call() == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err.strip() == "Aborted!"
+
 
 class TestImportCommand:
     """Test import command."""

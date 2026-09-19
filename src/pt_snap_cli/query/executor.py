@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,51 @@ _TRAILING_LIMIT_RE = re.compile(
     r"\bLIMIT\s+(?P<limit>-?\d+)(?P<offset>\s+OFFSET\s+\d+)?(?P<suffix>\s*;?\s*)$",
     re.IGNORECASE | re.DOTALL,
 )
+
+
+def injected_row_limit(validated: Mapping[str, Any], max_rows: int | None) -> int | None:
+    """Return the ``limit`` value ``QueryExecutor.render()`` injects.
+
+    A positive ``max_rows`` becomes that value unless the template already
+    declared a non-negative ``limit``, in which case the smaller one wins.
+    Negative template limits (unlimited) stay out of the ``min()``.
+    """
+    if max_rows is None or max_rows <= 0:
+        return None
+    template_limit = validated.get("limit")
+    if isinstance(template_limit, int) and template_limit >= 0:
+        return min(template_limit, max_rows)
+    return max_rows
+
+
+def tighten_existing_limit(existing_limit: int, injected: int) -> int:
+    """Apply the same rule ``QueryExecutor._apply_limit`` uses on a trailing LIMIT."""
+    if existing_limit < 0:
+        return injected
+    return min(existing_limit, injected)
+
+
+def reported_sql_limit(
+    validated: Mapping[str, Any],
+    max_rows: int | None,
+    parameters: Mapping[str, Any],
+) -> int | None:
+    """Best-effort trailing SQL LIMIT after render and ``_apply_limit``.
+
+    Templates that declare ``limit`` use the injected merge. Templates that
+    cap via ``top_n`` keep that existing trailing LIMIT unless ``max_rows``
+    is smaller (or ``top_n`` is negative, which is replaced). Other
+    templates receive an appended ``LIMIT max_rows``.
+    """
+    injected = injected_row_limit(validated, max_rows)
+    if injected is None:
+        return None
+    if "limit" in parameters:
+        return injected
+    existing = validated.get("top_n")
+    if isinstance(existing, int):
+        return tighten_existing_limit(existing, injected)
+    return injected
 
 
 class QueryExecutionError(Exception):
@@ -120,7 +166,7 @@ class QueryExecutor:
             return self._append_limit(sql, limit)
 
         existing_limit = int(match.group("limit"))
-        effective_limit = limit if existing_limit < 0 else min(existing_limit, limit)
+        effective_limit = tighten_existing_limit(existing_limit, limit)
         if effective_limit == existing_limit:
             return sql
 
@@ -197,13 +243,8 @@ class QueryExecutor:
             render_context["device_trace_table"] = f"trace_entry_{device_id}"
             render_context["device_block_table"] = f"block_{device_id}"
 
-        effective_limit: int | None = None
-        if max_rows is not None and max_rows > 0:
-            template_limit = render_context.get("limit")
-            if isinstance(template_limit, int) and template_limit >= 0:
-                effective_limit = min(template_limit, max_rows)
-            else:
-                effective_limit = max_rows
+        effective_limit = injected_row_limit(validated_params, max_rows)
+        if effective_limit is not None:
             render_context["limit"] = effective_limit
 
         jinja_template = self._compiled_template(template, self._sql_for_layout(template))

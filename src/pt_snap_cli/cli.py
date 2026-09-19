@@ -7,7 +7,7 @@ import shlex
 import shutil
 import sys
 import textwrap
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import asdict
 from pathlib import Path
@@ -20,6 +20,11 @@ try:
     from typer._click.exceptions import ClickException
 except ImportError:  # typer < 0.27
     from click.exceptions import ClickException
+
+try:
+    from click.exceptions import Abort as ClickAbort
+except ImportError:  # pragma: no cover
+    ClickAbort = Abort
 
 from pt_snap_cli import __version__
 from pt_snap_cli.completion import (
@@ -79,6 +84,7 @@ from pt_snap_cli.core.skill_service import (
     parse_host_option,
 )
 from pt_snap_cli.query.config import OUTPUT_COLUMN_OPTIONAL
+from pt_snap_cli.query.executor import reported_sql_limit
 from pt_snap_cli.query.registry import discover_categories, get_query
 
 AGENT_HELP_EPILOG = (
@@ -210,12 +216,9 @@ def _effective_query_params(
         raise TemplateRenderError(
             f"Failed to validate parameters for template '{template}': {exc}"
         ) from exc
-    if max_rows is not None and max_rows > 0:
-        template_limit = validated.get("limit")
-        if isinstance(template_limit, int) and template_limit >= 0:
-            validated["limit"] = min(template_limit, max_rows)
-        else:
-            validated["limit"] = max_rows
+    sql_limit = reported_sql_limit(validated, max_rows, parameters=query_template.parameters)
+    if sql_limit is not None:
+        validated["limit"] = sql_limit
     return validated
 
 
@@ -1317,12 +1320,75 @@ def _error_from_exc(
     _error(str(exc), code=code, hint=hint, extra_lines=extra_lines, text_prefix=text_prefix)
 
 
+# Flag-only options used when a parse failure happens before the --json callback.
+# A following --json is treated as a value of the previous option otherwise.
+_FLAG_ONLY_OPTIONS = frozenset(
+    {
+        "--json",
+        "--version",
+        "-v",
+        "--session",
+        "--global",
+        "--no-focus",
+        "--force",
+        "--list",
+        "--project",
+        "--user",
+        "--clear",
+        "--path",
+        "--help",
+        "-h",
+        "--include-static",
+        "--exclude-static",
+    }
+)
+
+
+def _argv_requests_json(argv: Sequence[str]) -> bool:
+    """Best-effort pre-parse scan for a ``--json`` flag.
+
+    ContextVar state is not set when Click fails before the option callback.
+    Tokens after ``--`` are ignored. ``--json`` immediately after a
+    value-taking option is treated as that option's value, not as the flag.
+    """
+    previous: str | None = None
+    for arg in argv:
+        if arg == "--":
+            break
+        if arg == "--json" and (
+            previous is None or previous in _FLAG_ONLY_OPTIONS or not previous.startswith("-")
+        ):
+            return True
+        previous = arg
+    return False
+
+
+def _json_requested() -> bool:
+    return _json_mode() or _argv_requests_json(sys.argv[1:])
+
+
+def _emit_aborted() -> None:
+    if _json_requested():
+        typer.echo(
+            dumps_json(
+                json_error(
+                    ERROR,
+                    "Aborted!",
+                    "The command was interrupted before it finished.",
+                )
+            ),
+            err=True,
+        )
+        return
+    typer.echo("Aborted!", err=True)
+
+
 def _safe_call() -> int:
     try:
         app(standalone_mode=False)
         return 0
     except ClickException as exc:
-        if "--json" in sys.argv[1:]:
+        if _json_requested():
             typer.echo(
                 dumps_json(
                     json_error(
@@ -1337,8 +1403,13 @@ def _safe_call() -> int:
         exc.show()
         return exc.exit_code
     except Exit as exc:
-        return int(exc.exit_code)
-    except Abort:
+        code = int(exc.exit_code)
+        # Typer 0.27 turns Ctrl-C into Exit(130) instead of Abort.
+        if code == 130:
+            _emit_aborted()
+        return code
+    except (Abort, ClickAbort):
+        _emit_aborted()
         return 1
     except KeyError as e:
         if str(e) in ("'COMP_WORDS'", "'COMP_LINE'", "'COMP_POINT'"):
