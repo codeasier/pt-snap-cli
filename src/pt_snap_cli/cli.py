@@ -185,25 +185,7 @@ def _split_json(result: SplitResult) -> dict[str, JsonValue]:
 
 
 def _template_info_dict(info: TemplateInfo) -> dict[str, object]:
-    return {
-        "name": info.name,
-        "description": info.description,
-        "category": info.category,
-        "devices": info.devices,
-        "parameters": {
-            param_name: {
-                "type": param.type,
-                "default": param.default,
-                "required": param.required,
-                "description": param.description,
-                "choices": param.choices,
-            }
-            for param_name, param in info.parameters.items()
-        },
-        "output_schema": info.output_schema,
-        "semantics_version": info.semantics_version,
-        "interpretation_limits": list(info.interpretation_limits),
-    }
+    return QueryService.template_info_to_dict(info)
 
 
 def _effective_query_params(
@@ -1319,7 +1301,10 @@ def show_capabilities(
 ) -> None:
     """List CLI version, query template contracts, and bundled skills."""
     service = CapabilityService()
-    catalog = service.catalog()
+    try:
+        catalog = service.catalog()
+    except SkillCatalogError as e:
+        _error_from_exc(e)
     if json_output:
         _emit_json(json_success(**service.catalog_to_dict(catalog)))
         return

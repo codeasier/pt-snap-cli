@@ -664,3 +664,53 @@ def test_overview_contract_matches_cli_and_api_semantics(contract_db: Path) -> N
     assert payload["devices"] == api["devices"]
     assert payload["import_metadata"] == api["import_metadata"]
     assert payload["focus_source"] == "explicit"
+
+
+def test_capabilities_template_matches_template_info_json(analyzer: SnapshotAnalyzer) -> None:
+    capabilities = _json_stdout(runner.invoke(app, ["capabilities", "--json"]))
+    info = _json_stdout(
+        runner.invoke(app, ["query", "--template-info", "preexisting_live", "--json"])
+    )
+    entry = next(item for item in capabilities["templates"] if item["name"] == "preexisting_live")
+    shared = {key: info[key] for key in entry}
+    assert shared == entry
+    assert analyzer.get_template_info("preexisting_live") == entry
+
+
+def test_overview_error_contract_maps_four_domain_failures(tmp_path: Path) -> None:
+    missing = runner.invoke(app, ["overview", str(tmp_path / "missing.db"), "--json"])
+    missing_error = json.loads(missing.stderr)["error"]
+    assert missing.exit_code == 1
+    assert missing_error["code"] == "DATABASE_NOT_FOUND"
+    with pytest.raises(FileNotFoundError):
+        SnapshotAnalyzer().get_database_overview(str(tmp_path / "missing.db"))
+
+    bad_db = tmp_path / "no-dictionary.db"
+    conn = sqlite3.connect(str(bad_db))
+    conn.execute("CREATE TABLE other_table (id INTEGER PRIMARY KEY)")
+    conn.commit()
+    conn.close()
+    schema = runner.invoke(app, ["overview", str(bad_db), "--json"])
+    schema_error = json.loads(schema.stderr)["error"]
+    assert schema.exit_code == 1
+    assert schema_error["code"] == "DATABASE_SCHEMA_INVALID"
+    with pytest.raises(ValueError):
+        SnapshotAnalyzer().get_database_overview(str(bad_db))
+
+    focus_dir = tmp_path / ".pt-snap"
+    focus_dir.mkdir()
+    (focus_dir / "focus.json").write_text("not-json", encoding="utf-8")
+    invalid = runner.invoke(app, ["overview", "--json"])
+    invalid_error = json.loads(invalid.stderr)["error"]
+    assert invalid.exit_code == 1
+    assert invalid_error["code"] == "FOCUS_FILE_INVALID"
+    with pytest.raises(ValueError):
+        SnapshotAnalyzer().get_database_overview()
+
+    (focus_dir / "focus.json").unlink()
+    unconfigured = runner.invoke(app, ["overview", "--json"])
+    unconfigured_error = json.loads(unconfigured.stderr)["error"]
+    assert unconfigured.exit_code == 1
+    assert unconfigured_error["code"] == "FOCUS_NOT_CONFIGURED"
+    with pytest.raises(RuntimeError, match="No database configured"):
+        SnapshotAnalyzer().get_database_overview()

@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pt_snap_cli.core import FocusNotConfiguredError, OverviewService
+from pt_snap_cli.core import DatabaseSchemaError, FocusNotConfiguredError, OverviewService
 from pt_snap_cli.core.import_metadata import ImportMetadataService
 
 
@@ -77,3 +77,29 @@ def test_overview_empty_device_has_null_bounds(tmp_path: Path) -> None:
 
     payload = OverviewService().overview_to_dict(OverviewService().inspect(db_path))
     assert payload["devices"] == [{"device_id": 0, "first_event_id": None, "last_event_id": None}]
+
+
+def test_overview_missing_id_column_is_schema_error(tmp_path: Path) -> None:
+    db_path = tmp_path / "no-id.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)")
+    conn.execute("CREATE TABLE trace_entry_0 (action INTEGER)")
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(DatabaseSchemaError):
+        OverviewService().inspect(db_path)
+
+
+def test_overview_skips_non_numeric_trace_entry_suffix(tmp_path: Path) -> None:
+    db_path = tmp_path / "mixed.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)")
+    conn.execute("CREATE TABLE trace_entry_foo (id INTEGER PRIMARY KEY)")
+    conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY)")
+    conn.execute("INSERT INTO trace_entry_0 (id) VALUES (3)")
+    conn.commit()
+    conn.close()
+
+    payload = OverviewService().overview_to_dict(OverviewService().inspect(db_path))
+    assert payload["devices"] == [{"device_id": 0, "first_event_id": 3, "last_event_id": 3}]

@@ -152,6 +152,8 @@ print(overview["import_metadata"]["status"])
 
 `get_database_overview()` 是 `pt-snap overview` 使用的只读概览：设备列表、各设备
 首/末 event id，以及导入 metadata 状态。它不会持久化 focus，也不会写入数据库。
+未配置 focus 时抛出 `RuntimeError`；文件不存在时抛出 `FileNotFoundError`；
+SnapshotDB schema 无效或 `.pt-snap/focus.json` 损坏时抛出 `ValueError`。
 
 ## 检查导入 Metadata
 
@@ -173,6 +175,8 @@ other_metadata = analyzer.get_database_metadata("/path/to/other.db")
   设置设备会抛出 `RuntimeError`。
 - `execute_query()` 在无法解析数据库时抛出 `RuntimeError`；其他查询、参数、设备和数据库
   错误遵循共享 service 层异常。
+- `get_database_overview()` 在没有已解析数据库时抛出 `RuntimeError`，文件不存在时抛出
+  `FileNotFoundError`，schema 无效或 `.pt-snap/focus.json` 损坏时抛出 `ValueError`。
 - `get_database_metadata()` 在没有已解析数据库时抛出 `RuntimeError`，文件不存在时抛出
   `FileNotFoundError`，schema 无效时抛出 `ValueError`。
 - `SnapshotAnalyzer` 不负责导入或拆分原始 pickle，也不生成 report。相关工作流应使用

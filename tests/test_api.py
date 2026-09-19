@@ -324,3 +324,10 @@ class TestSnapshotAnalyzerWithDB:
     def test_get_database_overview_requires_focus(self) -> None:
         with pytest.raises(RuntimeError, match="No database configured"):
             SnapshotAnalyzer().get_database_overview()
+
+    def test_get_database_overview_invalid_focus_file(self, tmp_path: Path) -> None:
+        focus_dir = tmp_path / ".pt-snap"
+        focus_dir.mkdir()
+        (focus_dir / "focus.json").write_text("not-json", encoding="utf-8")
+        with pytest.raises(ValueError):
+            SnapshotAnalyzer().get_database_overview()

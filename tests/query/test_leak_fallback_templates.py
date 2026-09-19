@@ -79,6 +79,13 @@ def test_preexisting_live_excludes_static_and_already_freed(leak_fallback_db: Pa
     assert later == [{"block_count": 2, "size_bytes": 1536}]
 
 
+def test_preexisting_live_excludes_static_at_negative_event_ids(leak_fallback_db: Path) -> None:
+    at_alloc_sentinel = _execute(leak_fallback_db, "preexisting_live", {"event_id": -1})
+    before_alloc_sentinel = _execute(leak_fallback_db, "preexisting_live", {"event_id": -2})
+    assert at_alloc_sentinel == [{"block_count": 4, "size_bytes": 3840}]
+    assert before_alloc_sentinel == [{"block_count": 4, "size_bytes": 3840}]
+
+
 def test_freed_block_lifetime_buckets_event_id_distance(leak_fallback_db: Path) -> None:
     template = get_query("freed_block_lifetime")
     assert template is not None

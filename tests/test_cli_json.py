@@ -693,3 +693,47 @@ def test_overview_json_uses_success_envelope(sample_db: Path) -> None:
 def test_overview_json_error_uses_stderr_envelope() -> None:
     result = runner.invoke(app, ["overview", "--json"])
     _assert_json_error(result, "FOCUS_NOT_CONFIGURED")
+
+
+def test_capabilities_json_skill_catalog_error_uses_envelope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    poison = tmp_path / "not-a-catalog"
+    poison.write_text("not a skill catalog", encoding="utf-8")
+    monkeypatch.setenv("PT_SNAP_SKILLS_DIR", str(poison))
+    result = runner.invoke(app, ["capabilities", "--json"])
+    _assert_json_error(result, "SKILL_ERROR")
+
+
+def test_overview_json_missing_database_uses_envelope(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["overview", str(tmp_path / "missing.db"), "--json"])
+    _assert_json_error(result, "DATABASE_NOT_FOUND")
+
+
+def test_overview_json_invalid_schema_uses_envelope(tmp_path: Path) -> None:
+    db_path = tmp_path / "no-dictionary.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE other_table (id INTEGER PRIMARY KEY)")
+    conn.commit()
+    conn.close()
+    result = runner.invoke(app, ["overview", str(db_path), "--json"])
+    _assert_json_error(result, "DATABASE_SCHEMA_INVALID")
+
+
+def test_overview_json_missing_id_column_uses_envelope(tmp_path: Path) -> None:
+    db_path = tmp_path / "no-id.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)")
+    conn.execute("CREATE TABLE trace_entry_0 (action INTEGER)")
+    conn.commit()
+    conn.close()
+    result = runner.invoke(app, ["overview", str(db_path), "--json"])
+    _assert_json_error(result, "DATABASE_SCHEMA_INVALID")
+
+
+def test_overview_json_invalid_focus_file_uses_envelope(tmp_path: Path) -> None:
+    focus_dir = tmp_path / ".pt-snap"
+    focus_dir.mkdir()
+    (focus_dir / "focus.json").write_text("not-json", encoding="utf-8")
+    result = runner.invoke(app, ["overview", "--json"])
+    _assert_json_error(result, "FOCUS_FILE_INVALID")

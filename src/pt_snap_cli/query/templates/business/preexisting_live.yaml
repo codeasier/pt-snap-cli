@@ -21,7 +21,7 @@ queries:
       WHERE allocEventId = -1
         AND (
           freeEventId IS NULL
-          OR freeEventId > {{ event_id|int }}
+          OR (freeEventId > {{ event_id|int }} AND freeEventId <> -1)
           OR (freeEventId < 0 AND freeEventId <> -1)
         )
     output_schema:

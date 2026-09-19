@@ -44,13 +44,17 @@ class OverviewService:
 
         db_path = resolved.db_path.expanduser().resolve()
         ctx = self._validated_context(db_path)
+        try:
+            raw_bounds = ctx.device_trace_bounds()
+        except (ValueError, sqlite3.DatabaseError) as exc:
+            raise DatabaseSchemaError(str(exc)) from exc
         devices = [
             DeviceTraceBounds(
                 device_id=device_id,
                 first_event_id=first_event_id,
                 last_event_id=last_event_id,
             )
-            for device_id, first_event_id, last_event_id in ctx.device_trace_bounds()
+            for device_id, first_event_id, last_event_id in raw_bounds
         ]
         return DatabaseOverview(
             db_path=db_path,

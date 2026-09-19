@@ -11,6 +11,7 @@ from pt_snap_cli.core import (
     CapabilityService,
     DatabaseMissingError,
     DatabaseSchemaError,
+    FocusFileInvalidError,
     FocusNotConfiguredError,
     FocusService,
     ImportMetadataService,
@@ -131,25 +132,7 @@ class SnapshotAnalyzer:
         except TemplateNotFoundError:
             return None
 
-        return {
-            "name": info.name,
-            "description": info.description,
-            "category": info.category,
-            "devices": info.devices,
-            "parameters": {
-                param_name: {
-                    "type": param.type,
-                    "default": param.default,
-                    "required": param.required,
-                    "description": param.description,
-                    "choices": param.choices,
-                }
-                for param_name, param in info.parameters.items()
-            },
-            "output_schema": info.output_schema,
-            "semantics_version": info.semantics_version,
-            "interpretation_limits": info.interpretation_limits,
-        }
+        return self._query_service.template_info_to_dict(info)
 
     def execute_query(
         self,
@@ -195,6 +178,8 @@ class SnapshotAnalyzer:
             overview = self._overview_service.inspect(resolved_path)
         except FocusNotConfiguredError as exc:
             raise RuntimeError("No database configured. Call set_focus() first.") from exc
+        except FocusFileInvalidError as exc:
+            raise ValueError(str(exc)) from exc
         except DatabaseMissingError as exc:
             raise FileNotFoundError(str(exc)) from exc
         except DatabaseSchemaError as exc:

@@ -163,7 +163,10 @@ print(overview["import_metadata"]["status"])
 
 `get_database_overview()` is the read-only orientation used by
 `pt-snap overview`: device list, per-device first/last event id, and import
-metadata status. It does not persist focus or write the database.
+metadata status. It does not persist focus or write the database. Missing
+focus raises `RuntimeError`; a missing file raises `FileNotFoundError`; an
+invalid SnapshotDB schema or a damaged `.pt-snap/focus.json` raises
+`ValueError`.
 
 ## Inspect Import Metadata
 
@@ -188,6 +191,9 @@ metadata schema version returns `status="invalid"`.
 - `execute_query()` raises `RuntimeError` when no database can be resolved;
   query, parameter, device, and database errors otherwise follow the shared
   service-layer exceptions.
+- `get_database_overview()` raises `RuntimeError` without a resolved database,
+  `FileNotFoundError` for a missing file, and `ValueError` for an invalid schema
+  or an invalid `.pt-snap/focus.json`.
 - `get_database_metadata()` raises `RuntimeError` without a resolved database,
   `FileNotFoundError` for a missing file, and `ValueError` for an invalid schema.
 - `SnapshotAnalyzer` does not import or split raw pickle snapshots and does not
