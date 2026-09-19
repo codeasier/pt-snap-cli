@@ -798,7 +798,7 @@ def query_database(
                         f"  ... and {result.total - result.returned} more (use -n to show more)"
                     )
                 else:
-                    typer.echo("  ... more available (use -n, offset, or --exact-total)")
+                    typer.echo("  ... more available (use -n, offset, top_n, or --exact-total)")
         else:
             typer.echo("No results found.")
     except FocusFileInvalidError as e:

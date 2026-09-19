@@ -238,7 +238,9 @@ pt-snap query "<db_path>" --device <device_id> --template-use active_memory_call
 
 Use these results only to describe active blocks at a selected event. They do
 not attribute reserved bytes, cached bytes, or the `reserved - active` gap to
-those callstacks. Keep static and dynamic active-block groups distinct.
+those callstacks. Keep static and dynamic active-block groups distinct. The
+callstack template has no `offset`; if `has_more` or `truncated` is true,
+increase `top_n` instead of treating the ranked page as complete.
 
 Do not use `callstack_analysis` as segment-source attribution. Its query has no
 action filter, so it mixes event types and cannot identify which callstack

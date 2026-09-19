@@ -113,7 +113,7 @@ The result contains:
 | --- | --- |
 | `total` | Matching-row `COUNT` when `exact_total=True`; otherwise the returned-row count |
 | `returned` | Number of rows included in `rows` |
-| `has_more` | True when a later page exists (detected by fetching one extra row when a limit is set) |
+| `has_more` | True when a later page exists (extra-row probe on a trailing `LIMIT`, or a full inner `top_n` window) |
 | `truncated` | True when this response is not the complete matching set |
 | `total_is_exact` | True when `total` is a `COUNT`, or when the page is the complete matching set |
 | `timeout_s` | Effective execution timeout in seconds, or `None` when unbounded |
@@ -128,8 +128,12 @@ project or global focus when no explicit analyzer database is set, then the firs
 discovered device. An explicit analyzer database without an analyzer device does
 not inherit a configured device. `max_rows=None`, zero, or a negative value is
 unlimited. Pass `exact_total=True` for a matching-row `COUNT`. `timeout_s`
-is a wall-clock execution timeout in seconds (or `PT_SNAP_QUERY_TIMEOUT`);
-it does not change the row cap.
+is a wall-clock budget for one `execute_query()` call in seconds (or
+`PT_SNAP_QUERY_TIMEOUT`); the page query and optional COUNT share it. The
+same environment variable applies to every template query, including
+`report peak-memory`. It does not change the row cap. Continue
+`active_memory_callstack_at_event` by increasing `top_n`; `-n` cannot
+raise that CTE cap.
 
 Rows contain raw SQLite values. Template `output_schema` metadata is not applied
 automatically; use the optional [ResultMapper API](result-mapper-api.md) when

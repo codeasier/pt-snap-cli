@@ -112,6 +112,10 @@ Use the final event ID from Step 1:
 pt-snap query '<db_path>' --device <device_id> --template-use active_memory_callstack_at_event --params '{"event_id":<final_event_id>,"include_static":true,"min_size":0,"top_n":20}'
 ```
 
+This template has no `offset`, and `-n` cannot raise the CTE `top_n` cap. If
+`has_more` or `truncated` is true, increase `top_n` instead of concluding from
+the first ranked page.
+
 Keep static memory separate from dynamic live memory. Rank dynamic groups by `size_bytes`, then compare block count, requested bytes, and each group's share of included active bytes. Read `percent_of_active_blocks` units, denominator, and interpretation limits from `pt-snap query --template-info active_memory_callstack_at_event` rather than inferring them from the column name. A group containing many small blocks can be important even when no individual block appears near the top of `leak_detection`.
 
 ### 4. Compare occupancy at the active peak

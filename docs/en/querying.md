@@ -25,7 +25,7 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 | `--template-info` | Show template details (parameters, output schema, and field semantics) |
 | `-n` | Maximum displayed rows; zero or a negative value means unlimited. Separate from `--timeout`. |
 | `--exact-total` | Run a `COUNT` of the matching set. Default `total` is the returned-row count. |
-| `--timeout` | Execution timeout in seconds via a SQLite progress handler. `<= 0` disables. Default: `PT_SNAP_QUERY_TIMEOUT` or unlimited. |
+| `--timeout` | Wall-clock budget for one `query` / `QueryService` call (page query and optional `--exact-total` COUNT share it) via a SQLite progress handler. `<= 0` disables. Default: `PT_SNAP_QUERY_TIMEOUT` or unlimited. The environment variable applies to every template query, including `report peak-memory`. |
 | `--json` | Emit machine-readable JSON (execute, `--list`, and `--template-info`) |
 
 ## Query Templates
@@ -212,12 +212,19 @@ and prints either a human-readable summary or JSON.
 the complete matching set (`has_more` is false and `offset` is 0).
 `--exact-total` runs a `COUNT` of the matching set (ignoring `limit` /
 `offset` / `top_n`) and sets `total_is_exact` to true. When a finite
-`LIMIT` is in effect, the executor fetches one extra row to set `has_more`
-without that count. `truncated` is true when this response is not the
-complete matching set (`has_more`, a positive `offset`, or an exact `total`
-greater than `returned`). `timeout_s` is the effective execution timeout
-in seconds, or `null` when unbounded. `--timeout` / `PT_SNAP_QUERY_TIMEOUT`
-use a SQLite progress handler and do not change the row cap.
+trailing `LIMIT` is in effect, the executor fetches one extra row to set
+`has_more` without that count. A finite inner `top_n` (for example inside
+a CTE) is not a trailing `LIMIT`: when that ranked window is full,
+`has_more` / `truncated` are set so a default page is not reported as
+complete. An exact `COUNT` that equals `returned` can clear that signal.
+`truncated` is true when this response is not the complete matching set
+(`has_more`, a positive `offset`, or an exact `total` greater than
+`returned`). `timeout_s` is the effective execution timeout in seconds, or
+`null` when unbounded. `--timeout` / `PT_SNAP_QUERY_TIMEOUT` are one
+QueryService-call budget shared by the page query and optional COUNT; they
+apply to every template query, including `report peak-memory`, and do not
+change the row cap. A non-numeric `PT_SNAP_QUERY_TIMEOUT` is
+`INVALID_PARAMETER`, not `QUERY_FAILED`.
 
 `effective_params` is the validated parameter set after defaults and `choices`
 normalization. When `-n` is set, `limit` is the trailing SQL LIMIT after the
@@ -228,10 +235,11 @@ caps such as `top_n` stay their own parameters; they do not rewrite
 `semantics_version`, `interpretation_limits`, and field semantics from
 `output_schema`.
 
-`event`, `block`, and `allocation` paginate with `limit` / `offset` and a
-stable `id` tie-break after `order_by`. Continue a truncated listing with
-the same sort keys and a higher `offset` (or `-n`) rather than treating the
-page as complete.
+`event`, `block`, `allocation`, and `leak_detection` paginate with a stable
+`id` tie-break after the primary sort. Continue a truncated `limit` /
+`offset` listing with the same sort keys and a higher `offset` (or `-n`).
+`active_memory_callstack_at_event` has no `offset`; `-n` cannot raise the
+CTE `top_n` cap. Continue that template by increasing `top_n`.
 
 On `--json` failure, stdout is empty. stderr is:
 
@@ -287,7 +295,7 @@ Example output (with `-n 2`, default `total` semantics):
 Found 2 results, showing 2:
   {'id': 1, 'address': 4096, 'size': 2048, ...}
   {'id': 2, 'address': 8192, 'size': 4096, ...}
-  ... more available (use -n, offset, or --exact-total)
+  ... more available (use -n, offset, top_n, or --exact-total)
 ```
 
 With `--exact-total`, "Found N" is the matching-row count and the footer can

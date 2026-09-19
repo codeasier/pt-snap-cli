@@ -175,6 +175,11 @@ pt-snap query "<DB>" --device <DEVICE> --template-use active_memory_callstack_at
 pt-snap query "<DB>" --device <DEVICE> --template-use active_blocks_at_event --params '{"event_id": <EVENT_ID>, "include_static": true, "limit": <LIMIT>}' -n <LIMIT>
 ```
 
+`active_memory_callstack_at_event` has no `offset`, and `-n` cannot raise the
+CTE `top_n` cap. If `has_more` or `truncated` is true on that template,
+increase `top_n` (keep `-n` at least as large) instead of treating the ranked
+page as the full dynamic set.
+
 The selected event must be one returned by the bounded `memory_peak` and
 `allocator_gap` results. The point-in-time queries do not accept range bounds;
 their event ID carries the range selection forward.

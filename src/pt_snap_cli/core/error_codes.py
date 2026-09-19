@@ -13,6 +13,7 @@ from pt_snap_cli.core.errors import (
     ImportToolMissingError,
     InvalidCategoryError,
     InvalidDeviceError,
+    InvalidParameterError,
     QueryExecutionError,
     QueryTimeoutError,
     SkillError,
@@ -80,6 +81,11 @@ def classify_error(exc: BaseException) -> tuple[str, str | None]:
         return (
             DATABASE_SCHEMA_INVALID,
             "Confirm the file is a SnapshotDB with a dictionary table.",
+        )
+    if isinstance(exc, InvalidParameterError):
+        return (
+            INVALID_PARAMETER,
+            "Use a numeric --timeout, or set PT_SNAP_QUERY_TIMEOUT to a number of seconds.",
         )
     if isinstance(exc, QueryTimeoutError):
         return (

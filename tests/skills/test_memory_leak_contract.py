@@ -77,6 +77,7 @@ def test_memory_leak_skill_reports_occupancy_with_identity_evidence() -> None:
     assert "occupancy comparison" in skill
     assert "not a block-identity survival test" in skill
     assert "`top_n` truncation applies to dynamic callstack groups only" in skill
+    assert "increase `top_n` instead of concluding from" in skill
     assert "static and preexisting groups are always returned in full" in skill
     assert "Match representative blocks by identity" in skill
 

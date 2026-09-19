@@ -44,6 +44,12 @@ class QueryExecutionError(PtSnapCoreError):
     pass
 
 
+class InvalidParameterError(QueryExecutionError):
+    """Raised when a query argument or environment value is not valid."""
+
+    pass
+
+
 class QueryTimeoutError(QueryExecutionError):
     """Raised when a query exceeds its configured execution timeout."""
 

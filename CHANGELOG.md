@@ -7,12 +7,13 @@
 - `focus`、`import`、`split`、`query`、`config` 支持 `--json`。成功结果带 `schema_version` / `ok` 信封，以及 `db_path`、`focus_source`、`device_id`、`template`、`effective_params` 等上下文。`query --list` / `--template-info` / 执行共用该选项；`--template-info --json` 透出 #147 字段语义。
 - JSON 模式失败时 stdout 为空，stderr 为带稳定错误码的结构化对象（如 `TEMPLATE_NOT_FOUND`、`INVALID_PARAMETER`、`DATABASE_NOT_FOUND`、`DEVICE_NOT_FOUND`），退出码非零。`pt-snap` 控制台入口返回 Typer/Click 的退出码（不再丢弃非 standalone 返回值），在检测到 `--json` 时也会把 Click 用法/解析错误写成 `INVALID_PARAMETER` 信封（退出码 2），并把 Ctrl-C / EOF 写成 `ERROR` / `Aborted!`。解析失败时的 `--json` 判定是 argv 词法扫描（best-effort）：忽略 `--` 之后的词，`--opt=value` 与数字词不吞后续参数。`query --json` 的 `effective_params.limit` 是尾部 SQL `LIMIT`（模板 `limit` 与 `-n` 的合并，或追加的 `-n`）；CTE 内的 `top_n` 仍是独立参数。
 - `split --json` 只控制 stdout 清单，与 `--format json` 的分片文件格式相互独立。`focus --session --json` 返回验证结果与 `PT_SNAP_DB_PATH` 赋值信息，不暗示已修改父 shell。
-- 查询结果增加完整性与分页字段：`has_more` / `truncated` / `total_is_exact`。默认 `total` 等于本页 `returned`；`--exact-total`（API `exact_total=True`）才对匹配集合做 `COUNT`。有限 `LIMIT` 时多取一行判断是否还有后续，不再在触达 `-n` 时自动计数。`event` / `block` / `allocation` 在 `order_by` 后用 `id` 做稳定分页次序。`--timeout` 与 `PT_SNAP_QUERY_TIMEOUT` 经 SQLite progress handler 限制执行时间，与 `-n` 行数上限分离；超时错误码为 `QUERY_TIMEOUT`。诊断 skill 默认有界查询，并按 `has_more` 续页。
+- 查询结果增加完整性与分页字段：`has_more` / `truncated` / `total_is_exact`。默认 `total` 等于本页 `returned`；`--exact-total`（API `exact_total=True`）才对匹配集合做 `COUNT`。有限 `LIMIT` 时多取一行判断是否还有后续，不再在触达 `-n` 时自动计数。CTE 内有限 `top_n` 在窗口已满时也置 `has_more` / `truncated`，续页靠增大 `top_n` 而不是 `offset` / `-n`。`event` / `block` / `allocation` / `leak_detection` 用 `id` 做稳定分页次序。`--timeout` 与 `PT_SNAP_QUERY_TIMEOUT` 是一次 `QueryService` 调用的共享时限（页面查询与可选 COUNT 共用），并作用于所有模板查询（含 `report peak-memory`）；非法环境变量归为 `INVALID_PARAMETER`。诊断 skill 默认有界查询，并按 `has_more` / `truncated` 续页。
 
 ### 兼容性提示
 
 - 文本模式保持原样：人类可读输出不变，`_error()` 与查询/报告说明行仍写 stdout。缺失模板的 `query --template-info` 已在 0.4.0 以退出码 1 失败。数据库无设备时，文本模式查询仍退出 0；JSON 模式改为 `DEVICE_NOT_FOUND` 且退出码非零。
 - 已有 `metadata --json`、`report peak-memory --json` 与 `skill list/install/upgrade/uninstall --json` 成功字段保持兼容，不包进新信封。它们在 `--json` 失败时改走 stderr 错误信封。
+- 查询默认 `total` 不再在触达 `-n` 时自动变成匹配集合 `COUNT`。依赖该旧语义的调用方必须显式传 `--exact-total` / `exact_total=True`。
 
 ## [0.4.0] - Unreleased
 

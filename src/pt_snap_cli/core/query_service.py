@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import os
 import sqlite3
+import time
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from pt_snap_cli.core.errors import (
     FocusNotConfiguredError,
     InvalidCategoryError,
     InvalidDeviceError,
+    InvalidParameterError,
     QueryExecutionError,
     QueryTimeoutError,
     TemplateNotFoundError,
@@ -45,7 +47,7 @@ def resolve_query_timeout(explicit: float | None) -> float | None:
     """
     if explicit is not None:
         if isinstance(explicit, bool):
-            raise QueryExecutionError("Query timeout must be a number of seconds")
+            raise InvalidParameterError("Query timeout must be a number of seconds")
         return float(explicit) if explicit > 0 else None
     raw = os.environ.get(QUERY_TIMEOUT_ENV)
     if raw is None or raw.strip() == "":
@@ -53,7 +55,7 @@ def resolve_query_timeout(explicit: float | None) -> float | None:
     try:
         value = float(raw)
     except ValueError as exc:
-        raise QueryExecutionError(
+        raise InvalidParameterError(
             f"{QUERY_TIMEOUT_ENV} must be a number of seconds, got {raw!r}"
         ) from exc
     return value if value > 0 else None
@@ -175,6 +177,7 @@ class QueryService:
         executor = self._get_executor(ctx)
         query_params = params or {}
         timeout_s = resolve_query_timeout(timeout_s)
+        started = time.monotonic()
 
         try:
             rows, has_more, _applied_limit = executor.execute_template_page(
@@ -185,16 +188,21 @@ class QueryService:
                 timeout_s=timeout_s,
             )
             offset = _validated_offset(template, query_params)
+            rank_cap = _finite_top_n(template, query_params)
+            if rank_cap is not None and _inner_rank_window_full(rows, rank_cap):
+                has_more = True
             returned = len(rows)
             if exact_total:
                 total = executor.count_template(
                     template,
                     query_params,
                     device_id=target_device,
-                    timeout_s=timeout_s,
+                    timeout_s=_remaining_timeout(timeout_s, started),
                     ignore_row_window=True,
                 )
                 total_is_exact = True
+                if offset == 0:
+                    has_more = total > returned
             else:
                 total = returned
                 total_is_exact = (not has_more) and offset == 0
@@ -276,3 +284,44 @@ def _validated_offset(template: str, params: dict[str, Any]) -> int:
         return 0
     raw = validated.get("offset")
     return raw if isinstance(raw, int) and raw > 0 else 0
+
+
+def _finite_top_n(template: str, params: dict[str, Any]) -> int | None:
+    """Return a declared non-negative ``top_n``, or ``None`` when unbounded."""
+    template_obj = get_query(template)
+    if template_obj is None or "top_n" not in template_obj.parameters:
+        return None
+    try:
+        validated = template_obj.validate_params(params)
+    except (TypeError, ValueError):
+        return None
+    raw = validated.get("top_n")
+    return raw if isinstance(raw, int) and raw >= 0 else None
+
+
+def _inner_rank_window_full(rows: list[dict[str, Any]], rank_cap: int) -> bool:
+    """True when a finite ``top_n`` window is full and may have dropped rows.
+
+    ``active_memory_callstack_at_event`` applies ``top_n`` only to dynamic
+    groups. Other ``top_n`` templates treat every returned row as ranked.
+    This is a cap-hit check, not an extra-row probe: an exact match of
+    ``rank_cap`` is treated as possibly incomplete unless ``exact_total``
+    later proves ``total == returned``.
+    """
+    if not rows:
+        return False
+    if any("category" in row for row in rows):
+        ranked = sum(1 for row in rows if row.get("category") == "dynamic_live_at_event")
+    else:
+        ranked = len(rows)
+    return ranked >= rank_cap
+
+
+def _remaining_timeout(timeout_s: float | None, started: float) -> float | None:
+    """Return leftover seconds from a single QueryService call budget."""
+    if timeout_s is None:
+        return None
+    left = timeout_s - (time.monotonic() - started)
+    if left <= 0:
+        raise QueryTimeoutError(f"Query timed out after {timeout_s} seconds")
+    return left

@@ -440,6 +440,9 @@ class QueryExecutor:
         if template is None:
             raise QueryExecutionError(f"Template not found: {name}")
 
+        # Preserve the historical execute_template short-circuit: unknown
+        # devices yield an empty page without rendering. CLI/API validate
+        # devices first, so only direct executor callers see this path.
         if device_id is not None and device_id not in self._context.device_ids:
             return [], False, None
 
