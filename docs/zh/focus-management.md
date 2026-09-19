@@ -57,7 +57,7 @@ pt-snap focus
 
 显示已解析的数据库路径、设备 ID 及其来源（项目 focus、session 环境变量或全局配置）。`pt-snap focus`、`pt-snap focus <db>`、`pt-snap focus --global` 和 `pt-snap focus --device` 在识别到调用栈 schema 时还会打印 `Callstack layout: v1 (inline text)` 或 `v2 (deduplicated)`；布局冲突时打印警告。`pt-snap focus --session` 只输出 `export PT_SNAP_DB_PATH=...`，以便被 shell 直接执行。该信息从数据库只读识别，不会写入 `.pt-snap/focus.json`。
 
-`--json` 覆盖读取、设置、仅改设备、`--global` 与 `--session`。成功对象包含 `schema_version`、`ok`、`action`、`configured`、`db_path`、`focus_source`、`focus_file`、`device_id`、`available_devices`、`callstack_layout` 和 `db_exists`。未提供数据库路径时，`focus --json` 仍读取当前 focus 并报告 `action: "read"`；同时带 `--session` 或 `--global` 也一样，与文本模式一致。`focus --session <db> --json` 只验证数据库，并返回 `session_applied: false` 以及 `env.name` / `env.value` / `env.export`；不会打印可直接 eval 的裸 shell 行，也不表示已修改父 shell。
+`--json` 覆盖读取、设置、仅改设备、`--global` 与 `--session`。成功对象包含 `schema_version`、`ok`、`action`、`configured`、`db_path`、`focus_source`、`focus_file`、`device_id`、`available_devices`、`callstack_layout`、`callstack_layout_error` 和 `db_exists`。未提供数据库路径时，`focus --json` 仍读取当前 focus 并报告 `action: "read"`；同时带 `--session` 或 `--global` 也一样，与文本模式一致。`focus --session <db> --json` 只验证数据库，并返回 `session_applied: false` 以及 `env.name` / `env.value` / `env.export`；不会打印可直接 eval 的裸 shell 行，也不表示已修改父 shell。
 
 ## 覆盖焦点
 

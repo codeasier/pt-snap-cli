@@ -207,7 +207,8 @@ and prints either a human-readable summary or JSON.
 
 `-n` still caps `rows` and `returned`. `total` remains the untruncated count.
 `effective_params` is the validated parameter set after defaults and `choices`
-normalization. `--template-info --json` includes `semantics_version`,
+normalization, including the `limit` actually applied when `-n` pushes a row
+cap into the SQL. `--template-info --json` includes `semantics_version`,
 `interpretation_limits`, and field semantics from `output_schema`.
 
 On `--json` failure, stdout is empty. stderr is:
@@ -226,8 +227,11 @@ On `--json` failure, stdout is empty. stderr is:
 
 Stable codes include `TEMPLATE_NOT_FOUND`, `INVALID_PARAMETER`,
 `DATABASE_NOT_FOUND`, `DEVICE_NOT_FOUND`, and `FOCUS_NOT_CONFIGURED`. The
-exit code is nonzero. Text mode is unchanged: `Error:` lines still go to
-stdout (including missing-template `--template-info`, which already exits 1).
+exit code is nonzero. Usage and parse errors from the `pt-snap` console
+entry (for example `query -n abc --json`) also write this envelope with
+`INVALID_PARAMETER` and exit code 2. Text mode is unchanged: `Error:`
+lines still go to stdout (including missing-template `--template-info`,
+which already exits 1).
 
 Existing `metadata --json` and `report peak-memory --json` field names stay
 compatible. Those commands use the same stderr error envelope when `--json`

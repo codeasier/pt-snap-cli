@@ -45,8 +45,8 @@ pt-snap metadata snapshot.pkl.db --json
 pt-snap import snapshot.pkl --force
 ```
 
-`import --json` 报告 `db_path`、`reused`、`cache_miss_reason`、`metadata` 和
-`focus_state`。`metadata --json` 保持现有字段名（`db_path`、`status`、`reason`、
+`import --json` 报告 `db_path`、`device_id`、`reused`、`cache_miss_reason`、
+`metadata`、`focus_state` 和顶层 `focus_source`。`metadata --json` 保持现有字段名（`db_path`、`status`、`reason`、
 `metadata`）以兼容已有调用方。
 
 旧版或外部生成且结构兼容的 DB 仍可查询不依赖可识别调用栈布局的模板。`pt-snap`

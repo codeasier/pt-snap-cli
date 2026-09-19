@@ -49,8 +49,8 @@ pt-snap metadata snapshot.pkl.db --json
 pt-snap import snapshot.pkl --force
 ```
 
-`import --json` reports `db_path`, `reused`, `cache_miss_reason`, `metadata`, and
-`focus_state`. `metadata --json` keeps its existing field names (`db_path`,
+`import --json` reports `db_path`, `device_id`, `reused`, `cache_miss_reason`,
+`metadata`, `focus_state`, and top-level `focus_source`. `metadata --json` keeps its existing field names (`db_path`,
 `status`, `reason`, `metadata`) for compatibility.
 
 Legacy or externally generated compatible databases without this table remain

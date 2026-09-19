@@ -323,6 +323,7 @@ def test_query_list_info_execute_empty_and_limit_json(
     assert limited_payload["returned"] == 1
     assert limited_payload["total"] >= 1
     assert limited_payload["effective_params"]["min_size"] == 0
+    assert limited_payload["effective_params"]["limit"] == 1
     assert limited_payload["device_id"] == 0
 
 
@@ -392,6 +393,31 @@ def test_import_json_fresh_and_reuse(tmp_path: Path) -> None:
     assert focused_payload["focus_source"] == "project"
     assert focused_payload["focus_state"]["focus_source"] == "project"
     assert focused_payload["focus_state"]["db_path"] == focused_payload["db_path"]
+
+
+def test_import_json_error_for_missing_snapshot(tmp_path: Path) -> None:
+    missing = runner.invoke(app, ["import", str(tmp_path / "missing.pkl"), "--no-focus", "--json"])
+    _assert_json_error(missing, "SNAPSHOT_INVALID")
+
+
+def test_safe_call_json_usage_error_uses_stderr_envelope(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from unittest.mock import patch
+
+    from pt_snap_cli.cli import _safe_call
+
+    with patch("sys.argv", ["pt-snap", "query", "-n", "abc", "--json"]):
+        code = _safe_call()
+    captured = capsys.readouterr()
+    assert code == 2
+    assert captured.out == ""
+    payload = json.loads(captured.err)
+    assert payload["schema_version"] == JSON_SCHEMA_VERSION
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "INVALID_PARAMETER"
+    assert "abc" in payload["error"]["message"]
+    assert "hint" in payload["error"]
 
 
 def test_split_json_is_independent_of_format(tmp_path: Path) -> None:

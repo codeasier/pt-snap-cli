@@ -50,6 +50,9 @@ def json_success(**fields: Any) -> dict[str, JsonValue]:
     converted = to_jsonable(fields)
     if not isinstance(converted, dict):
         raise TypeError("json_success fields must serialize to an object")
+    reserved = {"schema_version", "ok"} & converted.keys()
+    if reserved:
+        raise TypeError(f"json_success reserved fields cannot be overridden: {sorted(reserved)}")
     payload: dict[str, JsonValue] = {
         "schema_version": JSON_SCHEMA_VERSION,
         "ok": True,

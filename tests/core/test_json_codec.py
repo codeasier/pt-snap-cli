@@ -77,6 +77,13 @@ def test_to_jsonable_decodes_bytes_and_memoryview() -> None:
     assert "\ufffd" in to_jsonable(b"\xff")
 
 
+def test_json_success_rejects_reserved_envelope_keys() -> None:
+    with pytest.raises(TypeError, match="reserved fields"):
+        json_success(ok=False)
+    with pytest.raises(TypeError, match="reserved fields"):
+        json_success(schema_version=99)
+
+
 def test_to_jsonable_rejects_unknown_types() -> None:
     @dataclass
     class Holder:

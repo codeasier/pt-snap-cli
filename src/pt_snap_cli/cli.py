@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shlex
 import shutil
+import sys
 import textwrap
 from collections.abc import Mapping
 from contextvars import ContextVar
@@ -13,6 +14,12 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, NoReturn, cast
 
 import typer
+from typer.exceptions import Abort, Exit
+
+try:
+    from typer._click.exceptions import ClickException
+except ImportError:  # typer < 0.27
+    from click.exceptions import ClickException
 
 from pt_snap_cli import __version__
 from pt_snap_cli.completion import (
@@ -189,14 +196,27 @@ def _template_info_dict(info: TemplateInfo) -> dict[str, object]:
     }
 
 
-def _effective_query_params(template: str, params: dict[str, object]) -> dict[str, object]:
+def _effective_query_params(
+    template: str,
+    params: dict[str, object],
+    max_rows: int | None = None,
+) -> dict[str, object]:
     query_template = get_query(template)
     if query_template is None:
         return params
     try:
-        return query_template.validate_params(params)
-    except (TypeError, ValueError):
-        return params
+        validated = dict(query_template.validate_params(params))
+    except (TypeError, ValueError) as exc:
+        raise TemplateRenderError(
+            f"Failed to validate parameters for template '{template}': {exc}"
+        ) from exc
+    if max_rows is not None and max_rows > 0:
+        template_limit = validated.get("limit")
+        if isinstance(template_limit, int) and template_limit >= 0:
+            validated["limit"] = min(template_limit, max_rows)
+        else:
+            validated["limit"] = max_rows
+    return validated
 
 
 def _focus_service() -> FocusService:
@@ -735,7 +755,9 @@ def query_database(
                     focus_source=resolved.source,
                     device_id=result.device_id,
                     template=result.template,
-                    effective_params=_effective_query_params(template_use, query_params),
+                    effective_params=_effective_query_params(
+                        template_use, query_params, max_rows=max_rows
+                    ),
                     semantics_version=result.semantics_version,
                     total=result.total,
                     returned=result.returned,
@@ -1297,8 +1319,27 @@ def _error_from_exc(
 
 def _safe_call() -> int:
     try:
-        app()
+        app(standalone_mode=False)
         return 0
+    except ClickException as exc:
+        if "--json" in sys.argv[1:]:
+            typer.echo(
+                dumps_json(
+                    json_error(
+                        INVALID_PARAMETER,
+                        exc.format_message(),
+                        "Fix the command-line usage and retry. Use --help for options.",
+                    )
+                ),
+                err=True,
+            )
+            return exc.exit_code
+        exc.show()
+        return exc.exit_code
+    except Exit as exc:
+        return int(exc.exit_code)
+    except Abort:
+        return 1
     except KeyError as e:
         if str(e) in ("'COMP_WORDS'", "'COMP_LINE'", "'COMP_POINT'"):
             return 1
@@ -1306,6 +1347,4 @@ def _safe_call() -> int:
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(_safe_call())

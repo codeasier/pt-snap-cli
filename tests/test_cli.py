@@ -1172,9 +1172,7 @@ class TestSafeCall:
         from pt_snap_cli.cli import _safe_call
 
         with patch("sys.argv", ["pt-snap", "--version"]):
-            with pytest.raises(SystemExit) as exc_info:
-                _safe_call()
-            assert exc_info.value.code == 0
+            assert _safe_call() == 0
 
     def test_safe_call_catches_comp_keyerror(self) -> None:
         """Test _safe_call catches KeyError from broken shell completion."""
