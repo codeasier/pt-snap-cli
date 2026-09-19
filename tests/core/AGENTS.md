@@ -14,6 +14,8 @@
 | `test_import_*.py` | Tests import models/errors, metadata/cache decisions, safe publication, reuse, and failure handling. |
 | `test_json_codec.py` | Tests Path/dataclass JSON serialization and success/error envelopes. |
 | `test_query_service.py` | Tests query service template listing/info, focus resolution, execution, row limiting, and error translation. |
+| `test_capability_service.py` | Tests the read-only capability catalog (version, template contracts, skills). |
+| `test_overview_service.py` | Tests read-only device bounds and import-metadata status. |
 | `test_report_service.py` | Tests higher-level report composition and normalized results. |
 | `test_split_service.py` | Tests split contracts, devices, formats, replay validation, cleanup, races, and publication. |
 | `test_skill_service.py` | Tests skill catalog discovery, install status, host destinations, and conflict handling. |

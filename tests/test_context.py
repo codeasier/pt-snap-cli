@@ -119,6 +119,26 @@ class TestContext:
         ctx = Context(valid_db)
         assert ctx.device_ids == [0]
 
+    def test_device_ids_skip_non_numeric_suffix(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "mixed.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+        )
+        conn.execute("CREATE TABLE trace_entry_foo (id INTEGER PRIMARY KEY)")
+        conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY)")
+        conn.commit()
+        conn.close()
+        assert Context(db_path).device_ids == [0]
+
+    def test_device_trace_bounds_empty_and_populated(self, valid_db: Path) -> None:
+        ctx = Context(valid_db)
+        assert ctx.device_trace_bounds() == [(0, None, None)]
+        with sqlite3.connect(str(valid_db)) as conn:
+            conn.execute("INSERT INTO trace_entry_0 (id, action) VALUES (3, 4), (9, 4)")
+            conn.commit()
+        assert Context(valid_db).device_trace_bounds() == [(0, 3, 9)]
+
     def test_device_filter(self, valid_db: Path) -> None:
         """Test device filtering."""
         ctx = Context(valid_db, devices=[0])

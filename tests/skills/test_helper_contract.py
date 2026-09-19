@@ -28,6 +28,8 @@ JSON_COMMANDS = (
     ("import",),
     ("split",),
     ("config",),
+    ("capabilities",),
+    ("overview",),
 )
 
 
@@ -69,6 +71,8 @@ def test_helper_skill_uses_current_json_capability() -> None:
     skill = _skill()
 
     assert "Prefer `--json` where supported" in skill
+    assert "pt-snap capabilities --json" in skill
+    assert "pt-snap overview '<db_path>' --json" in skill
     assert "pt-snap metadata '<db_path>' --json" in skill
     assert "pt-snap report peak-memory '<db_path>' --device <device_id> --json" in skill
     assert "pt-snap query --list --json" in skill
@@ -90,6 +94,7 @@ def test_helper_skill_routes_by_goal_and_input_type() -> None:
 
     assert "## Routing matrix" in skill
     assert "Existing SnapshotDB" in skill
+    assert "overview first, then diagnose" in skill
     assert "Only pickle" in skill
     assert "`pt-snap` missing" in skill
     assert "Need Ascend NPU capture" in skill
@@ -105,6 +110,7 @@ def test_helper_skill_keeps_pickle_import_and_focus_as_handoffs() -> None:
     assert "Do not run `pt-snap import`." in skill
     assert "Do not run `pt-snap focus` with a database path." in skill
     assert "Do not persist focus" in skill
+    assert "overview first, then diagnose" in skill
     assert "This helper must not run that command or change focus." in skill
     assert "pt-snap import <snapshot.pkl> --json" in skill
     assert "That command currently has no `--json` option." not in skill

@@ -1,3 +1,4 @@
+from pt_snap_cli.core.capability_service import CapabilityService
 from pt_snap_cli.core.error_codes import classify_error
 from pt_snap_cli.core.errors import (
     DatabaseMissingError,
@@ -36,6 +37,9 @@ from pt_snap_cli.core.json_codec import (
     to_jsonable,
 )
 from pt_snap_cli.core.models import (
+    CapabilityCatalog,
+    DatabaseOverview,
+    DeviceTraceBounds,
     FocusState,
     ImportMetadata,
     ImportOptions,
@@ -53,6 +57,7 @@ from pt_snap_cli.core.models import (
     TemplateParameter,
     TemplateSummary,
 )
+from pt_snap_cli.core.overview_service import OverviewService
 from pt_snap_cli.core.query_service import QueryService
 from pt_snap_cli.core.report_service import ReportService
 from pt_snap_cli.core.skill_service import SkillService
@@ -98,6 +103,9 @@ __all__ = [
     "SkillSpec",
     "SkillListing",
     "SkillInstallReport",
+    "DeviceTraceBounds",
+    "DatabaseOverview",
+    "CapabilityCatalog",
     "classify_error",
     "JSON_SCHEMA_VERSION",
     "JsonValue",
@@ -112,4 +120,6 @@ __all__ = [
     "ImportService",
     "SplitService",
     "SkillService",
+    "CapabilityService",
+    "OverviewService",
 ]

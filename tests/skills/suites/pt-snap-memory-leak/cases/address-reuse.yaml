@@ -19,7 +19,7 @@ fixture:
 expected_tools:
   actions:
     - id: validate_database
-      operation: pt_snap.metadata
+      operation: pt_snap.overview
       match: {database: /fixtures/address-reuse.db, json: true}
     - id: inspect_candidates
       operation: pt_snap.query

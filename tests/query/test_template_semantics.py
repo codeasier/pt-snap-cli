@@ -24,6 +24,8 @@ _ANNOTATED = (
     "memory_peak",
     "allocator_gap",
     "active_memory_callstack_at_event",
+    "preexisting_live",
+    "freed_block_lifetime",
 )
 
 

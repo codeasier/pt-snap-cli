@@ -4,9 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.query.config import QueryParameter, QueryTemplate
+from pt_snap_cli.query.config import QueryConfig, QueryParameter, QueryTemplate
 from pt_snap_cli.query.registry import (
     QueryRegistry,
+    _infer_category,
     _load_all_templates,
     _load_yaml_templates,
     get_query,
@@ -247,8 +248,20 @@ class TestListByCategory:
         database. Every packaged template that exposes them must bound them
         with ``choices`` drawn from its own output columns.
         """
+        packaged_dir = (
+            Path(__file__).resolve().parents[2] / "src" / "pt_snap_cli" / "query" / "templates"
+        )
+        packaged_names: set[str] = set()
+        for yaml_file in packaged_dir.glob("**/*.yaml"):
+            config = QueryConfig.load_yaml(
+                yaml_file, default_category=_infer_category(yaml_file, packaged_dir)
+            )
+            packaged_names.update(config.queries)
+
         checked = 0
         for name in list_queries():
+            if name not in packaged_names:
+                continue
             template = get_query(name)
             assert template is not None
             columns = {column["column"] for column in template.output_schema}

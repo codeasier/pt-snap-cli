@@ -4,6 +4,9 @@
 
 ### 新增
 
+- 新增 `pt-snap capabilities`：一次输出 CLI 版本、全部查询模板/参数契约（含字段语义）和技能清单。`--json` 使用 #138 成功信封，替代逐个 `--template-info` 探测。
+- 新增 `pt-snap overview`：只读输出设备列表、各设备首/末 event id，以及导入 metadata 状态。`--json` 使用同一信封；分析路径不写数据库、不持久化 focus。
+- 新增 `preexisting_live` 与 `freed_block_lifetime` 查询模板，泄漏技能不再依赖 `sqlite3` CLI 回退。`preexisting_live` 排除 `freeEventId = -1` 的 static 块，与 `active_memory_callstack_at_event` 的 `[preexisting live]` 分组一致。诊断前置探测从 7 次（`metadata` + 六个 `--template-info`）降为 2 次（`capabilities` + `overview`）。helper 引导「先概览、再诊断」。
 - `focus`、`import`、`split`、`query`、`config` 支持 `--json`。成功结果带 `schema_version` / `ok` 信封，以及 `db_path`、`focus_source`、`device_id`、`template`、`effective_params` 等上下文。`query --list` / `--template-info` / 执行共用该选项；`--template-info --json` 透出 #147 字段语义。
 - JSON 模式失败时 stdout 为空，stderr 为带稳定错误码的结构化对象（如 `TEMPLATE_NOT_FOUND`、`INVALID_PARAMETER`、`DATABASE_NOT_FOUND`、`DEVICE_NOT_FOUND`），退出码非零。`pt-snap` 控制台入口返回 Typer/Click 的退出码（不再丢弃非 standalone 返回值），在检测到 `--json` 时也会把 Click 用法/解析错误写成 `INVALID_PARAMETER` 信封（退出码 2），并把 Ctrl-C / EOF 写成 `ERROR` / `Aborted!`。解析失败时的 `--json` 判定是 argv 词法扫描（best-effort）：忽略 `--` 之后的词，`--opt=value` 与数字词不吞后续参数。`query --json` 的 `effective_params.limit` 是尾部 SQL `LIMIT`（模板 `limit` 与 `-n` 的合并，或追加的 `-n`）；CTE 内的 `top_n` 仍是独立参数。
 - `split --json` 只控制 stdout 清单，与 `--format json` 的分片文件格式相互独立。`focus --session --json` 返回验证结果与 `PT_SNAP_DB_PATH` 赋值信息，不暗示已修改父 shell。
@@ -12,7 +15,7 @@
 ### 兼容性提示
 
 - 文本模式保持原样：人类可读输出不变，`_error()` 与查询/报告说明行仍写 stdout。缺失模板的 `query --template-info` 已在 0.4.0 以退出码 1 失败。数据库无设备时，文本模式查询仍退出 0；JSON 模式改为 `DEVICE_NOT_FOUND` 且退出码非零。
-- 已有 `metadata --json`、`report peak-memory --json` 与 `skill list/install/upgrade/uninstall --json` 成功字段保持兼容，不包进新信封。它们在 `--json` 失败时改走 stderr 错误信封。
+- 已有 `metadata --json`、`report peak-memory --json` 与 `skill list/install/upgrade/uninstall --json` 成功字段保持兼容，不包进新信封。它们在 `--json` 失败时改走 stderr 错误信封。新的 `capabilities --json` 与 `overview --json` 使用 #138 成功/失败信封。`capabilities` 在技能目录不可读时走 `SKILL_ERROR`；`overview` 把损坏的设备表/边界查询翻译为 `DATABASE_SCHEMA_INVALID`，并把损坏的 focus 文件翻译为 `FOCUS_FILE_INVALID`。
 - 查询默认 `total` 不再在触达 `-n` 时自动变成匹配集合 `COUNT`。依赖该旧语义的调用方必须显式传 `--exact-total` / `exact_total=True`。
 
 ## [0.4.0] - Unreleased

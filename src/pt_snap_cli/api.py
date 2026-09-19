@@ -8,11 +8,14 @@ from typing import Any
 
 from pt_snap_cli.config import Config
 from pt_snap_cli.core import (
+    CapabilityService,
     DatabaseMissingError,
     DatabaseSchemaError,
+    FocusFileInvalidError,
     FocusNotConfiguredError,
     FocusService,
     ImportMetadataService,
+    OverviewService,
     QueryService,
     TemplateNotFoundError,
 )
@@ -53,6 +56,14 @@ class SnapshotAnalyzer:
         self._context_cache = context_cache if context_cache is not None else ContextCache()
         self._query_service = QueryService(self._focus_service, context_cache=self._context_cache)
         self._metadata_service = ImportMetadataService()
+        self._capability_service = CapabilityService(
+            query_service=self._query_service,
+        )
+        self._overview_service = OverviewService(
+            self._focus_service,
+            metadata_service=self._metadata_service,
+            context_cache=self._context_cache,
+        )
 
     @property
     def context_cache(self) -> ContextCache:
@@ -121,25 +132,7 @@ class SnapshotAnalyzer:
         except TemplateNotFoundError:
             return None
 
-        return {
-            "name": info.name,
-            "description": info.description,
-            "category": info.category,
-            "devices": info.devices,
-            "parameters": {
-                param_name: {
-                    "type": param.type,
-                    "default": param.default,
-                    "required": param.required,
-                    "description": param.description,
-                    "choices": param.choices,
-                }
-                for param_name, param in info.parameters.items()
-            },
-            "output_schema": info.output_schema,
-            "semantics_version": info.semantics_version,
-            "interpretation_limits": info.interpretation_limits,
-        }
+        return self._query_service.template_info_to_dict(info)
 
     def execute_query(
         self,
@@ -175,6 +168,23 @@ class SnapshotAnalyzer:
             "total_is_exact": result.total_is_exact,
             "timeout_s": result.timeout_s,
         }
+
+    def list_capabilities(self) -> dict[str, Any]:
+        return self._capability_service.catalog_to_dict(self._capability_service.catalog())
+
+    def get_database_overview(self, db_path: str | None = None) -> dict[str, Any]:
+        resolved_path = db_path if db_path is not None else self._db_path
+        try:
+            overview = self._overview_service.inspect(resolved_path)
+        except FocusNotConfiguredError as exc:
+            raise RuntimeError("No database configured. Call set_focus() first.") from exc
+        except FocusFileInvalidError as exc:
+            raise ValueError(str(exc)) from exc
+        except DatabaseMissingError as exc:
+            raise FileNotFoundError(str(exc)) from exc
+        except DatabaseSchemaError as exc:
+            raise ValueError(str(exc)) from exc
+        return self._overview_service.overview_to_dict(overview)
 
     def get_database_metadata(self, db_path: str | None = None) -> dict[str, Any]:
         resolved = self._focus_service.resolve_focus(

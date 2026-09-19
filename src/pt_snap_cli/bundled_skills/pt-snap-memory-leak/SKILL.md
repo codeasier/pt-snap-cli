@@ -56,21 +56,22 @@ Do not run `pt-snap focus <database_path>` or otherwise persist focus from this 
 
 This skill accepts SnapshotDB files only. Do not run `pt-snap import` or deserialize a pickle snapshot. If the user has only a pickle file, stop and explain that importing requires a separate, explicit trusted-input decision because pickle loading is not a sandbox.
 
-### 3. Verify the database and required templates
+### 3. Verify capabilities and the database in two calls
 
 Run:
 
 ```bash
-pt-snap metadata '<db_path>' --json
-pt-snap query --template-info memory_peak
-pt-snap query --template-info allocator_gap
-pt-snap query --template-info event
-pt-snap query --template-info block
-pt-snap query --template-info leak_detection
-pt-snap query --template-info active_memory_callstack_at_event
+pt-snap capabilities --json
+pt-snap overview '<db_path>' --json
 ```
 
-If database validation or a required template fails, stop and report the exact failure. Do not silently substitute raw SQL for a missing core template.
+`capabilities --json` is the catalog: CLI version, every template contract (parameters, `output_schema`, field semantics), and the skill list. Do not probe templates one-by-one with `--template-info`.
+
+`overview --json` is the read-only database orientation: device list, per-device first/last event id, and import-metadata status. Do not persist focus.
+
+Prerequisite probe budget: previously 7 calls (`metadata` plus six `--template-info` probes). Now 2 calls (`capabilities` + `overview`). Record that reduction when evaluating this skill.
+
+Confirm these templates exist in the capabilities catalog before diagnosis: `memory_peak`, `allocator_gap`, `event`, `block`, `leak_detection`, `active_memory_callstack_at_event`, `preexisting_live`, `freed_block_lifetime`. If the catalog or overview fails, stop and report the exact failure. Do not silently substitute raw SQL for a missing core template.
 
 ## Diagnostic Workflow
 
@@ -100,7 +101,7 @@ when a matching-row count is required. `--timeout` is independent of `-n`.
 pt-snap query '<db_path>' --device <device_id> --template-use leak_detection --params '{"min_size":<min_size>}' -n 100 --json
 ```
 
-`leak_detection` includes only dynamic blocks with a recorded allocation and no recorded free completion. It intentionally excludes static blocks whose allocation predates tracing. Interpret its columns from `pt-snap query --template-info leak_detection`; do not treat candidates as confirmed leaks.
+`leak_detection` includes only dynamic blocks with a recorded allocation and no recorded free completion. It intentionally excludes static blocks whose allocation predates tracing. Interpret its columns from the `leak_detection` entry in `pt-snap capabilities --json`; do not treat candidates as confirmed leaks.
 
 Record candidate count, largest sizes, addresses, and allocation event IDs. Do not infer simultaneous live bytes by summing cumulative allocation activity from `callstack_analysis`.
 
@@ -116,7 +117,7 @@ This template has no `offset`, and `-n` cannot raise the CTE `top_n` cap. If
 `has_more` or `truncated` is true, increase `top_n` instead of concluding from
 the first ranked page.
 
-Keep static memory separate from dynamic live memory. Rank dynamic groups by `size_bytes`, then compare block count, requested bytes, and each group's share of included active bytes. Read `percent_of_active_blocks` units, denominator, and interpretation limits from `pt-snap query --template-info active_memory_callstack_at_event` rather than inferring them from the column name. A group containing many small blocks can be important even when no individual block appears near the top of `leak_detection`.
+Keep static memory separate from dynamic live memory. Rank dynamic groups by `size_bytes`, then compare block count, requested bytes, and each group's share of included active bytes. Read `percent_of_active_blocks` units, denominator, and interpretation limits from the `active_memory_callstack_at_event` entry in `pt-snap capabilities --json` rather than inferring them from the column name. A group containing many small blocks can be important even when no individual block appears near the top of `leak_detection`.
 
 ### 4. Compare occupancy at the active peak
 
@@ -134,21 +135,13 @@ Before claiming that the same blocks persisted across the peak:
 
 The template separates blocks without a captured allocation event into their own groups instead of attributing them to callstacks: `[static] allocEventId=-1, freeEventId=-1`, and `[preexisting live] allocEventId=-1` for blocks allocated before tracing that were still live at the analyzed event because their recorded free event came later or does not exist. Pre-tracing blocks whose free event precedes the analyzed event are correctly absent because they were no longer live. Report each group separately instead of absorbing it into a callstack group.
 
-For an exact cross-check of the `[preexisting live]` bucket — for example against a database imported before this grouping existed — do not scan with the packaged `block` filters: they compare `freeEventId` numerically and cannot express the `freeEventId IS NULL` case that the template counts as preexisting-live, so any filtered scan risks an incomplete bucket. Instead, validate that `<device_id>` is a non-negative decimal integer matching `^[0-9]+$`, then run one read-only aggregate through `sqlite3 -readonly`:
+For an exact cross-check of the `[preexisting live]` bucket — for example against a database imported before this grouping existed — do not scan with the packaged `block` filters: they compare `freeEventId` numerically and cannot express the `freeEventId IS NULL` case that `active_memory_callstack_at_event` counts as preexisting-live, so any filtered scan risks an incomplete bucket. Use the packaged `preexisting_live` template instead:
 
 ```bash
-sqlite3 -readonly '<db_path>' "
-SELECT COUNT(*) AS block_count, COALESCE(SUM(size), 0) AS size_bytes
-FROM block_<device_id>
-WHERE allocEventId = -1
-  AND (
-    freeEventId IS NULL
-    OR freeEventId > <peak_active_event_id>
-    OR (freeEventId < 0 AND freeEventId <> -1)
-  );"
+pt-snap query '<db_path>' --device <device_id> --template-use preexisting_live --params '{"event_id":<peak_active_event_id>}'
 ```
 
-The predicate mirrors the template's `[preexisting live]` condition exactly: pre-tracing allocations whose free event is missing (`NULL`), comes later than the analyzed event, or is negative other than the static sentinel `-1`. The aggregate returns a single row, so no row limit applies and nothing is silently undercounted; report the count and bytes next to the static group.
+The template uses the same predicate as the `[preexisting live]` group: pre-tracing allocations whose free event is missing (`NULL`), comes later than the analyzed event, or is negative other than the static sentinel `-1`. The aggregate returns a single row, so no row limit applies and nothing is silently undercounted; report the count and bytes next to the static group.
 
 Occupancy that stays high across both events strengthens retention evidence but does not by itself prove a leak.
 
@@ -171,28 +164,13 @@ Do not use `block.state` as evidence for dynamic blocks. Its documented lifecycl
 
 ### 6. Optionally establish a freed-block lifetime baseline
 
-The packaged templates do not aggregate `freeEventId - allocEventId` into lifetime buckets. Only when this baseline is needed, and only when the `sqlite3` CLI is available, use a read-only fallback after validating that `<device_id>` is a non-negative decimal integer:
+When a lifetime baseline is needed, use the packaged `freed_block_lifetime` template:
 
 ```bash
-sqlite3 -readonly '<db_path>' "
-SELECT CASE
-         WHEN freeEventId - allocEventId < 1000 THEN '<1k'
-         WHEN freeEventId - allocEventId < 5000 THEN '1k-5k'
-         WHEN freeEventId - allocEventId < 20000 THEN '5k-20k'
-         WHEN freeEventId - allocEventId < 100000 THEN '20k-100k'
-         ELSE '>=100k'
-       END AS lifetime_events,
-       COUNT(*) AS block_count,
-       SUM(size) AS size_bytes
-FROM block_<device_id>
-WHERE allocEventId >= 0 AND freeEventId >= allocEventId
-GROUP BY lifetime_events
-ORDER BY MIN(freeEventId - allocEventId);"
+pt-snap query '<db_path>' --device <device_id> --template-use freed_block_lifetime
 ```
 
-This baseline describes successfully freed blocks. It does not classify end-of-trace candidates and must not be generalized to real elapsed time.
-
-If `sqlite3` is unavailable or read-only mode cannot be verified, skip this optional step and list the lifetime distribution as unknown. Do not use a writable connection.
+This baseline describes successfully freed blocks, bucketed by `freeEventId - allocEventId` distance (`<1k`, `1k-5k`, `5k-20k`, `20k-100k`, `>=100k`). It does not classify end-of-trace candidates and must not be generalized to real elapsed time. Read those limits from the `freed_block_lifetime` entry in `pt-snap capabilities --json`.
 
 ### 7. Classify findings conservatively
 
@@ -226,7 +204,7 @@ Useful validation experiments include repeated snapshots at equivalent workload 
 - Keep SnapshotDB access read-only. Never run `create`, `insert`, `update`, `delete`, `drop`, `alter`, `replace`, `attach`, `detach`, `reindex`, or `vacuum` SQL.
 - Do not persist focus, configuration, reports, exports, scratch databases, or readiness files.
 - Do not import or deserialize pickle snapshots.
-- Prefer packaged `pt-snap` templates. Use raw SQLite only for the two documented read-only aggregates that templates do not expose: the freed-block lifetime baseline (Step 6) and the exact `[preexisting live]` total (Step 4).
+- Prefer packaged `pt-snap` templates. Do not use the `sqlite3` CLI or hand-assembled SQL. The exact `[preexisting live]` total is `preexisting_live` (Step 4) and the freed-block lifetime baseline is `freed_block_lifetime` (Step 6).
 - Do not call every allocation without a free event a leak.
 - Separate cumulative allocation volume from memory simultaneously live at an event.
 - Keep static memory separate from dynamic candidates.
@@ -245,7 +223,7 @@ Useful validation experiments include repeated snapshots at equivalent workload 
 - End-of-trace dynamic candidates and static memory were reported separately.
 - Active-peak and final-event callstack attribution used the same device.
 - Peak-versus-final comparisons were reported as occupancy, and persistence claims relied on identity-matched blocks.
-- Preexisting-live memory was reported separately from static and dynamic groups, with exact totals taken only from the documented read-only aggregates.
+- Preexisting-live memory was reported separately from static and dynamic groups, with exact totals taken from `preexisting_live`.
 - Address-event listings stayed bounded with paging or event-ID windows, and `has_more` was honored.
 - Database paths were single-quoted or passed through argument arrays without shell re-parsing.
 - Representative lifecycle events were checked for address reuse and ambiguous pairing.

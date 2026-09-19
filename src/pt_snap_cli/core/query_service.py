@@ -126,7 +126,7 @@ class QueryService:
 
         devices = info["devices"]
         if isinstance(devices, list):
-            devices = ", ".join(devices)
+            devices = ", ".join(str(item) for item in devices)
 
         return TemplateInfo(
             name=info["name"],
@@ -151,6 +151,33 @@ class QueryService:
                 else []
             ),
         )
+
+    def list_template_contracts(self, category: str | None = None) -> list[TemplateInfo]:
+        """Return full template contracts, matching ``get_template_info`` per name."""
+        return [self.get_template_info(item.name) for item in self.list_templates(category)]
+
+    @staticmethod
+    def template_info_to_dict(info: TemplateInfo) -> dict[str, Any]:
+        """Serialize a template contract for CLI/API JSON adapters."""
+        return {
+            "name": info.name,
+            "description": info.description,
+            "category": info.category,
+            "devices": info.devices,
+            "parameters": {
+                param_name: {
+                    "type": param.type,
+                    "default": param.default,
+                    "required": param.required,
+                    "description": param.description,
+                    "choices": param.choices,
+                }
+                for param_name, param in info.parameters.items()
+            },
+            "output_schema": info.output_schema,
+            "semantics_version": info.semantics_version,
+            "interpretation_limits": list(info.interpretation_limits),
+        }
 
     def execute_query(
         self,

@@ -302,3 +302,32 @@ class TestSnapshotAnalyzerWithDB:
         assert result["status"] == "available"
         assert result["metadata"]["source_sha256"] == digest
         source.unlink()
+
+    def test_list_capabilities(self) -> None:
+        payload = SnapshotAnalyzer().list_capabilities()
+        assert "cli_version" in payload
+        names = {item["name"] for item in payload["templates"]}
+        assert "leak_detection" in names
+        assert "preexisting_live" in names
+        assert "freed_block_lifetime" in names
+        skill_names = {item["name"] for item in payload["skills"]}
+        assert "pt-snap-helper" in skill_names
+
+    def test_get_database_overview(self, valid_db: Path) -> None:
+        payload = SnapshotAnalyzer(db_path=valid_db).get_database_overview()
+        assert payload["db_path"] == str(valid_db.resolve())
+        assert payload["devices"] == [
+            {"device_id": 0, "first_event_id": None, "last_event_id": None}
+        ]
+        assert payload["import_metadata"]["status"] == "unavailable"
+
+    def test_get_database_overview_requires_focus(self) -> None:
+        with pytest.raises(RuntimeError, match="No database configured"):
+            SnapshotAnalyzer().get_database_overview()
+
+    def test_get_database_overview_invalid_focus_file(self, tmp_path: Path) -> None:
+        focus_dir = tmp_path / ".pt-snap"
+        focus_dir.mkdir()
+        (focus_dir / "focus.json").write_text("not-json", encoding="utf-8")
+        with pytest.raises(ValueError):
+            SnapshotAnalyzer().get_database_overview()

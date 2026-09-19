@@ -36,7 +36,9 @@ from pt_snap_cli.completion import (
 )
 from pt_snap_cli.config import ENV_DB_PATH
 from pt_snap_cli.core import (
+    CapabilityService,
     DatabaseMissingError,
+    DatabaseOverview,
     DatabaseSchemaError,
     FocusFileInvalidError,
     FocusNotConfiguredError,
@@ -52,6 +54,7 @@ from pt_snap_cli.core import (
     InvalidDeviceError,
     InvalidSkillTargetError,
     JsonValue,
+    OverviewService,
     PeakMemoryReport,
     QueryExecutionError,
     QueryService,
@@ -90,6 +93,7 @@ from pt_snap_cli.query.registry import discover_categories, get_query
 AGENT_HELP_EPILOG = (
     "Agents: prefer --json where supported. "
     "Start with the pt-snap-helper skill; "
+    "use pt-snap capabilities --json and pt-snap overview --json before diagnosing; "
     "check availability with pt-snap skill list --json."
 )
 
@@ -181,25 +185,7 @@ def _split_json(result: SplitResult) -> dict[str, JsonValue]:
 
 
 def _template_info_dict(info: TemplateInfo) -> dict[str, object]:
-    return {
-        "name": info.name,
-        "description": info.description,
-        "category": info.category,
-        "devices": info.devices,
-        "parameters": {
-            param_name: {
-                "type": param.type,
-                "default": param.default,
-                "required": param.required,
-                "description": param.description,
-                "choices": param.choices,
-            }
-            for param_name, param in info.parameters.items()
-        },
-        "output_schema": info.output_schema,
-        "semantics_version": info.semantics_version,
-        "interpretation_limits": list(info.interpretation_limits),
-    }
+    return QueryService.template_info_to_dict(info)
 
 
 def _effective_query_params(
@@ -1307,6 +1293,84 @@ def show_config(
         typer.echo("Current configuration:")
         for key, value in cast(Mapping[str, object], current_config).items():
             typer.echo(f"  {key}: {value}")
+
+
+@app.command("capabilities")
+def show_capabilities(
+    json_output: Annotated[bool, _json_flag()] = False,
+) -> None:
+    """List CLI version, query template contracts, and bundled skills."""
+    service = CapabilityService()
+    try:
+        catalog = service.catalog()
+    except SkillCatalogError as e:
+        _error_from_exc(e)
+    if json_output:
+        _emit_json(json_success(**service.catalog_to_dict(catalog)))
+        return
+    typer.echo(f"CLI version: {catalog.cli_version}")
+    typer.echo()
+    typer.echo(f"Templates ({len(catalog.templates)}):")
+    for info in catalog.templates:
+        category = info.category if info.category is not None else "unknown"
+        typer.secho(f"  {info.name}  ({category})", fg=typer.colors.GREEN, bold=True)
+        typer.echo(f"    {info.description}")
+        if info.parameters:
+            names = ", ".join(info.parameters)
+            typer.echo(f"    parameters: {names}")
+    typer.echo()
+    typer.echo("Use --json for full parameter contracts, output schemas, and field semantics.")
+    typer.echo()
+    if not catalog.skills:
+        typer.echo("Skills: none")
+        return
+    typer.echo(f"Skills ({len(catalog.skills)}):")
+    _print_skill_listings(catalog.skills)
+
+
+@app.command("overview")
+def show_database_overview(
+    db_path: Annotated[
+        Path | None, typer.Argument(help="Path to database file (optional if configured)")
+    ] = None,
+    json_output: Annotated[bool, _json_flag()] = False,
+) -> None:
+    """Show read-only SnapshotDB devices, trace bounds, and import metadata status."""
+    service = OverviewService(_focus_service())
+    try:
+        overview = service.inspect(db_path)
+    except (
+        FocusFileInvalidError,
+        FocusNotConfiguredError,
+        DatabaseMissingError,
+        DatabaseSchemaError,
+    ) as e:
+        _error_from_exc(e)
+
+    if json_output:
+        _emit_json(json_success(**service.overview_to_dict(overview)))
+        return
+    _print_database_overview(overview)
+
+
+def _print_database_overview(overview: DatabaseOverview) -> None:
+    inspection = overview.metadata
+    typer.echo(f"Database: {overview.db_path}")
+    typer.echo(f"Focus source: {overview.focus_source}")
+    typer.echo(f"Import metadata: {inspection.status}")
+    if inspection.reason is not None:
+        typer.echo(f"Metadata reason: {inspection.reason}")
+    if not overview.devices:
+        typer.echo("Devices: none")
+        return
+    typer.echo("Devices:")
+    for device in overview.devices:
+        if device.first_event_id is None or device.last_event_id is None:
+            typer.echo(f"  {device.device_id}: no events")
+        else:
+            typer.echo(
+                f"  {device.device_id}: events {device.first_event_id}..{device.last_event_id}"
+            )
 
 
 def _echo_callstack_layout(layout: str | None, error: str | None = None) -> None:

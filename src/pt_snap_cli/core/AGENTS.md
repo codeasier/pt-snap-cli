@@ -19,6 +19,8 @@
 | `import_metadata.py` | Import metadata schema, inspection, hashing, validation, and cache decisions. |
 | `models.py` | Dataclasses for focus, import, split, template, query, and report service boundaries. |
 | `query_service.py` | Template listing/info and query execution orchestration using resolved focus and `QueryExecutor`. |
+| `capability_service.py` | Read-only CLI version, full template contracts, and bundled skill listing for `pt-snap capabilities`. |
+| `overview_service.py` | Read-only device list, per-device event-id bounds, and import-metadata status for `pt-snap overview`. |
 | `report_service.py` | Higher-level reports composed from shared query services. |
 | `snapshot_import_backend.py` | Adapter from trusted snapshot runtime replay to staged SnapshotDB output. |
 | `split_service.py` | Argument/device validation, replay-safe slicing, staging cleanup, and exclusive publication. |

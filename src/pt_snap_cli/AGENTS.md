@@ -11,7 +11,7 @@
 |------|-------------|
 | `__init__.py` | Package exports and version wiring. |
 | `api.py` | High-level `SnapshotAnalyzer` API for library callers. |
-| `cli.py` | Typer CLI entrypoint for focus, import, split, metadata, query, report, config, and skill commands. |
+| `cli.py` | Typer CLI entrypoint for focus, import, split, metadata, capabilities, overview, query, report, config, and skill commands. |
 | `completion.py` | Shell completion helpers for templates, categories, and device IDs. |
 | `config.py` | Atomic focus persistence and resolution across explicit paths, environment, project focus, and legacy global config. |
 | `context.py` | Read-only SQLite context with schema validation and device discovery. |
@@ -20,7 +20,7 @@
 ## Subdirectories
 | Directory | Purpose |
 |-----------|---------|
-| `core/` | Shared focus, import, split, metadata, query, and report services (see `core/AGENTS.md`). |
+| `core/` | Shared focus, import, split, metadata, capability, overview, query, and report services (see `core/AGENTS.md`). |
 | `models/` | Domain models for snapshot blocks, events, and enums (see `models/AGENTS.md`). |
 | `query/` | Query builders, config loading, execution, mapping, registry, and templates (see `query/AGENTS.md`). |
 | `snapshot/` | Snapshot representation, replay, database adaptors, and slicing for explicitly trusted inputs (see `snapshot/AGENTS.md`). |

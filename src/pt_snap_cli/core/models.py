@@ -240,3 +240,25 @@ class SkillInstallResult:
 @dataclass(frozen=True)
 class SkillInstallReport:
     results: list[SkillInstallResult]
+
+
+@dataclass(frozen=True)
+class DeviceTraceBounds:
+    device_id: int
+    first_event_id: int | None
+    last_event_id: int | None
+
+
+@dataclass(frozen=True)
+class DatabaseOverview:
+    db_path: Path
+    focus_source: FocusSource
+    devices: list[DeviceTraceBounds]
+    metadata: MetadataInspection
+
+
+@dataclass(frozen=True)
+class CapabilityCatalog:
+    cli_version: str
+    templates: list[TemplateInfo]
+    skills: list[SkillListing]

@@ -30,7 +30,7 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 
 ## 查询模板
 
-模板分为三个分类。使用 `pt-snap query --list` 查看所有模板，或用 `--category` 过滤。
+模板分为三个分类。用 `pt-snap capabilities --json` 一次查看完整清单（CLI 版本、全部模板契约和随包 skill），或用 `pt-snap query --list` 查看名称与描述。用 `--category` 过滤。
 
 ### Basic Queries
 
@@ -65,6 +65,8 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 |------|------|
 | `leak_detection` | 查找已采集分配且没有释放完成记录的候选（不是已确认泄漏） |
 | `active_memory_callstack_at_event` | 对某个事件时刻的活跃内存块按分配调用栈做聚合，并单独标识静态与 preexisting 内存 |
+| `preexisting_live` | 统计某个事件时刻仍存活的 preexisting 块（`allocEventId=-1`，包含 `freeEventId IS NULL`） |
+| `freed_block_lifetime` | 按 `freeEventId - allocEventId` 距离分桶统计已成功释放的块（不是经过时间） |
 
 ## 泄漏检测
 
@@ -198,6 +200,8 @@ pt-snap report peak-memory /path/to/snapshot.db --json
 | 执行 | `db_path`、`focus_source`、`device_id`、`template`、`effective_params`、`semantics_version`、`total`、`returned`、`has_more`、`truncated`、`total_is_exact`、`timeout_s`、`rows` |
 | `--list` | `category`、`templates`（`name`、`description`、`category`） |
 | `--template-info` | 与 `get_template_info()` 对齐的模板元数据，另加 `template` |
+| `capabilities` | `cli_version`、完整 `templates` 契约、`skills` |
+| `overview` | `db_path`、`focus_source`、`devices`（`device_id`、`first_event_id`、`last_event_id`）、`import_metadata` |
 
 `-n` 仍然限制 `rows` 与 `returned`。默认 `total` 等于 `returned`（本页行数）；
 仅当本页就是完整匹配集合（`has_more` 为 false 且 `offset` 为 0）时

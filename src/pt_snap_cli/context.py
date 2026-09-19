@@ -195,17 +195,30 @@ class Context:
         """
         return self.device_ids
 
+    def device_trace_bounds(self) -> list[tuple[int, int | None, int | None]]:
+        """Return ``(device_id, first_event_id, last_event_id)`` for each device.
+
+        Bounds come from ``MIN(id)`` / ``MAX(id)`` on ``trace_entry_<device>``.
+        Empty tables report ``None`` for both ends. The connection stays
+        read-only (``mode=ro``).
+        """
+        bounds: list[tuple[int, int | None, int | None]] = []
+        with self.connect() as conn:
+            cursor = conn.cursor()
+            for device_id in self.device_ids:
+                table = f"trace_entry_{device_id}"
+                cursor.execute(f"SELECT MIN(id), MAX(id) FROM {_quote_ident(table)}")
+                row = cursor.fetchone()
+                first = int(row[0]) if row is not None and row[0] is not None else None
+                last = int(row[1]) if row is not None and row[1] is not None else None
+                bounds.append((device_id, first, last))
+        return bounds
+
     def _discover_device_ids(self) -> list[int]:
         """Discover device IDs from database table names."""
         device_ids = set()
         with self.connect() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'trace_entry_%'"
-            )
-            for row in cursor.fetchall():
-                table_name = row[0]
-                device_id = int(table_name.split("_")[-1])
+            for device_id, _table_name in _trace_entry_tables(conn.cursor()):
                 if self._devices is None or device_id in self._devices:
                     device_ids.add(device_id)
         return sorted(device_ids)

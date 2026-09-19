@@ -15,7 +15,7 @@
 | `splitting.md` | Snapshot slicing strategies, output formats, replay validation, and publication guarantees. |
 | `skills.md` | Bundled agent-skill listing, helper entry, install destinations, and status meanings. |
 | `database.md` | Snapshot SQLite table/schema reference. |
-| `snapshot-analyzer-api.md` | High-level Python API for focus, template discovery, queries, and import metadata. |
+| `snapshot-analyzer-api.md` | High-level Python API for focus, template discovery, capabilities, overview, queries, and import metadata. |
 | `result-mapper-api.md` | Result mapping API documentation. |
 
 ## Subdirectories

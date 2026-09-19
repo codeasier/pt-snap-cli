@@ -13,7 +13,7 @@ surfaces against existing SnapshotDB data without writes.
 ## Scope
 | Path | Responsibility |
 | --- | --- |
-| `pt-snap-helper/SKILL.md` | Routes by user goal and input type to the five skills; checks `pt-snap skill list --json`; does not install, import, or persist focus. |
+| `pt-snap-helper/SKILL.md` | Routes by user goal and input type to the five skills; checks `pt-snap skill list --json`; points SnapshotDB work at `capabilities` then `overview` before diagnosis; does not install, import, or persist focus. |
 | `pt-snap-setup/SKILL.md` | Detect the active interpreter, verify CLI ownership, request install approval, and re-verify the same environment. |
 | `pt-snap-ascend-npu-collect/SKILL.md` | Collect Ascend NPU pickles via native APIs, framework config, or OOM env; inventory artifacts without import or diagnosis. |
 | `pt-snap-memory-leak/SKILL.md` | Diagnose end-of-trace live allocations, peak survival, callstack attribution, and release evidence without persisting analysis state. |

@@ -60,12 +60,14 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 | `pt-snap import <snapshot.pkl>` | Import a PyTorch memory snapshot pickle into a SnapshotDB |
 | `pt-snap split <snapshot.pkl>` | Create replayable per-device snapshot slices |
 | `pt-snap metadata [database.db]` | Inspect SnapshotDB import provenance and compatibility metadata |
+| `pt-snap capabilities` | List CLI version, query template contracts, and bundled skills |
+| `pt-snap overview [database.db]` | Read-only device list, per-device event-id bounds, and import-metadata status |
 | `pt-snap query` | Run memory analysis queries |
 | `pt-snap report` | Generate higher-level memory analysis reports |
 | `pt-snap config` | Manage global configuration |
 | `pt-snap skill` | List and install bundled agent skills |
 
-`pt-snap --help` includes an agent hint: prefer `--json` on the command that supports it, start with the `pt-snap-helper` skill, and check availability with `pt-snap skill list --json`. `focus`, `import`, `split`, `query`, `config`, `metadata`, `report peak-memory`, and `skill list/install/upgrade/uninstall` accept `--json`.
+`pt-snap --help` includes an agent hint: prefer `--json` on the command that supports it, start with the `pt-snap-helper` skill, use `pt-snap capabilities --json` and `pt-snap overview --json` before diagnosing, and check availability with `pt-snap skill list --json`. `focus`, `import`, `split`, `query`, `config`, `capabilities`, `overview`, `metadata`, `report peak-memory`, and `skill list/install/upgrade/uninstall` accept `--json`.
 
 ## Agent Skills
 

@@ -84,7 +84,7 @@ pt-snap skill uninstall --project --target cursor
 
 | Skill | 适用场景 |
 |-------|----------|
-| `pt-snap-helper` | 根据用户目标和输入类型选择下一步 skill |
+| `pt-snap-helper` | 根据用户目标和输入类型选择下一步 skill；已有 SnapshotDB 时先 `capabilities` 再 `overview`，然后才诊断 |
 | `pt-snap-setup` | 在当前 Python 环境安装或验证 `pt-snap-cli` |
 | `pt-snap-ascend-npu-collect` | 采集昇腾 NPU 内存快照 pickle |
 | `pt-snap-memory-leak` | 在 SnapshotDB 中诊断仍存活分配和泄漏候选 |

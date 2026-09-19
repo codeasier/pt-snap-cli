@@ -116,10 +116,14 @@ def test_new_templates_are_registered_in_correct_categories() -> None:
     assert "active_blocks_at_event" in list_by_category("statistical")
     assert "allocator_gap" in list_by_category("statistical")
     assert "active_memory_callstack_at_event" in list_by_category("business")
+    assert "preexisting_live" in list_by_category("business")
+    assert "freed_block_lifetime" in list_by_category("business")
 
     assert get_query("active_blocks_at_event") is not None
     assert get_query("allocator_gap") is not None
     assert get_query("active_memory_callstack_at_event") is not None
+    assert get_query("preexisting_live") is not None
+    assert get_query("freed_block_lifetime") is not None
 
 
 def test_active_blocks_at_event_includes_static_when_enabled(peak_memory_db: Path) -> None:
