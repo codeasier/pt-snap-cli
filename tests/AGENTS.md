@@ -13,6 +13,7 @@
 | `run_tests.sh` | Developer-specific Conda/coverage wrapper; prefer direct `pytest` unless its local environment exists. |
 | `test_api.py` | Tests for the public `SnapshotAnalyzer` API layer. |
 | `test_cli.py` | CLI behavior tests, including focus, query listing, template info, skill install/list, and output limits. |
+| `test_cli_json.py` | `--json` success/error contracts for focus, import, split, query, config, and compatible metadata/report fields. |
 | `test_bundled_skills.py` | Packaged `bundled_skills/` copies must match repository `skills/*/SKILL.md`. |
 | `test_completion.py` | Shell completion helper tests. |
 | `test_config.py` | Configuration and focus precedence tests. |

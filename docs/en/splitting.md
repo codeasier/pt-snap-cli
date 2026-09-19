@@ -18,7 +18,8 @@ pt-snap split SNAPSHOT_PATH \
   --output OUTPUT_DIRECTORY \
   [--device DEVICE_ID] \
   (--slices COUNT | --max-entries COUNT) \
-  [--format pickle|json]
+  [--format pickle|json] \
+  [--json]
 ```
 
 The source must be an existing regular `.pkl` or `.pickle` file. `--output` is
@@ -34,6 +35,9 @@ Exactly one strategy is required:
 | `--max-entries COUNT` | Limit each slice to a positive maximum event count |
 
 `--format` accepts exactly `pickle` or `json` and defaults to `pickle`.
+`--json` prints the split inventory on stdout (`output`, `files`, `devices`,
+`format`) and is independent of `--format`, which only selects slice file
+format.
 
 Exclusive atomic directory publication requires `renamex_np(RENAME_EXCL)` on
 Darwin, `renameat2(RENAME_NOREPLACE)` on Linux, or Windows rename semantics.

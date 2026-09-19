@@ -16,7 +16,8 @@ pt-snap split SNAPSHOT_PATH \
   --output OUTPUT_DIRECTORY \
   [--device DEVICE_ID] \
   (--slices COUNT | --max-entries COUNT) \
-  [--format pickle|json]
+  [--format pickle|json] \
+  [--json]
 ```
 
 源文件必须是已存在的普通 `.pkl` 或 `.pickle` 文件。`--output` 必须提供；其父目录必须
@@ -30,6 +31,8 @@ pt-snap split SNAPSHOT_PATH \
 | `--max-entries COUNT` | 将每个切片的最大事件数限制为正数 `COUNT` |
 
 `--format` 只接受 `pickle` 或 `json`，默认值为 `pickle`。
+`--json` 向 stdout 打印分片清单（`output`、`files`、`devices`、`format`），
+与只控制分片文件格式的 `--format` 相互独立。
 
 排他原子目录发布在 Darwin 上依赖 `renamex_np(RENAME_EXCL)`，在 Linux 上依赖
 `renameat2(RENAME_NOREPLACE)`，Windows 使用其重命名语义。不支持的平台或缺少所需

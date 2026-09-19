@@ -23,8 +23,6 @@ JSON_COMMANDS = (
     ("skill", "install"),
     ("skill", "upgrade"),
     ("skill", "uninstall"),
-)
-NO_JSON_COMMANDS = (
     ("query",),
     ("focus",),
     ("import",),
@@ -73,15 +71,15 @@ def test_helper_skill_uses_current_json_capability() -> None:
     assert "Prefer `--json` where supported" in skill
     assert "pt-snap metadata '<db_path>' --json" in skill
     assert "pt-snap report peak-memory '<db_path>' --device <device_id> --json" in skill
-    assert "Do not add `--json` to `query`, `focus`, `import`, `split`, or `config`." in skill
-    assert "Do not invent a global `--json` flag on `pt-snap`." in skill
-    assert "pt-snap query --json" not in skill
-    assert "pt-snap import --json" not in skill
-    assert "pt-snap focus --json" not in skill
+    assert "pt-snap query --list --json" in skill
+    assert "pt-snap query --template-info <name> --json" in skill
+    assert "pt-snap focus --json" in skill
+    assert "pt-snap config --json" in skill
+    assert "pt-snap import <snapshot.pkl> --json" in skill
+    assert "There is no global `--json` flag" in skill
+    assert "Do not invent a global `--json` flag on `pt-snap`." not in skill
     for path in JSON_COMMANDS:
         assert _command_has_option(*path, option="--json")
-    for path in NO_JSON_COMMANDS:
-        assert not _command_has_option(*path, option="--json")
     assert not _command_has_option(option="--json")
 
 
@@ -106,6 +104,6 @@ def test_helper_skill_keeps_pickle_import_and_focus_as_handoffs() -> None:
     assert "Do not run `pt-snap focus` with a database path." in skill
     assert "Do not persist focus" in skill
     assert "This helper must not run that command or change focus." in skill
-    assert "pt-snap import <snapshot.pkl>" in skill
-    assert "That command currently has no `--json` option." in skill
+    assert "pt-snap import <snapshot.pkl> --json" in skill
+    assert "That command currently has no `--json` option." not in skill
     assert "Do not run `pt-snap skill install`" in skill

@@ -5,13 +5,26 @@ from __future__ import annotations
 import json
 import shlex
 import shutil
+import sys
 import textwrap
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from contextvars import ContextVar
 from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, Any, Literal, NoReturn, cast
 
 import typer
+from typer.exceptions import Abort, Exit
+
+try:
+    from typer._click.exceptions import ClickException
+except ImportError:  # typer < 0.27
+    from click.exceptions import ClickException
+
+try:
+    from click.exceptions import Abort as ClickAbort
+except ImportError:  # pragma: no cover
+    ClickAbort = Abort
 
 from pt_snap_cli import __version__
 from pt_snap_cli.completion import (
@@ -28,14 +41,17 @@ from pt_snap_cli.core import (
     FocusFileInvalidError,
     FocusNotConfiguredError,
     FocusService,
+    FocusState,
     ImportExecutionError,
     ImportMetadataService,
     ImportOptions,
+    ImportResult,
     ImportService,
     ImportToolMissingError,
     InvalidCategoryError,
     InvalidDeviceError,
     InvalidSkillTargetError,
+    JsonValue,
     PeakMemoryReport,
     QueryExecutionError,
     QueryService,
@@ -49,10 +65,17 @@ from pt_snap_cli.core import (
     SnapshotFileInvalidError,
     SplitError,
     SplitOptions,
+    SplitResult,
     SplitService,
+    TemplateInfo,
     TemplateNotFoundError,
     TemplateRenderError,
+    classify_error,
+    dumps_json,
+    json_error,
+    json_success,
 )
+from pt_snap_cli.core.error_codes import DATABASE_NOT_FOUND, ERROR, INVALID_PARAMETER
 from pt_snap_cli.core.models import SKILL_RESTART_ACTIONS, SKILL_RESTART_HINT
 from pt_snap_cli.core.skill_service import (
     format_skill_install_target,
@@ -61,7 +84,8 @@ from pt_snap_cli.core.skill_service import (
     parse_host_option,
 )
 from pt_snap_cli.query.config import OUTPUT_COLUMN_OPTIONAL
-from pt_snap_cli.query.registry import discover_categories
+from pt_snap_cli.query.executor import reported_sql_limit
+from pt_snap_cli.query.registry import discover_categories, get_query
 
 AGENT_HELP_EPILOG = (
     "Agents: prefer --json where supported. "
@@ -80,6 +104,122 @@ report_app = typer.Typer(help="Generate memory analysis reports")
 skill_app = typer.Typer(help="Manage bundled agent skills", no_args_is_help=True)
 app.add_typer(report_app, name="report")
 app.add_typer(skill_app, name="skill")
+
+
+# Typer 0.27+ vendors Click as typer._click. Reading click.get_current_context()
+# therefore misses the live command and would keep JSON errors on stdout.
+_JSON_MODE: ContextVar[bool] = ContextVar("pt_snap_json_mode", default=False)
+
+
+def _json_mode() -> bool:
+    return _JSON_MODE.get()
+
+
+def _set_json_mode(value: bool) -> bool:
+    _JSON_MODE.set(bool(value))
+    return value
+
+
+def _json_flag() -> Any:
+    return typer.Option(
+        "--json",
+        help="Emit machine-readable JSON",
+        callback=_set_json_mode,
+    )
+
+
+def _emit_json(payload: object) -> None:
+    try:
+        typer.echo(dumps_json(payload))
+    except TypeError as exc:
+        _error(
+            str(exc),
+            code=ERROR,
+            hint="Result contained a value that cannot be serialized to JSON.",
+        )
+
+
+def _focus_fields(state: FocusState) -> dict[str, object]:
+    db_path = str(state.db_path) if state.db_path is not None else None
+    return {
+        "configured": state.db_path is not None,
+        "db_path": db_path,
+        "focus_source": state.source,
+        "focus_file": str(state.focus_file) if state.focus_file is not None else None,
+        "device_id": state.device_id,
+        "available_devices": list(state.available_devices),
+        "callstack_layout": state.callstack_layout,
+        "callstack_layout_error": state.callstack_layout_error,
+        "db_exists": bool(state.db_path is not None and state.db_path.exists()),
+    }
+
+
+def _focus_json(state: FocusState, *, action: str, **extra: object) -> dict[str, JsonValue]:
+    return json_success(action=action, **_focus_fields(state), **extra)
+
+
+def _import_json(result: ImportResult) -> dict[str, JsonValue]:
+    focus_state = _focus_fields(result.focus_state) if result.focus_state is not None else None
+    return json_success(
+        db_path=str(result.db_path),
+        device_id=result.device_id,
+        reused=result.reused,
+        cache_miss_reason=result.cache_miss_reason,
+        metadata=asdict(result.metadata),
+        focus_state=focus_state,
+        focus_source=result.focus_state.source if result.focus_state is not None else None,
+    )
+
+
+def _split_json(result: SplitResult) -> dict[str, JsonValue]:
+    return json_success(
+        output=str(result.output),
+        files=[str(path) for path in result.files],
+        devices=list(result.devices),
+        format=result.format,
+    )
+
+
+def _template_info_dict(info: TemplateInfo) -> dict[str, object]:
+    return {
+        "name": info.name,
+        "description": info.description,
+        "category": info.category,
+        "devices": info.devices,
+        "parameters": {
+            param_name: {
+                "type": param.type,
+                "default": param.default,
+                "required": param.required,
+                "description": param.description,
+                "choices": param.choices,
+            }
+            for param_name, param in info.parameters.items()
+        },
+        "output_schema": info.output_schema,
+        "semantics_version": info.semantics_version,
+        "interpretation_limits": list(info.interpretation_limits),
+    }
+
+
+def _effective_query_params(
+    template: str,
+    params: dict[str, object],
+    max_rows: int | None = None,
+) -> dict[str, object]:
+    query_template = get_query(template)
+    if query_template is None:
+        return params
+    try:
+        validated = dict(query_template.validate_params(params))
+    except (TypeError, ValueError) as exc:
+        raise TemplateRenderError(
+            f"Failed to validate parameters for template '{template}': {exc}"
+        ) from exc
+    sql_limit = reported_sql_limit(validated, max_rows, parameters=query_template.parameters)
+    if sql_limit is not None:
+        validated["limit"] = sql_limit
+    return validated
 
 
 def _focus_service() -> FocusService:
@@ -118,11 +258,23 @@ def _skill_dest_dir(
     if dest_dir is None:
         return None
     if target:
-        _error("--dir cannot be combined with --target.")
+        _error(
+            "--dir cannot be combined with --target.",
+            code=INVALID_PARAMETER,
+            hint="Use either --dir or --target.",
+        )
     if project:
-        _error("--dir cannot be combined with --project.")
+        _error(
+            "--dir cannot be combined with --project.",
+            code=INVALID_PARAMETER,
+            hint="Use either --dir or --project.",
+        )
     if user:
-        _error("--dir cannot be combined with --user.")
+        _error(
+            "--dir cannot be combined with --user.",
+            code=INVALID_PARAMETER,
+            hint="Use either --dir or --user.",
+        )
     return dest_dir
 
 
@@ -140,6 +292,7 @@ def main(
     ] = None,
 ) -> None:
     """PyTorch Memory Snapshot Analysis Tool."""
+    _JSON_MODE.set(False)
 
 
 @app.command("focus")
@@ -157,6 +310,7 @@ def focus_database(
     global_focus: Annotated[
         bool, typer.Option("--global", help="Store the focus in legacy global config")
     ] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Set the current analysis focus (database and optional device)."""
     focus_service = _focus_service()
@@ -165,8 +319,11 @@ def focus_database(
         try:
             state = focus_service.get_focus()
         except FocusFileInvalidError as e:
-            _error(str(e))
+            _error_from_exc(e)
 
+        if json_output:
+            _emit_json(_focus_json(state, action="read"))
+            raise typer.Exit()
         if state.db_path:
             typer.echo(f"Current database ({state.source}): {state.db_path}")
             if state.focus_file:
@@ -182,10 +339,16 @@ def focus_database(
         raise typer.Exit()
 
     if session and global_focus:
-        _error("--session and --global cannot be used together.")
+        _error(
+            "--session and --global cannot be used together.",
+            code=INVALID_PARAMETER,
+            hint="Choose either --session or --global.",
+        )
     if session and device is not None:
         _error(
-            "--device cannot be used with --session; session focus exports only a database path."
+            "--device cannot be used with --session; session focus exports only a database path.",
+            code=INVALID_PARAMETER,
+            hint="Omit --device; session focus exports only PT_SNAP_DB_PATH.",
         )
 
     if db_path is None and device is not None:
@@ -197,8 +360,11 @@ def focus_database(
             DatabaseMissingError,
             InvalidDeviceError,
         ) as e:
-            _error(str(e))
+            _error_from_exc(e)
 
+        if json_output:
+            _emit_json(_focus_json(state, action="set_device"))
+            raise typer.Exit()
         typer.secho(f"Focused device ({state.source}): {device}", fg=typer.colors.GREEN)
         if state.source == "project" and state.focus_file:
             typer.echo(f"Focus file: {state.focus_file}")
@@ -211,16 +377,38 @@ def focus_database(
             raise AssertionError("db_path must be provided when setting focus")
         if session:
             state = focus_service.validate_session_db(focus_db_path)
-            typer.echo(f"export {ENV_DB_PATH}={shlex.quote(str(state.db_path))}")
+            export_line = f"export {ENV_DB_PATH}={shlex.quote(str(state.db_path))}"
+            if json_output:
+                _emit_json(
+                    _focus_json(
+                        state,
+                        action="validate_session",
+                        session_applied=False,
+                        env={
+                            "name": ENV_DB_PATH,
+                            "value": str(state.db_path),
+                            "export": export_line,
+                        },
+                    )
+                )
+                return
+            typer.echo(export_line)
             return
         if global_focus:
             state = focus_service.set_global_focus(focus_db_path, device)
-            typer.secho(f"Using global database: {state.db_path}", fg=typer.colors.GREEN)
+            action = "set_global"
+            if not json_output:
+                typer.secho(f"Using global database: {state.db_path}", fg=typer.colors.GREEN)
         else:
             state = focus_service.set_project_focus(focus_db_path, device)
-            typer.secho(f"Using project database: {state.db_path}", fg=typer.colors.GREEN)
-            if state.focus_file:
-                typer.echo(f"Focus file: {state.focus_file}")
+            action = "set_project"
+            if not json_output:
+                typer.secho(f"Using project database: {state.db_path}", fg=typer.colors.GREEN)
+                if state.focus_file:
+                    typer.echo(f"Focus file: {state.focus_file}")
+        if json_output:
+            _emit_json(_focus_json(state, action=action))
+            return
         if device is not None:
             typer.echo(f"Focused device: {device}")
         if state.available_devices:
@@ -234,7 +422,7 @@ def focus_database(
         InvalidDeviceError,
         FocusFileInvalidError,
     ) as e:
-        _error(str(e))
+        _error_from_exc(e)
 
 
 @app.command("import")
@@ -244,6 +432,7 @@ def import_snapshot(
     device: Annotated[int | None, typer.Option("--device", "-d")] = None,
     no_focus: Annotated[bool, typer.Option("--no-focus", help="Skip focus update")] = False,
     force: Annotated[bool, typer.Option("--force", help="Rebuild even when cache matches")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Import a PyTorch memory snapshot into a SQLite database."""
     try:
@@ -261,7 +450,11 @@ def import_snapshot(
         ImportExecutionError,
         SnapshotFileInvalidError,
     ) as e:
-        _error(str(e))
+        _error_from_exc(e)
+
+    if json_output:
+        _emit_json(_import_json(result))
+        return
 
     action = "Reused" if result.reused else "Imported"
     typer.echo(f"{action}: {result.db_path}")
@@ -292,6 +485,7 @@ def split_snapshot(
             metavar="{pickle,json}",
         ),
     ] = "pickle",
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Split a snapshot into independently replayable device slices."""
     try:
@@ -306,7 +500,11 @@ def split_snapshot(
             )
         )
     except SplitError as exc:
-        _error(str(exc))
+        _error_from_exc(exc)
+
+    if json_output:
+        _emit_json(_split_json(result))
+        return
 
     typer.echo(f"Split: {result.output}")
     typer.echo(f"Devices: {', '.join(map(str, result.devices))}")
@@ -318,7 +516,7 @@ def show_database_metadata(
     db_path: Annotated[
         Path | None, typer.Argument(help="Path to database file (optional if configured)")
     ] = None,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Show import metadata for a SnapshotDB."""
     focus_service = _focus_service()
@@ -334,7 +532,7 @@ def show_database_metadata(
         DatabaseMissingError,
         DatabaseSchemaError,
     ) as e:
-        _error(str(e))
+        _error_from_exc(e)
 
     if json_output:
         typer.echo(json.dumps(service.inspection_to_dict(inspection), indent=2))
@@ -397,6 +595,7 @@ def query_database(
             help="Maximum number of result rows to display (<= 0 for unlimited, default: unlimited)",
         ),
     ] = None,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Execute queries on the memory snapshot database."""
     focus_service = _focus_service()
@@ -416,27 +615,45 @@ def query_database(
                 _ = query_service.list_templates(category)
             else:
                 filter_cats = categories
+            listed: list[dict[str, object]] = []
             any_found = False
             for cat in filter_cats:
                 details = query_service.list_templates(cat, validate_category=False)
                 if details:
                     any_found = True
+                    if json_output:
+                        listed.extend(
+                            {
+                                "name": info.name,
+                                "description": info.description,
+                                "category": info.category,
+                            }
+                            for info in details
+                        )
+                        continue
                     typer.secho(f"{category_labels[cat]}:", fg=typer.colors.GREEN, bold=True)
                     for info in details:
                         typer.secho(f"  {info.name}", fg=typer.colors.GREEN, bold=True)
                         typer.echo(f"    {info.description}")
                     typer.echo()
+            if json_output:
+                _emit_json(json_success(category=category, templates=listed))
+                raise typer.Exit()
             if not any_found:
                 typer.echo("No query templates available.")
         except InvalidCategoryError as e:
-            _error(str(e))
+            _error_from_exc(e)
         raise typer.Exit()
 
     if template_info:
         try:
             info = query_service.get_template_info(template_info)
         except TemplateNotFoundError as e:
-            _error(str(e))
+            _error_from_exc(e)
+
+        if json_output:
+            _emit_json(json_success(template=info.name, **_template_info_dict(info)))
+            raise typer.Exit()
 
         typer.secho(f"Template: {info.name}", fg=typer.colors.GREEN, bold=True)
         typer.echo(f"Description: {info.description}")
@@ -510,7 +727,11 @@ def query_database(
         raise typer.Exit()
 
     if not template_use:
-        _error("--template-use is required when not using --list or --template-info")
+        _error(
+            "--template-use is required when not using --list or --template-info",
+            code=INVALID_PARAMETER,
+            hint="Pass --template-use, --list, or --template-info.",
+        )
 
     try:
         loaded_params = (  # pyright: ignore[reportUnknownVariableType]
@@ -526,6 +747,27 @@ def query_database(
             device_id=device,
             max_rows=max_rows,
         )
+        if json_output:
+            resolved = focus_service.resolve_focus(
+                explicit_db_path=db_path,
+                explicit_device_id=device,
+            )
+            _emit_json(
+                json_success(
+                    db_path=str(resolved.db_path) if resolved.db_path is not None else None,
+                    focus_source=resolved.source,
+                    device_id=result.device_id,
+                    template=result.template,
+                    effective_params=_effective_query_params(
+                        template_use, query_params, max_rows=max_rows
+                    ),
+                    semantics_version=result.semantics_version,
+                    total=result.total,
+                    returned=result.returned,
+                    rows=result.rows,
+                )
+            )
+            return
         if result.rows:
             typer.echo(f"Found {result.total} results, showing {result.returned}:")
             for row in result.rows:
@@ -535,15 +777,14 @@ def query_database(
         else:
             typer.echo("No results found.")
     except FocusFileInvalidError as e:
-        _error(str(e))
-    except FocusNotConfiguredError:
-        typer.secho(
-            "Error: No database path specified and no database configured.", fg=typer.colors.RED
+        _error_from_exc(e)
+    except FocusNotConfiguredError as e:
+        _error_from_exc(
+            e,
+            extra_lines=(
+                "Use 'pt-snap focus <database_path>' to set a project database, or provide db_path argument.",
+            ),
         )
-        typer.echo(
-            "Use 'pt-snap focus <database_path>' to set a project database, or provide db_path argument."
-        )
-        raise typer.Exit(1) from None
     except DatabaseMissingError:
         try:
             state = focus_service.get_focus(explicit_db_path=db_path, explicit_device_id=device)
@@ -551,29 +792,32 @@ def query_database(
             state = None
         source = state.source if state is not None else "configured"
         path = state.db_path if state is not None else db_path
-        typer.secho(f"Error: Database from {source} focus not found: {path}", fg=typer.colors.RED)
+        extra = []
         if state is not None and state.focus_file:
-            typer.echo(f"Focus file: {state.focus_file}")
-        typer.echo(
+            extra.append(f"Focus file: {state.focus_file}")
+        extra.append(
             "Use 'pt-snap focus <new_database_path>' to set a new project database, or provide db_path argument."
         )
-        raise typer.Exit(1) from None
+        _error(
+            f"Database from {source} focus not found: {path}",
+            code=DATABASE_NOT_FOUND,
+            hint="Use 'pt-snap focus <new_database_path>' or pass a database path that exists.",
+            extra_lines=tuple(extra),
+        )
     except InvalidDeviceError as e:
-        if str(e) == "No devices found in database.":
+        if str(e) == "No devices found in database." and not json_output:
             typer.echo("No devices found in database.")
             raise typer.Exit() from None
-        _error(str(e))
+        _error_from_exc(e)
     except TemplateNotFoundError as e:
-        typer.secho(f"Error executing query: {e}", fg=typer.colors.RED)
-        raise typer.Exit(1) from None
+        _error_from_exc(e, text_prefix="Error executing query: ")
     except (
         TemplateRenderError,
         QueryExecutionError,
         DatabaseSchemaError,
         json.JSONDecodeError,
     ) as e:
-        typer.secho(f"Error executing query: {e}", fg=typer.colors.RED)
-        raise typer.Exit(1) from None
+        _error_from_exc(e, text_prefix="Error executing query: ")
 
 
 @report_app.command("peak-memory")
@@ -599,7 +843,7 @@ def report_peak_memory(
         typer.Option("--include-static/--exclude-static", help="Include static memory group"),
     ] = True,
     limit: Annotated[int, typer.Option("--limit", "-n", help="Maximum callstack groups")] = 20,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Generate a peak memory attribution report."""
     focus_service = _focus_service()
@@ -613,17 +857,16 @@ def report_peak_memory(
             limit=limit,
         )
     except ValueError as e:
-        _error(str(e))
+        _error(str(e), code=INVALID_PARAMETER, hint="Use --metric active, allocated, or reserved.")
     except FocusFileInvalidError as e:
-        _error(str(e))
-    except FocusNotConfiguredError:
-        typer.secho(
-            "Error: No database path specified and no database configured.", fg=typer.colors.RED
+        _error_from_exc(e)
+    except FocusNotConfiguredError as e:
+        _error_from_exc(
+            e,
+            extra_lines=(
+                "Use 'pt-snap focus <database_path>' to set a project database, or provide db_path argument.",
+            ),
         )
-        typer.echo(
-            "Use 'pt-snap focus <database_path>' to set a project database, or provide db_path argument."
-        )
-        raise typer.Exit(1) from None
     except DatabaseMissingError:
         try:
             state = focus_service.get_focus(explicit_db_path=db_path, explicit_device_id=device)
@@ -631,23 +874,27 @@ def report_peak_memory(
             state = None
         source = state.source if state is not None else "configured"
         path = state.db_path if state is not None else db_path
-        typer.secho(f"Error: Database from {source} focus not found: {path}", fg=typer.colors.RED)
+        extra = []
         if state is not None and state.focus_file:
-            typer.echo(f"Focus file: {state.focus_file}")
-        typer.echo(
+            extra.append(f"Focus file: {state.focus_file}")
+        extra.append(
             "Use 'pt-snap focus <new_database_path>' to set a new project database, or provide db_path argument."
         )
-        raise typer.Exit(1) from None
+        _error(
+            f"Database from {source} focus not found: {path}",
+            code=DATABASE_NOT_FOUND,
+            hint="Use 'pt-snap focus <new_database_path>' or pass a database path that exists.",
+            extra_lines=tuple(extra),
+        )
     except InvalidDeviceError as e:
-        _error(str(e))
+        _error_from_exc(e)
     except (
         TemplateNotFoundError,
         TemplateRenderError,
         QueryExecutionError,
         DatabaseSchemaError,
     ) as e:
-        typer.secho(f"Error generating report: {e}", fg=typer.colors.RED)
-        raise typer.Exit(1) from None
+        _error_from_exc(e, text_prefix="Error generating report: ")
 
     if json_output:
         typer.echo(json.dumps(asdict(report), indent=2))
@@ -730,11 +977,15 @@ def skill_list(
             help="Inspect this skills directory instead of built-in agent/Claude/Cursor/Codex paths",
         ),
     ] = None,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """List bundled agent skills and whether they are installed."""
     if project and user:
-        _error("--project and --user cannot be used together.")
+        _error(
+            "--project and --user cannot be used together.",
+            code=INVALID_PARAMETER,
+            hint="Choose either --project or --user.",
+        )
     custom_dir = _skill_dest_dir(dest_dir, target, project=project, user=user)
     service = _skill_service()
     try:
@@ -748,7 +999,7 @@ def skill_list(
             dest_dir=custom_dir,
         )
     except (SkillCatalogError, InvalidSkillTargetError) as e:
-        _error(str(e))
+        _error_from_exc(e)
 
     if json_output:
         typer.echo(json.dumps(service.listing_to_dict(listings), indent=2))
@@ -792,7 +1043,7 @@ def skill_install(
             help="Install into this skills directory (Windows, other agents, or a custom path)",
         ),
     ] = None,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Install bundled agent skills into shared agent, Claude, Cursor, Codex, or custom directories."""
     custom_dir = _skill_dest_dir(dest_dir, target, project=project)
@@ -811,7 +1062,7 @@ def skill_install(
         InvalidSkillTargetError,
         SkillInstallError,
     ) as e:
-        _error(str(e))
+        _error_from_exc(e)
 
     if json_output:
         typer.echo(json.dumps(service.install_report_to_dict(report), indent=2))
@@ -848,7 +1099,7 @@ def skill_upgrade(
             help="Upgrade skills in this directory instead of a built-in host",
         ),
     ] = None,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Replace outdated installed skills with the bundled copies."""
     custom_dir = _skill_dest_dir(dest_dir, target, project=project)
@@ -866,7 +1117,7 @@ def skill_upgrade(
         InvalidSkillTargetError,
         SkillInstallError,
     ) as e:
-        _error(str(e))
+        _error_from_exc(e)
 
     if json_output:
         typer.echo(json.dumps(service.install_report_to_dict(report), indent=2))
@@ -906,7 +1157,7 @@ def skill_uninstall(
             help="Uninstall skills from this directory instead of a built-in host",
         ),
     ] = None,
-    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Remove bundled agent skills.
 
@@ -931,7 +1182,7 @@ def skill_uninstall(
         InvalidSkillTargetError,
         SkillInstallError,
     ) as e:
-        _error(str(e))
+        _error_from_exc(e)
 
     if json_output:
         typer.echo(json.dumps(service.install_report_to_dict(report), indent=2))
@@ -1000,20 +1251,31 @@ def _print_skill_mutation_report(report: SkillInstallReport) -> None:
 def show_config(
     clear: Annotated[bool, typer.Option("--clear", help="Clear all configuration")] = False,
     show_path: Annotated[bool, typer.Option("--path", help="Show config file path")] = False,
+    json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Show or manage pt-snap configuration."""
     focus_service = _focus_service()
+    config_path = str(focus_service.get_global_config_path())
 
     if show_path:
-        typer.echo(f"Config file: {focus_service.get_global_config_path()}")
+        if json_output:
+            _emit_json(json_success(action="path", path=config_path))
+        else:
+            typer.echo(f"Config file: {focus_service.get_global_config_path()}")
         raise typer.Exit()
 
     if clear:
         focus_service.clear_global_focus()
-        typer.secho("Configuration cleared.", fg=typer.colors.GREEN)
+        if json_output:
+            _emit_json(json_success(action="clear", cleared=True, path=config_path))
+        else:
+            typer.secho("Configuration cleared.", fg=typer.colors.GREEN)
         raise typer.Exit()
 
     current_config = focus_service.show_global_config()
+    if json_output:
+        _emit_json(json_success(action="show", path=config_path, config=current_config))
+        return
     if not current_config:
         typer.echo("No configuration set.")
     else:
@@ -1031,22 +1293,141 @@ def _echo_callstack_layout(layout: str | None, error: str | None = None) -> None
         typer.secho(f"Warning: {error}", fg=typer.colors.YELLOW)
 
 
-def _error(message: str) -> NoReturn:
-    typer.secho(f"Error: {message}", fg=typer.colors.RED)
+def _error(
+    message: str,
+    *,
+    code: str | None = None,
+    hint: str | None = None,
+    extra_lines: tuple[str, ...] = (),
+    text_prefix: str = "Error: ",
+) -> NoReturn:
+    if _json_mode():
+        typer.echo(dumps_json(json_error(code or ERROR, message, hint)), err=True)
+        raise typer.Exit(1) from None
+    typer.secho(f"{text_prefix}{message}", fg=typer.colors.RED)
+    for line in extra_lines:
+        typer.echo(line)
     raise typer.Exit(1) from None
+
+
+def _error_from_exc(
+    exc: BaseException,
+    *,
+    extra_lines: tuple[str, ...] = (),
+    text_prefix: str = "Error: ",
+) -> NoReturn:
+    code, hint = classify_error(exc)
+    _error(str(exc), code=code, hint=hint, extra_lines=extra_lines, text_prefix=text_prefix)
+
+
+# Flag-only options used when a parse failure happens before the --json callback.
+# A following --json is treated as a value of the previous option otherwise.
+_FLAG_ONLY_OPTIONS = frozenset(
+    {
+        "--json",
+        "--version",
+        "-v",
+        "--session",
+        "--global",
+        "--no-focus",
+        "--force",
+        "--list",
+        "--project",
+        "--user",
+        "--clear",
+        "--path",
+        "--help",
+        "-h",
+        "--include-static",
+        "--exclude-static",
+    }
+)
+
+
+def _argv_token_takes_value(token: str | None) -> bool:
+    """True when the next argv token would be this option's value."""
+    if token is None or token in _FLAG_ONLY_OPTIONS or "=" in token:
+        return False
+    try:
+        _ = float(token)
+    except ValueError:
+        return token.startswith("-")
+    return False
+
+
+def _argv_requests_json(argv: Sequence[str]) -> bool:
+    """Best-effort pre-parse scan for a ``--json`` flag.
+
+    ContextVar state is not set when Click fails before the option callback.
+    Tokens after ``--`` are ignored. ``--json`` immediately after a
+    value-taking option is treated as that option's value, not as the flag.
+    ``--opt=value`` and numeric tokens such as ``-1`` do not consume the
+    next argument.
+    """
+    previous: str | None = None
+    for arg in argv:
+        if arg == "--":
+            break
+        if arg == "--json" and not _argv_token_takes_value(previous):
+            return True
+        previous = arg
+    return False
+
+
+def _json_requested() -> bool:
+    return _json_mode() or _argv_requests_json(sys.argv[1:])
+
+
+def _emit_aborted() -> None:
+    if _json_requested():
+        typer.echo(
+            dumps_json(
+                json_error(
+                    ERROR,
+                    "Aborted!",
+                    "The command was interrupted before it finished.",
+                )
+            ),
+            err=True,
+        )
+        return
+    typer.echo("Aborted!", err=True)
 
 
 def _safe_call() -> int:
     try:
-        app()
-        return 0
+        # Typer 0.27's non-standalone _main catches Exit and returns the
+        # code. Discarding that value made every domain _error() exit 0.
+        rv = app(standalone_mode=False)
+        code = rv if isinstance(rv, int) else 0
+    except ClickException as exc:
+        if _json_requested():
+            typer.echo(
+                dumps_json(
+                    json_error(
+                        INVALID_PARAMETER,
+                        exc.format_message(),
+                        "Fix the command-line usage and retry. Use --help for options.",
+                    )
+                ),
+                err=True,
+            )
+            return exc.exit_code
+        exc.show()
+        return exc.exit_code
+    except Exit as exc:
+        code = int(exc.exit_code)
+    except (Abort, ClickAbort):
+        _emit_aborted()
+        return 1
     except KeyError as e:
         if str(e) in ("'COMP_WORDS'", "'COMP_LINE'", "'COMP_POINT'"):
             return 1
         raise
+    if code == 130:
+        _emit_aborted()
+    return code
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(_safe_call())

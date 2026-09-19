@@ -1,6 +1,6 @@
 ---
 name: pt-snap-helper
-description: Use as the first pt-snap entry when the next skill is unclear. Routes by user goal and input type (existing SnapshotDB, pickle-only, missing CLI, Ascend NPU collection) to pt-snap-setup, pt-snap-ascend-npu-collect, pt-snap-memory-leak, pt-snap-memory-peak-breakdown, or pt-snap-memory-fragmentation. Prefers --json on commands that currently support it.
+description: Use as the first pt-snap entry when the next skill is unclear. Routes by user goal and input type (existing SnapshotDB, pickle-only, missing CLI, Ascend NPU collection) to pt-snap-setup, pt-snap-ascend-npu-collect, pt-snap-memory-leak, pt-snap-memory-peak-breakdown, or pt-snap-memory-fragmentation. Prefers --json on commands that accept it.
 ---
 
 # pt-snap-helper
@@ -57,7 +57,8 @@ Restart the agent after install, upgrade, or uninstall so the skill change takes
 
 ## Prefer `--json` where supported
 
-Prefer `--json` on commands that currently accept it:
+Prefer `--json` on commands that accept it. There is no global `--json` flag
+on `pt-snap`; add the option to the specific command:
 
 - `pt-snap skill list --json`
 - `pt-snap skill install --json`
@@ -65,9 +66,27 @@ Prefer `--json` on commands that currently accept it:
 - `pt-snap skill uninstall --json`
 - `pt-snap metadata '<db_path>' --json`
 - `pt-snap report peak-memory '<db_path>' --device <device_id> --json`
+- `pt-snap focus --json`
+- `pt-snap config --json`
+- `pt-snap query --list --json`
+- `pt-snap query --template-info <name> --json`
+- `pt-snap query --template-use <name> --json`
+- `pt-snap import <snapshot.pkl> --json`
+- `pt-snap split <snapshot.pkl> --output <dir> --slices <n> --json`
 
-Do not add `--json` to `query`, `focus`, `import`, `split`, or `config`. Those
-commands do not support it yet. Do not invent a global `--json` flag on `pt-snap`.
+`split --json` prints the result inventory on stdout. `split --format json`
+only changes slice file format; the two flags are independent.
+
+On `--json` failure, stdout is empty, stderr is a JSON object with
+`ok: false` and `error.code` / `error.message` / `error.hint`, and the
+exit code is nonzero. The `pt-snap` console entry also converts Click
+usage/parse errors (for example `query -n abc --json`) into
+`INVALID_PARAMETER` with exit code 2, and Ctrl-C / EOF into `ERROR`
+with message `Aborted!`. The console entry returns the Typer/Click
+exit code (nonzero on failure). Usage-error `--json` detection is a
+best-effort argv scan (exact `--json` before `--`, not an option
+value; `--opt=value` and numeric tokens do not consume the next
+argument). Text mode still writes `Error:` lines to stdout.
 
 This skill itself does not run analysis queries. The diagnostic skills own
 those commands.
@@ -126,11 +145,10 @@ Tell the user that import is an independent trusted-input decision. If they
 confirm the pickle is trusted and they want a SnapshotDB, they can run:
 
 ```bash
-pt-snap import <snapshot.pkl>
+pt-snap import <snapshot.pkl> --json
 ```
 
-That command currently has no `--json` option. Import may update focus unless
-they pass `--no-focus`. This helper must not run that command or change focus.
+Import may update focus unless they pass `--no-focus`. This helper must not run that command or change focus.
 
 After the user has a SnapshotDB, route to the matching diagnostic skill.
 

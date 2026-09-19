@@ -2,7 +2,7 @@
 
 [English](../en/skills.md) | 中文
 
-`pt-snap-cli` 附带用于路由（`pt-snap-helper`）、环境安装、昇腾 NPU 采集和内存诊断的 agent skill。Agent 应先使用 `pt-snap-helper`，并在当前已支持的命令上优先使用 `--json`。`pt-snap skill` 命令会把这些 skill 复制到共享的 Agent Skills 目录，以及 Claude Code 仍然需要的独立目录。
+`pt-snap-cli` 附带用于路由（`pt-snap-helper`）、环境安装、昇腾 NPU 采集和内存诊断的 agent skill。Agent 应先使用 `pt-snap-helper`，并在支持 `--json` 的命令上优先使用该选项。`pt-snap skill` 命令会把这些 skill 复制到共享的 Agent Skills 目录，以及 Claude Code 仍然需要的独立目录。
 
 ## 列出 skill
 

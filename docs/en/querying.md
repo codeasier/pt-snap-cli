@@ -9,7 +9,7 @@ Run memory analysis queries against your snapshot database.
 ```bash
 pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
   [--device <id>] [--list] [--category <category>] \
-  [--template-info <template>] [-n <rows>]
+  [--template-info <template>] [-n <rows>] [--json]
 ```
 
 **Parameters:**
@@ -24,6 +24,7 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 | `--category` | Filter templates by category: `basic`, `statistical`, `business` |
 | `--template-info` | Show template details (parameters, output schema, and field semantics) |
 | `-n` | Maximum displayed rows; zero or a negative value means unlimited |
+| `--json` | Emit machine-readable JSON (execute, `--list`, and `--template-info`) |
 
 ## Query Templates
 
@@ -192,6 +193,60 @@ The report command combines:
 - `active_memory_callstack_at_event`
 
 and prints either a human-readable summary or JSON.
+
+## JSON Output
+
+`--json` writes one JSON object to stdout. Success payloads include
+`schema_version` (currently `1`), `ok: true`, and command fields:
+
+| Branch | Extra fields |
+|--------|----------------|
+| Execute | `db_path`, `focus_source`, `device_id`, `template`, `effective_params`, `semantics_version`, `total`, `returned`, `rows` |
+| `--list` | `category`, `templates` (`name`, `description`, `category`) |
+| `--template-info` | Template metadata matching `get_template_info()`, plus `template` |
+
+`-n` still caps `rows` and `returned`. `total` remains the untruncated count.
+`effective_params` is the validated parameter set after defaults and `choices`
+normalization. When `-n` is set, `limit` is the trailing SQL LIMIT after the
+same merge the executor applies: `min` of a declared template `limit` and
+`-n`, or `-n` appended when the rendered SQL has no trailing LIMIT. Inner
+caps such as `top_n` stay their own parameters; they do not rewrite
+`limit` when they sit inside a CTE. `--template-info --json` includes
+`semantics_version`, `interpretation_limits`, and field semantics from
+`output_schema`.
+
+On `--json` failure, stdout is empty. stderr is:
+
+```json
+{
+  "schema_version": 1,
+  "ok": false,
+  "error": {
+    "code": "TEMPLATE_NOT_FOUND",
+    "message": "Template 'missing' not found",
+    "hint": "Use 'pt-snap query --list --json' to list available templates."
+  }
+}
+```
+
+Stable codes include `TEMPLATE_NOT_FOUND`, `INVALID_PARAMETER`,
+`DATABASE_NOT_FOUND`, `DEVICE_NOT_FOUND`, and `FOCUS_NOT_CONFIGURED`. The
+exit code is nonzero. Usage and parse errors from the `pt-snap` console
+entry (for example `query -n abc --json`) also write this envelope with
+`INVALID_PARAMETER` and exit code 2. When Click fails before the `--json`
+callback runs, that path is a best-effort argv scan: an exact `--json`
+token before `--`, and not the value of the previous option.
+`--opt=value` and numeric tokens such as `-1` do not consume the next
+argument. The `pt-snap` console entry returns the Typer/Click exit code
+(nonzero on failure). Ctrl-C / EOF write `Aborted!` to stderr in text
+mode (exit 1, or 130 when Typer returns 130). With `--json`, stdout stays
+empty and stderr is this envelope (`ERROR`, message `Aborted!`). Text
+mode is unchanged: `Error:` lines still go to stdout (including
+missing-template `--template-info`, which already exits 1).
+
+Existing `metadata --json` and `report peak-memory --json` field names stay
+compatible. Those commands use the same stderr error envelope when `--json`
+is set.
 
 ## Output Format
 

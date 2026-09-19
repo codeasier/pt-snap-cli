@@ -54,7 +54,7 @@ install or upgrade, the host agent must be restarted.
 
 ## Focused Tests
 - Run `pytest tests/skills/test_helper_contract.py` after helper-skill changes.
-  Static coverage checks routing names, current `--json` capability, skill-list
+  Static coverage checks routing names, command `--json` coverage, skill-list
   availability, and the pickle/focus/install read-only boundary.
 - Run `pytest tests/skills/test_setup_contract.py` after setup-skill changes. The current executable test covers active-interpreter path preservation; review the remaining approval and reporting instructions statically.
 - Run `pytest tests/skills/test_ascend_npu_collect_contract.py` after
