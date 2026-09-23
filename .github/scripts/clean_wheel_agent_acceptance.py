@@ -117,6 +117,8 @@ def _isolated_environment(home: Path, cwd: Path, venv_dir: Path, bin_dir: Path) 
     env["VIRTUAL_ENV"] = str(venv_dir)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
     env["PWD"] = str(cwd)
+    env["COLUMNS"] = "100"
+    env["LINES"] = "50"
     return env
 
 
