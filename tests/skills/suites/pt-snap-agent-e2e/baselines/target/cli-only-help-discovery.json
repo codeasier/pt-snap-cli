@@ -7,7 +7,9 @@
       "status": "success",
       "output": {
         "mentions_helper": true,
-        "helper_skill": "pt-snap-helper"
+        "helper_skill": "pt-snap-helper",
+        "install_command": "pt-snap skill install pt-snap-helper --json",
+        "restart_required": true
       }
     },
     {

@@ -377,6 +377,23 @@ def test_query_json_error_paths(tmp_path: Path, sample_db: Path) -> None:
     _assert_json_error(bad_device, "DEVICE_NOT_FOUND")
 
 
+def test_query_json_error_for_database_without_devices(tmp_path: Path) -> None:
+    database = tmp_path / "no-devices.db"
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
+    )
+    connection.commit()
+    connection.close()
+
+    result = runner.invoke(
+        app,
+        ["query", str(database), "--template-use", "leak_detection", "--json"],
+    )
+
+    _assert_json_error(result, "DEVICE_NOT_FOUND")
+
+
 def test_import_json_fresh_and_reuse(tmp_path: Path) -> None:
     snapshot = tmp_path / "sample.pkl"
     shutil.copy(FIXTURES / "snapshot_with_empty_cache.pkl", snapshot)

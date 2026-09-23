@@ -6,6 +6,7 @@ import pytest
 from pt_snap_cli.context import Context
 from pt_snap_cli.query.executor import QueryExecutor
 from pt_snap_cli.query.registry import QueryRegistry, _load_all_templates
+from tests.skills.harness.descriptors import load_suite
 from tests.skills.harness.fixtures import build_snapshotdb, load_fixture_definition
 
 FIXTURE_DIRECTORY = Path("tests/skills/suites/pt-snap-memory-leak/fixtures")
@@ -77,6 +78,30 @@ def test_agent_e2e_definitions_build_read_only_snapshotdbs(
 
     assert not output_path.stat().st_mode & stat.S_IWUSR
     assert Context(output_path).device_ids[0] == 0
+
+
+def test_multi_target_case_materializes_competing_databases(tmp_path: Path) -> None:
+    suite = load_suite(Path("tests/skills/suites/pt-snap-agent-e2e/suite.yaml"))
+    case = suite.case("explicit-multi-target")
+    assert case.fixture is not None
+    fixtures = (case.fixture, *case.additional_fixtures)
+
+    outputs = [
+        build_snapshotdb(fixture["definition_path"], tmp_path / Path(fixture["mount_path"]).name)
+        for fixture in fixtures
+    ]
+
+    assert [output.name for output in outputs] == ["target.db", "other.db"]
+    assert [Context(output).device_ids for output in outputs] == [[0, 1], [0]]
+
+
+def test_no_device_fixture_builds_a_valid_read_only_snapshotdb(tmp_path: Path) -> None:
+    output_path = tmp_path / "no-devices.db"
+
+    build_snapshotdb(E2E_FIXTURE_DIRECTORY / "no-devices.yaml", output_path)
+
+    assert not output_path.stat().st_mode & stat.S_IWUSR
+    assert Context(output_path).device_ids == []
 
 
 def test_events_fixture_has_four_trace_rows(tmp_path: Path) -> None:

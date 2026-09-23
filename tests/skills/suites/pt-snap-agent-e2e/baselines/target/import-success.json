@@ -8,8 +8,13 @@
       },
       "status": "success",
       "output": {
-        "db_path": "/fixtures/imported.db",
-        "focus_updated": true,
+        "db_path": "/outputs/imported.db",
+        "focus_source": "project",
+        "focus_state": {
+          "configured": true,
+          "db_path": "/outputs/imported.db",
+          "focus_source": "project"
+        },
         "reused": false
       }
     }
@@ -17,7 +22,7 @@
   "result": {
     "classification": "import-complete",
     "facts": {
-      "db_path": "/fixtures/imported.db",
+      "db_path": "/outputs/imported.db",
       "focus_updated": true
     },
     "claims": [
@@ -32,5 +37,5 @@
     ],
     "unknowns": []
   },
-  "final_response": "Imported database published at /fixtures/imported.db and project focus was updated."
+  "final_response": "Import published /outputs/imported.db; the non-null project focus_state reports that focus was updated."
 }

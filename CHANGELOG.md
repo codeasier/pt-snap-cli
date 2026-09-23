@@ -20,6 +20,8 @@
 
 ### 稳定性与工程
 
+- Agent CLI 端到端评估补齐参数纠错、无设备数据库、真实竞争数据库、模板语义与 import focus 信封；post-change 契约任务成功率由 0 提升至 1，错误结论率由 0.8 降至 0，并约束调用与输出预算。
+- CI 与 release gate 新增干净 wheel Agent 验收：在隔离 venv 中确认包与 helper 来自 wheel，并仅用结构化输出完成 helper 安装、trusted snapshot import、capabilities、overview 与 peak query。
 - basedpyright 对 `src/pt_snap_cli/snapshot/` 与其余包路径同一套 error 门槛：补齐注解后移除 snapshot `executionEnvironments` 降级列表（#122 阶段 3）。
 
 ## [0.4.0] - Unreleased
@@ -34,7 +36,7 @@
 
 ### 新增
 
-- 新增 `pt-snap-helper` 引导技能，并在 `pt-snap --help` 末尾加入 Agent 提示（优先使用已支持的 `--json`，用 `pt-snap skill list --json` 检查技能）。helper 只读路由，不自动安装包、导入 pickle 或改写 focus；随包分发走 `pt-snap skill`。
+- 新增 `pt-snap-helper` 引导技能，并在 `pt-snap --help` 末尾加入 Agent 提示（优先使用已支持的 `--json`，无技能时可用 `pt-snap skill install pt-snap-helper --json` 安装并重启 Agent，用 `pt-snap skill list --json` 检查技能）。helper 只读路由，不自动安装包、导入 pickle 或改写 focus；随包分发走 `pt-snap skill`。
 - helper 与泄漏/碎片/峰值诊断 skill 补充 focus 目标缺失但同目录或当前目录存在候选 `.db` 时的恢复规则：不按名称/大小/时间自动选库（即使只有一个候选也需用户确认），确认前不诊断、不用 Python/`sqlite3` 绕过 CLI，确认后先执行 `pt-snap metadata` 再继续原有预检；合法旧库的 `unavailable` / `metadata_missing` 不强制重新 import，换库不继承旧 device，且不持久化 focus、不代跑 import。
 - `--template-info` 与 `get_template_info()` 展示参数 `choices`。`order_by` / `order_dir` 等会写入 SQL 标识符或关键字的参数必须声明封闭取值列表；字符串 `choices` 大小写不敏感，并规范化为声明拼写（如 `desc` → `DESC`）。
 - `output_schema` 可声明字段语义（`units`、`metric_semantics`、`scope`、`denominator`、`sentinel`、`interpretation_limits`），查询级可声明 `semantics_version` 与解释限制。`--template-info` 与 `get_template_info()` 透出同一份契约。`execute_query()` 结果增加 `template` 与 `semantics_version`，行数据仍为原始 SQLite 值。优先覆盖 `leak_detection`、`memory_peak`、`allocator_gap`、`active_memory_callstack_at_event`。

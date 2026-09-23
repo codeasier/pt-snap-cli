@@ -3,7 +3,11 @@ from pathlib import Path
 import pytest
 
 from tests.skills.harness.descriptors import load_suite
-from tests.skills.harness.gateway import RecordingToolGateway, ToolDeniedError
+from tests.skills.harness.gateway import (
+    RecordingToolGateway,
+    StructuredToolError,
+    ToolDeniedError,
+)
 
 SUITE_PATH = Path("tests/skills/suites/pt-snap-memory-leak/suite.yaml")
 
@@ -28,6 +32,28 @@ def test_gateway_records_success_and_tool_errors() -> None:
     assert [call.status for call in gateway.calls] == ["success", "error"]
     assert gateway.calls[0].output == {"operation": "pt_snap.metadata", "rows": 1}
     assert gateway.calls[1].error == "RuntimeError: query failed"
+
+
+def test_gateway_records_structured_error_output() -> None:
+    suite = load_suite(SUITE_PATH)
+
+    def executor(operation: str, arguments: dict):
+        raise StructuredToolError(
+            "query failed",
+            {"error_code": "INVALID_PARAMETER", "hint": "Check parameters."},
+        )
+
+    gateway = RecordingToolGateway(suite, executor)
+
+    with pytest.raises(StructuredToolError, match="query failed"):
+        gateway.call("pt_snap.query", {"json": True})
+
+    assert gateway.calls[0].status == "error"
+    assert gateway.calls[0].output == {
+        "error_code": "INVALID_PARAMETER",
+        "hint": "Check parameters.",
+    }
+    assert gateway.calls[0].error == "StructuredToolError: query failed"
 
 
 def test_gateway_records_and_denies_forbidden_operations() -> None:

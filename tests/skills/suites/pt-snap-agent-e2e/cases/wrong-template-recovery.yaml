@@ -21,7 +21,7 @@ expected_tools:
     - id: mistyped_query
       operation: pt_snap.query
       status: error
-      match: {database: /fixtures/events.db, device: 0, template: leak_detecton}
+      match: {database: /fixtures/events.db, device: 0, template: leak_detecton, json: true}
       expect_output: {error_code: TEMPLATE_NOT_FOUND}
     - id: corrected_query
       operation: pt_snap.query

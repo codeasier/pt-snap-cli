@@ -1,0 +1,45 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.query",
+      "arguments": {
+        "database": "/fixtures/events.db",
+        "device": 0,
+        "template": "leak_detection",
+        "params": {
+          "min_sze": 32
+        },
+        "json": true
+      },
+      "status": "error",
+      "output": null,
+      "error": "Error: unknown template parameter min_sze"
+    }
+  ],
+  "result": {
+    "classification": "inconclusive",
+    "facts": {
+      "template": "leak_detection",
+      "min_size": 32,
+      "returned": 3,
+      "error_code": "INVALID_PARAMETER"
+    },
+    "claims": [
+      {
+        "id": "error_code",
+        "evidence_call_ids": ["call-1"]
+      },
+      {
+        "id": "min_size",
+        "evidence_call_ids": ["call-1"]
+      },
+      {
+        "id": "returned",
+        "evidence_call_ids": ["call-1"]
+      }
+    ],
+    "unknowns": []
+  },
+  "final_response": "The parameter error was unstructured and the corrected query was not retried."
+}

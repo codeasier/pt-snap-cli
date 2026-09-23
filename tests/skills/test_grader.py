@@ -2,9 +2,22 @@ from pathlib import Path
 
 from tests.skills.harness.artifacts import write_run_artifacts
 from tests.skills.harness.descriptors import load_suite
-from tests.skills.harness.grader import RunRecord, ToolCall, grade_run
+from tests.skills.harness.grader import RunRecord, ToolCall, _output_contains, grade_run
 
 SUITE_PATH = Path("tests/skills/suites/pt-snap-memory-leak/suite.yaml")
+
+
+def test_output_matching_handles_nested_rows() -> None:
+    output = {
+        "db_path": "/fixtures/live-blocks.db",
+        "returned": 1,
+        "rows": [{"id": 1, "size": 4096, "allocEventId": 1}],
+    }
+
+    assert _output_contains({"rows": [{"size": 4096}]}, output)
+    assert _output_contains({"returned": 1, "rows": [{"allocEventId": 1}]}, output)
+    assert not _output_contains({"rows": [{"size": 2048}]}, output)
+    assert not _output_contains({"rows": [{"size": 4096, "allocEventId": 2}]}, output)
 
 
 def _passing_allocator_cache_run() -> RunRecord:

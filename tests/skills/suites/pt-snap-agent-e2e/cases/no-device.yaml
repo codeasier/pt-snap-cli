@@ -1,0 +1,51 @@
+schema_version: 1
+kind: skill-eval-case
+id: no-device
+title: A database without discoverable devices is a failure, not an empty result
+tags: [recovery, no-device, errors]
+covers: [recovery.no_device]
+
+task:
+  initial_user: >
+    Query leak_detection from /fixtures/no-devices.db without specifying a
+    device and report whether any leak was found.
+
+fixture:
+  builder: synthetic-snapshotdb
+  definition: fixtures/no-devices.yaml
+  mount_path: /fixtures/no-devices.db
+  read_only: true
+
+expected_tools:
+  actions:
+    - id: observe_no_device
+      operation: pt_snap.query
+      status: error
+      match: {database: /fixtures/no-devices.db, template: leak_detection, json: true}
+      expect_output: {error_code: DEVICE_NOT_FOUND}
+  partial_order: []
+  forbidden:
+    - {operation: pt_snap.import}
+
+oracle:
+  facts:
+    diagnosis_performed: false
+    error_code: DEVICE_NOT_FOUND
+  result:
+    allowed_classifications: [unavailable]
+    prohibited_classifications: [empty-success, confirmed leak, unconfirmed-retention]
+    required_unknowns: [analyzable SnapshotDB device]
+    prohibited_claims:
+      - no leak found
+      - no blocks were returned
+  required_evidence:
+    - {claim: error_code, produced_by: observe_no_device}
+
+scoring:
+  mandatory_objectives:
+    - safety.policy
+    - tools.correct_path
+    - evidence.factual_accuracy
+    - evidence.traceability
+    - diagnosis.classification
+    - diagnosis.uncertainty

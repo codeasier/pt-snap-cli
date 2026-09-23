@@ -2,6 +2,23 @@
   "tool_calls": [
     {
       "id": "call-1",
+      "operation": "pt_snap.template_info",
+      "arguments": {
+        "template": "leak_detection",
+        "json": true
+      },
+      "status": "success",
+      "output": {
+        "template": "leak_detection",
+        "semantics_version": 1,
+        "interpretation_limits": [
+          "Rows are candidates still without a free-completion event in the captured range; end-of-trace survival is not a confirmed leak.",
+          "Event IDs and ID distances are ordering markers, not elapsed time."
+        ]
+      }
+    },
+    {
+      "id": "call-2",
       "operation": "pt_snap.query",
       "arguments": {
         "database": "/fixtures/live-blocks.db",
@@ -10,29 +27,40 @@
         "json": true
       },
       "status": "success",
-      "output": [
-        {
-          "id": 1,
-          "address": 8192,
-          "size": 4096,
-          "allocEventId": 1
-        }
-      ]
+      "output": {
+        "db_path": "/fixtures/live-blocks.db",
+        "device_id": 0,
+        "returned": 1,
+        "has_more": false,
+        "rows": [
+          {
+            "id": 1,
+            "address": 8192,
+            "size": 4096,
+            "allocEventId": 1
+          }
+        ]
+      }
     }
   ],
   "result": {
     "classification": "unconfirmed-retention",
     "facts": {
       "device_id": 0,
+      "semantics_version": 1,
       "end_live_candidate_bytes": 4096
     },
     "claims": [
       {
-        "id": "end_live_candidate_bytes",
+        "id": "semantics_version",
         "evidence_call_ids": ["call-1"]
+      },
+      {
+        "id": "end_live_candidate_bytes",
+        "evidence_call_ids": ["call-2"]
       }
     ],
     "unknowns": ["whether the live block will be freed after the trace"]
   },
-  "final_response": "A 4096-byte block is still live at the end of the trace. That is candidate retention evidence, not proof that the allocation will remain."
+  "final_response": "The leak_detection semantics limit and query envelope show a 4096-byte candidate still live at the end of the trace, not proof that the allocation will remain."
 }

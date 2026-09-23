@@ -114,22 +114,11 @@ jobs:
           python -m pip install --upgrade build
           python -m build --wheel
 
-      - name: Wheel smoke test (verify snapshot runtime is packaged)
+      - name: Clean-wheel Agent acceptance
         if: matrix.python-version == '3.13'
         run: |
           set -euo pipefail
-          python -m pip install --force-reinstall dist/*.whl
-          # Confirm the first-party runtime was actually packaged into the wheel.
-          python -c "import pt_snap_cli.snapshot.tools.adaptors.snapshot2db as m; assert hasattr(m, 'run_dump_to_db'), 'snapshot run_dump_to_db missing in installed wheel'"
-          # End-to-end import against a real fixture — catches any packaging
-          # regression where setuptools drops src/pt_snap_cli/snapshot/.
-          FIXTURE=tests/fixtures/snapshots/snapshot_with_empty_cache.pkl
-          rm -rf /tmp/pt-snap-wheel-smoke
-          mkdir -p /tmp/pt-snap-wheel-smoke
-          DB=/tmp/pt-snap-wheel-smoke/snapshot_with_empty_cache.pkl.db
-          pt-snap import "$FIXTURE" --no-focus --output-dir /tmp/pt-snap-wheel-smoke
-          test -f "$DB"
-          SECOND_IMPORT=$(pt-snap import "$FIXTURE" --no-focus --output-dir /tmp/pt-snap-wheel-smoke)
-          echo "$SECOND_IMPORT" | grep -q '^Reused:'
-          pt-snap metadata "$DB" --json | python -c "import json, sys; data=json.load(sys.stdin); assert data['status'] == 'available'"
-          rm -rf /tmp/pt-snap-wheel-smoke
+          WHEEL=$(python -c 'from pathlib import Path; wheels = sorted(Path("dist").glob("*.whl")); assert len(wheels) == 1, wheels; print(wheels[0])')
+          python .github/scripts/clean_wheel_agent_acceptance.py \
+            --wheel "$WHEEL" \
+            --fixture tests/fixtures/snapshots/snapshot_with_empty_cache.pkl

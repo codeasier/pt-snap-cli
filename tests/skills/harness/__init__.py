@@ -1,7 +1,7 @@
 """Descriptor, fixture, runner, and grading primitives for skill evaluations."""
 
 from .descriptors import DescriptorError, EvalCase, EvalSuite, SandboxPolicy, load_suite
-from .gateway import RecordingToolGateway, ToolDeniedError
+from .gateway import RecordingToolGateway, StructuredToolError, ToolDeniedError
 from .grader import GradeResult, RunRecord, ToolCall, grade_run
 from .metrics import BaselineSummary, CaseMetrics, collect_case_metrics, summarize_metrics
 
@@ -15,6 +15,7 @@ __all__ = [
     "RecordingToolGateway",
     "RunRecord",
     "SandboxPolicy",
+    "StructuredToolError",
     "ToolCall",
     "ToolDeniedError",
     "collect_case_metrics",

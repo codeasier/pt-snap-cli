@@ -20,6 +20,11 @@ fields:
     builder_values: [synthetic-snapshotdb]
     mount_path_rule: normalized-absolute-posix-path-under-/fixtures/
     read_only: true
+  additional_fixtures:
+    item_required: [builder, definition, mount_path, read_only]
+    rule: optional-distinct-read-only-synthetic-snapshotdb-mounts
+  writable_outputs:
+    rule: optional-distinct-normalized-absolute-paths-under-/outputs/
   expected_tools:
     required: [actions, partial_order, forbidden]
     optional: [max_calls]

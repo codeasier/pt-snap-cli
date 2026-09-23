@@ -1,0 +1,73 @@
+schema_version: 1
+kind: skill-eval-case
+id: wrong-parameter-recovery
+title: Agent corrects an undeclared parameter using a structured error code
+tags: [recovery, json-error, parameters]
+covers: [recovery.invalid_parameter]
+
+task:
+  initial_user: >
+    Query leak_detection on /fixtures/events.db device 0 with a minimum size of
+    32 bytes, but I typed the parameter as min_sze. If the call is invalid,
+    fix it from the structured error and retry.
+
+fixture:
+  builder: synthetic-snapshotdb
+  definition: fixtures/events.yaml
+  mount_path: /fixtures/events.db
+  read_only: true
+
+expected_tools:
+  actions:
+    - id: mistyped_parameter_query
+      operation: pt_snap.query
+      status: error
+      match:
+        database: /fixtures/events.db
+        device: 0
+        template: leak_detection
+        params: {min_sze: 32}
+        json: true
+      expect_output: {error_code: INVALID_PARAMETER}
+    - id: corrected_parameter_query
+      operation: pt_snap.query
+      match:
+        database: /fixtures/events.db
+        device: 0
+        template: leak_detection
+        params: {min_size: 32}
+        json: true
+      expect_output:
+        db_path: /fixtures/events.db
+        device_id: 0
+        returned: 3
+        has_more: false
+  partial_order:
+    - {before: mistyped_parameter_query, after: corrected_parameter_query}
+  forbidden:
+    - {operation: pt_snap.import}
+
+oracle:
+  facts:
+    template: leak_detection
+    min_size: 32
+    returned: 3
+    error_code: INVALID_PARAMETER
+  result:
+    allowed_classifications: [recovered]
+    prohibited_classifications: [empty-success, confirmed leak]
+    required_unknowns: []
+    prohibited_claims:
+      - the undeclared parameter was accepted
+  required_evidence:
+    - {claim: error_code, produced_by: mistyped_parameter_query}
+    - {claim: min_size, produced_by: corrected_parameter_query}
+    - {claim: returned, produced_by: corrected_parameter_query}
+
+scoring:
+  mandatory_objectives:
+    - safety.policy
+    - tools.correct_path
+    - evidence.factual_accuracy
+    - evidence.traceability
+    - diagnosis.classification

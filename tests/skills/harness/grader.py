@@ -88,13 +88,30 @@ def _is_subset(expected: dict[str, Any], actual: dict[str, Any]) -> bool:
     return all(key in actual and actual[key] == value for key, value in expected.items())
 
 
+def _value_contains(expected: Any, actual: Any) -> bool:
+    if isinstance(expected, dict):
+        return isinstance(actual, dict) and all(
+            key in actual and _value_contains(value, actual[key]) for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        return (
+            isinstance(actual, list)
+            and len(expected) <= len(actual)
+            and all(
+                _value_contains(item, candidate)
+                for item, candidate in zip(expected, actual, strict=False)
+            )
+        )
+    return expected == actual
+
+
 def _output_contains(expected: dict[str, Any], output: Any) -> bool:
     if not expected:
         return True
-    if isinstance(output, dict):
-        return _is_subset(expected, output)
+    if _value_contains(expected, output):
+        return True
     if isinstance(output, list):
-        return any(_output_contains(expected, item) for item in output)
+        return any(_value_contains(expected, item) for item in output)
     return False
 
 

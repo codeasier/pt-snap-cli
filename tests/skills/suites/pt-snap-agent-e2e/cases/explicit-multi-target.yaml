@@ -15,6 +15,11 @@ fixture:
   definition: fixtures/multi-device.yaml
   mount_path: /fixtures/target.db
   read_only: true
+additional_fixtures:
+  - builder: synthetic-snapshotdb
+    definition: fixtures/events.yaml
+    mount_path: /fixtures/other.db
+    read_only: true
 
 expected_tools:
   actions:
