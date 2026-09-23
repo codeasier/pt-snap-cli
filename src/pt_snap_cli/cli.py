@@ -92,10 +92,10 @@ from pt_snap_cli.query.executor import reported_sql_limit
 from pt_snap_cli.query.registry import discover_categories, get_query
 
 AGENT_HELP_EPILOG = (
-    "Agents: prefer --json where supported. "
     "Agents without pt-snap-helper can run "
     "pt-snap skill install pt-snap-helper --json, then restart the agent "
     "so the skill change takes effect. "
+    "Agents: prefer --json where supported. "
     "Start with the pt-snap-helper skill; "
     "use pt-snap capabilities --json and pt-snap overview --json before diagnosing; "
     "check availability with pt-snap skill list --json."
