@@ -35,6 +35,7 @@
 ### 新增
 
 - 新增 `pt-snap-helper` 引导技能，并在 `pt-snap --help` 末尾加入 Agent 提示（优先使用已支持的 `--json`，用 `pt-snap skill list --json` 检查技能）。helper 只读路由，不自动安装包、导入 pickle 或改写 focus；随包分发走 `pt-snap skill`。
+- helper 与泄漏/碎片/峰值诊断 skill 补充 focus 目标缺失但同目录或当前目录存在候选 `.db` 时的恢复规则：不按名称/大小/时间自动选库（即使只有一个候选也需用户确认），确认前不诊断、不用 Python/`sqlite3` 绕过 CLI，确认后先执行 `pt-snap metadata` 再继续原有预检；合法旧库的 `unavailable` / `metadata_missing` 不强制重新 import，换库不继承旧 device，且不持久化 focus、不代跑 import。
 - `--template-info` 与 `get_template_info()` 展示参数 `choices`。`order_by` / `order_dir` 等会写入 SQL 标识符或关键字的参数必须声明封闭取值列表；字符串 `choices` 大小写不敏感，并规范化为声明拼写（如 `desc` → `DESC`）。
 - `output_schema` 可声明字段语义（`units`、`metric_semantics`、`scope`、`denominator`、`sentinel`、`interpretation_limits`），查询级可声明 `semantics_version` 与解释限制。`--template-info` 与 `get_template_info()` 透出同一份契约。`execute_query()` 结果增加 `template` 与 `semantics_version`，行数据仍为原始 SQLite 值。优先覆盖 `leak_detection`、`memory_peak`、`allocator_gap`、`active_memory_callstack_at_event`。
 - `leak_detection` 的对外描述改为「捕获范围内无释放完成记录的候选」，不再写成已确认泄漏。

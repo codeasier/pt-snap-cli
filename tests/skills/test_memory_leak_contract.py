@@ -145,3 +145,20 @@ def test_memory_leak_skill_records_reduced_prerequisite_probes() -> None:
     assert "previously 7 calls" in skill
     assert "Now 2 calls" in skill
     assert "Do not probe templates one-by-one with `--template-info`" in skill
+
+
+def test_memory_leak_skill_recovers_missing_focus_with_sibling_candidates() -> None:
+    skill = SKILL_PATH.read_text()
+    normalized = " ".join(skill.split())
+
+    assert "#### Missing focus target with sibling candidates" in skill
+    assert (
+        "A displayed path or exit code 0 from `pt-snap focus` does not mean " "the target is usable"
+    ) in normalized
+    assert "Do not auto-select by name, size, or mtime." in skill
+    assert "Even a single candidate requires an explicit user choice." in skill
+    assert "Before the user confirms a path, do not run diagnostic queries" in skill
+    assert ("the next inspect step is `pt-snap metadata '<db_path>' --json`") in skill
+    assert "Do not start with `pt-snap query`" in skill
+    assert "do not inherit the focused device from the missing target" in skill
+    assert "`unavailable` with reason `metadata_missing`" in skill

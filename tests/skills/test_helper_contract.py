@@ -115,3 +115,21 @@ def test_helper_skill_keeps_pickle_import_and_focus_as_handoffs() -> None:
     assert "pt-snap import <snapshot.pkl> --json" in skill
     assert "That command currently has no `--json` option." not in skill
     assert "Do not run `pt-snap skill install`" in skill
+
+
+def test_helper_skill_recovers_missing_focus_with_sibling_candidates() -> None:
+    skill = _skill()
+    normalized = " ".join(skill.split())
+
+    assert "#### Missing focus target with sibling candidates" in skill
+    assert "enter this recovery branch" in skill.casefold()
+    assert (
+        "A displayed path or exit code 0 from `pt-snap focus` does not mean " "the target is usable"
+    ) in normalized
+    assert "Do not auto-select by name, size, or mtime." in skill
+    assert "Even a single candidate requires an explicit user choice." in normalized
+    assert "Before the user confirms a path, do not run diagnostic queries" in skill
+    assert "the next inspect step is" in skill
+    assert "`pt-snap metadata '<db_path>' --json`, not `pt-snap query`" in skill
+    assert "Do not inherit the focused device from the missing target" in normalized
+    assert "This helper must not run metadata, query, import, or persist focus." in normalized

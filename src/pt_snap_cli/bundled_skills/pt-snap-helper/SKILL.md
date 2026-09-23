@@ -137,6 +137,35 @@ A SnapshotDB is a pt-snap SQLite database (typically `.db`) with a
 4. Do not run `pt-snap focus <database_path>` to persist a new focus from this
    skill. Diagnostic skills may read the current focus with no arguments.
 
+#### Missing focus target with sibling candidates
+
+Enter this recovery branch only when the next diagnostic skill would depend on
+the current effective focus (environment variable, project `.pt-snap/focus.json`,
+or global config) and that database file is missing. A displayed path or exit
+code 0 from `pt-snap focus` does not mean the target is usable; text mode prints
+`Warning: Database file does not exist!` and `pt-snap focus --json` reports
+`db_exists: false`. If the user already supplied a valid database path, use that
+explicit path and do not enter this branch.
+
+1. List candidate files only in the missing database's directory and the current
+   working directory. Do not recurse. Deduplicate paths. Discover `*.db` and
+   `*.pickle.db` by suffix only; a matching suffix is not proof the file is a
+   SnapshotDB. Do not auto-select by name, size, or mtime. Even a single
+   candidate requires an explicit user choice.
+2. Ask the user to use one listed candidate or to treat pickle import as a
+   separate trusted-input decision. With zero candidates, ask for a valid
+   SnapshotDB path or explain that trusted import. Do not run `pt-snap import`
+   and do not persist focus.
+3. Before the user confirms a path, do not run diagnostic queries, reports, or
+   metadata against any candidate, and do not inspect candidates with Python,
+   the `sqlite3` CLI, or hand-assembled SQL.
+4. After the user confirms a path, hand off to the matching diagnostic skill
+   with that explicit database path. Tell it that the next inspect step is
+   `pt-snap metadata '<db_path>' --json`, not `pt-snap query`. Do not inherit
+   the focused device from the missing target; the diagnostic skill must
+   re-resolve device from the confirmed database. This helper must not run
+   metadata, query, import, or persist focus.
+
 This helper may mention that `pt-snap overview '<db_path>' --json` and
 `pt-snap capabilities --json` exist. Running those orientation commands
 belongs to the diagnostic skill. Do not import pickle or persist focus.

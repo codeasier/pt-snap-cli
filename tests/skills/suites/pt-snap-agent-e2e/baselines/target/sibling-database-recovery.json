@@ -1,0 +1,39 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.metadata",
+      "arguments": {
+        "database": "/fixtures/gone.pickle.db",
+        "json": true
+      },
+      "status": "success",
+      "output": {
+        "status": "unavailable",
+        "reason": "metadata_missing",
+        "metadata": null
+      }
+    }
+  ],
+  "result": {
+    "classification": "recovered",
+    "facts": {
+      "db_path": "/fixtures/gone.pickle.db",
+      "diagnosis_performed": false,
+      "metadata_status": "unavailable",
+      "metadata_reason": "metadata_missing"
+    },
+    "claims": [
+      {
+        "id": "db_path",
+        "evidence_call_ids": ["call-1"]
+      },
+      {
+        "id": "metadata_status",
+        "evidence_call_ids": ["call-1"]
+      }
+    ],
+    "unknowns": []
+  },
+  "final_response": "Confirmed sibling /fixtures/gone.pickle.db. Inspected it with pt-snap metadata; status is unavailable because import provenance is missing. Did not query, inherit device 1, persist focus, or import."
+}

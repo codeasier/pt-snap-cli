@@ -50,11 +50,20 @@ If the user did not provide a database or device, inspect the current state:
 pt-snap focus
 ```
 
-Use the displayed database and focused device only when both are present and the user has not requested another target. If the database or device remains ambiguous, ask the user to select it before analysis.
+Use the displayed database and focused device only when both are present, the database file exists, and the user has not requested another target. If the database or device remains ambiguous, ask the user to select it before analysis.
 
 Do not run `pt-snap focus <database_path>` or otherwise persist focus from this skill. Pass the database and device explicitly to every diagnostic query.
 
 This skill accepts SnapshotDB files only. Do not run `pt-snap import` or deserialize a pickle snapshot. If the user has only a pickle file, stop and explain that importing requires a separate, explicit trusted-input decision because pickle loading is not a sandbox.
+
+#### Missing focus target with sibling candidates
+
+Enter this recovery branch only when diagnosis depends on the current effective focus (environment variable, project `.pt-snap/focus.json`, or global config) and that database file is missing. A displayed path or exit code 0 from `pt-snap focus` does not mean the target is usable; text mode prints `Warning: Database file does not exist!` and `pt-snap focus --json` reports `db_exists: false`. If the user already supplied a valid database path, use that explicit path and do not enter this branch.
+
+1. List candidate files only in the missing database's directory and the current working directory. Do not recurse. Deduplicate paths. Discover `*.db` and `*.pickle.db` by suffix only; a matching suffix is not proof the file is a SnapshotDB. Do not auto-select by name, size, or mtime. Even a single candidate requires an explicit user choice.
+2. Ask the user to use one listed candidate or to treat pickle import as a separate trusted-input decision. With zero candidates, ask for a valid SnapshotDB path or explain that trusted import. Do not run `pt-snap import` and do not persist focus.
+3. Before the user confirms a path, do not run diagnostic queries, reports, or metadata against any candidate, and do not inspect candidates with Python, the `sqlite3` CLI, or hand-assembled SQL.
+4. After the user confirms a path, the next inspect step is `pt-snap metadata '<db_path>' --json`. Do not start with `pt-snap query`. Re-resolve the device from the confirmed database; do not inherit the focused device from the missing target. Then continue the checks below. A schema-valid legacy database may report metadata status `unavailable` with reason `metadata_missing`; record unknown import provenance and do not force a re-import. Stop on schema errors or invalid metadata.
 
 ### 3. Verify capabilities and the database in two calls
 
