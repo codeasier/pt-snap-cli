@@ -10,6 +10,8 @@ import venv
 from pathlib import Path
 from typing import Any
 
+from click import unstyle
+
 
 class AcceptanceError(RuntimeError):
     pass
@@ -187,6 +189,22 @@ def _run_acceptance(wheel: Path, fixture: Path) -> None:
             _is_inside(bundled_helper, venv_dir),
             f"Bundled helper is outside the venv: {bundled_helper}",
         )
+        help_contract_result = _run(
+            [
+                str(venv_python),
+                "-c",
+                "from pt_snap_cli.cli import AGENT_HELP_EPILOG; print(AGENT_HELP_EPILOG)",
+            ],
+            cwd=cwd,
+            env=env,
+            label="packaged help contract",
+            clean_stderr=True,
+        )
+        help_contract = " ".join(help_contract_result.stdout.split())
+        _require(
+            "pt-snap skill install pt-snap-helper --json" in help_contract,
+            f"Packaged help contract omits the helper install command: {help_contract!r}",
+        )
 
         help_result = _run(
             [str(pt_snap), "--help"],
@@ -195,20 +213,16 @@ def _run_acceptance(wheel: Path, fixture: Path) -> None:
             label="root help",
             clean_stderr=True,
         )
-        normalized_help = " ".join(help_result.stdout.split())
+        normalized_help = " ".join(unstyle(help_result.stdout).split())
         _require(
-            "pt-snap skill install pt-snap-helper --json" in normalized_help,
-            "Root help does not show the supported helper install command",
-        )
-        _require(
-            "restart the agent" in normalized_help.lower(),
-            "Root help does not tell the agent to restart after installing the helper",
+            "pt-snap-helper" in normalized_help and "restart the agent" in normalized_help.lower(),
+            f"Root help lost helper onboarding: {normalized_help[-1000:]!r}",
         )
         _require(
             "pt-snap capabilities --json" in normalized_help
             and "pt-snap overview --json" in normalized_help
             and "prefer --json" in normalized_help,
-            "Root help lost its JSON capability guidance",
+            f"Root help lost its JSON capability guidance: {normalized_help[-1000:]!r}",
         )
 
         listed = _run_json(
