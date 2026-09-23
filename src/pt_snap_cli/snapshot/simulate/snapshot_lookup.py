@@ -79,7 +79,7 @@ def find_segment(snapshot: DeviceSnapshot, addr: int, stream: int) -> tuple[int,
 
 
 def find_gap_for_alloc_block(
-    snapshot: DeviceSnapshot, event_addr: int, event_size: int, stream: int = None
+    snapshot: DeviceSnapshot, event_addr: int, event_size: int, stream: int | None = None
 ) -> tuple[Segment, int] | None:
     """Find the insertion gap for a block allocation inside a segment.
 

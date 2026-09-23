@@ -40,6 +40,9 @@ class TestFrame(unittest.TestCase):
         self.assertEqual(result["line"], 42)
         self.assertEqual(result["name"], "test_func")
 
+    def test_origin_default_is_none(self):
+        self.assertIsNone(Frame()._origin)
+
 
 class TestTraceEntry(unittest.TestCase):
     def test_from_dict(self):
@@ -176,6 +179,11 @@ class TestTraceEntry(unittest.TestCase):
 
 
 class TestBlock(unittest.TestCase):
+    def test_event_index_defaults_are_none(self):
+        block = Block()
+        self.assertIsNone(block.free_event_idx)
+        self.assertIsNone(block.alloc_event_idx)
+
     def test_from_dict(self):
         block = Block.from_dict(
             {
@@ -233,6 +241,13 @@ class TestBlock(unittest.TestCase):
 
 
 class TestSegment(unittest.TestCase):
+    def test_optional_defaults(self):
+        segment = Segment()
+        self.assertEqual(segment.segment_type, "")
+        self.assertIsNone(segment._origin)
+        self.assertIsNone(segment.free_or_unmap_event_idx)
+        self.assertIsNone(segment.alloc_or_map_event_idx)
+
     @staticmethod
     def _segment_dict(is_expandable=False, blocks=None):
         return {
@@ -350,6 +365,15 @@ class TestSegment(unittest.TestCase):
 
 
 class TestDeviceSnapshot(unittest.TestCase):
+    def test_init_sets_empty_state(self):
+        snapshot = DeviceSnapshot()
+        self.assertEqual(snapshot.segments, [])
+        self.assertEqual(snapshot.trace_entries, [])
+        self.assertEqual(snapshot.total_allocated, 0)
+        self.assertEqual(snapshot.total_reserved, 0)
+        self.assertEqual(snapshot.total_activated, 0)
+        self.assertEqual(snapshot.device, 0)
+
     def test_from_dict(self):
         snapshot = DeviceSnapshot.from_dict(
             {

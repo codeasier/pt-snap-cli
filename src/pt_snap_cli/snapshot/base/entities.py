@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 
 class Frame:
@@ -7,10 +7,10 @@ class Frame:
     line: int = -1
     name: str = ""
 
-    _origin: dict = None  # Readonly
+    _origin: dict[str, Any] | None = None  # Readonly
 
     @classmethod
-    def from_dict(cls, frame_dict: dict):
+    def from_dict(cls, frame_dict: dict[str, Any]):
         frame = cls()
         frame.filename = frame_dict["filename"]
         frame.line = frame_dict["line"]
@@ -26,19 +26,19 @@ class Frame:
         )
 
 
-def _format_callstack(frames: list[Frame] | list[dict]) -> str:
+def _format_frame(frame: Frame | dict[str, Any]) -> str:
+    if isinstance(frame, Frame):
+        return f"{frame.filename}:{frame.line} {frame.name}"
+    return f"{frame['filename']}:{frame['line']} {frame['name']}"
+
+
+def _format_callstack(frames: list[Frame] | list[dict[str, Any]]) -> str:
     if not frames:
         return ""
-    if isinstance(frames[0], Frame):
-        return "\n".join(
-            [f"{frame.filename}:{frame.line} {frame.name}" for frame in reversed(frames)]
-        )
-    return "\n".join(
-        [f"{frame['filename']}:{frame['line']} {frame['name']}" for frame in reversed(frames)]
-    )
+    return "\n".join(_format_frame(frame) for frame in reversed(frames))
 
 
-def _validate_raw_frames(frames: list[dict]) -> None:
+def _validate_raw_frames(frames: list[dict[str, Any]]) -> None:
     for frame in frames:
         _ = frame["filename"]
         _ = frame["line"]
@@ -76,12 +76,12 @@ class TraceEntry:
     device_free: int = -1  # only present for OOM, the amount of
     # memory npu still reports to be free
 
-    _origin: dict = None  # Readonly
-    idx: int = -1  # 索引，全局唯一
-    _raw_frames: list[dict] | None = field(default=None, repr=False)
+    _origin: dict[str, Any] | None = None  # Readonly
+    idx: int | None = -1  # 索引，全局唯一
+    _raw_frames: list[dict[str, Any]] | None = field(default=None, repr=False)
 
     @classmethod
-    def from_dict(cls, trace_dict: dict, _raw_frames: bool = False):
+    def from_dict(cls, trace_dict: dict[str, Any], _raw_frames: bool = False):
         frame_dicts = trace_dict.get("frames", [])
         if _raw_frames:
             _validate_raw_frames(frame_dicts)
@@ -98,7 +98,7 @@ class TraceEntry:
         )
         return trace_entry
 
-    def callstack_frames(self) -> list[Frame] | list[dict]:
+    def callstack_frames(self) -> list[Frame] | list[dict[str, Any]]:
         """Return the frame container that backs ``get_callstack()``.
 
         Callers that deduplicate callstacks key on this container's identity,
@@ -112,7 +112,7 @@ class TraceEntry:
     def to_dict(self, include_id: bool = False):
         if self._origin and not include_id:
             return self._origin
-        trace_dict = (
+        trace_dict: dict[str, Any] = (
             dict(self._origin)
             if self._origin
             else {
@@ -157,12 +157,12 @@ class Block:
 
     # 指向持有该block的segment对象
     segment_ptr: Any = None
-    free_event_idx: int = None
-    alloc_event_idx: int = None
-    _raw_frames: list[dict] | None = field(default=None, repr=False)
+    free_event_idx: int | None = None
+    alloc_event_idx: int | None = None
+    _raw_frames: list[dict[str, Any]] | None = field(default=None, repr=False)
 
     @classmethod
-    def from_dict(cls, block_dict: dict, _raw_frames: bool = False):
+    def from_dict(cls, block_dict: dict[str, Any], _raw_frames: bool = False):
         frame_dicts = block_dict.get("frames", [])
         if _raw_frames:
             _validate_raw_frames(frame_dicts)
@@ -212,21 +212,24 @@ class Segment:
     address: int = -1
     total_size: int = 0  # aclrtMalloc'd size of segment
     stream: int = 0
-    segment_type: Literal["small", "large"] = ""  # 'large' (>1MB)
+    segment_type: Literal["small", "large", ""] = ""  # 'large' (>1MB)
     allocated_size: int = 0  # size of memory in use
     active_size: int = 0  # size of memory in use or in active_awaiting_free state
     blocks: list[Block] = field(default_factory=list)
     device: int = 0
     frames: list[Frame] = field(default_factory=list)
     is_expandable: bool = False
-    _origin: dict = None  # Readonly
-    free_or_unmap_event_idx: int = None
-    alloc_or_map_event_idx: int = None
-    _raw_frames: list[dict] | None = field(default=None, repr=False)
+    _origin: dict[str, Any] | None = None  # Readonly
+    free_or_unmap_event_idx: int | None = None
+    alloc_or_map_event_idx: int | None = None
+    _raw_frames: list[dict[str, Any]] | None = field(default=None, repr=False)
 
     @classmethod
     def from_dict(
-        cls, segment_dict: dict, ignore_inactive_blocks: bool = False, _raw_frames: bool = False
+        cls,
+        segment_dict: dict[str, Any],
+        ignore_inactive_blocks: bool = False,
+        _raw_frames: bool = False,
     ):
         frame_dicts = segment_dict.get("frames", [])
         if _raw_frames:
@@ -260,7 +263,7 @@ class Segment:
             stream=event.stream,
             frames=event.frames,
             _raw_frames=event._raw_frames,
-            device=event.device if hasattr(event, "device") else 0,
+            device=cast(int, getattr(event, "device", 0)),
             allocated_size=0,
             active_size=0,
             is_expandable=event.action in ["segment_map", "segment_unmap"],
@@ -309,10 +312,18 @@ class DeviceSnapshot:
 
     device: int
 
+    def __init__(self) -> None:
+        self.segments = []
+        self.trace_entries = []
+        self.total_allocated = 0
+        self.total_reserved = 0
+        self.total_activated = 0
+        self.device = 0
+
     @classmethod
     def from_dict(
         cls,
-        snapshot_dict: dict,
+        snapshot_dict: dict[str, Any],
         device: int,
         ignore_inactive_blocks: bool = False,
         _raw_frames: bool = False,

@@ -1,6 +1,7 @@
 import os
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from ...base import Block, BlockState, DeviceSnapshot, TraceEntry
 from ...representation import UnsafePickleError, load_snapshot_representation, replay_snapshot
@@ -33,14 +34,14 @@ class SnapshotDbHandler:
             self.db.create_trace_entry_table(device)
             self.db.create_block_table(device)
 
-    def insert_event(self, event_record: dict, device: int = 0):
+    def insert_event(self, event_record: dict[str, Any], device: int = 0):
         if device not in self._device_event_cache:
             self._device_event_cache[device] = []
         self._device_event_cache[device].append(event_record)
         if len(self._device_event_cache[device]) >= self._insert_cache_size:
             self._do_insert_events(device)
 
-    def insert_block(self, block_record: dict, device: int = 0):
+    def insert_block(self, block_record: dict[str, Any], device: int = 0):
         if device not in self._device_block_cache:
             self._device_block_cache[device] = []
         self._device_block_cache[device].append(block_record)
@@ -53,7 +54,7 @@ class SnapshotDbHandler:
         if self._device_block_cache.get(device, None):
             self._do_insert_blocks(device)
 
-    def insert_callstacks(self, records: list[dict]):
+    def insert_callstacks(self, records: list[dict[str, Any]]):
         """Write the interned callstack table once every device has replayed."""
         if not records:
             return
@@ -159,7 +160,7 @@ class DumpEventHooker(SimulateHooker, AllocatorHooker):
         self.db_handler.close(commit=commit)
 
 
-def dump(pickle_file: str, dump_file: str, device=None) -> bool:
+def dump(pickle_file: str | Path, dump_file: str | Path, device: int | None = None) -> bool:
     try:
         data = load_snapshot_representation(Path(pickle_file))
     except UnsafePickleError:

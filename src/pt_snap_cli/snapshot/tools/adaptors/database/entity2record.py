@@ -1,3 +1,5 @@
+from typing import Any
+
 from ....base import Block, TraceEntry
 from .callstack import CallstackInterner
 from .defs import BlockFieldDefs, EventFieldDefs
@@ -30,7 +32,7 @@ def event2record(
     reserved: int = 0,
     *,
     callstacks: CallstackInterner,
-) -> dict:
+) -> dict[str, Any]:
     return {
         EventFieldDefs.ID: (event.idx if event.idx is not None else next_default_event_id()),
         EventFieldDefs.ACTION: event.action,
@@ -44,7 +46,7 @@ def event2record(
     }
 
 
-def block2record(block: Block) -> dict:
+def block2record(block: Block) -> dict[str, Any]:
     return {
         BlockFieldDefs.ID: (
             block.alloc_event_idx if block.alloc_event_idx is not None else next_default_block_id()

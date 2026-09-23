@@ -188,6 +188,13 @@ The upstream standalone split frontend is deliberately excluded, not deferred:
   message, and uses a left join with a missing-callstack placeholder in
   statistical analysis. These are local fixes to the issue #113 runtime;
   audited upstream source mappings and license terms remain unchanged.
+- On 2026-09-19, issue #122 phase 3 tightened first-party type annotations in
+  the snapshot runtime (`dict[str, Any]`, `int | None`, `Literal` defaults,
+  `DeviceSnapshot.__init__`, and import-cycle-safe submodule imports) so
+  basedpyright can check `src/pt_snap_cli/snapshot/` at the same error level
+  as the rest of the package. Call formatting, optional-field defaults, and
+  replay/import/split behavior are unchanged; audited upstream source mappings
+  and license terms remain unchanged.
 
 ## Migration toolchain
 
