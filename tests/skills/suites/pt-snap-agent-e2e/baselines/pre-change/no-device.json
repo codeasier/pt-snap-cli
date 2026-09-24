@@ -1,0 +1,31 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.query",
+      "arguments": {
+        "database": "/fixtures/no-devices.db",
+        "template": "leak_detection",
+        "json": true
+      },
+      "status": "error",
+      "output": null,
+      "error": "Error: no device tables"
+    }
+  ],
+  "result": {
+    "classification": "empty-success",
+    "facts": {
+      "diagnosis_performed": false,
+      "error_code": "DEVICE_NOT_FOUND"
+    },
+    "claims": [
+      {
+        "id": "error_code",
+        "evidence_call_ids": ["call-1"]
+      }
+    ],
+    "unknowns": ["analyzable SnapshotDB device"]
+  },
+  "final_response": "No leak found because the database returned no blocks."
+}

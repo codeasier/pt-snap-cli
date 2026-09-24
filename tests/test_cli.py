@@ -221,6 +221,10 @@ class TestCLI:
             assert result.exit_code == 0
             normalized = " ".join(unstyle(result.stdout).split())
             assert AGENT_HELP_EPILOG in normalized
+            assert "pt-snap skill install pt-snap-helper --json" in normalized
+            assert "restart the agent" in normalized.lower()
+            assert "pt-snap capabilities --json" in normalized
+            assert "pt-snap overview --json" in normalized
             assert normalized.index(AGENT_HELP_EPILOG) > normalized.index(
                 "PyTorch Memory Snapshot Analysis Tool"
             )

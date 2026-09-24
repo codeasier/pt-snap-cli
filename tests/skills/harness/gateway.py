@@ -12,6 +12,12 @@ class ToolDeniedError(PermissionError):
     """Raised after a disallowed operation is recorded in the run trace."""
 
 
+class StructuredToolError(RuntimeError):
+    def __init__(self, message: str, output: Any) -> None:
+        super().__init__(message)
+        self.output = output
+
+
 ToolExecutor = Callable[[str, dict[str, Any]], Any]
 
 
@@ -47,6 +53,18 @@ class RecordingToolGateway:
 
         try:
             output = self.executor(operation, dict(arguments))
+        except StructuredToolError as exc:
+            self._calls.append(
+                ToolCall(
+                    call_id,
+                    operation,
+                    dict(arguments),
+                    status="error",
+                    output=exc.output,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            )
+            raise
         except Exception as exc:
             self._calls.append(
                 ToolCall(

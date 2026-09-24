@@ -15,7 +15,7 @@ expected_tools:
     - id: observe_missing_database
       operation: pt_snap.query
       status: error
-      match: {database: /fixtures/missing.db, device: 0, template: leak_detection}
+      match: {database: /fixtures/missing.db, device: 0, template: leak_detection, json: true}
       expect_output: {error_code: DATABASE_NOT_FOUND}
   partial_order: []
   forbidden:

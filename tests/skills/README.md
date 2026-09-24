@@ -22,10 +22,15 @@ enforced by `harness/descriptors.py` with unknown fields rejected.
   declare `expect_output`, a mapping that must appear in the matched call's
   recorded output before the action counts as matched. Actions may also declare
   `status` (`success` or `error`; default `success`) so recovery cases can
-  require structured failures. Cases may cap the total call count with
+  require structured failures. Nested mappings and row lists in `expect_output`
+  are matched recursively. Cases may cap the total call count with
   `expected_tools.max_calls`; zero enforces refusal-only cases.
 - Descriptor paths are repository-relative and cannot contain `..`. Fixture
-  mount paths must be normalized absolute POSIX paths under `/fixtures/`.
+  mount paths must be unique, normalized absolute POSIX paths under `/fixtures/`.
+  `additional_fixtures` can mount more read-only synthetic SnapshotDBs when a
+  scenario depends on competing databases or devices. A semantic operation that
+  must publish an artifact may declare an explicit `writable_outputs` path under
+  `/outputs/`; it never makes project or fixture mounts writable.
 - Diagnostic fixtures are declarative SQLite databases. Pickle inputs are never
   materialized or exposed to a diagnostic runner.
 
@@ -40,7 +45,9 @@ python -m tests.skills validate tests/skills/suites/pt-snap-agent-e2e/suite.yaml
 
 Agent adapters should expose only semantic operations through
 `RecordingToolGateway`. The gateway records successful, failed, and denied
-attempts and enforces the suite allowlist and call budget. Adapters remain
+attempts and enforces the suite allowlist and call budget. Adapters should
+raise `StructuredToolError` when a failed CLI call still has a JSON envelope;
+the gateway retains that envelope in the graded trace. Adapters remain
 responsible for process-level isolation: a fresh temporary working directory,
 an isolated `HOME`, no network, a read-only project, read-only fixture mounts,
 and cleared focus environment variables.
@@ -97,7 +104,10 @@ score.
 scenarios plus sibling-database recovery when focus points at a missing file.
 It is an `agent-cli` evaluation contract, not a shipped skill. Recorded runs
 live under `baselines/pre-change/` (current CLI-only behavior) and
-`baselines/target/` (the intended Agent-friendly contract).
+`baselines/target/` (the post-change Agent-friendly contract). The comparison
+requires higher task success, lower error-conclusion rate, and bounded mean
+calls/output; recovery cases may use extra calls when a structured failure must
+be corrected.
 
 Comparison metrics are task success rate, mean call count, mean output bytes,
 and error-conclusion rate:
@@ -111,6 +121,9 @@ python -m tests.skills baseline \
 
 Diagnostic fixtures remain declarative SQLite databases. The import scenario
 records `pt_snap.import` semantically and never materializes a pickle.
+The release-gating clean-wheel check separately installs the built wheel into a
+fresh venv, installs `pt-snap-helper` from package data, and completes import,
+capability, overview, and peak-query discovery using JSON output.
 
 Generated transcripts and reports belong under `.skill-evals/`, which is
 ignored by Git. Normal `pytest` runs never invoke a live model.

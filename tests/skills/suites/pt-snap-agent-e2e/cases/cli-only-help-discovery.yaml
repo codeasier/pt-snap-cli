@@ -15,7 +15,11 @@ expected_tools:
     - id: read_help
       operation: pt_snap.help
       match: {}
-      expect_output: {mentions_helper: true, helper_skill: pt-snap-helper}
+      expect_output:
+        mentions_helper: true
+        helper_skill: pt-snap-helper
+        install_command: pt-snap skill install pt-snap-helper --json
+        restart_required: true
     - id: list_skills
       operation: pt_snap.skill_list
       match: {json: true}

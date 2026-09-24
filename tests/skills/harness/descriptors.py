@@ -61,6 +61,8 @@ class EvalCase:
     required_evidence: tuple[tuple[str, str], ...]
     mandatory_objectives: tuple[str, ...]
     max_tool_calls: int | None = None
+    additional_fixtures: tuple[dict[str, Any], ...] = ()
+    writable_outputs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -184,6 +186,38 @@ def _validate_dag(action_ids: set[str], edges: tuple[tuple[str, str], ...], cont
         raise DescriptorError(f"{context} contains a cycle")
 
 
+def _load_fixture(
+    raw_fixture: Any,
+    *,
+    path: Path,
+    suite_root: Path,
+    context: str,
+) -> dict[str, Any]:
+    fixture = _strict_mapping(
+        raw_fixture,
+        context=context,
+        required={"builder", "definition", "mount_path", "read_only"},
+        allowed={"builder", "definition", "mount_path", "read_only"},
+    )
+    if fixture["builder"] != "synthetic-snapshotdb":
+        raise DescriptorError(f"{path}: only synthetic-snapshotdb fixtures are supported")
+    definition = _safe_path(suite_root, fixture["definition"], f"{context}.definition")
+    if not definition.is_file():
+        raise DescriptorError(f"{path}: fixture definition does not exist: {definition}")
+    if fixture["read_only"] is not True:
+        raise DescriptorError(f"{path}: diagnostic fixtures must be read-only")
+    mount_path = _string(fixture["mount_path"], f"{context}.mount_path")
+    if not mount_path.startswith("/"):
+        raise DescriptorError(f"{context}.mount_path must be an absolute POSIX path")
+    if ".." in PurePosixPath(mount_path).parts:
+        raise DescriptorError(f"{context}.mount_path cannot contain '..'")
+    if posixpath.normpath(mount_path) != mount_path:
+        raise DescriptorError(f"{context}.mount_path must be a normalized POSIX path")
+    if not mount_path.startswith("/fixtures/"):
+        raise DescriptorError(f"{context}.mount_path must be under /fixtures/")
+    return {**fixture, "definition_path": definition}
+
+
 def _load_case(
     path: Path,
     *,
@@ -215,6 +249,8 @@ def _load_case(
             "covers",
             "task",
             "fixture",
+            "additional_fixtures",
+            "writable_outputs",
             "dialog",
             "expected_tools",
             "oracle",
@@ -383,33 +419,45 @@ def _load_case(
             f"{path}: unknown objectives: {', '.join(sorted(unknown_objectives))}"
         )
 
-    fixture: dict[str, Any] | None = None
-    if "fixture" in data:
-        raw_fixture = _strict_mapping(
+    fixture = (
+        _load_fixture(
             data["fixture"],
+            path=path,
+            suite_root=suite_root,
             context=f"{path}: fixture",
-            required={"builder", "definition", "mount_path", "read_only"},
-            allowed={"builder", "definition", "mount_path", "read_only"},
         )
-        if raw_fixture["builder"] != "synthetic-snapshotdb":
-            raise DescriptorError(f"{path}: only synthetic-snapshotdb fixtures are supported")
-        definition = _safe_path(
-            suite_root, raw_fixture["definition"], f"{path}: fixture.definition"
-        )
-        if not definition.is_file():
-            raise DescriptorError(f"{path}: fixture definition does not exist: {definition}")
-        if raw_fixture["read_only"] is not True:
-            raise DescriptorError(f"{path}: diagnostic fixtures must be read-only")
-        mount_path = _string(raw_fixture["mount_path"], f"{path}: fixture.mount_path")
-        if not mount_path.startswith("/"):
-            raise DescriptorError(f"{path}: fixture.mount_path must be an absolute POSIX path")
-        if ".." in PurePosixPath(mount_path).parts:
-            raise DescriptorError(f"{path}: fixture.mount_path cannot contain '..'")
-        if posixpath.normpath(mount_path) != mount_path:
-            raise DescriptorError(f"{path}: fixture.mount_path must be a normalized POSIX path")
-        if not mount_path.startswith("/fixtures/"):
-            raise DescriptorError(f"{path}: fixture.mount_path must be under /fixtures/")
-        fixture = {**raw_fixture, "definition_path": definition}
+        if "fixture" in data
+        else None
+    )
+    additional_fixtures: list[dict[str, Any]] = []
+    if "additional_fixtures" in data:
+        raw_additional_fixtures = data["additional_fixtures"]
+        if not isinstance(raw_additional_fixtures, list):
+            raise DescriptorError(f"{path}: additional_fixtures must be a list")
+        for index, raw_fixture in enumerate(raw_additional_fixtures):
+            additional_fixtures.append(
+                _load_fixture(
+                    raw_fixture,
+                    path=path,
+                    suite_root=suite_root,
+                    context=f"{path}: additional_fixtures[{index}]",
+                )
+            )
+    mount_paths = [item["mount_path"] for item in additional_fixtures]
+    if fixture is not None:
+        mount_paths.append(fixture["mount_path"])
+    if len(mount_paths) != len(set(mount_paths)):
+        raise DescriptorError(f"{path}: fixture mount paths must be unique")
+    writable_outputs = _string_list(data.get("writable_outputs", []), f"{path}: writable_outputs")
+    for output_path in writable_outputs:
+        if not output_path.startswith("/"):
+            raise DescriptorError(f"{path}: writable output must be an absolute POSIX path")
+        if ".." in PurePosixPath(output_path).parts:
+            raise DescriptorError(f"{path}: writable output cannot contain '..'")
+        if posixpath.normpath(output_path) != output_path:
+            raise DescriptorError(f"{path}: writable output must be a normalized POSIX path")
+        if output_path != "/outputs" and not output_path.startswith("/outputs/"):
+            raise DescriptorError(f"{path}: writable output must be under /outputs/")
 
     return EvalCase(
         id=_string(data["id"], f"{path}: id"),
@@ -429,6 +477,8 @@ def _load_case(
         required_evidence=tuple(required_evidence),
         mandatory_objectives=mandatory_objectives,
         max_tool_calls=max_tool_calls,
+        additional_fixtures=tuple(additional_fixtures),
+        writable_outputs=writable_outputs,
     )
 
 

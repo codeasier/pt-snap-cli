@@ -66,6 +66,30 @@ def test_case_rejects_mount_path_traversal(tmp_path: Path) -> None:
         load_suite(copied_suite / "suite.yaml")
 
 
+def test_case_rejects_duplicate_additional_fixture_mount(tmp_path: Path) -> None:
+    copied_suite = tmp_path / "suite"
+    copytree(SUITE_DIRECTORY, copied_suite)
+    case_path = copied_suite / "cases" / "allocator-cache.yaml"
+    data = yaml.safe_load(case_path.read_text())
+    data["additional_fixtures"] = [data["fixture"]]
+    case_path.write_text(yaml.safe_dump(data, sort_keys=False))
+
+    with pytest.raises(DescriptorError, match="fixture mount paths must be unique"):
+        load_suite(copied_suite / "suite.yaml")
+
+
+def test_case_rejects_writable_output_outside_output_root(tmp_path: Path) -> None:
+    copied_suite = tmp_path / "suite"
+    copytree(SUITE_DIRECTORY, copied_suite)
+    case_path = copied_suite / "cases" / "allocator-cache.yaml"
+    data = yaml.safe_load(case_path.read_text())
+    data["writable_outputs"] = ["/fixtures/result.db"]
+    case_path.write_text(yaml.safe_dump(data, sort_keys=False))
+
+    with pytest.raises(DescriptorError, match="writable output must be under /outputs/"):
+        load_suite(copied_suite / "suite.yaml")
+
+
 def test_case_rejects_unnormalized_mount_path(tmp_path: Path) -> None:
     copied_suite = tmp_path / "suite"
     copytree(SUITE_DIRECTORY, copied_suite)

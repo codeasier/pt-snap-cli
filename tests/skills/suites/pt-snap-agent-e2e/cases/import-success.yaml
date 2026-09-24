@@ -4,6 +4,7 @@ id: import-success
 title: Successful import reports the published database and focus change
 tags: [import, json, focus]
 covers: [workflow.import]
+writable_outputs: [/outputs]
 
 task:
   initial_user: >
@@ -17,15 +18,19 @@ expected_tools:
       operation: pt_snap.import
       match: {json: true}
       expect_output:
-        db_path: /fixtures/imported.db
-        focus_updated: true
+        db_path: /outputs/imported.db
+        focus_source: project
+        focus_state:
+          configured: true
+          db_path: /outputs/imported.db
+          focus_source: project
   partial_order: []
   forbidden:
     - {operation: pickle.access}
 
 oracle:
   facts:
-    db_path: /fixtures/imported.db
+    db_path: /outputs/imported.db
     focus_updated: true
   result:
     allowed_classifications: [import-complete]

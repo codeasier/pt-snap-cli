@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import shlex
 import shutil
 import sys
@@ -91,6 +92,9 @@ from pt_snap_cli.query.executor import reported_sql_limit
 from pt_snap_cli.query.registry import discover_categories, get_query
 
 AGENT_HELP_EPILOG = (
+    "Agents without pt-snap-helper can run "
+    "pt-snap skill install pt-snap-helper --json, then restart the agent "
+    "so the skill change takes effect. "
     "Agents: prefer --json where supported. "
     "Start with the pt-snap-helper skill; "
     "use pt-snap capabilities --json and pt-snap overview --json before diagnosing; "
@@ -173,6 +177,17 @@ def _import_json(result: ImportResult) -> dict[str, JsonValue]:
         focus_state=focus_state,
         focus_source=result.focus_state.source if result.focus_state is not None else None,
     )
+
+
+def _import_snapshot_result(options: ImportOptions, *, json_output: bool) -> ImportResult:
+    if not json_output:
+        return ImportService().import_snapshot(options)
+    previous_disable = logging.root.manager.disable
+    logging.disable(logging.CRITICAL)
+    try:
+        return ImportService().import_snapshot(options)
+    finally:
+        logging.disable(previous_disable)
 
 
 def _split_json(result: SplitResult) -> dict[str, JsonValue]:
@@ -422,14 +437,15 @@ def import_snapshot(
 ) -> None:
     """Import a PyTorch memory snapshot into a SQLite database."""
     try:
-        result = ImportService().import_snapshot(
+        result = _import_snapshot_result(
             ImportOptions(
                 snapshot_file=snapshot_file,
                 output_dir=output_dir,
                 device=device,
                 set_focus=not no_focus,
                 force=force,
-            )
+            ),
+            json_output=json_output,
         )
     except (
         ImportToolMissingError,

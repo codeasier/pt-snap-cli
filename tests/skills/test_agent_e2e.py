@@ -17,10 +17,12 @@ PRE_CHANGE_BASELINE = SUITE_DIRECTORY / "baselines" / "pre-change"
 CASE_IDS = (
     "cli-only-help-discovery",
     "wrong-template-recovery",
+    "wrong-parameter-recovery",
     "explicit-multi-target",
     "truncated-query",
     "live-blocks-unconfirmed",
     "missing-database",
+    "no-device",
     "sibling-database-recovery",
     "import-success",
 )
@@ -51,7 +53,16 @@ def test_agent_e2e_suite_covers_issue_136_scenarios() -> None:
         branch for case in suite.cases for branch in case.covers
     }
     assert "pt_snap.import" in suite.allowed_operations
+    assert "pt_snap.capabilities" in suite.allowed_operations
+    assert "pt_snap.overview" in suite.allowed_operations
     assert "pickle.access" in suite.forbidden_operations
+    multi_target = suite.case("explicit-multi-target")
+    assert multi_target.fixture is not None
+    assert multi_target.fixture["mount_path"] == "/fixtures/target.db"
+    assert [item["mount_path"] for item in multi_target.additional_fixtures] == [
+        "/fixtures/other.db"
+    ]
+    assert suite.case("import-success").writable_outputs == ("/outputs",)
 
 
 def test_target_baseline_is_a_perfect_score() -> None:
@@ -69,13 +80,26 @@ def test_pre_change_baseline_records_current_gaps() -> None:
 
     assert summary.task_success_rate == 0.0
     assert summary.passed_count == 0
-    assert summary.error_conclusion_rate == 0.875
+    assert summary.error_conclusion_rate == 0.8
     assert summary.mean_call_count == 1.0
     assert all(not grade.passed for grade, _metrics in by_id.values())
     assert by_id["wrong-template-recovery"][1].error_conclusion is False
+    assert by_id["wrong-parameter-recovery"][1].error_conclusion is False
     assert by_id["live-blocks-unconfirmed"][1].error_conclusion is True
     assert by_id["missing-database"][1].error_conclusion is True
+    assert by_id["no-device"][1].error_conclusion is True
     assert by_id["sibling-database-recovery"][1].error_conclusion is True
+
+
+def test_post_change_quality_improves_and_efficiency_stays_bounded() -> None:
+    suite, rows, target = _summarize(TARGET_BASELINE)
+    _pre_suite, _pre_rows, pre_change = _summarize(PRE_CHANGE_BASELINE)
+
+    assert target.task_success_rate > pre_change.task_success_rate
+    assert target.error_conclusion_rate < pre_change.error_conclusion_rate
+    assert target.mean_call_count <= 1.5
+    assert target.mean_output_bytes <= 4096
+    assert all(metrics.call_count <= suite.max_calls for _case, _run, _grade, metrics in rows)
 
 
 def test_error_status_actions_match_structured_failures() -> None:
@@ -126,7 +150,7 @@ def test_baseline_cli_writes_metrics(tmp_path: Path, monkeypatch, capsys) -> Non
     printed = json.loads(capsys.readouterr().out)
     assert payload == printed
     assert payload["task_success_rate"] == 0.0
-    assert payload["error_conclusion_rate"] == 0.875
+    assert payload["error_conclusion_rate"] == 0.8
     assert payload["mean_output_bytes"] > 0
     case_bytes = [case["output_bytes"] for case in payload["cases"]]
     assert payload["mean_output_bytes"] == round(sum(case_bytes) / len(case_bytes), 4)

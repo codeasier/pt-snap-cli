@@ -18,6 +18,14 @@ fixture:
 
 expected_tools:
   actions:
+    - id: inspect_template_contract
+      operation: pt_snap.template_info
+      match: {template: leak_detection, json: true}
+      expect_output:
+        template: leak_detection
+        semantics_version: 1
+        interpretation_limits:
+          - "Rows are candidates still without a free-completion event in the captured range; end-of-trace survival is not a confirmed leak."
     - id: inspect_candidates
       operation: pt_snap.query
       match:
@@ -25,14 +33,20 @@ expected_tools:
         device: 0
         template: leak_detection
         json: true
-      expect_output: {size: 4096}
-  partial_order: []
+      expect_output:
+        db_path: /fixtures/live-blocks.db
+        device_id: 0
+        rows:
+          - {id: 1, size: 4096, allocEventId: 1}
+  partial_order:
+    - {before: inspect_template_contract, after: inspect_candidates}
   forbidden:
     - {operation: pt_snap.import}
 
 oracle:
   facts:
     device_id: 0
+    semantics_version: 1
     end_live_candidate_bytes: 4096
   result:
     allowed_classifications: [unconfirmed-retention]
@@ -42,6 +56,7 @@ oracle:
       - this snapshot proves a leak
       - the live block is a confirmed leak
   required_evidence:
+    - {claim: semantics_version, produced_by: inspect_template_contract}
     - {claim: end_live_candidate_bytes, produced_by: inspect_candidates}
 
 scoring:

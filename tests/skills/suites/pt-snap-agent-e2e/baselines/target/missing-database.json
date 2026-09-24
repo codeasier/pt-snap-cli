@@ -6,7 +6,8 @@
       "arguments": {
         "database": "/fixtures/missing.db",
         "device": 0,
-        "template": "leak_detection"
+        "template": "leak_detection",
+        "json": true
       },
       "status": "error",
       "output": {

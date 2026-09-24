@@ -57,8 +57,8 @@ def load_fixture_definition(path: Path) -> dict[str, Any]:
         raise DescriptorError(f"{path} has invalid fixture fields")
     if data["schema_version"] != 1 or data["kind"] != "synthetic-snapshotdb":
         raise DescriptorError(f"{path} must declare synthetic-snapshotdb schema version 1")
-    if not isinstance(data["devices"], dict) or not data["devices"]:
-        raise DescriptorError(f"{path}: devices must be a non-empty mapping")
+    if not isinstance(data["devices"], dict):
+        raise DescriptorError(f"{path}: devices must be a mapping")
     for device_id, device in data["devices"].items():
         if not str(device_id).isdigit() or not isinstance(device, dict):
             raise DescriptorError(f"{path}: device IDs must be non-negative integers")

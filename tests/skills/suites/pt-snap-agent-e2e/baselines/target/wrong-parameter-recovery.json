@@ -6,15 +6,18 @@
       "arguments": {
         "database": "/fixtures/events.db",
         "device": 0,
-        "template": "leak_detecton",
+        "template": "leak_detection",
+        "params": {
+          "min_sze": 32
+        },
         "json": true
       },
       "status": "error",
       "output": {
-        "error_code": "TEMPLATE_NOT_FOUND",
-        "hint": "Did you mean leak_detection?"
+        "error_code": "INVALID_PARAMETER",
+        "hint": "Check --params against 'pt-snap query --template-info leak_detection --json'."
       },
-      "error": "TEMPLATE_NOT_FOUND: leak_detecton"
+      "error": "INVALID_PARAMETER: unknown parameter min_sze"
     },
     {
       "id": "call-2",
@@ -23,19 +26,21 @@
         "database": "/fixtures/events.db",
         "device": 0,
         "template": "leak_detection",
+        "params": {
+          "min_size": 32
+        },
         "json": true
       },
       "status": "success",
       "output": {
         "db_path": "/fixtures/events.db",
         "device_id": 0,
-        "returned": 4,
+        "returned": 3,
         "has_more": false,
         "rows": [
-          {"id": 4, "size": 64},
-          {"id": 3, "size": 48},
-          {"id": 2, "size": 32},
-          {"id": 1, "size": 16}
+          {"id": 1, "size": 64},
+          {"id": 2, "size": 48},
+          {"id": 3, "size": 32}
         ]
       }
     }
@@ -44,7 +49,9 @@
     "classification": "recovered",
     "facts": {
       "template": "leak_detection",
-      "error_code": "TEMPLATE_NOT_FOUND"
+      "min_size": 32,
+      "returned": 3,
+      "error_code": "INVALID_PARAMETER"
     },
     "claims": [
       {
@@ -52,11 +59,15 @@
         "evidence_call_ids": ["call-1"]
       },
       {
-        "id": "template",
+        "id": "min_size",
+        "evidence_call_ids": ["call-2"]
+      },
+      {
+        "id": "returned",
         "evidence_call_ids": ["call-2"]
       }
     ],
     "unknowns": []
   },
-  "final_response": "The mistyped template returned TEMPLATE_NOT_FOUND; leak_detection succeeded after correction."
+  "final_response": "The undeclared min_sze parameter returned INVALID_PARAMETER; min_size=32 succeeded with three rows."
 }

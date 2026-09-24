@@ -1,0 +1,34 @@
+{
+  "tool_calls": [
+    {
+      "id": "call-1",
+      "operation": "pt_snap.query",
+      "arguments": {
+        "database": "/fixtures/no-devices.db",
+        "template": "leak_detection",
+        "json": true
+      },
+      "status": "error",
+      "output": {
+        "error_code": "DEVICE_NOT_FOUND",
+        "hint": "Pass --device with an id present in the database, or omit it to use the first device."
+      },
+      "error": "DEVICE_NOT_FOUND: no devices"
+    }
+  ],
+  "result": {
+    "classification": "unavailable",
+    "facts": {
+      "diagnosis_performed": false,
+      "error_code": "DEVICE_NOT_FOUND"
+    },
+    "claims": [
+      {
+        "id": "error_code",
+        "evidence_call_ids": ["call-1"]
+      }
+    ],
+    "unknowns": ["analyzable SnapshotDB device"]
+  },
+  "final_response": "The database contains no discoverable device, so DEVICE_NOT_FOUND is a failed lookup rather than an empty leak result."
+}
