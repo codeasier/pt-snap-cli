@@ -1,32 +1,8 @@
 # Changelog
 
-## [0.5.0] - Unreleased
+## [0.4.0] - 2026-09-24
 
-### 新增
-
-- 新增 `pt-snap capabilities`：一次输出 CLI 版本、全部查询模板/参数契约（含字段语义）和技能清单。`--json` 使用 #138 成功信封，替代逐个 `--template-info` 探测。
-- 新增 `pt-snap overview`：只读输出设备列表、各设备首/末 event id，以及导入 metadata 状态。`--json` 使用同一信封；分析路径不写数据库、不持久化 focus。
-- 新增 `preexisting_live` 与 `freed_block_lifetime` 查询模板，泄漏技能不再依赖 `sqlite3` CLI 回退。`preexisting_live` 排除 `freeEventId = -1` 的 static 块，与 `active_memory_callstack_at_event` 的 `[preexisting live]` 分组一致。诊断前置探测从 7 次（`metadata` + 六个 `--template-info`）降为 2 次（`capabilities` + `overview`）。helper 引导「先概览、再诊断」。
-- `focus`、`import`、`split`、`query`、`config` 支持 `--json`。成功结果带 `schema_version` / `ok` 信封，以及 `db_path`、`focus_source`、`device_id`、`template`、`effective_params` 等上下文。`query --list` / `--template-info` / 执行共用该选项；`--template-info --json` 透出 #147 字段语义。
-- JSON 模式失败时 stdout 为空，stderr 为带稳定错误码的结构化对象（如 `TEMPLATE_NOT_FOUND`、`INVALID_PARAMETER`、`DATABASE_NOT_FOUND`、`DEVICE_NOT_FOUND`），退出码非零。`pt-snap` 控制台入口返回 Typer/Click 的退出码（不再丢弃非 standalone 返回值），在检测到 `--json` 时也会把 Click 用法/解析错误写成 `INVALID_PARAMETER` 信封（退出码 2），并把 Ctrl-C / EOF 写成 `ERROR` / `Aborted!`。解析失败时的 `--json` 判定是 argv 词法扫描（best-effort）：忽略 `--` 之后的词，`--opt=value` 与数字词不吞后续参数。`query --json` 的 `effective_params.limit` 是尾部 SQL `LIMIT`（模板 `limit` 与 `-n` 的合并，或追加的 `-n`）；CTE 内的 `top_n` 仍是独立参数。
-- `split --json` 只控制 stdout 清单，与 `--format json` 的分片文件格式相互独立。`focus --session --json` 返回验证结果与 `PT_SNAP_DB_PATH` 赋值信息，不暗示已修改父 shell。
-- 查询结果增加完整性与分页字段：`has_more` / `truncated` / `total_is_exact`。默认 `total` 等于本页 `returned`；`--exact-total`（API `exact_total=True`）才对匹配集合做 `COUNT`。有限 `LIMIT` 时多取一行判断是否还有后续，不再在触达 `-n` 时自动计数。CTE 内有限 `top_n` 在窗口已满时也置 `has_more` / `truncated`，续页靠增大 `top_n` 而不是 `offset` / `-n`。`event` / `block` / `allocation` / `leak_detection` 用 `id` 做稳定分页次序。`--timeout` 与 `PT_SNAP_QUERY_TIMEOUT` 是一次 `QueryService` 调用的共享时限（页面查询与可选 COUNT 共用），并作用于所有模板查询（含 `report peak-memory`）；非法环境变量归为 `INVALID_PARAMETER`。诊断 skill 默认有界查询，并按 `has_more` / `truncated` 续页。
-
-### 兼容性提示
-
-- 文本模式保持原样：人类可读输出不变，`_error()` 与查询/报告说明行仍写 stdout。缺失模板的 `query --template-info` 已在 0.4.0 以退出码 1 失败。数据库无设备时，文本模式查询仍退出 0；JSON 模式改为 `DEVICE_NOT_FOUND` 且退出码非零。
-- 已有 `metadata --json`、`report peak-memory --json` 与 `skill list/install/upgrade/uninstall --json` 成功字段保持兼容，不包进新信封。它们在 `--json` 失败时改走 stderr 错误信封。新的 `capabilities --json` 与 `overview --json` 使用 #138 成功/失败信封。`capabilities` 在技能目录不可读时走 `SKILL_ERROR`；`overview` 把损坏的设备表/边界查询翻译为 `DATABASE_SCHEMA_INVALID`，并把损坏的 focus 文件翻译为 `FOCUS_FILE_INVALID`。
-- 查询默认 `total` 不再在触达 `-n` 时自动变成匹配集合 `COUNT`。依赖该旧语义的调用方必须显式传 `--exact-total` / `exact_total=True`。
-
-### 稳定性与工程
-
-- Agent CLI 端到端评估补齐参数纠错、无设备数据库、真实竞争数据库、模板语义与 import focus 信封；post-change 契约任务成功率由 0 提升至 1，错误结论率由 0.8 降至 0，并约束调用与输出预算。
-- CI 与 release gate 新增干净 wheel Agent 验收：在隔离 venv 中确认包与 helper 来自 wheel，并仅用结构化输出完成 helper 安装、trusted snapshot import、capabilities、overview 与 peak query。
-- basedpyright 对 `src/pt_snap_cli/snapshot/` 与其余包路径同一套 error 门槛：补齐注解后移除 snapshot `executionEnvironments` 降级列表（#122 阶段 3）。
-
-## [0.4.0] - Unreleased
-
-相对 v0.3.0：关闭 MCP 产品面，Agent 集成入口收敛到 bundled skills 与 CLI；并补上 helper 引导技能、查询参数白名单，以及易误读字段的语义元数据。本段覆盖 `v0.3.0` 之后已合入 `main` 的全部用户可见变更。
+相对 v0.3.0：关闭 MCP 产品面，Agent 集成入口收敛到 bundled skills 与 CLI；并一次落地 helper、查询参数白名单、字段语义、全命令 `--json`、查询完整性协议，以及 `capabilities` / `overview`。本段覆盖 `v0.3.0` 之后已合入 `main` 的全部用户可见变更。
 
 ### 破坏性变更
 
@@ -41,6 +17,13 @@
 - `--template-info` 与 `get_template_info()` 展示参数 `choices`。`order_by` / `order_dir` 等会写入 SQL 标识符或关键字的参数必须声明封闭取值列表；字符串 `choices` 大小写不敏感，并规范化为声明拼写（如 `desc` → `DESC`）。
 - `output_schema` 可声明字段语义（`units`、`metric_semantics`、`scope`、`denominator`、`sentinel`、`interpretation_limits`），查询级可声明 `semantics_version` 与解释限制。`--template-info` 与 `get_template_info()` 透出同一份契约。`execute_query()` 结果增加 `template` 与 `semantics_version`，行数据仍为原始 SQLite 值。优先覆盖 `leak_detection`、`memory_peak`、`allocator_gap`、`active_memory_callstack_at_event`。
 - `leak_detection` 的对外描述改为「捕获范围内无释放完成记录的候选」，不再写成已确认泄漏。
+- `focus`、`import`、`split`、`query`、`config` 支持 `--json`。成功结果带 `schema_version` / `ok` 信封，以及 `db_path`、`focus_source`、`device_id`、`template`、`effective_params` 等上下文。`query --list` / `--template-info` / 执行共用该选项；`--template-info --json` 透出字段语义。
+- JSON 模式失败时 stdout 为空，stderr 为带稳定错误码的结构化对象（如 `TEMPLATE_NOT_FOUND`、`INVALID_PARAMETER`、`DATABASE_NOT_FOUND`、`DEVICE_NOT_FOUND`），退出码非零。`pt-snap` 控制台入口返回 Typer/Click 的退出码（不再丢弃非 standalone 返回值），在检测到 `--json` 时也会把 Click 用法/解析错误写成 `INVALID_PARAMETER` 信封（退出码 2），并把 Ctrl-C / EOF 写成 `ERROR` / `Aborted!`。解析失败时的 `--json` 判定是 argv 词法扫描（best-effort）：忽略 `--` 之后的词，`--opt=value` 与数字词不吞后续参数。`query --json` 的 `effective_params.limit` 是尾部 SQL `LIMIT`（模板 `limit` 与 `-n` 的合并，或追加的 `-n`）；CTE 内的 `top_n` 仍是独立参数。
+- `split --json` 只控制 stdout 清单，与 `--format json` 的分片文件格式相互独立。`focus --session --json` 返回验证结果与 `PT_SNAP_DB_PATH` 赋值信息，不暗示已修改父 shell。
+- 查询结果增加完整性与分页字段：`has_more` / `truncated` / `total_is_exact`。默认 `total` 等于本页 `returned`；`--exact-total`（API `exact_total=True`）才对匹配集合做 `COUNT`。有限 `LIMIT` 时多取一行判断是否还有后续，不再在触达 `-n` 时自动计数。CTE 内有限 `top_n` 在窗口已满时也置 `has_more` / `truncated`，续页靠增大 `top_n` 而不是 `offset` / `-n`。`event` / `block` / `allocation` / `leak_detection` 用 `id` 做稳定分页次序。`--timeout` 与 `PT_SNAP_QUERY_TIMEOUT` 是一次 `QueryService` 调用的共享时限（页面查询与可选 COUNT 共用），并作用于所有模板查询（含 `report peak-memory`）；非法环境变量归为 `INVALID_PARAMETER`。诊断 skill 默认有界查询，并按 `has_more` / `truncated` 续页。
+- 新增 `pt-snap capabilities`：一次输出 CLI 版本、全部查询模板/参数契约（含字段语义）和技能清单。`--json` 使用同一成功信封，替代逐个 `--template-info` 探测。
+- 新增 `pt-snap overview`：只读输出设备列表、各设备首/末 event id，以及导入 metadata 状态。`--json` 使用同一信封；分析路径不写数据库、不持久化 focus。
+- 新增 `preexisting_live` 与 `freed_block_lifetime` 查询模板，泄漏技能不再依赖 `sqlite3` CLI 回退。`preexisting_live` 排除 `freeEventId = -1` 的 static 块，与 `active_memory_callstack_at_event` 的 `[preexisting live]` 分组一致。诊断前置探测从 7 次（`metadata` + 六个 `--template-info`）降为 2 次（`capabilities` + `overview`）。helper 引导「先概览、再诊断」。
 
 ### 修复
 
@@ -57,6 +40,9 @@
 
 - 增加 Agent CLI 端到端评估基线（`tests/skills/suites/pt-snap-agent-e2e`），记录当前 CLI 行为，供后续改造对比；不改变产品 CLI/API。
 - 原 CLI/MCP 跨表面契约测试改写为 CLI ↔ `SnapshotAnalyzer`，文件名为 `tests/test_contract_cli_api.py`。
+- Agent CLI 端到端评估补齐参数纠错、无设备数据库、真实竞争数据库、模板语义与 import focus 信封；post-change 契约任务成功率由 0 提升至 1，错误结论率由 0.8 降至 0，并约束调用与输出预算。
+- CI 与 release gate 新增干净 wheel Agent 验收：在隔离 venv 中确认包与 helper 来自 wheel，并仅用结构化输出完成 helper 安装、trusted snapshot import、capabilities、overview 与 peak query。
+- basedpyright 对 `src/pt_snap_cli/snapshot/` 与其余包路径同一套 error 门槛：补齐注解后移除 snapshot `executionEnvironments` 降级列表（#122 阶段 3）。
 
 ### 兼容性提示
 
@@ -65,7 +51,9 @@
 - 拼错或多余的查询参数、以及不在 `choices` 内的 `order_by` / `order_dir` 现在会报错，而不再静默得到错误结果或 SQLite 语法错误。
 - 用户自写查询模板若在 `output_schema` 列上使用未登记键，加载会失败；仅含 `column`/`type` 的旧模板仍然有效。`execute_query()` 返回字典新增 `template`、`semantics_version` 键。
 - 不带 `--target` / `--project` / `--dir` 的 `pt-snap skill uninstall` 现在会删除 `skill list` 看到的、含有 `SKILL.md` 的全部已安装副本，而不再只检查默认的用户级 `agents` 与 `claude` 目录。需要窄范围卸载时请显式传这些选项。同名但缺少 `SKILL.md` 的路径会让整次卸载失败且零删除。
-- 本版本未扩展 `--json` 覆盖面。当前支持 `--json` 的是 `metadata`、`report peak-memory`，以及 `skill list` / `install` / `upgrade` / `uninstall`。`query`、`focus`、`import`、`split`、`config` 仍无 `--json`；`--template-info` 的机器可读形态仍是结构化 API dict 与 CLI 文本。
+- 文本模式保持原样：人类可读输出不变，`_error()` 与查询/报告说明行仍写 stdout。缺失模板的 `query --template-info` 改为退出码 1。数据库无设备时，文本模式查询仍退出 0；JSON 模式改为 `DEVICE_NOT_FOUND` 且退出码非零。
+- 已有 `metadata --json`、`report peak-memory --json` 与 `skill list/install/upgrade/uninstall --json` 成功字段保持兼容，不包进新信封。它们在 `--json` 失败时改走 stderr 错误信封。新的 `focus` / `import` / `split` / `query` / `config` / `capabilities` / `overview` 的 `--json` 使用成功/失败信封。`capabilities` 在技能目录不可读时走 `SKILL_ERROR`；`overview` 把损坏的设备表/边界查询翻译为 `DATABASE_SCHEMA_INVALID`，并把损坏的 focus 文件翻译为 `FOCUS_FILE_INVALID`。
+- 查询默认 `total` 不再在触达 `-n` 时自动变成匹配集合 `COUNT`。依赖该旧语义的调用方必须显式传 `--exact-total` / `exact_total=True`。
 
 ## [0.3.0] - 2026-09-17
 
