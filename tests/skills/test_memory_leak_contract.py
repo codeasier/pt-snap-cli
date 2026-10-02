@@ -1,3 +1,5 @@
+import json
+import shlex
 from pathlib import Path
 
 SKILL_PATH = Path("skills/pt-snap-memory-leak/SKILL.md")
@@ -17,6 +19,7 @@ def test_memory_leak_skill_uses_current_pt_snap_surfaces() -> None:
         "block",
         "leak_detection",
         "active_memory_callstack_at_event",
+        "active_blocks_at_event",
         "preexisting_live",
         "freed_block_lifetime",
     ):
@@ -93,6 +96,57 @@ def test_memory_leak_skill_matches_current_preexisting_group_semantics() -> None
     assert "[static] allocEventId=-1, freeEventId=-1" in skill
     assert "are excluded from both groups" not in skill
     assert "counts only blocks with `allocEventId != -1`" not in skill
+
+
+def test_memory_leak_step4_queries_both_identity_sets_with_bounded_json_pages() -> None:
+    skill = SKILL_PATH.read_text()
+    prerequisite, workflow = skill.split("## Diagnostic Workflow", 1)
+    assert "`active_blocks_at_event`" in prerequisite
+    step4 = workflow.split("### 4.", 1)[1].split("### 5.", 1)[0]
+    commands = [
+        shlex.split(line)
+        for line in step4.splitlines()
+        if line.startswith("pt-snap query") and "--template-use active_blocks_at_event" in line
+    ]
+    assert len(commands) == 2
+    for command, event in zip(
+        commands, ("<peak_active_event_id>", "<final_event_id>"), strict=True
+    ):
+        assert command[:5] == ["pt-snap", "query", "<db_path>", "--device", "<device_id>"]
+        assert "--json" in command
+        assert int(command[command.index("-n") + 1]) == 500
+        params = json.loads(command[command.index("--params") + 1].replace(event, "42"))
+        assert params == {
+            "event_id": 42,
+            "include_static": True,
+            "min_size": 0,
+            "order_by": "id",
+            "order_dir": "ASC",
+            "offset": 0,
+        }
+    for requirement in (
+        "same database and the same device",
+        "advance the `offset` parameter by that page's `returned` count",
+        "Continue until `has_more=false`",
+        "An offset page still has `truncated=true`",
+        "collecting all pages from offset 0 through the terminal page",
+        "exact pair `(id, allocEventId)`",
+        "sample-only evidence",
+        "Unmatched sample rows are not proven new or released",
+        "Do not report a full-set survival rate or claim zero new blocks from samples",
+        "Only after both complete sets are collected",
+        "`matched = peak ∩ final`",
+        "`new_at_end = final - peak`",
+        "`released_from_peak = peak - final`",
+        "Compute these separately per category",
+        "`len(matched) / len(peak)`",
+        "`len(matched) / len(final)`",
+        "empty denominator as unavailable",
+        "lifecycle checks in Step 5",
+        "Check real `freeEventId` values",
+        "not proof of a leak",
+    ):
+        assert requirement in step4
 
 
 def test_memory_leak_skill_cross_checks_preexisting_bucket_exactly() -> None:

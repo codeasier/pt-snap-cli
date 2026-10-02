@@ -80,7 +80,7 @@ pt-snap overview '<db_path>' --json
 
 Prerequisite probe budget: previously 7 calls (`metadata` plus six `--template-info` probes). Now 2 calls (`capabilities` + `overview`). Record that reduction when evaluating this skill.
 
-Confirm these templates exist in the capabilities catalog before diagnosis: `memory_peak`, `allocator_gap`, `event`, `block`, `leak_detection`, `active_memory_callstack_at_event`, `preexisting_live`, `freed_block_lifetime`. If the catalog or overview fails, stop and report the exact failure. Do not silently substitute raw SQL for a missing core template.
+Confirm these templates exist in the capabilities catalog before diagnosis: `memory_peak`, `allocator_gap`, `event`, `block`, `leak_detection`, `active_memory_callstack_at_event`, `active_blocks_at_event`, `preexisting_live`, `freed_block_lifetime`. If the catalog or overview fails, stop and report the exact failure. Do not silently substitute raw SQL for a missing core template.
 
 ## Diagnostic Workflow
 
@@ -138,9 +138,18 @@ pt-snap query '<db_path>' --device <device_id> --template-use active_memory_call
 
 Treat this as an occupancy comparison between two independent aggregates, not a block-identity survival test. Each query groups whatever was live at its own event, and `top_n` truncation applies to dynamic callstack groups only; the static and preexisting groups are always returned in full. A peak block may have been freed while an equal-sized later block from the same callstack was live at the final event, which keeps the callstack row stable without any block surviving.
 
-Before claiming that the same blocks persisted across the peak:
-- Match representative blocks by identity: the same `id`/address plus allocation event ID must appear live at both events.
-- Confirm continuity through lifecycle checks in Step 5; occupancy stability alone is not survival evidence.
+Before claiming that the same blocks persisted across the peak, query individual live blocks at both events in the same database and the same device:
+
+```bash
+pt-snap query '<db_path>' --device <device_id> --template-use active_blocks_at_event --params '{"event_id":<peak_active_event_id>,"include_static":true,"min_size":0,"order_by":"id","order_dir":"ASC","offset":0}' -n 500 --json
+pt-snap query '<db_path>' --device <device_id> --template-use active_blocks_at_event --params '{"event_id":<final_event_id>,"include_static":true,"min_size":0,"order_by":"id","order_dir":"ASC","offset":0}' -n 500 --json
+```
+
+- Use a positive page window (`-n 500`), never an unlimited query. These commands return only the first page. For each event independently, advance the `offset` parameter by that page's `returned` count, keeping the event, filters, ordering, database, and device fixed. Continue until `has_more=false` in the JSON response, retaining every preceding page. An offset page still has `truncated=true` because it omits earlier rows; completeness comes from collecting all pages from offset 0 through the terminal page, not from that last page alone. Default `total` is a page count, not the full set; an exact count alone does not retrieve the missing identities.
+- Match representative blocks by identity using the exact pair `(id, allocEventId)`, not address, size, or callstack alone. Address reuse does not mean the same allocation survived. Keep `dynamic_live_at_event`, `static`, and `preexisting_live_at_event` categories separate; pre-tracing allocations have unknown allocation history and are not dynamic leak candidates.
+- If either event is incompletely paged (or a query fails), label matches as sample-only evidence. Unmatched sample rows are not proven new or released. Do not report a full-set survival rate or claim zero new blocks from samples.
+- Only after both complete sets are collected, intersect their `(id, allocEventId)` keys: `matched = peak ∩ final`, `new_at_end = final - peak`, and `released_from_peak = peak - final`. Compute these separately per category. A count-based peak survival rate is `len(matched) / len(peak)`; the share of final blocks already live at peak is `len(matched) / len(final)`. State the denominator and scope, report an empty denominator as unavailable, and do not mix block counts with bytes. Claim zero new blocks only when the complete `new_at_end` set is empty.
+- Confirm continuity through lifecycle checks in Step 5; occupancy stability alone is not survival evidence. Check real `freeEventId` values between the two events before describing peak-only blocks as released, and inspect address-event lifecycles for reuse or ambiguous pairing. Even complete identity survival is retention evidence, not proof of a leak.
 
 The template separates blocks without a captured allocation event into their own groups instead of attributing them to callstacks: `[static] allocEventId=-1, freeEventId=-1`, and `[preexisting live] allocEventId=-1` for blocks allocated before tracing that were still live at the analyzed event because their recorded free event came later or does not exist. Pre-tracing blocks whose free event precedes the analyzed event are correctly absent because they were no longer live. Report each group separately instead of absorbing it into a callstack group.
 

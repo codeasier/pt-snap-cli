@@ -1,10 +1,13 @@
 """Tests for peak memory attribution query templates."""
 
+import json
 import sqlite3
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
+from pt_snap_cli.cli import app
 from pt_snap_cli.context import Context
 from pt_snap_cli.query.executor import QueryExecutor
 from pt_snap_cli.query.registry import (
@@ -408,3 +411,154 @@ def test_callstack_percent_metadata_describes_truncated_denominator() -> None:
     assert percent["units"] == "percent"
     assert "top_n truncation of dynamic" in percent["denominator"]
     assert percent["scope"] == "mixed"
+
+
+@pytest.mark.parametrize("block_count", [1, 501])
+@pytest.mark.parametrize("replace_last", [False, True], ids=["survival", "address-reuse"])
+def test_peak_final_identity_matching_requires_complete_pages(
+    peak_memory_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    block_count: int,
+    replace_last: bool,
+) -> None:
+    """Equal callstack occupancy can hide a replacement beyond the first 500 rows."""
+    monkeypatch.chdir(peak_memory_db.parent)
+    monkeypatch.setattr(Path, "home", lambda: peak_memory_db.parent)
+    monkeypatch.delenv("PT_SNAP_DB_PATH", raising=False)
+    monkeypatch.delenv("PT_SNAP_QUERY_TIMEOUT", raising=False)
+    peak_event = block_count
+    final_event = block_count + 4
+    conn = sqlite3.connect(peak_memory_db)
+    # Reuse the existing v2 fixture schema and train.py:10 callstack.
+    conn.execute("DELETE FROM block_0")
+    conn.execute("DELETE FROM trace_entry_0")
+    conn.executemany(
+        "INSERT INTO trace_entry_0 VALUES (?, 4, ?, 1024, 0, ?, ?, 1048576, 0)",
+        [(i, i * 4096, i * 1024, i * 1024) for i in range(1, block_count + 1)],
+    )
+    conn.executemany(
+        "INSERT INTO block_0 VALUES (?, ?, 1024, 1000, 1, ?, -1)",
+        [(i, i * 4096, i) for i in range(1, block_count + 1)],
+    )
+    if replace_last:
+        conn.execute(
+            "UPDATE block_0 SET freeEventId = ? WHERE id = ?",
+            (peak_event + 2, block_count),
+        )
+        conn.executemany(
+            "INSERT INTO trace_entry_0 VALUES (?, ?, ?, 1024, 0, ?, ?, 1048576, 0)",
+            [
+                (
+                    peak_event + 1,
+                    5,
+                    block_count * 4096,
+                    (block_count - 1) * 1024,
+                    block_count * 1024,
+                ),
+                (
+                    peak_event + 2,
+                    6,
+                    block_count * 4096,
+                    (block_count - 1) * 1024,
+                    (block_count - 1) * 1024,
+                ),
+                (peak_event + 3, 4, block_count * 4096, block_count * 1024, block_count * 1024),
+            ],
+        )
+        conn.execute(
+            "INSERT INTO block_0 VALUES (?, ?, 1024, 1000, 1, ?, -1)",
+            (peak_event + 3, block_count * 4096, peak_event + 3),
+        )
+    conn.execute(
+        "INSERT INTO trace_entry_0 VALUES (?, 7, 0, 0, 0, ?, ?, 1048576, NULL)",
+        (final_event, block_count * 1024, block_count * 1024),
+    )
+    conn.commit()
+    conn.close()
+
+    aggregates = [
+        _execute_template(
+            peak_memory_db,
+            "active_memory_callstack_at_event",
+            {"event_id": event, "include_static": True, "min_size": 0, "top_n": 20},
+        )
+        for event in (peak_event, final_event)
+    ]
+    assert aggregates[0] == aggregates[1]
+    assert aggregates[0][0]["block_count"] == block_count
+    assert aggregates[0][0]["size_bytes"] == block_count * 1024
+
+    runner = CliRunner()
+    sets = []
+    first_pages = []
+    for event in (peak_event, final_event):
+        collected = []
+        offsets = []
+        while True:
+            offset = len(collected)
+            offsets.append(offset)
+            assert len(offsets) <= 2, "pagination did not terminate"
+            result = runner.invoke(
+                app,
+                [
+                    "query",
+                    str(peak_memory_db),
+                    "--device",
+                    "0",
+                    "--template-use",
+                    "active_blocks_at_event",
+                    "--params",
+                    json.dumps(
+                        {
+                            "event_id": event,
+                            "include_static": True,
+                            "min_size": 0,
+                            "order_by": "id",
+                            "order_dir": "ASC",
+                            "offset": offset,
+                        }
+                    ),
+                    "-n",
+                    "500",
+                    "--json",
+                ],
+            )
+            assert result.exit_code == 0, result.stdout
+            page = json.loads(result.stdout)
+            assert page["db_path"] == str(peak_memory_db)
+            assert page["device_id"] == 0
+            assert page["returned"] == len(page["rows"]) <= 500
+            assert page["total"] == page["returned"]
+            if offset == 0:
+                first_pages.append({(row["id"], row["allocEventId"]) for row in page["rows"]})
+                assert page["has_more"] is (block_count > 500)
+            collected.extend(page["rows"])
+            if not page["has_more"]:
+                assert page["truncated"] is (offset > 0)
+                break
+            assert page["truncated"] is True
+        assert offsets == ([0, 500] if block_count > 500 else [0])
+        assert len(collected) == block_count
+        identities = {(row["id"], row["allocEventId"]): row for row in collected}
+        assert len(identities) == block_count  # No duplicated or skipped identities.
+        assert {row["category"] for row in collected} == {"dynamic_live_at_event"}
+        sets.append(identities)
+
+    peak, final = sets
+    matched = peak.keys() & final.keys()
+    new_at_end = final.keys() - peak.keys()
+    released = peak.keys() - final.keys()
+    if block_count > 500:
+        assert first_pages[0] == first_pages[1]  # A sample hides the replacement.
+    if replace_last:
+        assert len(matched) == block_count - 1
+        assert new_at_end == {(peak_event + 3, peak_event + 3)}
+        assert released == {(block_count, block_count)}
+        old = peak[next(iter(released))]
+        new = final[next(iter(new_at_end))]
+        assert old["address"] == new["address"]
+        assert peak_event < old["freeEventId"] < new["allocEventId"] <= final_event
+    else:
+        assert len(matched) == block_count
+        assert new_at_end == released == set()
+    assert not (peak_memory_db.parent / ".pt-snap").exists()
