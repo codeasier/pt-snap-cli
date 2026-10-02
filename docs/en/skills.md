@@ -16,7 +16,7 @@ Each bundled skill is shown as its own block: name, status, install locations, a
 
 - `installed` — a matching copy is present in at least one inspected location
 - `outdated` — a copy exists but differs from the bundled skill, or the path exists without `SKILL.md`
-- `missing` — no copy was found
+- `missing` — no copy was found in the inspected locations
 
 `--target` accepts a comma-separated list of `agents`, `claude`, `cursor`, and `codex`. `--user` and `--project` limit the scan to user-level or project-local directories. Without those flags, `list` inspects both scopes.
 
@@ -43,6 +43,28 @@ pt-snap skill uninstall --dir C:\Users\you\custom-skills
 ```
 
 ## Install skills
+
+### Custom-directory availability and helper handoff
+
+After `pt-snap skill install --dir '<skills_dir>' --json`, verify that same
+directory with `pt-snap skill list --dir '<skills_dir>' --json`. Pass the parent
+containing the skill folders. The default `pt-snap skill list --json` checks
+only built-in host locations and may still say `missing`; custom directories
+are not registered automatically. JSON `locations` identifies the checked paths.
+
+On-disk status and host loading are separate. An `installed` copy is not proof
+that the host discovers the custom directory or has loaded the skill. A readable
+JSON `source_dir` is the source catalog, not proof of either installation or
+loading. `pt-snap-helper` may hand off to an already loaded skill (or one loaded
+successfully through the host's supported loader) despite default `missing`,
+without a redundant install. If loading is unavailable, it pauses the diagnostic
+handoff and asks the user to configure host discovery and restart. If the active
+copy is known to be outdated, upgrade and restart before diagnosis. Missing or
+outdated copies in the intended custom location require an install or upgrade
+with the same `--dir`; the helper only explains these commands, never runs them.
+It reports inspected status and host-loading evidence separately.
+
+### Install commands
 
 ```bash
 pt-snap skill install
