@@ -4,11 +4,12 @@ queries:
     description: Aggregate active memory blocks at an event by allocation callstack, including static memory classification
     devices:
       - all
-    semantics_version: 1
+    semantics_version: 2
     interpretation_limits:
       - "Rows mix dynamic, static, and preexisting groups. Use the category column for per-row scope; do not label the whole result as dynamic."
       - "percent_of_active_blocks is a 0-100 byte percentage of the rows included in the SQL result after min_size, include_static, and top_n truncation of dynamic groups; caller-side max_rows (-n) may truncate further after the percentage is computed. Not of all active memory and not of block counts."
       - "Static and preexisting groups have no captured allocation callstack."
+      - "Missing dynamic callstacks form one group before top_n ranking. This includes empty strings, NULL text or IDs, and missing joined allocation events or callstack records; their category remains dynamic_live_at_event."
       - "Event IDs are ordering markers, not elapsed time."
     parameters:
       event_id:
@@ -55,7 +56,7 @@ queries:
             CASE
               WHEN b.category = 'static' THEN '[static] allocEventId=-1, freeEventId=-1'
               WHEN b.category = 'preexisting_live_at_event' THEN '[preexisting live] allocEventId=-1'
-              ELSE COALESCE(t.callstack, '[missing callstack]')
+              ELSE COALESCE(NULLIF(t.callstack, ''), '[missing callstack]')
             END AS callstack,
             b.category,
             COUNT(*) AS block_count,
@@ -66,7 +67,7 @@ queries:
           FROM active_blocks b
           LEFT JOIN {{ device_trace_table }} t
             ON b.allocEventId = t.id
-          GROUP BY callstack, b.category
+          GROUP BY NULLIF(t.callstack, ''), b.category
         ),
         ranked_dynamic AS (
           SELECT
@@ -138,7 +139,7 @@ queries:
             CASE
               WHEN b.category = 'static' THEN '[static] allocEventId=-1, freeEventId=-1'
               WHEN b.category = 'preexisting_live_at_event' THEN '[preexisting live] allocEventId=-1'
-              ELSE COALESCE(cs.callstack, '[missing callstack]')
+              ELSE COALESCE(NULLIF(cs.callstack, ''), '[missing callstack]')
             END AS callstack,
             b.category,
             COUNT(*) AS block_count,
@@ -151,7 +152,9 @@ queries:
             ON b.allocEventId = t.id
           LEFT JOIN callstack cs
             ON t.callstackId = cs.id
-          GROUP BY callstack, b.category
+          GROUP BY
+            CASE WHEN NULLIF(cs.callstack, '') IS NULL THEN NULL ELSE t.callstackId END,
+            b.category
         ),
         ranked_dynamic AS (
           SELECT
@@ -206,7 +209,9 @@ queries:
         metric_semantics: identifier
         scope: mixed
         interpretation_limits:
-          - "Static and preexisting groups use synthetic labels rather than a captured allocation callstack. Dynamic rows may be '[missing callstack]' when the alloc event has no callstack."
+          - "Static and preexisting groups use synthetic labels rather than a captured allocation callstack. Dynamic rows use '[missing callstack]' for empty strings, NULL text or IDs, or missing joined allocation events or callstack records."
+          - "All missing dynamic callstacks merge before top_n ranking; bytes, requested bytes, and block counts are retained. Missing attribution does not imply static or preexisting memory."
+          - "Nonempty callstacks are grouped by text in v1 and callstackId in v2. Whitespace-only text and a captured literal '[missing callstack]' are not missing and do not merge into the missing group. Display labels alone are not unique group identities."
       - column: category
         type: str
         units: text

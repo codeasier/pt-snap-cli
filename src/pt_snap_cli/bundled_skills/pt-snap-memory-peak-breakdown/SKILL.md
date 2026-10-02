@@ -239,7 +239,13 @@ their event ID carries the range selection forward.
   blocks have no captured allocation callstack. Report their bytes and block
   counts under their own labels rather than inventing or inferring a callstack.
 - A dynamic `[missing callstack]` group is unknown attribution, not static or
-  preexisting memory.
+  preexisting memory. With template `semantics_version: 2`, empty strings,
+  NULLs, and missing allocation-event or callstack links merge into this group
+  before `top_n` ranking. Retain its bytes, requested bytes, and block count in
+  dynamic attribution. Older template versions may also return empty labels;
+  treat those as unknown dynamic attribution rather than dropping them.
+  Use `category` to distinguish synthetic groups; a display label alone is not
+  a unique group identity (captured literal labels remain separate).
 - The callstack template always returns `static` and
   `preexisting_live_at_event` groups regardless of `top_n`; when dynamic groups
   exceed `top_n`, the smallest dynamic groups are dropped while these special

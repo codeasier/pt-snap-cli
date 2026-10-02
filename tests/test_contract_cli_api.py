@@ -357,7 +357,9 @@ def test_template_semantics_contract_matches_cli_and_api(contract_db: Path) -> N
         api_info = analyzer.get_template_info(name)
         assert cli_info == api_info
         json.dumps(api_info)
-        assert api_info["semantics_version"] == 1
+        assert api_info["semantics_version"] == (
+            2 if name == "active_memory_callstack_at_event" else 1
+        )
         assert api_info["interpretation_limits"]
 
 
@@ -627,6 +629,52 @@ def test_query_json_contract_matches_api_semantics(contract_db: Path) -> None:
     assert payload["total_is_exact"] is True
 
 
+@pytest.mark.parametrize("layout", ["v1", "v2"])
+def test_missing_callstack_query_json_contract(contract_db: Path, layout: str) -> None:
+    name = "active_memory_callstack_at_event"
+    with sqlite3.connect(contract_db) as conn:
+        if layout == "v1":
+            conn.executemany(
+                "INSERT INTO trace_entry_0 (id, callstack) VALUES (?, ?)",
+                [(1, ""), (2, None)],
+            )
+        else:
+            conn.execute("CREATE TABLE callstack (id INTEGER PRIMARY KEY, callstack TEXT)")
+            conn.executemany("INSERT INTO callstack VALUES (?, ?)", [(1, ""), (2, None)])
+            for device in (0, 1):
+                conn.execute(f"ALTER TABLE trace_entry_{device} DROP COLUMN callstack")
+                conn.execute(f"ALTER TABLE trace_entry_{device} ADD COLUMN callstackId INTEGER")
+            conn.executemany(
+                "INSERT INTO trace_entry_0 (id, callstackId) VALUES (?, ?)", [(1, 1), (2, 2)]
+            )
+    params = {"event_id": 2, "top_n": -1}
+    payload = _json_stdout(
+        runner.invoke(
+            app,
+            [
+                "query",
+                str(contract_db),
+                "--template-use",
+                name,
+                "--params",
+                json.dumps(params),
+                "--device",
+                "0",
+                "--json",
+            ],
+        )
+    )
+    api_query = _focused_analyzer(contract_db).execute_query(name, params=params, device_id=0)
+    assert {key: payload[key] for key in api_query} == api_query
+    assert payload["semantics_version"] == 2
+    assert payload["returned"] == 1
+    row = payload["rows"][0]
+    assert row["callstack"] == "[missing callstack]"
+    assert row["category"] == "dynamic_live_at_event"
+    assert (row["size_bytes"], row["requested_bytes"], row["block_count"]) == (2560, 2500, 2)
+    assert row["percent_of_active_blocks"] == 100
+
+
 def test_json_error_contract_keeps_text_errors_on_stdout(contract_db: Path) -> None:
     text = runner.invoke(app, ["query", str(contract_db), "--template-info", "does_not_exist"])
     assert text.exit_code == 1
@@ -666,15 +714,24 @@ def test_overview_contract_matches_cli_and_api_semantics(contract_db: Path) -> N
     assert payload["focus_source"] == "explicit"
 
 
-def test_capabilities_template_matches_template_info_json(analyzer: SnapshotAnalyzer) -> None:
+@pytest.mark.parametrize("name", ["preexisting_live", "active_memory_callstack_at_event"])
+def test_capabilities_template_matches_template_info_json(
+    analyzer: SnapshotAnalyzer, name: str
+) -> None:
     capabilities = _json_stdout(runner.invoke(app, ["capabilities", "--json"]))
-    info = _json_stdout(
-        runner.invoke(app, ["query", "--template-info", "preexisting_live", "--json"])
-    )
-    entry = next(item for item in capabilities["templates"] if item["name"] == "preexisting_live")
+    info = _json_stdout(runner.invoke(app, ["query", "--template-info", name, "--json"]))
+    entry = next(item for item in capabilities["templates"] if item["name"] == name)
     shared = {key: info[key] for key in entry}
     assert shared == entry
-    assert analyzer.get_template_info("preexisting_live") == entry
+    assert analyzer.get_template_info(name) == entry
+    assert (
+        next(item for item in analyzer.list_capabilities()["templates"] if item["name"] == name)
+        == entry
+    )
+    if name == "active_memory_callstack_at_event":
+        assert entry["semantics_version"] == 2
+        callstack = next(col for col in entry["output_schema"] if col["column"] == "callstack")
+        assert "empty strings, NULL text or IDs" in " ".join(callstack["interpretation_limits"])
 
 
 def test_overview_error_contract_maps_four_domain_failures(tmp_path: Path) -> None:
