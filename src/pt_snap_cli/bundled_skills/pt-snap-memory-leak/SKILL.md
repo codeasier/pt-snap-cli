@@ -67,18 +67,36 @@ Enter this recovery branch only when diagnosis depends on the current effective 
 
 ### 3. Verify capabilities and the database in two calls
 
-Run:
+Apply the shared diagnostic preflight contract in `pt-snap-helper`, even on
+direct invocation. Run only the probes whose complete results are not reusable:
 
 ```bash
 pt-snap capabilities --json
 pt-snap overview '<db_path>' --json
 ```
 
-`capabilities --json` is the catalog: CLI version, every template contract (parameters, `output_schema`, field semantics), and the skill list. Do not probe templates one-by-one with `--template-info`.
+Reuse complete successful results from this conversation only for the same
+CLI/Python environment and unchanged database target. Check CLI version and the
+overview's resolved absolute database path. Summaries, truncated output, changed
+environment/version or database, and unknown result identity require refreshing
+the affected probe. Revalidate the contents even when reusing results.
 
-`overview --json` is the read-only database orientation: device list, per-device first/last event id, and import-metadata status. Do not persist focus.
+`capabilities --json` is the catalog: CLI version, every template contract (parameters, `output_schema`, field semantics), and the skill list. Do not probe templates one-by-one with `--template-info`. Do not re-emit a reused catalog.
 
-Prerequisite probe budget: previously 7 calls (`metadata` plus six `--template-info` probes). Now 2 calls (`capabilities` + `overview`). Record that reduction when evaluating this skill.
+Read `overview.import_metadata.status` (the `import_metadata` field in the
+overview JSON), not just exit code 0 or outer `ok: true`. Stop on `invalid`
+metadata or schema errors. Continue with `available`, or with legacy
+`unavailable` and reason `metadata_missing` after recording unknown import
+provenance. Stop on any other status/reason or incomplete result. Validate the
+selected device against overview's devices and record its trace bounds.
+
+Prerequisite probe budget: 2 calls from cold, 1 with one reusable result, 0 with
+both. Record tool-call count and output bytes separately; fewer calls need not
+mean fewer bytes. Availability/focus checks are outside this discovery budget.
+Missing-focus recovery is the metadata-first exception: after user confirmation,
+run metadata and apply its stop/legacy rules above, then obtain/reuse capabilities
+and overview. Metadata alone does not replace overview; never reuse the missing
+target's overview or device.
 
 Confirm these templates exist in the capabilities catalog before diagnosis: `memory_peak`, `allocator_gap`, `event`, `block`, `leak_detection`, `active_memory_callstack_at_event`, `preexisting_live`, `freed_block_lifetime`. If the catalog or overview fails, stop and report the exact failure. Do not silently substitute raw SQL for a missing core template.
 

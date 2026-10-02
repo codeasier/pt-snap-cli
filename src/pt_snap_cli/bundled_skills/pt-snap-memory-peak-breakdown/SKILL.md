@@ -108,36 +108,56 @@ explicit path and do not enter this branch.
    reason `metadata_missing`; record unknown import provenance and do not force
    a re-import. Stop on schema errors or invalid metadata.
 
-### 3. Verify SnapshotDB metadata
+### 3. Verify capabilities and the database in two calls
 
-Run with the resolved absolute database path:
+Apply the shared diagnostic preflight contract in `pt-snap-helper`, even on
+direct invocation. Run only the probes whose complete results are not reusable:
 
 ```bash
-pt-snap metadata "<DB>" --json
+pt-snap capabilities --json
+pt-snap overview "<DB>" --json
 ```
 
-Stop if the command rejects the database schema or reports invalid metadata. A
-status of `unavailable` can represent a schema-valid legacy SnapshotDB; proceed
-only after recording import provenance as unknown. Do not search for a source
-pickle.
+Reuse complete successful results from this conversation only for the same
+CLI/Python environment and unchanged database target. Check CLI version and the
+overview's resolved absolute database path. Summaries, truncated output, changed
+environment/version or database, and unknown result identity require refreshing
+the affected probe. Revalidate the contents even when reusing results.
 
-### 4. Verify the report command and required templates
+Read `overview.import_metadata.status` (the `import_metadata` field in the
+overview JSON), not just exit code 0 or outer `ok: true`. Stop on `invalid`
+metadata or schema errors. Continue with `available`, or with legacy
+`unavailable` and reason `metadata_missing` after recording unknown import
+provenance. Stop on any other status/reason or incomplete result. Validate the
+selected device against overview's devices and record its trace bounds.
+
+Confirm these templates exist in the capabilities catalog before diagnosis:
+`memory_peak`, `allocator_gap`, `active_memory_callstack_at_event`,
+`active_blocks_at_event`. Read parameters, `output_schema`, and field semantics
+from those entries. Stop on a missing required template or failed probe and
+report the exact failure. Do not substitute raw SQL. Do not probe templates
+one-by-one with `--template-info` or re-emit a reused catalog.
+
+Prerequisite probe budget: 2 calls from cold, 1 with one reusable result, 0 with
+both. Record tool-call count and output bytes separately; fewer calls need not
+mean fewer bytes. Availability/focus/report-help checks are outside this budget.
+Missing-focus recovery is the metadata-first exception: after user confirmation,
+run metadata and apply its stop/legacy rules above, then obtain/reuse capabilities
+and overview. Metadata alone does not replace overview; never reuse the missing
+target's overview or device.
+
+### 4. Verify the report command
 
 Run:
 
 ```bash
 pt-snap report peak-memory --help
-pt-snap query --template-info memory_peak
-pt-snap query --template-info allocator_gap
-pt-snap query --template-info active_memory_callstack_at_event
-pt-snap query --template-info active_blocks_at_event
 ```
 
-Stop and report the missing command or template if any check fails. A missing
-template prints an error but still exits with status 0, so never rely on exit
-codes for these checks: each template check succeeds only when its output
-contains the expected `Template: <name>` record. Do not replace the
-productized workflow with ad hoc SQL.
+Capabilities does not describe report command options, so keep this help check.
+Stop and report the exact failure if it fails or the options used below are
+absent. A complete successful help result from the same CLI/Python environment
+and version may be reused.
 
 ## Full-Trace Workflow
 
@@ -229,7 +249,7 @@ their event ID carries the range selection forward.
 - It does not assign reserved/cache bytes, allocator gaps, or inactive allocated
   bytes to callstacks. A large gap is evidence of counter separation at one
   event, not proof of fragmentation, caching policy, or an OOM cause.
-- Interpret `percent_of_active_blocks` using `--template-info active_memory_callstack_at_event` (units, denominator, and limits). Do not infer a block-count share from the column name. State the `include_static` choice whenever percentages are reported.
+- Interpret `percent_of_active_blocks` using the `active_memory_callstack_at_event` entry in the retained capabilities catalog (units, denominator, and limits). Do not infer a block-count share from the column name. State the `include_static` choice whenever percentages are reported.
 
 ### Static, preexisting, and dynamic memory
 

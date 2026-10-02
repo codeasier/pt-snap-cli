@@ -94,10 +94,42 @@ value; `--opt=value` and numeric tokens do not consume the next
 argument). Text mode still writes `Error:` lines to stdout.
 
 This skill itself does not run analysis queries. The diagnostic skills own
-those commands. For an existing SnapshotDB, point the next skill at
-`pt-snap capabilities --json` and `pt-snap overview '<db_path>' --json`
-before diagnosis so it does not need per-template `--template-info` or a
-separate metadata probe.
+those commands and the shared preflight below, including when invoked directly.
+
+### Shared diagnostic preflight contract
+
+For an existing SnapshotDB, the normal prerequisite probes are
+`pt-snap capabilities --json` and `pt-snap overview '<db_path>' --json`.
+The complete `templates[]` catalog supplies the same parameters, `output_schema`,
+and field semantics as per-template `--template-info`; check every template
+required by the selected skill by name. Stop on a missing required template or
+failed probe and report the exact failure; do not substitute raw SQL.
+
+Read `overview.import_metadata.status` (the `import_metadata` field in the
+overview JSON), not just exit code 0 or outer `ok: true`. Stop on `invalid`
+metadata or schema errors. Continue with `available`, or with legacy
+`unavailable` and reason `metadata_missing` after recording unknown import
+provenance. Stop on any other status/reason or incomplete result. Overview also
+provides devices and trace bounds; validate the selected device against it.
+
+Reuse complete successful results already obtained in this conversation only
+for the same CLI/Python environment and unchanged database target. Capabilities
+must match the current CLI version; overview must match the resolved absolute
+database path. A summary, truncated output, changed environment/version, changed
+database, or unknown result identity is not reusable. Fetch only the missing or
+stale result. Direct invocation of a diagnostic skill performs the same complete
+validation; helper use is not a prerequisite. Do not re-emit a reused catalog or
+repeat per-template probes. Normal discovery costs 2 calls from cold, 1 with one
+reusable result, and 0 with both; measure tool-call count and output bytes
+separately, since the full catalog can be larger than individual probes.
+
+Capabilities does not describe report command options. Keep
+`pt-snap report peak-memory --help` when the selected workflow requires report
+validation (mandatory for peak breakdown, conditional for fragmentation).
+Availability/focus/report-help checks are separate from the two discovery calls.
+Missing-focus recovery below is the explicit metadata-first exception: after
+user confirmation, inspect metadata first, then obtain/reuse capabilities and
+overview and apply these same checks. Metadata alone does not replace overview.
 
 ## Routing matrix
 
@@ -131,7 +163,8 @@ A SnapshotDB is a pt-snap SQLite database (typically `.db`) with a
 1. Confirm the goal is leak, peak, or fragmentation.
 2. Tell the next skill to start with `pt-snap capabilities --json` and
    `pt-snap overview '<db_path>' --json` (overview first, then diagnose).
-   Pass the database path and device if the user supplied them.
+   Pass the database path and device if the user supplied them, plus any complete
+   reusable results under the shared preflight contract above.
 3. Hand off to the matching diagnostic skill. Do not run leak, peak, or
    fragmentation query templates from this helper.
 4. Do not run `pt-snap focus <database_path>` to persist a new focus from this
@@ -165,6 +198,12 @@ explicit path and do not enter this branch.
    the focused device from the missing target; the diagnostic skill must
    re-resolve device from the confirmed database. This helper must not run
    metadata, query, import, or persist focus.
+
+The diagnostic skill must stop on invalid metadata or schema errors in this
+metadata-first exception. Legacy `unavailable` with reason `metadata_missing`
+permits continuing with unknown import provenance recorded. Then apply the
+shared capabilities/overview preflight; do not reuse the missing target's
+overview or treat metadata as an overview substitute.
 
 This helper may mention that `pt-snap overview '<db_path>' --json` and
 `pt-snap capabilities --json` exist. Running those orientation commands
