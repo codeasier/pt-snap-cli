@@ -74,6 +74,7 @@ class QueryService:
         # SQLite connect/close handshake. See ContextCache for the LRU and
         # mtime invalidation semantics.
         self._context_cache = context_cache if context_cache is not None else ContextCache()
+        self._owns_context_cache: bool = context_cache is None
         self._executor: QueryExecutor | None = None
         self._executor_context: Context | None = None
 
@@ -81,6 +82,16 @@ class QueryService:
     def context_cache(self) -> ContextCache:
         """Return the :class:`ContextCache` backing this service."""
         return self._context_cache
+
+    def close(self) -> None:
+        """Release owned connections and executor references; allow later reuse.
+
+        An injected cache is borrowed and must be closed by its owner.
+        """
+        self._executor = None
+        self._executor_context = None
+        if self._owns_context_cache:
+            self._context_cache.close()
 
     def invalidate_context_cache(self, db_path: Path | str | None = None) -> None:
         """Drop a cached context (or all of them when ``db_path`` is None)."""

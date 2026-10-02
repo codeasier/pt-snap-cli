@@ -21,6 +21,10 @@ class ReportService:
         self._focus_service = focus_service or FocusService()
         self._query_service = QueryService(self._focus_service)
 
+    def close(self) -> None:
+        """Release connections owned by this report service; allow later reuse."""
+        self._query_service.close()
+
     def peak_memory_report(
         self,
         db_path: Path | str | None = None,

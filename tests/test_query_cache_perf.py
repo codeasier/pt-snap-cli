@@ -54,9 +54,8 @@ def test_repeated_execute_query_uses_cached_connection() -> None:
     the cumulative time is dominated by the query cost and not by
     connection setup."""
     db_path = _make_db()
+    analyzer = SnapshotAnalyzer(db_path=db_path)
     try:
-        analyzer = SnapshotAnalyzer(db_path=db_path)
-
         # Warm up the cache (first call pays the schema-validation cost).
         analyzer.execute_query("leak_detection")
 
@@ -75,4 +74,5 @@ def test_repeated_execute_query_uses_cached_connection() -> None:
         # into the multi-second range even on fast disks).
         assert elapsed < 2.0, f"10 cached queries took {elapsed:.3f}s"
     finally:
+        analyzer.close()
         db_path.unlink(missing_ok=True)

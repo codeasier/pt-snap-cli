@@ -29,6 +29,12 @@ class OverviewService:
         self._focus_service = focus_service or FocusService()
         self._metadata_service = metadata_service or ImportMetadataService()
         self._context_cache = context_cache if context_cache is not None else ContextCache()
+        self._owns_context_cache: bool = context_cache is None
+
+    def close(self) -> None:
+        """Release owned connections; borrowed caches and later reuse are unaffected."""
+        if self._owns_context_cache:
+            self._context_cache.close()
 
     def inspect(
         self,

@@ -70,7 +70,13 @@ class Context:
         if not self.db_path.exists():
             raise DatabaseNotFoundError(f"Database not found: {self.db_path}")
 
-        self._validate_schema()
+        try:
+            self._validate_schema()
+        except BaseException:
+            # A failed constructor never reaches its owner's cache. Release
+            # even a persistent connection before propagating the failure.
+            self.close()
+            raise
 
     def _validate_schema(self) -> None:
         """Validate database has required schema (dictionary table)."""

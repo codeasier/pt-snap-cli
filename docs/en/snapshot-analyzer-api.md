@@ -25,6 +25,47 @@ and `device_id` is its default explicit query-device override. When `db_path` is
 omitted, the database uses the same resolution order as the CLI:
 `PT_SNAP_DB_PATH`, the nearest `.pt-snap/focus.json`, then legacy global config.
 
+## Connection Lifetime and Cache Ownership
+
+An analyzer reuses read-only SQLite connections for queries and overviews. Use
+`with` to release them deterministically, including when an operation raises:
+
+```python
+with SnapshotAnalyzer(Path("/path/to/snapshot.db")) as scoped_analyzer:
+    overview = scoped_analyzer.get_database_overview()
+    result = scoped_analyzer.execute_query("leak_detection")
+```
+
+For a long-lived instance such as `analyzer` in the examples below, call
+`analyzer.close()` in a `finally` block when finished. `close()` is idempotent;
+context-manager exit calls it and does not suppress exceptions. After closing,
+focus, discovery, metadata, overview and query methods, and entering another
+`with` block, raise `RuntimeError("SnapshotAnalyzer is closed.")`. Create a new
+analyzer to resume work.
+
+By default the analyzer owns its cache and closes all cached connections.
+If you pass `context_cache=shared_cache`, the cache is **borrowed**: closing the
+analyzer does not invalidate it or close connections used by other analyzers.
+The caller must call `shared_cache.close()` after all borrowers have finished:
+
+```python
+from contextlib import closing
+from pt_snap_cli.core.context_cache import ContextCache
+
+with closing(ContextCache()) as shared_cache:
+    with SnapshotAnalyzer(Path("/path/to/snapshot.db"), context_cache=shared_cache) as first:
+        first.get_database_overview()
+    with SnapshotAnalyzer(Path("/path/to/snapshot.db"), context_cache=shared_cache) as second:
+        second.execute_query("leak_detection")  # Reuses the still-open cache.
+```
+
+The public `context_cache` property and `invalidate_context_cache(db_path=None)`
+remain available, even after closing. Explicit invalidation still closes the
+selected cached connections, including shared ones. Unlike analyzer `close()`,
+invalidation (or `context_cache.close()`) does not end an open analyzer's
+lifetime: the next query or overview can populate its cache again. Direct use
+of the public cache is managed by its caller independently of analyzer lifetime.
+
 ## Inspect and Change Focus
 
 ```python
