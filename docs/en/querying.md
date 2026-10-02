@@ -80,6 +80,42 @@ the target device with the command-level `--device` option, not inside `--params
 not confirmed leaks. Read field units and interpretation limits with
 `pt-snap query --template-info leak_detection`.
 
+### Retrieving a complete candidate window
+
+`leak_detection` accepts `min_size` and `limit`, but **no `offset`**. Passing
+`offset` is rejected (`INVALID_PARAMETER` in CLI JSON, `TemplateRenderError`
+in the Python API). `has_more: true` signals incomplete results; it does not
+promise offset pagination.
+
+Start with a bounded query. If full coverage is needed, obtain an exact count
+while keeping the returned window bounded:
+
+```bash
+pt-snap query '<db_path>' --device <device_id> --template-use leak_detection --params '{"min_size":1024}' -n 100 --exact-total --json
+```
+
+Exact `total` counts matching **rows**, not bytes or GiB, and ignores `limit`.
+If it is zero, report no matching candidates without rerunning with `-n 0`
+(which means unlimited). If it is positive and affordable within your
+memory/output budget, rerun once with `-n <positive_total>` using the same
+database, device, and filters:
+
+```bash
+pt-snap query '<db_path>' --device <device_id> --template-use leak_detection --params '{"min_size":1024}' -n <positive_total> --json
+```
+
+Remove any explicit `limit` from `--params`, or raise it to the same count;
+otherwise a smaller `limit` still caps the enlarged window. Verify `returned`
+equals the exact count and both `has_more` and `truncated` are false. **Replace**
+the earlier rows with the new result; never append overlapping windows or add
+their counts/bytes. The API follows the same workflow with `exact_total=True`
+and a positive `max_rows`.
+
+If the full result exceeds the budget, keep a bounded sample and report that
+candidate/byte coverage is incomplete. An exact row count does not provide the
+total candidate bytes. Increasing `min_size` changes the analysis scope and
+requires a new count; it cannot establish completeness for the original scope.
+
 ## Parameter Validation
 
 `--params` is validated against the template before any SQL is rendered:
@@ -239,9 +275,13 @@ caps such as `top_n` stay their own parameters; they do not rewrite
 `semantics_version`, `interpretation_limits`, and field semantics from
 `output_schema`.
 
-`event`, `block`, `allocation`, and `leak_detection` paginate with a stable
-`id` tie-break after the primary sort. Continue a truncated `limit` /
-`offset` listing with the same sort keys and a higher `offset` (or `-n`).
+`event`, `block`, and `allocation` support `offset` pagination with a stable
+`id` tie-break after the primary sort. Continue their truncated `limit` /
+`offset` listings with the same sort keys and a higher `offset`.
+`leak_detection` also has a stable `id` tie-break, but has no `offset`;
+use the [complete candidate window](#retrieving-a-complete-candidate-window)
+workflow above. Increasing `-n` replaces the earlier window rather than
+fetching a disjoint next page. `has_more` does not imply offset support.
 `active_memory_callstack_at_event` has no `offset`; `-n` cannot raise the
 CTE `top_n` cap. Continue that template by increasing `top_n`.
 
