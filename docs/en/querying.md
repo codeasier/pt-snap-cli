@@ -28,6 +28,56 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 | `--timeout` | Wall-clock budget for one `query` / `QueryService` call (page query and optional `--exact-total` COUNT share it) via a SQLite progress handler. `<= 0` disables. Default: `PT_SNAP_QUERY_TIMEOUT` or unlimited. The environment variable applies to every template query, including `report peak-memory`. |
 | `--json` | Emit machine-readable JSON (execute, `--list`, and `--template-info`) |
 
+## Compact callstack text
+
+`event` and `active_memory_callstack_at_event` accept the explicit opt-in
+`stack_bytes` parameter. `report peak-memory` accepts `--stack-bytes` for its
+callstack groups. The default `-1` (or any negative value) preserves full text
+and the existing row shape. `0` returns identity-only stack text; a positive
+value returns a UTF-8-safe prefix of at most that many bytes per callstack.
+
+```bash
+pt-snap query '<db_path>' --device 0 --template-use event --params '{"action":0,"limit":1000,"stack_bytes":256}' --json
+pt-snap query '<db_path>' --device 0 --template-use active_memory_callstack_at_event --params '{"event_id":100,"top_n":20,"stack_bytes":256}' --json
+pt-snap report peak-memory '<db_path>' --device 0 --stack-bytes 256 --json
+```
+
+Replace the path, device and event with values from your database. The Python
+API uses the same parameter through
+`analyzer.execute_query("event", params={"stack_bytes": 256, "limit": 1000})`.
+Discover support and field definitions through `capabilities --json` or template
+info; other templates do not accept this parameter.
+
+Each compact row adds `stack_id`, `stack_kind`, `stack_event_id`, `stack_bytes`
+(effective budget), `stack_original_bytes` and `stack_truncated`. Numbers and
+`category` remain unchanged. The budget applies only to the UTF-8 text value:
+JSON escaping, identity and other metadata consume additional bytes. It is
+neither a hard response-size cap nor a model-token budget. A short prefix may
+end within a frame; retrieve full text before interpreting omitted frames.
+
+`stack_truncated` signals **text shortening**, independently of the query's
+`has_more`, `truncated`, `total` and `total_is_exact`, which still describe the
+evidence row set. A complete row set can contain shortened text. Report row
+limits retain their existing semantics; text summaries do not prove coverage.
+
+Within the same unchanged database/device, use `stack_id` for identity: v1 uses
+the SHA-256 of the full captured text; v2 uses the actual `callstackId` (identical
+text can have different IDs). Missing, static and preexisting attribution use
+separate category identities. Never merge groups by the prefix or display label.
+`stack_kind` distinguishes captured text from synthetic/missing attribution.
+
+For a captured stack, use its `stack_event_id` with the **same database/device**
+and omit `stack_bytes` to retrieve the full text:
+
+```bash
+pt-snap query '<db_path>' --device 0 --template-use event --params '{"id":123}' --json
+```
+
+Replace `123` with the returned locator. This representative event is not the
+group identity. Missing/static/preexisting groups have no captured allocation
+stack to retrieve; omit `stack_bytes` on the original query to see their full
+display labels. Results are read-only and summaries do not change the database.
+
 ## Query Templates
 
 Templates are organized into three categories. Use `pt-snap capabilities --json` for the full catalog (CLI version, every template contract, and bundled skills), or `pt-snap query --list` to see names and descriptions. Filter with `--category`.

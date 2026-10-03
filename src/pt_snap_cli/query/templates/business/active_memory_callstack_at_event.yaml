@@ -12,6 +12,11 @@ queries:
       - "Missing dynamic callstacks form one group before top_n ranking. This includes empty strings, NULL text or IDs, and missing joined allocation events or callstack records; their category remains dynamic_live_at_event."
       - "Event IDs are ordering markers, not elapsed time."
     parameters:
+      stack_bytes:
+        type: int
+        default: -1
+        required: false
+        description: "Opt-in UTF-8 byte budget per callstack text (0 for identity only; negative for unchanged full output). Not a JSON byte cap or token budget. Summary fields are present only when enabled."
       event_id:
         type: int
         required: true
@@ -58,6 +63,13 @@ queries:
               WHEN b.category = 'preexisting_live_at_event' THEN '[preexisting live] allocEventId=-1'
               ELSE COALESCE(NULLIF(t.callstack, ''), '[missing callstack]')
             END AS callstack,
+            {% if stack_bytes >= 0 %}
+            NULL AS stack_id,
+            CASE WHEN b.category != 'dynamic_live_at_event' THEN b.category
+                 WHEN NULLIF(t.callstack, '') IS NULL THEN 'missing'
+                 ELSE 'captured' END AS stack_kind,
+            CASE WHEN b.category = 'dynamic_live_at_event' AND NULLIF(t.callstack, '') IS NOT NULL THEN MIN(t.id) END AS stack_event_id,
+            {% endif %}
             b.category,
             COUNT(*) AS block_count,
             SUM(b.size) AS size_bytes,
@@ -72,6 +84,7 @@ queries:
         ranked_dynamic AS (
           SELECT
             callstack,
+            {% if stack_bytes >= 0 %}stack_id, stack_kind, stack_event_id,{% endif %}
             category,
             block_count,
             size_bytes,
@@ -85,6 +98,7 @@ queries:
         )
         SELECT
           callstack,
+          {% if stack_bytes >= 0 %}stack_id, stack_kind, stack_event_id,{% endif %}
           category,
           block_count,
           size_bytes,
@@ -95,6 +109,7 @@ queries:
         FROM (
           SELECT
             callstack,
+            {% if stack_bytes >= 0 %}stack_id, stack_kind, stack_event_id,{% endif %}
             category,
             block_count,
             size_bytes,
@@ -106,6 +121,7 @@ queries:
           UNION ALL
           SELECT
             callstack,
+            {% if stack_bytes >= 0 %}stack_id, stack_kind, stack_event_id,{% endif %}
             category,
             block_count,
             size_bytes,
@@ -141,6 +157,13 @@ queries:
               WHEN b.category = 'preexisting_live_at_event' THEN '[preexisting live] allocEventId=-1'
               ELSE COALESCE(NULLIF(cs.callstack, ''), '[missing callstack]')
             END AS callstack,
+            {% if stack_bytes >= 0 %}
+            CASE WHEN b.category = 'dynamic_live_at_event' AND NULLIF(cs.callstack, '') IS NOT NULL THEN t.callstackId END AS stack_id,
+            CASE WHEN b.category != 'dynamic_live_at_event' THEN b.category
+                 WHEN NULLIF(cs.callstack, '') IS NULL THEN 'missing'
+                 ELSE 'captured' END AS stack_kind,
+            CASE WHEN b.category = 'dynamic_live_at_event' AND NULLIF(cs.callstack, '') IS NOT NULL THEN MIN(t.id) END AS stack_event_id,
+            {% endif %}
             b.category,
             COUNT(*) AS block_count,
             SUM(b.size) AS size_bytes,
@@ -159,6 +182,7 @@ queries:
         ranked_dynamic AS (
           SELECT
             callstack,
+            {% if stack_bytes >= 0 %}stack_id, stack_kind, stack_event_id,{% endif %}
             category,
             block_count,
             size_bytes,
@@ -172,6 +196,7 @@ queries:
         )
         SELECT
           callstack,
+          {% if stack_bytes >= 0 %}stack_id, stack_kind, stack_event_id,{% endif %}
           category,
           block_count,
           size_bytes,
@@ -182,6 +207,7 @@ queries:
         FROM (
           SELECT
             callstack,
+            {% if stack_bytes >= 0 %}stack_id, stack_kind, stack_event_id,{% endif %}
             category,
             block_count,
             size_bytes,
@@ -193,6 +219,7 @@ queries:
           UNION ALL
           SELECT
             callstack,
+            {% if stack_bytes >= 0 %}stack_id, stack_kind, stack_event_id,{% endif %}
             category,
             block_count,
             size_bytes,
@@ -203,6 +230,32 @@ queries:
         )
         ORDER BY size_bytes DESC, block_count DESC, callstack ASC
     output_schema:
+      - column: stack_id
+        type: str
+        interpretation_limits:
+          - "Opt-in stack_bytes >= 0 only. Database/device-scoped identity: v1 full-text SHA-256, v2 callstackId, or category identity. Missing, static, preexisting and captured literal labels stay distinct. Never merge by display text."
+      - column: stack_kind
+        type: str
+        interpretation_limits:
+          - "Opt-in only: captured, missing, static, or preexisting_live_at_event."
+      - column: stack_event_id
+        type: int
+        interpretation_limits:
+          - "Opt-in only. Representative captured allocation event; retrieve full text with event(id=stack_event_id), omitting stack_bytes, on the same database/device. NULL for synthetic/missing groups. This locator is not the group identity."
+      - column: stack_bytes
+        type: int
+        units: bytes
+        interpretation_limits:
+          - "Opt-in only. Effective UTF-8 byte budget per callstack value, excluding JSON escaping and metadata; not a whole-response cap or model-token count."
+      - column: stack_original_bytes
+        type: int
+        units: bytes
+        interpretation_limits:
+          - "Opt-in only. Original UTF-8 callstack text length before shortening."
+      - column: stack_truncated
+        type: bool
+        interpretation_limits:
+          - "Opt-in only. Text was shortened; evidence rows, numbers, categories and completeness flags are unchanged."
       - column: callstack
         type: str
         units: text

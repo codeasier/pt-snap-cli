@@ -23,6 +23,7 @@ from pt_snap_cli.core.errors import (
 )
 from pt_snap_cli.core.focus_service import FocusService
 from pt_snap_cli.core.models import QueryResult, TemplateInfo, TemplateParameter, TemplateSummary
+from pt_snap_cli.core.stack_summary import summarize_stacks
 from pt_snap_cli.query.executor import QueryExecutionError as ExecutorQueryExecutionError
 from pt_snap_cli.query.executor import QueryExecutor
 from pt_snap_cli.query.executor import QueryTimeoutError as ExecutorQueryTimeoutError
@@ -255,6 +256,10 @@ class QueryService:
             raise QueryExecutionError(str(exc)) from exc
 
         template_obj = get_query(template)
+        if template_obj is not None and "stack_bytes" in template_obj.parameters:
+            stack_bytes = template_obj.validate_params(query_params)["stack_bytes"]
+            if isinstance(stack_bytes, int) and stack_bytes >= 0:
+                summarize_stacks(rows, stack_bytes, ctx.callstack_layout)
         return QueryResult(
             total=total,
             returned=returned,

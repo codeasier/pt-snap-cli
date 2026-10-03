@@ -32,6 +32,56 @@ runner = CliRunner()
 pytestmark = pytest.mark.usefixtures("owned_service_instances")
 
 
+@pytest.mark.parametrize("template", ["event", "active_memory_callstack_at_event"])
+def test_stack_summary_cli_api_and_catalog_contract(contract_db: Path, template: str):
+    with closing(sqlite3.connect(contract_db)) as conn, conn:
+        conn.execute(
+            "INSERT INTO trace_entry_0 VALUES (1, 4, 4096, 2048, 0, 2048, 2048, 4096, ?)",
+            ("训练.py:42 forward\n" * 1000,),
+        )
+    params = {"stack_bytes": 17}
+    if template == "active_memory_callstack_at_event":
+        params["event_id"] = 1
+    with SnapshotAnalyzer(db_path=contract_db, device_id=0) as analyzer:
+        api_result = analyzer.execute_query(template, params=params)
+        cli_result = runner.invoke(
+            app,
+            [
+                "query",
+                str(contract_db),
+                "--device",
+                "0",
+                "--template-use",
+                template,
+                "--params",
+                json.dumps(params),
+                "--json",
+            ],
+        )
+        assert cli_result.exit_code == 0, cli_result.output
+        payload = json.loads(cli_result.output)
+        for key in ("rows", "total", "returned", "has_more", "truncated", "total_is_exact"):
+            assert payload[key] == api_result[key]
+        assert payload["effective_params"]["stack_bytes"] == 17
+        assert any(row["stack_truncated"] for row in api_result["rows"])
+        info = analyzer.get_template_info(template)
+        assert info["parameters"]["stack_bytes"]["default"] == -1
+        fields = {field["column"] for field in info["output_schema"]}
+        assert {
+            "stack_id",
+            "stack_kind",
+            "stack_event_id",
+            "stack_bytes",
+            "stack_original_bytes",
+            "stack_truncated",
+        } <= fields
+        catalog = runner.invoke(app, ["capabilities", "--json"])
+        assert catalog.exit_code == 0, catalog.output
+        entry = next(t for t in json.loads(catalog.output)["templates"] if t["name"] == template)
+        assert entry["output_schema"] == info["output_schema"]
+        assert entry["parameters"] == info["parameters"]
+
+
 def create_contract_db(db_path: Path) -> Path:
     """Create a tiny snapshot database shared by CLI and API contract paths."""
     conn = sqlite3.connect(str(db_path))

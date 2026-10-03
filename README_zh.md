@@ -70,6 +70,10 @@ included bytes 为分母。解读有上限的分组结果前，请参阅
 
 ## Agent Skills
 
+诊断长调用栈时，可在 `event` 或 `active_memory_callstack_at_event` 上显式设置
+`stack_bytes`，或使用 `report peak-memory --stack-bytes 256`。
+身份、字节预算元数据及完整文本检索方式见[紧凑调用栈文本](docs/zh/querying.md#紧凑调用栈文本)。
+
 使用 `pt-snap skill install` 安装随包诊断工作流。Agent 集成入口是 skills 与 CLI，不再提供 MCP 服务器。详见 [Agent Skills 指南](docs/zh/skills.md)。
 
 宿主已加载 `pt-snap-ascend-npu-collect` 时，没有 `pt-snap` 也能进行昇腾 NPU 采集；

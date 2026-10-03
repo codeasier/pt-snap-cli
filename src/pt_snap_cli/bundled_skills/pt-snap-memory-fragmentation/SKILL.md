@@ -151,6 +151,23 @@ Stop the report phase and report the exact failure if it fails or the options
 used below are absent. A complete successful help result from the same
 CLI/Python environment and version may be reused.
 
+## Optional compact stack evidence
+
+When long stacks dominate output bytes, confirm `stack_bytes` in the catalog
+for `event` / `active_memory_callstack_at_event` and `--stack-bytes` in report
+help. Opt into `stack_bytes: 256` on those queries or `--stack-bytes 256` on
+reports. Other templates do not support it. Retain `stack_id`, `stack_kind`,
+`stack_event_id`, `stack_bytes`, `stack_original_bytes`, `stack_truncated`,
+category, numbers and completeness. The budget is UTF-8 text bytes, not model
+tokens or a hard JSON response cap. Text shortening is distinct from row
+truncation; continue checking `has_more`, `truncated` and `total_is_exact`.
+Never merge groups by shortened text or synthetic labels: equal v2 text can
+have distinct IDs. Retrieve a captured stack through `event(id=stack_event_id)`
+without `stack_bytes`, on the same unchanged database/device. Check that event
+contract first; missing/static/preexisting groups have no captured allocation
+stack. Reuse shared-event attribution only in presentation while preserving
+each metric's counters, identities and completeness evidence.
+
 ## Diagnostic Workflow
 
 ### 1. Establish separate peaks and same-event gaps

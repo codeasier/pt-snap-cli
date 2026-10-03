@@ -28,6 +28,49 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 | `--timeout` | 一次 `query` / `QueryService` 调用的墙钟预算（页面查询与可选 `--exact-total` COUNT 共用），经 SQLite progress handler 生效。`<= 0` 表示关闭。默认：`PT_SNAP_QUERY_TIMEOUT` 或不限制。该环境变量作用于所有模板查询，包括 `report peak-memory`。 |
 | `--json` | 输出机器可读 JSON（执行、`--list` 与 `--template-info`） |
 
+## 紧凑调用栈文本
+
+`event` 和 `active_memory_callstack_at_event` 支持显式启用的 `stack_bytes`
+参数；`report peak-memory` 可用 `--stack-bytes` 控制调用栈分组文本。
+默认 `-1`（或任意负数）保留完整文本及原有行结构。`0` 仅保留栈身份信息，
+正数返回不超过指定 UTF-8 字节数的有效文本前缀。
+
+```bash
+pt-snap query '<db_path>' --device 0 --template-use event --params '{"action":0,"limit":1000,"stack_bytes":256}' --json
+pt-snap query '<db_path>' --device 0 --template-use active_memory_callstack_at_event --params '{"event_id":100,"top_n":20,"stack_bytes":256}' --json
+pt-snap report peak-memory '<db_path>' --device 0 --stack-bytes 256 --json
+```
+
+请替换为数据库实际路径、设备与事件。Python API 使用相同参数：
+`analyzer.execute_query("event", params={"stack_bytes": 256, "limit": 1000})`。
+通过 `capabilities --json` 或模板详情确认支持情况和字段定义；其他模板不接受此参数。
+
+每条紧凑行增加 `stack_id`、`stack_kind`、`stack_event_id`、`stack_bytes`
+（生效预算）、`stack_original_bytes` 和 `stack_truncated`。数值与 `category`
+保持不变。预算只限制 UTF-8 文本值；JSON 转义、身份及其他元数据会额外占用字节。
+这既不是整包输出大小硬上限，也不是模型 token 预算。前缀可能在一帧中间结束，
+解释被省略的帧前应取回完整文本。
+
+`stack_truncated` 表示**文本缩略**，独立于查询的 `has_more`、`truncated`、
+`total`、`total_is_exact`；后者仍描述证据行集合。完整行集合也可能包含缩略文本。
+报告行数限制保留既有语义，文本摘要不能证明证据覆盖完整。
+
+在同一未变化的数据库/设备内用 `stack_id` 判断身份：v1 使用完整采集文本的 SHA-256，
+v2 使用真实 `callstackId`（相同文本可以有不同 ID）。missing、static、preexisting
+归因分别使用独立分类身份。禁止按前缀或显示标签合并分组。
+`stack_kind` 区分真实采集文本与合成/缺失归因。
+
+对真实采集栈，在**同一数据库/设备**下使用返回的 `stack_event_id`，省略
+`stack_bytes` 即可取回完整文本：
+
+```bash
+pt-snap query '<db_path>' --device 0 --template-use event --params '{"id":123}' --json
+```
+
+把 `123` 替换为返回的定位事件；此代表事件不是分组身份。missing/static/preexisting
+分组没有可取回的采集分配栈；在原查询中省略 `stack_bytes` 可查看完整显示标签。
+查询保持只读，摘要不会改动数据库。
+
 ## 查询模板
 
 模板分为三个分类。用 `pt-snap capabilities --json` 一次查看完整清单（CLI 版本、全部模板契约和随包 skill），或用 `pt-snap query --list` 查看名称与描述。用 `--category` 过滤。
