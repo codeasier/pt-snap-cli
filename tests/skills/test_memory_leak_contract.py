@@ -194,10 +194,10 @@ def test_memory_leak_skill_interprets_percent_column_as_byte_share() -> None:
 
 
 def test_memory_leak_skill_records_reduced_prerequisite_probes() -> None:
-    skill = SKILL_PATH.read_text()
+    skill = " ".join(SKILL_PATH.read_text().split())
 
-    assert "previously 7 calls" in skill
-    assert "Now 2 calls" in skill
+    assert "2 calls from cold, 1 with one reusable result, 0 with both" in skill
+    assert "Record tool-call count and output bytes separately" in skill
     assert "Do not probe templates one-by-one with `--template-info`" in skill
 
 

@@ -31,7 +31,7 @@ def test_memory_fragmentation_skill_uses_current_pt_snap_surfaces() -> None:
     for template, path in templates.items():
         assert path.is_file()
         assert f"  {template}:" in path.read_text()
-        assert f"--template-info {template}" in skill
+        assert f"`{template}`" in skill.split("## Diagnostic Workflow")[0]
         assert f"--template-use {template}" in skill
 
 

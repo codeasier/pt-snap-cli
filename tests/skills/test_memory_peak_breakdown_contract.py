@@ -41,7 +41,7 @@ def test_skill_references_current_report_and_templates() -> None:
     assert "pt-snap report peak-memory --help" in skill
     for name, path in templates.items():
         assert f"  {name}:" in path.read_text(encoding="utf-8")
-        assert f"--template-info {name}" in skill
+        assert f"`{name}`" in skill.split("## Full-Trace Workflow")[0]
     assert "has_more" in skill
     assert "-n <LIMIT>" in skill
     assert "increase `top_n`" in skill
@@ -102,12 +102,15 @@ def test_placeholder_values_are_validated_before_shell_substitution() -> None:
     assert "Prefer argument-array execution" in normalized
 
 
-def test_preflight_checks_template_records_not_exit_codes() -> None:
+def test_preflight_checks_catalog_entries_and_keeps_report_help() -> None:
     normalized = _normalized_skill()
 
-    assert "still exits with status 0" in normalized
-    assert "never rely on exit codes for these checks" in normalized
-    assert "expected `Template: <name>` record" in normalized
+    assert (
+        "Confirm these templates exist in the capabilities catalog before diagnosis" in normalized
+    )
+    assert "Stop on a missing required template or failed probe" in normalized
+    assert "Capabilities does not describe report command options" in normalized
+    assert "pt-snap report peak-memory --help" in normalized
 
 
 def test_negative_event_ids_are_initial_state_reconstruction() -> None:
@@ -173,7 +176,7 @@ def test_attribution_caveats_prevent_reserved_and_static_overclaim() -> None:
     assert "when the selected event is the allocated or reserved peak" in normalized
     assert "It does not assign reserved/cache bytes" in skill
     assert (
-        "Interpret `percent_of_active_blocks` using `--template-info active_memory_callstack_at_event`"
+        "Interpret `percent_of_active_blocks` using the `active_memory_callstack_at_event` entry in the retained capabilities catalog"
         in skill
     )
     assert "Do not infer a block-count share from the column name" in skill

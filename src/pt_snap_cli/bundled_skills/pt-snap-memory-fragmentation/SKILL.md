@@ -99,29 +99,57 @@ explicit path and do not enter this branch.
    reason `metadata_missing`; record unknown import provenance and do not force
    a re-import. Stop on schema errors or invalid metadata.
 
-### 3. Verify metadata and required templates before diagnosis
+### 3. Verify capabilities and the database in two calls
 
-Run these checks before any diagnostic query:
+Apply the shared diagnostic preflight contract in `pt-snap-helper`, even on
+direct invocation. Run only the probes whose complete results are not reusable:
 
 ```bash
-pt-snap metadata "<db_path>" --json
-pt-snap query --template-info memory_peak
-pt-snap query --template-info allocator_gap
-pt-snap query --template-info allocation
-pt-snap query --template-info event
+pt-snap capabilities --json
+pt-snap overview "<db_path>" --json
 ```
 
-Stop on invalid database metadata/schema or a missing required template, and
-report the exact failure. A compatible legacy database may report metadata as
-unavailable; record that provenance limitation rather than treating it as
-import metadata. Do not replace a missing required template with raw SQL.
+Reuse complete successful results from this conversation only for the same
+CLI/Python environment and unchanged database target. Check CLI version and the
+overview's resolved absolute database path. Summaries, truncated output, changed
+environment/version or database, and unknown result identity require refreshing
+the affected probe. Revalidate the contents even when reusing results.
 
-Before using the optional attribution phase, also verify its surfaces:
+Read `overview.import_metadata.status` (the `import_metadata` field in the
+overview JSON), not just exit code 0 or outer `ok: true`. Stop on `invalid`
+metadata or schema errors. Continue with `available`, or with legacy
+`unavailable` and reason `metadata_missing` after recording unknown import
+provenance. Stop on any other status/reason or incomplete result. Validate the
+selected device against overview's devices and record its trace bounds.
+
+Confirm these templates exist in the capabilities catalog before diagnosis:
+`memory_peak`, `allocator_gap`, `allocation`, `event`. Read parameters,
+`output_schema`, and field semantics from those entries. Stop on a missing
+required template or failed probe and report the exact failure.
+Do not replace a missing required template with raw SQL. Do not probe templates
+one-by-one with `--template-info` or re-emit a reused catalog.
+
+Prerequisite probe budget: 2 calls from cold, 1 with one reusable result, 0 with
+both. Record tool-call count and output bytes separately; fewer calls need not
+mean fewer bytes. Availability/focus/report-help checks are outside this budget.
+Missing-focus recovery is the metadata-first exception: after user confirmation,
+run metadata and apply its stop/legacy rules above, then obtain/reuse capabilities
+and overview. Metadata alone does not replace overview; never reuse the missing
+target's overview or device.
+
+Before using the optional attribution phase, also verify
+`active_memory_callstack_at_event` in the retained capabilities catalog; stop
+that phase and report the missing template if absent. If using the report,
+verify its command options with:
 
 ```bash
-pt-snap query --template-info active_memory_callstack_at_event
 pt-snap report peak-memory --help
 ```
+
+Capabilities does not describe report command options, so keep this help check.
+Stop the report phase and report the exact failure if it fails or the options
+used below are absent. A complete successful help result from the same
+CLI/Python environment and version may be reused.
 
 ## Diagnostic Workflow
 
