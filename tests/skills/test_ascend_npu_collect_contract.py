@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import os
+import re
+import subprocess
 from pathlib import Path
+
+import pytest
 
 SKILL_PATH = Path("skills/pt-snap-ascend-npu-collect/SKILL.md")
 AGENTS_PATH = Path("skills/AGENTS.md")
@@ -36,6 +41,57 @@ def test_skill_preserves_active_interpreter_and_refuses_installs() -> None:
     assert "Do not assume Conda" in normalized
     assert "Do not install `torch_npu`" in skill
     assert "Do not install packages or switch Python environments." in skill
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Skill examples use a POSIX shell")
+@pytest.mark.parametrize("root", [Path("skills"), Path("src/pt_snap_cli/bundled_skills")])
+def test_verl_command_uses_selected_interpreter_despite_path(root: Path, tmp_path: Path) -> None:
+    skill = (root / "pt-snap-ascend-npu-collect/SKILL.md").read_text(encoding="utf-8")
+    commands = [
+        block
+        for block in re.findall(r"```bash\n(.*?)\n```", skill, re.DOTALL)
+        if "-m verl.trainer.main_ppo" in block
+    ]
+    assert len(commands) == 1
+
+    selected = tmp_path / "selected environment" / "python"
+    path_python = tmp_path / "path-bin" / "python3"
+    # Record dispatch and arguments without installing verl or starting training.
+    for executable in (selected, path_python):
+        executable.parent.mkdir()
+        executable.write_text('#!/bin/sh\nprintf \'%s\\n\' "$0" "$@"\n')
+        executable.chmod(0o755)
+    env = {**os.environ, "PATH": str(path_python.parent)}
+    path_result = subprocess.run(
+        ["/bin/bash", "-c", "python3"],
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert path_result.stdout.strip() == str(path_python)
+
+    result = subprocess.run(
+        ["/bin/bash", "-c", commands[0].replace("<python_executable>", str(selected))],
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout.splitlines() == [
+        str(selected),
+        "-m",
+        "verl.trainer.main_ppo",
+        "...",
+        "trainer.device=npu",
+        "global_profiler.tool=torch_memory",
+        "actor_rollout_ref.actor.profiler.enable=True",
+        "actor_rollout_ref.actor.profiler.ranks=[0]",
+        "global_profiler.steps=[1,2,3,4,5,6,7,8,9,10]",
+        "global_profiler.save_path=./mem_snapshots",
+        "global_profiler.global_tool_config.torch_memory.trace_alloc_max_entries=100000",
+        "global_profiler.global_tool_config.torch_memory.stack_depth=32",
+    ]
 
 
 def test_skill_verifies_torch_npu_collection_apis() -> None:
