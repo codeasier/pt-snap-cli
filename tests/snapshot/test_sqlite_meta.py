@@ -1,6 +1,6 @@
 import sqlite3
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import pytest
 
@@ -31,12 +31,64 @@ def test_type_mapping_helpers_cover_supported_and_fallback_types():
     assert _sqlite_type_to_py_type("NUMERIC") is str
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="runtime does not recognize the Python 3.10+ PEP 604 optional form",
+@pytest.mark.parametrize(
+    ("py_type", "sqlite_type"),
+    [(int, "INTEGER"), (float, "REAL"), (str, "TEXT"), (bool, "INTEGER"), (bytes, "BLOB")],
 )
-def test_type_mapping_supports_pep604_optional():
-    assert _map_py_type_to_sqlite(int | None) == "INTEGER"  # noqa: UP045
+def test_type_mapping_supports_both_optional_spellings(py_type, sqlite_type):
+    assert _map_py_type_to_sqlite(Optional[py_type]) == sqlite_type  # noqa: UP045
+    assert _map_py_type_to_sqlite(py_type | None) == sqlite_type
+    assert _map_py_type_to_sqlite(None | py_type) == sqlite_type
+
+
+@pytest.mark.parametrize(
+    "py_type",
+    [
+        int | str,
+        int | str | None,
+        Union[int, str],  # noqa: UP007
+        Union[int, str, None],  # noqa: UP007
+        list[int] | None,
+        Optional[list[int]],  # noqa: UP045
+        type(None),
+    ],
+)
+def test_type_mapping_keeps_ambiguous_and_unsupported_types_as_text(py_type):
+    assert _map_py_type_to_sqlite(py_type) == "TEXT"
+
+
+def test_pep604_columns_preserve_sqlite_affinity_and_nulls():
+    connection = sqlite3.connect(":memory:")
+    try:
+        table = SqliteTable(
+            "nullable_values",
+            [
+                SqliteColumn("number", int | None),
+                SqliteColumn("fraction", float | None),
+                SqliteColumn("flag", bool | None),
+                SqliteColumn("payload", bytes | None),
+            ],
+        )
+        table.create_table(connection)
+        assert [row[2] for row in connection.execute("PRAGMA table_info(nullable_values)")] == [
+            "INTEGER",
+            "REAL",
+            "INTEGER",
+            "BLOB",
+        ]
+        table.insert_records(
+            connection,
+            [
+                {"number": 10, "fraction": 1.5, "flag": True, "payload": b"ten"},
+                {"number": 2, "fraction": 2.5, "flag": False, "payload": b"two"},
+                {"number": None, "fraction": None, "flag": None, "payload": None},
+            ],
+        )
+        assert connection.execute(
+            "SELECT number, fraction, flag, payload FROM nullable_values ORDER BY number"
+        ).fetchall() == [(None, None, None, None), (2, 2.5, 0, b"two"), (10, 1.5, 1, b"ten")]
+    finally:
+        connection.close()
 
 
 def test_parse_default_value_handles_literals_bool_and_strings():
