@@ -92,5 +92,24 @@ helper 会先路由采集，无需先安装 CLI。分析仍需要 CLI 和 Snapsh
 pip install -e ".[dev]"         # 安装开发依赖
 pytest                           # 运行所有测试
 black --check . && ruff check .  # 检查格式和 lint
-python -m build                  # 构建 sdist 和 wheel
 ```
+
+### 构建分发包
+
+请从目标提交的全新 checkout 或新 worktree 构建，确保没有已有的 `build/` 和
+`dist/` 目录。重复构建时，setuptools 可能复用 `build/lib` 中的文件，包括源码中
+已删除的模块；构建依赖隔离不会清理这些中间产物。自行删除旧产物前请先检查其内容，
+也可以直接使用全新 worktree。
+
+在该 checkout 的根目录运行：
+
+```bash
+python -m build                  # 构建 sdist 和 wheel
+python .github/scripts/audit_wheel.py --wheel dist/<built-wheel>.whl
+```
+
+将 `<built-wheel>` 替换为实际生成的文件名。只读审计会将 Python 模块的路径和字节内容
+与 `src/` 比对，并按打包合同独立检查查询 YAML、内置技能、snapshot 许可证及来源记录
+资源，允许构建后端生成的分发元数据。发现不匹配时会失败并列出具体路径；请从全新源码树
+重新构建并再次审计，通过后再使用 wheel。CI 在安装包验收前审计 wheel；release 会独立
+审计实际上传用于发布的 wheel。
