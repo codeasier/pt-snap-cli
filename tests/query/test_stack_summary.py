@@ -168,17 +168,29 @@ def test_summary_preserves_incomplete_windows(stack_db, exact_total, template, p
 
 
 @pytest.mark.parametrize("metric", ["active", "allocated", "reserved"])
-def test_report_uses_shared_summary_and_exposes_text_markers(stack_db, metric):
+@pytest.mark.parametrize("limit", [1, 20], ids=["capped", "complete"])
+@pytest.mark.parametrize("budget", [0, 7])
+def test_report_uses_shared_summary_and_exposes_text_markers(stack_db, metric, limit, budget):
     path, _ = stack_db
     service = ReportService()
     try:
-        full = asdict(service.peak_memory_report(path, device_id=0, metric=metric))
+        full = asdict(service.peak_memory_report(path, device_id=0, metric=metric, limit=limit))
         compact = asdict(
-            service.peak_memory_report(path, device_id=0, metric=metric, stack_bytes=7)
+            service.peak_memory_report(
+                path, device_id=0, metric=metric, limit=limit, stack_bytes=budget
+            )
         )
-        assert {k: v for k, v in compact.items() if k != "callstack_groups"} == {
-            k: v for k, v in full.items() if k != "callstack_groups"
-        }
+        assert {
+            k: v for k, v in compact.items() if k not in {"callstack_groups", "effective_params"}
+        } == {k: v for k, v in full.items() if k not in {"callstack_groups", "effective_params"}}
+        assert compact["effective_params"] == {**full["effective_params"], "stack_bytes": budget}
+        assert compact["has_more"] is compact["truncated"] is (limit == 1)
+        for original, summary in zip(
+            full["callstack_groups"], compact["callstack_groups"], strict=True
+        ):
+            assert {
+                k: v for k, v in summary.items() if k != "callstack" and not k.startswith("stack_")
+            } == {k: v for k, v in original.items() if k != "callstack"}
         args = [
             "report",
             "peak-memory",
@@ -187,8 +199,10 @@ def test_report_uses_shared_summary_and_exposes_text_markers(stack_db, metric):
             "0",
             "--metric",
             metric,
+            "--limit",
+            str(limit),
             "--stack-bytes",
-            "7",
+            str(budget),
         ]
         result = CliRunner().invoke(app, args + ["--json"])
         assert result.exit_code == 0, result.output
@@ -196,8 +210,11 @@ def test_report_uses_shared_summary_and_exposes_text_markers(stack_db, metric):
         text = CliRunner().invoke(app, args)
         assert text.exit_code == 0, text.output
         assert "stack_truncated=True" in text.output
-        assert "stack_bytes=7" in text.output
-        assert "Full text: query event" in text.output
+        assert f"stack_bytes={budget}" in text.output
+        assert ("partial / possibly incomplete" in text.output) is (limit == 1)
+        assert ("Full text: query event" in text.output) is any(
+            row["stack_kind"] == "captured" for row in compact["callstack_groups"]
+        )
     finally:
         service.close()
 
