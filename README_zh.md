@@ -68,6 +68,9 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 
 使用 `pt-snap skill install` 安装随包诊断工作流。Agent 集成入口是 skills 与 CLI，不再提供 MCP 服务器。详见 [Agent Skills 指南](docs/zh/skills.md)。
 
+宿主已加载 `pt-snap-ascend-npu-collect` 时，没有 `pt-snap` 也能进行昇腾 NPU 采集；
+helper 会先路由采集，无需先安装 CLI。分析仍需要 CLI 和 SnapshotDB，可信导入是独立决定。
+
 ## 文档
 
 全部中英文指南见[文档索引](docs/README.md)。

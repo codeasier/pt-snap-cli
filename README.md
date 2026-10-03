@@ -73,6 +73,10 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 
 Install bundled diagnostic workflows with `pt-snap skill install`. Agent integration uses skills plus the CLI; there is no MCP server. See the [Agent Skills guide](docs/en/skills.md).
 
+Ascend NPU capture can proceed without `pt-snap` when the host has loaded
+`pt-snap-ascend-npu-collect`; the helper routes collection before CLI setup.
+Analysis still requires the CLI and a SnapshotDB, with trusted import as a separate decision.
+
 ## Documentation
 
 See the [documentation index](docs/README.md) for all English and Chinese guides.

@@ -4,6 +4,22 @@
 
 `pt-snap-cli` 附带用于路由（`pt-snap-helper`）、环境安装、昇腾 NPU 采集和内存诊断的 agent skill。Agent 应先使用 `pt-snap-helper`，并在支持 `--json` 的命令上优先使用该选项。`pt-snap skill` 命令会把这些 skill 复制到共享的 Agent Skills 目录，以及 Claude Code 仍然需要的独立目录。
 
+## CLI 缺失时的采集路由
+
+对于昇腾 NPU 采集，`pt-snap-helper` 会选择 `pt-snap-ascend-npu-collect`，无需先走
+`pt-snap-setup`。该采集 skill 必须已被宿主加载，或通过宿主支持的加载器成功加载；
+TorchNPU 与环境验证由采集 skill 负责。缺少 CLI 时，目录源和安装目录状态记为
+`unchecked`（未检查），与宿主加载证据分别报告。源码可读不能证明已加载。
+
+如果加载失败或没有可用的加载方式，helper 会暂停采集交接，说明如何让宿主发现已知的
+skill 目录并重启，或使用支持的加载器。获取缺失的 skill 是独立的用户选择；helper
+不会隐式安装 Python 包或 skill。
+
+已有 SnapshotDB 的分析任务在缺 CLI 时仍先交给 setup。先采集再分析的任务先完成采集，
+之后若 CLI 仍缺失再走 setup。仅有 pickle 的分析任务需要独立的可信导入决定；批准
+setup 不代表批准导入。只有 SnapshotDB 已存在时才交给诊断 skill，并执行正常的
+capabilities/overview 前置检查。
+
 ## 列出 skill
 
 ```bash
