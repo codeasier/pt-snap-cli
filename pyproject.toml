@@ -42,6 +42,9 @@ dev = [
     "black>=23.0.0",
     "ruff>=0.0.280",
     "build>=1.0.0",
+    # Offline regression tests exercise repeated builds with the real backend.
+    "setuptools>=61.0",
+    "wheel",
     "basedpyright>=1.39.3",
 ]
 

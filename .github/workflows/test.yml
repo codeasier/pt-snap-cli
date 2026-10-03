@@ -121,6 +121,13 @@ jobs:
           python -m pip install --upgrade build
           python -m build --wheel
 
+      - name: Audit wheel contents against source
+        if: matrix.python-version == '3.13'
+        run: |
+          set -euo pipefail
+          WHEEL=$(python -c 'from pathlib import Path; wheels = sorted(Path("dist").glob("*.whl")); assert len(wheels) == 1, wheels; print(wheels[0])')
+          python .github/scripts/audit_wheel.py --wheel "$WHEEL"
+
       - name: Clean-wheel Agent acceptance
         if: matrix.python-version == '3.13'
         run: |

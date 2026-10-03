@@ -98,5 +98,27 @@ See the [documentation index](docs/README.md) for all English and Chinese guides
 pip install -e ".[dev]"         # Install development dependencies
 pytest                           # Run all tests
 black --check . && ruff check .  # Check formatting and lint
-python -m build                  # Build sdist and wheel
 ```
+
+### Building distributions
+
+Build from a fresh checkout or a new worktree at the intended commit, with no
+existing `build/` or `dist/` directories. Setuptools can reuse files in `build/lib`
+on repeated builds, including modules deleted from the source tree; build dependency
+isolation does not clean these intermediates. Inspect old outputs before removing
+them yourself, or use a fresh worktree instead.
+
+From that checkout's root:
+
+```bash
+python -m build                  # Build sdist and wheel
+python .github/scripts/audit_wheel.py --wheel dist/<built-wheel>.whl
+```
+
+Replace `<built-wheel>` with the generated filename. The read-only audit compares
+Python module paths and bytes with `src/`, and separately checks query YAML,
+bundled skills, and snapshot license/provenance resources against the packaging
+contract. Generated distribution metadata is allowed. A mismatch fails with the
+affected paths; rebuild from a fresh source tree and audit again before using the
+wheel. CI audits its wheel before installed-package acceptance; release separately
+audits the actual wheel it uploads for publication.
