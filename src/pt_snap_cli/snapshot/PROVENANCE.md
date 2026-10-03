@@ -210,3 +210,12 @@ entry for every future update under `src/pt_snap_cli/snapshot/`, recording the
 date, affected scope, source or local-change identity, and reason. Existing
 source mappings, modification history, and licensing evidence must not be
 rewritten or removed; corrections are appended with their rationale.
+
+## 2026-10-03 — Optional SQLite type mapping (issue #165)
+
+Local first-party change in `snapshot/util/sqlite_meta.py`: recognize PEP 604
+`T | None` alongside `typing.Optional[T]` when selecting SQLite column affinity.
+Unions with multiple non-None members and unsupported types retain the TEXT
+fallback. Regression tests cover both optional spellings, reversed union order,
+generated schema, numeric ordering, and nullable value round trips. Audited
+upstream source mappings and license terms are unchanged.

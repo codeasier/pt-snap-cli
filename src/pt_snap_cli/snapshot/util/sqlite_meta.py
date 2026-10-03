@@ -9,6 +9,7 @@ import ast
 import os.path
 import sqlite3
 from collections.abc import Iterable
+from types import UnionType
 from typing import (
     Any,
     Union,
@@ -26,13 +27,13 @@ _PY_TYPE_TO_SQLITE = {
 }
 
 
-def _map_py_type_to_sqlite(py_type: type) -> str:
+def _map_py_type_to_sqlite(py_type: type | UnionType) -> str:
     """将 Python 类型转换为 SQLite 类型"""
     origin = get_origin(py_type) or py_type
     if origin in _PY_TYPE_TO_SQLITE:
         return _PY_TYPE_TO_SQLITE[origin]
-    # 处理 Optional[T] => T（Optional 是 Union[T, None]）
-    if origin is Union:
+    # 处理 Optional[T] / T | None => T
+    if origin is Union or origin is UnionType:
         args = get_args(py_type)
         non_none = [t for t in args if t is not type(None)]
         if len(non_none) == 1:
@@ -113,7 +114,7 @@ class SqliteColumn:
     def __init__(
         self,
         name: str,
-        data_type: type = str,
+        data_type: type | UnionType = str,
         primary_key: bool = False,  # 是否主键
         autoincrement: bool = False,  # 是否自增
         not_null: bool = False,  # 是否不可为空
