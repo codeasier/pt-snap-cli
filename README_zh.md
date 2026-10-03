@@ -64,6 +64,10 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 
 `pt-snap --help` 含 Agent 提示：在支持该选项的命令上优先使用 `--json`，从 `pt-snap-helper` skill 开始，诊断前先用 `pt-snap capabilities --json` 和 `pt-snap overview --json`，并用 `pt-snap skill list --json` 检查是否已安装。`focus`、`import`、`split`、`query`、`config`、`capabilities`、`overview`、`metadata`、`report peak-memory` 和 `skill list/install/upgrade/uninstall` 均接受 `--json`。
 
+峰值报告会返回归因完整性及同事件 active 字节覆盖率；分组百分比以筛选和排名后的
+included bytes 为分母。解读有上限的分组结果前，请参阅
+[报告指南](docs/zh/querying.md#report-命令)。
+
 ## Agent Skills
 
 使用 `pt-snap skill install` 安装随包诊断工作流。Agent 集成入口是 skills 与 CLI，不再提供 MCP 服务器。详见 [Agent Skills 指南](docs/zh/skills.md)。

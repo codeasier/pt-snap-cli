@@ -117,6 +117,14 @@ class PeakMemoryReport:
     peak: dict[str, object]
     allocator_gap: dict[str, object] | None
     callstack_groups: list[dict[str, object]]
+    has_more: bool = False
+    truncated: bool = False
+    total_is_exact: bool = False
+    effective_params: dict[str, object] = field(default_factory=dict)
+    included_bytes: int = 0
+    percent_denominator: str = "included_bytes"
+    active_bytes_at_event: int | None = None
+    coverage_percent: float | None = None
 
 
 @dataclass(frozen=True)

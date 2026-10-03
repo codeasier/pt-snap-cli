@@ -69,6 +69,10 @@ See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 
 `pt-snap --help` includes an agent hint: prefer `--json` on the command that supports it, start with the `pt-snap-helper` skill, use `pt-snap capabilities --json` and `pt-snap overview --json` before diagnosing, and check availability with `pt-snap skill list --json`. `focus`, `import`, `split`, `query`, `config`, `capabilities`, `overview`, `metadata`, `report peak-memory`, and `skill list/install/upgrade/uninstall` accept `--json`.
 
+Peak reports expose attribution completeness and same-event active-byte coverage;
+group percentages use included bytes after filtering and ranking. See the
+[report guide](docs/en/querying.md#report-command) before interpreting a capped breakdown.
+
 ## Agent Skills
 
 Install bundled diagnostic workflows with `pt-snap skill install`. Agent integration uses skills plus the CLI; there is no MCP server. See the [Agent Skills guide](docs/en/skills.md).

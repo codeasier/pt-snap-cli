@@ -15,6 +15,12 @@ _EVENT_ID_BY_METRIC = {
     "reserved": "peak_reserved_event_id",
 }
 
+_ACTIVE_COUNTER_BY_METRIC = {
+    "active": "peak_active",
+    "allocated": "active_at_allocated_peak",
+    "reserved": "active_at_reserved_peak",
+}
+
 
 class ReportService:
     def __init__(self, focus_service: FocusService | None = None) -> None:
@@ -48,6 +54,12 @@ class ReportService:
         peak = peak_result.rows[0] if peak_result.rows else {}
         # memory_peak selects an INTEGER event ID (or NULL for an empty trace).
         event_id = cast(int | None, peak.get(_EVENT_ID_BY_METRIC[metric]))
+        attribution_params: dict[str, object] = {
+            "event_id": event_id,
+            "include_static": include_static,
+            "min_size": 0,
+            "top_n": limit,
+        }
 
         if event_id is None:
             return PeakMemoryReport(
@@ -57,6 +69,8 @@ class ReportService:
                 peak=peak,
                 allocator_gap=None,
                 callstack_groups=[],
+                total_is_exact=True,
+                effective_params=attribution_params,
             )
 
         gap_result = self._query_service.execute_query(
@@ -67,14 +81,23 @@ class ReportService:
         )
         callstack_result = self._query_service.execute_query(
             "active_memory_callstack_at_event",
-            params={
-                "event_id": event_id,
-                "include_static": include_static,
-                "top_n": limit,
-            },
+            params=attribution_params,
             db_path=db_path,
             device_id=device_id,
             start_dir=start_dir,
+        )
+
+        gap = gap_result.rows[0] if gap_result.rows else None
+        # allocator_gap supplies the active counter at this metric's event,
+        # not the independently occurring active high-water value.
+        active_bytes = cast(int | None, (gap or {}).get(_ACTIVE_COUNTER_BY_METRIC[metric]))
+        # No caller-side max_rows cap: these are all rows in the SQL percentage
+        # denominator, including static/preexisting groups outside top_n.
+        included_bytes = sum(cast(int, row["size_bytes"]) for row in callstack_result.rows)
+        coverage = (
+            included_bytes * 100.0 / active_bytes
+            if active_bytes is not None and active_bytes > 0
+            else None
         )
 
         return PeakMemoryReport(
@@ -82,6 +105,13 @@ class ReportService:
             metric=metric,
             event_id=event_id,
             peak=peak,
-            allocator_gap=gap_result.rows[0] if gap_result.rows else None,
+            allocator_gap=gap,
             callstack_groups=callstack_result.rows,
+            has_more=callstack_result.has_more,
+            truncated=callstack_result.truncated,
+            total_is_exact=callstack_result.total_is_exact,
+            effective_params=attribution_params,
+            included_bytes=included_bytes,
+            active_bytes_at_event=active_bytes,
+            coverage_percent=coverage,
         )

@@ -335,6 +335,23 @@ those callstacks. Keep static and dynamic active-block groups distinct. The
 callstack template has no `offset`; if `has_more` or `truncated` is true,
 increase `top_n` instead of treating the ranked page as complete.
 
+For reports, inspect `has_more`, `truncated`, `total_is_exact`, and
+`effective_params` too. A full dynamic cap means possibly incomplete, not
+proven omissions. Widen report `--limit` (or query `top_n`, with `-n` at least
+`top_n + 2` for special groups) at most twice, for example 20 → 40 → 80, within
+a finite agreed budget. Replace prior ranked windows; do not sum them or use
+unlimited expansion. If still flagged, retain an explicit partial conclusion.
+If an older report lacks these fields, use the verified bounded callstack
+query rather than assuming completeness.
+
+Preserve report `included_bytes`, `percent_denominator`,
+`active_bytes_at_event`, and `coverage_percent`. Row percentages describe
+included bytes after filtering/top_n, not all active memory. Coverage uses the
+active counter at the selected event, never reserved bytes or an independent
+active peak; NULL coverage is unknown. Excluding static/preexisting memory may
+lower coverage without truncation, and 100% coverage does not override cap-hit
+flags. These values do not measure fragmentation or explain allocator gaps.
+
 Do not use `callstack_analysis` as segment-source attribution. Its query has no
 action filter, so it mixes event types and cannot identify which callstack
 caused segment mapping, acquisition, retention, cache bytes, or fragmentation.

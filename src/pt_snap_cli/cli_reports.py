@@ -58,7 +58,12 @@ def report_peak_memory(
         bool,
         typer.Option("--include-static/--exclude-static", help="Include static memory group"),
     ] = True,
-    limit: Annotated[int, typer.Option("--limit", "-n", help="Maximum callstack groups")] = 20,
+    limit: Annotated[
+        int,
+        typer.Option(
+            "--limit", "-n", help="Maximum dynamic callstack groups (static/preexisting are extra)"
+        ),
+    ] = 20,
     json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Generate a peak memory attribution report."""

@@ -196,6 +196,25 @@ occurred together. The repeated `peak` and `allocator_gap` sections should agree
 across all three reports; the metric-specific `event_id` and `callstack_groups`
 are the selected-event breakdown.
 
+Read report `has_more`, `truncated`, `total_is_exact`, and `effective_params`
+before claiming a complete composition. A full dynamic `top_n` window means
+possibly incomplete, not proven omissions. If either flag is true, widen
+`--limit` at most twice (for example 20 → 40 → 80), within a finite agreed
+budget; replace prior results rather than summing ranked windows. If still
+flagged, report partial attribution and stop expanding. Never default to an
+unlimited query. Static/preexisting groups are extra rows outside `top_n`.
+
+Report `included_bytes`, `percent_denominator`, `active_bytes_at_event`, and
+`coverage_percent` with the composition. The percentage denominator is included
+bytes after filtering/top_n, not all active memory. Coverage uses active bytes
+at this selected event even for allocated/reserved peaks; never divide by an
+independent active peak or by reserved bytes. NULL coverage is unknown.
+`--exclude-static` can lower coverage without truncation; 100% coverage does
+not override conservative cap-hit flags. If an older report lacks these fields,
+do not assume completeness: use the verified callstack query with a finite
+`top_n` and `-n` at least `top_n + 2` to retain both special categories, and
+preserve its completeness flags and included-byte denominator.
+
 ### Representative blocks
 
 Use `active_blocks_at_event` at the chosen metric's peak event, not at the end of
