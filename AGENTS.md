@@ -23,7 +23,8 @@ Run these commands from the repository root.
 - Apply formatting: `black .`
 - Type check: `python -m basedpyright --pythonpath "$(python -c 'import sys; print(sys.executable)')"`
   (covers all of `src/pt_snap_cli`, including `snapshot/`; the gate is zero
-  errors and warnings are informational. Do not add a snapshot
+  errors; API/model/representation Any/Unknown checks are errors and other
+  warnings are informational. Do not add a snapshot
   `executionEnvironments` downgrade.)
 
 `tests/run_tests.sh` is tied to a developer-specific Conda path and writes
@@ -51,6 +52,7 @@ when they exist.
 | Surface | Entry point | Responsibility |
 | --- | --- | --- |
 | CLI | `src/pt_snap_cli/cli.py` via `pt_snap_cli.cli:_safe_call` | Typer commands for focus, import, split, metadata, capabilities, overview, query, reports, config, and skill install/list |
+| CLI groups/output | `src/pt_snap_cli/cli_reports.py`, `cli_skills.py`, `cli_output.py` | Report/skill command registration and shared terminal/JSON error adaptation; registered by `cli.py` |
 | Python API | `src/pt_snap_cli/api.py` (`SnapshotAnalyzer`) | Programmatic focus, query, and metadata facade |
 | Product services | `src/pt_snap_cli/core/` | Shared focus, import, split, query, report, metadata, and error semantics |
 | Database access | `src/pt_snap_cli/context.py` | Read-only SQLite validation, connection management, and device discovery |
@@ -147,15 +149,15 @@ templates under category subdirectories are included by
 
 | Change | Start here | Focused tests |
 | --- | --- | --- |
-| CLI options or terminal rendering | `src/pt_snap_cli/cli.py` and the owning core service | `tests/test_cli.py`, `tests/test_completion.py` |
+| CLI options or terminal rendering | `src/pt_snap_cli/cli.py`, `cli_reports.py`, `cli_skills.py`, `cli_output.py`, and the owning core service | `tests/test_cli.py`, `tests/test_cli_json.py`, `tests/test_completion.py` |
 | Focus precedence or persistence | `src/pt_snap_cli/config.py`, `src/pt_snap_cli/core/focus_service.py`, `src/pt_snap_cli/context.py` | `tests/test_config.py`, `tests/test_context.py`, `tests/core/test_focus_service.py` |
 | Context/executor caching | `src/pt_snap_cli/core/context_cache.py`, `src/pt_snap_cli/api.py`, `src/pt_snap_cli/core/query_service.py` | `tests/core/test_context_cache.py`, `tests/test_snapshot_analyzer_cache.py`, `tests/test_query_cache_perf.py` |
 | Query schema, SQL, or categories | `src/pt_snap_cli/query/`, `src/pt_snap_cli/core/query_service.py` | `tests/query/`, `tests/core/test_query_service.py` |
 | Python API behavior | `src/pt_snap_cli/api.py` | `tests/test_api.py`, `tests/test_contract_cli_api.py` |
 | Snapshot import or metadata | `src/pt_snap_cli/core/import_service.py`, `src/pt_snap_cli/core/import_metadata.py`, `src/pt_snap_cli/core/snapshot_import_backend.py` | `tests/core/test_import_*.py`, `tests/test_snapshot_db.py` |
 | Snapshot splitting or replay | `src/pt_snap_cli/core/split_service.py`, `src/pt_snap_cli/snapshot/` | `tests/core/test_split_service.py`, `tests/snapshot/` |
-| Reports | `src/pt_snap_cli/core/report_service.py`, report commands in `src/pt_snap_cli/cli.py` | `tests/core/test_report_service.py`, report cases in `tests/test_cli.py` |
-| Skill list/install destinations or catalog packaging | `src/pt_snap_cli/core/skill_service.py`, `src/pt_snap_cli/bundled_skills/`, skill commands in `src/pt_snap_cli/cli.py` | `tests/core/test_skill_service.py`, `tests/test_bundled_skills.py`, skill cases in `tests/test_cli.py` |
+| Reports | `src/pt_snap_cli/core/report_service.py`, `src/pt_snap_cli/cli_reports.py` | `tests/core/test_report_service.py`, report cases in `tests/test_cli.py` |
+| Skill list/install destinations or catalog packaging | `src/pt_snap_cli/core/skill_service.py`, `src/pt_snap_cli/bundled_skills/`, `src/pt_snap_cli/cli_skills.py` | `tests/core/test_skill_service.py`, `tests/test_bundled_skills.py`, skill cases in `tests/test_cli.py` |
 | Agent setup, Ascend NPU collection, diagnostics, or skill evaluation | `skills/`, `tests/skills/`, and the referenced CLI/query surfaces | `tests/skills/` |
 | Packaging or release | `pyproject.toml`, `.github/workflows/` | `tests/test_package.py`, `tests/test_release_workflow.py` |
 | Executable fixtures | `tests/fixtures/snapshots/` | `tests/test_fixture_provenance.py` before any deserializing suite |
