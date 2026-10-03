@@ -39,6 +39,7 @@ class ReportService:
         include_static: bool = True,
         limit: int = 20,
         start_dir: Path | None = None,
+        stack_bytes: int = -1,
     ) -> PeakMemoryReport:
         if metric not in _EVENT_ID_BY_METRIC:
             raise ValueError(
@@ -59,6 +60,7 @@ class ReportService:
             "include_static": include_static,
             "min_size": 0,
             "top_n": limit,
+            **({"stack_bytes": stack_bytes} if stack_bytes >= 0 else {}),
         }
 
         if event_id is None:

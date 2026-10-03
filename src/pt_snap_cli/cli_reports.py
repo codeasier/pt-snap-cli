@@ -64,6 +64,13 @@ def report_peak_memory(
             "--limit", "-n", help="Maximum dynamic callstack groups (static/preexisting are extra)"
         ),
     ] = 20,
+    stack_bytes: Annotated[
+        int,
+        typer.Option(
+            "--stack-bytes",
+            help="Opt-in UTF-8 byte budget per callstack (0: identity only; negative: full text). Not a response byte cap or token budget.",
+        ),
+    ] = -1,
     json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Generate a peak memory attribution report."""
@@ -76,6 +83,7 @@ def report_peak_memory(
             metric=metric,
             include_static=include_static,
             limit=limit,
+            stack_bytes=stack_bytes,
         )
     except ValueError as e:
         _error(str(e), code=INVALID_PARAMETER, hint="Use --metric active, allocated, or reserved.")

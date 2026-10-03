@@ -100,6 +100,22 @@ target's overview or device.
 
 Confirm these templates exist in the capabilities catalog before diagnosis: `memory_peak`, `allocator_gap`, `event`, `block`, `leak_detection`, `active_memory_callstack_at_event`, `active_blocks_at_event`, `preexisting_live`, `freed_block_lifetime`. If the catalog or overview fails, stop and report the exact failure. Do not silently substitute raw SQL for a missing core template.
 
+## Optional compact stack evidence
+
+For long stack text, check the capabilities catalog for `stack_bytes` on `event`
+or `active_memory_callstack_at_event` before adding `stack_bytes: 256` to their
+params. This is not a `leak_detection` parameter. Retain `stack_id`, `stack_kind`,
+`stack_event_id`, effective `stack_bytes`, `stack_original_bytes`,
+`stack_truncated`, category, numbers and completeness. UTF-8 text bytes are not
+model tokens or a hard JSON response cap. Text shortening does not change
+`has_more`, `truncated` or `total_is_exact` and does not complete a ranked window.
+Never merge groups by shortened text: equal v2 text may have distinct IDs and
+captured text may match synthetic labels. Retrieve full captured text with the
+catalog's `event` query using `id=stack_event_id`, omit `stack_bytes`, and keep
+the same unchanged database/device. Missing/static/preexisting groups have no
+captured allocation stack. Keep per-block `(id, allocEventId)` matching for
+survival evidence; a stack identity is not a block identity.
+
 ## Diagnostic Workflow
 
 ### 1. Establish trace boundaries and memory peaks

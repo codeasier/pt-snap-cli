@@ -165,6 +165,18 @@ def print_peak_memory_report(report: PeakMemoryReport) -> None:
             f"  [{index}] {row.get('category')} {row.get('size_bytes')} bytes, {row.get('block_count')} blocks ({row.get('percent_of_active_blocks')}%)"
         )
         typer.echo(f"      {row.get('callstack')}")
+        if "stack_id" in row:
+            typer.echo(
+                f"      stack_id={row['stack_id']} kind={row.get('stack_kind')} "
+                f"stack_truncated={row.get('stack_truncated')} "
+                f"stack_bytes={row.get('stack_bytes')} "
+                f"stack_original_bytes={row.get('stack_original_bytes')}"
+            )
+            if row.get("stack_kind") == "captured":
+                typer.echo(
+                    "      Full text: query event with "
+                    f"id={row.get('stack_event_id')}, omit stack_bytes, same database/device."
+                )
 
 
 def print_skill_listings(listings: list[SkillListing]) -> None:

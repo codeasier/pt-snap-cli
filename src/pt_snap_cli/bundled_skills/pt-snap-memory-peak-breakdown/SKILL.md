@@ -169,6 +169,26 @@ Stop and report the exact failure if it fails or the options used below are
 absent. A complete successful help result from the same CLI/Python environment
 and version may be reused.
 
+## Optional compact stack evidence
+
+When long stacks dominate output bytes, first confirm `stack_bytes` in the
+catalog for `event` / `active_memory_callstack_at_event` and `--stack-bytes` in
+report help. Opt into `stack_bytes: 256` in those query params or append
+`--stack-bytes 256` to a report. Other templates do not support this parameter.
+Keep `stack_id`, `stack_kind`, `stack_event_id`, effective `stack_bytes`,
+`stack_original_bytes`, `stack_truncated`, category, numbers and completeness
+in the evidence. UTF-8 bytes are not model tokens or a hard JSON response cap.
+`stack_truncated` describes text shortening, not dropped evidence rows; a row
+cap and `has_more` / `truncated` must still be checked separately.
+
+Never identify or merge groups by shortened text: v2 IDs can differ even for
+identical text, and synthetic labels can match captured text. For a captured
+stack, retrieve full text via `event` with `id` equal to `stack_event_id`, omit
+`stack_bytes`, and use the same unchanged database/device. Check the event
+contract before retrieval; missing/static/preexisting attribution has no captured
+allocation stack. Keep these identities even when presenting a shared event's
+attribution once for multiple metrics; retain each metric's counters and gaps.
+
 ## Full-Trace Workflow
 
 `pt-snap report peak-memory` is full-trace only. Run it once for each metric so

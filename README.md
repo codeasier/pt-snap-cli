@@ -75,6 +75,11 @@ group percentages use included bytes after filtering and ranking. See the
 
 ## Agent Skills
 
+For long diagnostic stacks, opt into `stack_bytes` on `event` or
+`active_memory_callstack_at_event`, or `report peak-memory --stack-bytes 256`.
+See [compact callstack text](docs/en/querying.md#compact-callstack-text) for
+identity, byte-budget metadata and full-text retrieval.
+
 Install bundled diagnostic workflows with `pt-snap skill install`. Agent integration uses skills plus the CLI; there is no MCP server. See the [Agent Skills guide](docs/en/skills.md).
 
 Ascend NPU capture can proceed without `pt-snap` when the host has loaded
