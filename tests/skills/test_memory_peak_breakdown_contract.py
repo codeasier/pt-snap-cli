@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -41,7 +42,7 @@ def test_skill_references_current_report_and_templates() -> None:
 
     report_help = CliRunner().invoke(app, ["report", "peak-memory", "--help"])
     assert report_help.exit_code == 0
-    assert "--metric" in report_help.output
+    assert "--metric" in re.sub(r"\x1b\[[0-9;]*m", "", report_help.output)
     assert "pt-snap report peak-memory --help" in skill
     for name, path in templates.items():
         assert f"  {name}:" in path.read_text(encoding="utf-8")

@@ -32,7 +32,7 @@ def test_memory_fragmentation_skill_uses_current_pt_snap_surfaces() -> None:
         assert command in cli
     report_help = CliRunner().invoke(app, ["report", "peak-memory", "--help"])
     assert report_help.exit_code == 0
-    assert "--metric" in report_help.output
+    assert "--metric" in re.sub(r"\x1b\[[0-9;]*m", "", report_help.output)
 
     for template, path in templates.items():
         assert path.is_file()
