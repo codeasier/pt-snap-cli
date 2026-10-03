@@ -136,3 +136,12 @@ Skill 管理只通过 CLI 提供。
 简单的 `env <name>` shebang 按当前 `PATH` 解析；无法解析的 shebang、不支持的参数或
 包装器语义（包括 `env -S`），以及身份探测失败，均保留为 `CLI ownership unverified`。
 身份不匹配则报告 `CLI belongs to another Python environment`；安装仍需用户确认。
+
+### 范围内碎片归因
+
+碎片诊断 skill 的可选 active 块归因始终使用带范围过滤的 `memory_peak`
+查询选出的事件。此规则适用于双界范围、仅下界范围，以及排除负 synthetic
+行的默认 runtime 范围（`start_id=0`）。峰值为空或 NULL 时停止归因；在范围
+开始前分配、但在所选事件仍存活的块仍纳入归因。`report peak-memory` 会选择
+未过滤的全 trace 峰值，因此仅在用户明确要求全 trace 对照、且峰值事件已通过
+校验时使用，并单独标注；其结果不能替代范围内证据。

@@ -289,12 +289,45 @@ permitted.
 
 ### 5. Optionally describe active blocks at selected events
 
-After verifying the optional surfaces, use either or both of these commands:
+#### Range-scoped attribution (including the default runtime range)
+
+Use the `peak_active_event_id` returned by step 1's range-filtered `memory_peak`
+as `<peak_active_event_id>` below. This applies to two-sided ranges, lower-bound-only
+ranges, and the default `start_id=0` with no upper bound. All of them are filtered
+scopes; an omitted upper bound does not make them an unfiltered full trace.
+
+Before attribution, require a non-NULL `peak_active` and an integer, non-negative
+`peak_active_event_id` inside the validated range. If the peak query returns no
+rows, a NULL peak value/event ID, or an invalid/out-of-range event ID, stop this
+phase and report attribution as unavailable. Never fall back to a full-trace
+report or substitute another event. For another selected metric or pressure
+event, use its event ID from the same range-scoped evidence and validate it too.
 
 ```bash
-pt-snap report peak-memory "<db_path>" --device <device_id> --metric active --limit 20 --json
-pt-snap query "<db_path>" --device <device_id> --template-use active_memory_callstack_at_event --params '{"event_id":<event_id>,"include_static":true,"min_size":0,"top_n":20}'
+pt-snap query "<db_path>" --device <device_id> --template-use active_memory_callstack_at_event --params '{"event_id":<peak_active_event_id>,"include_static":true,"min_size":0,"top_n":20}' --json
 ```
+
+The range selects the attribution event, not the allocation dates of live blocks.
+Keep blocks allocated before `<range_start>` that are still live at that event;
+do not add an allocation-window filter. Record the actual attribution event ID
+alongside the range peak and verify they match. Do not use `report peak-memory`
+for this branch: it selects its own unfiltered full-trace peak.
+
+#### Separate full-trace comparison (only when explicitly requested)
+
+Use this branch only for an explicitly requested unfiltered full-trace comparison,
+labelled separately from the runtime/range diagnosis. First inspect the unfiltered
+peak; only run the report if `peak_active` is non-NULL and
+`peak_active_event_id` is a valid non-negative integer. Stop this branch on empty,
+NULL, or negative synthetic peaks instead of attempting dynamic attribution.
+
+```bash
+pt-snap query "<db_path>" --device <device_id> --template-use memory_peak --json
+pt-snap report peak-memory "<db_path>" --device <device_id> --metric active --limit 20 --json
+```
+
+Verify the report's `event_id` matches that unfiltered peak. Never mix this
+comparison into range-scoped evidence, even when the peak IDs happen to match.
 
 Use these results only to describe active blocks at a selected event. They do
 not attribute reserved bytes, cached bytes, or the `reserved - active` gap to
@@ -377,7 +410,8 @@ experiment needs size-bin or contiguous-free-region evidence.
 - Apply one validated event range across every phase so peaks, the curve,
   segment operations, optional aggregates, and attribution inputs share a
   single scope; reject negative peak event IDs before attribution instead of
-  attributing them.
+  attributing them. Range attribution must use the range query's event ID, never
+  the full-trace report; any explicitly requested full-trace comparison is separate.
 - Treat operation counts and size sums as operation volume, not retained bytes.
 - Event IDs are ordering markers, not timestamps.
 - Separate evidence, inference, unknowns, classifications/confidence, and
@@ -393,7 +427,12 @@ experiment needs size-bin or contiguous-free-region evidence.
   `allocator_gap`.
 - The same validated event range was applied consistently to peaks, the
   ordered curve, segment operation pairs, optional aggregates, and
-  attribution inputs.
+  attribution inputs. The actual attribution event ID matched the selected
+  range event for two-sided, lower-bound-only, and default `start_id=0` scopes;
+  empty/NULL peaks stopped attribution without a full-trace fallback. Blocks
+  allocated before the range but still live at that event were retained.
+- Any full-trace report was explicitly requested, checked against its own
+  unfiltered non-negative peak event, and labelled as a separate comparison.
 - The allocated/active/reserved curve used paginated, event-ordered `allocation`
   queries, stopping when `has_more` was false.
 - Runtime `segment_map`/`segment_unmap` and `segment_alloc`/`segment_free` were

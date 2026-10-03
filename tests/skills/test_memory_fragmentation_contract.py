@@ -132,6 +132,30 @@ def test_memory_fragmentation_skill_preserves_snapshotdb_boundaries() -> None:
         assert guardrail in skill
 
 
+def test_memory_fragmentation_skill_separates_range_and_full_trace_attribution() -> None:
+    skill = SKILL_PATH.read_text()
+    attribution = skill.split("### 5.", 1)[1].split("### 6.", 1)[0]
+    scoped, full_trace = attribution.split("#### Separate full-trace comparison", 1)
+    normalized = " ".join(scoped.split())
+
+    assert "pt-snap report peak-memory" not in scoped
+    assert '"event_id":<peak_active_event_id>' in scoped
+    for requirement in (
+        "step 1's range-filtered `memory_peak`",
+        "two-sided ranges, lower-bound-only ranges, and the default `start_id=0`",
+        "integer, non-negative `peak_active_event_id` inside the validated range",
+        "no rows, a NULL peak value/event ID, or an invalid/out-of-range event ID, stop",
+        "Never fall back to a full-trace report or substitute another event",
+        "Keep blocks allocated before `<range_start>` that are still live at that event",
+        "Record the actual attribution event ID",
+    ):
+        assert requirement in normalized
+    assert "only for an explicitly requested unfiltered full-trace comparison" in full_trace
+    assert "pt-snap report peak-memory" in full_trace
+    assert "Never mix this" in full_trace
+    assert "NULL, or negative synthetic peaks" in full_trace
+
+
 def test_memory_fragmentation_skill_prevents_fragmentation_overclaims() -> None:
     skill = SKILL_PATH.read_text()
 

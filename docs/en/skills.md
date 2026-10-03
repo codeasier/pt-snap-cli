@@ -146,3 +146,14 @@ same environment still match. Simple `env <name>` shebangs use the current `PATH
 Unresolved shebangs, unsupported argument/wrapper semantics (including `env -S`),
 or failed identity probes leave `CLI ownership unverified`. A mismatch reports
 `CLI belongs to another Python environment`; installation still requires confirmation.
+
+### Range-scoped fragmentation attribution
+
+The fragmentation skill keeps optional active-block attribution at the event
+selected by the range-filtered `memory_peak` query. This applies to two-sided
+ranges, lower-bound-only ranges, and the default runtime range (`start_id=0`),
+which excludes negative synthetic rows. Empty or NULL peaks stop attribution;
+blocks allocated before the range but still live at the selected event remain
+included. `report peak-memory` selects an unfiltered full-trace peak, so it is
+only used for an explicitly requested, separately labelled full-trace comparison
+after validating its peak event. Its results do not replace range-scoped evidence.
