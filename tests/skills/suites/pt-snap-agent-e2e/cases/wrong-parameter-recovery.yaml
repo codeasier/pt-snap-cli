@@ -1,4 +1,8 @@
 schema_version: 1
+final_answer:
+  required_conclusions:
+    error: [INVALID_PARAMETER]
+    recovery: [min_size=32 succeeded, min_size=32 recovered]
 kind: skill-eval-case
 id: wrong-parameter-recovery
 title: Agent corrects an undeclared parameter using a structured error code

@@ -1,4 +1,8 @@
 schema_version: 1
+final_answer:
+  required_conclusions:
+    error: [TEMPLATE_NOT_FOUND]
+    recovery: [leak_detection succeeded, leak_detection recovered]
 kind: skill-eval-case
 id: wrong-template-recovery
 title: Agent corrects a mistyped template using a structured error code

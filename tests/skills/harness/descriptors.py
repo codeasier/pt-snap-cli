@@ -43,6 +43,12 @@ class SandboxPolicy:
 
 
 @dataclass(frozen=True)
+class FinalAnswerPolicy:
+    require_nonempty: bool = True
+    required_conclusions: tuple[tuple[str, tuple[str, ...]], ...] = ()
+
+
+@dataclass(frozen=True)
 class EvalCase:
     id: str
     path: Path
@@ -63,6 +69,7 @@ class EvalCase:
     max_tool_calls: int | None = None
     additional_fixtures: tuple[dict[str, Any], ...] = ()
     writable_outputs: tuple[str, ...] = ()
+    final_answer: FinalAnswerPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -86,6 +93,7 @@ class EvalSuite:
     timeout_seconds: int
     sandbox: SandboxPolicy
     required_result_fields: tuple[str, ...]
+    final_answer: FinalAnswerPolicy | None = None
 
     @property
     def objectives_by_id(self) -> dict[str, Objective]:
@@ -146,6 +154,29 @@ def _positive_int(value: Any, context: str, *, allow_zero: bool = False) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
         raise DescriptorError(f"{context} must be an integer >= {minimum}")
     return value
+
+
+def _final_answer_policy(value: Any, context: str) -> FinalAnswerPolicy:
+    policy = _strict_mapping(
+        value,
+        context=context,
+        required=set(),
+        allowed={"require_nonempty", "required_conclusions"},
+    )
+    require_nonempty = policy.get("require_nonempty", True)
+    if not isinstance(require_nonempty, bool):
+        raise DescriptorError(f"{context}.require_nonempty must be a boolean")
+    raw_conclusions = policy.get("required_conclusions", {})
+    if not isinstance(raw_conclusions, dict):
+        raise DescriptorError(f"{context}.required_conclusions must be a mapping")
+    conclusions = []
+    for name, raw_alternatives in raw_conclusions.items():
+        name = _string(name, f"{context}: conclusion name")
+        alternatives = _string_list(raw_alternatives, f"{context}: conclusion {name}")
+        if not alternatives:
+            raise DescriptorError(f"{context}: conclusion {name} requires at least one phrase")
+        conclusions.append((name, alternatives))
+    return FinalAnswerPolicy(require_nonempty, tuple(conclusions))
 
 
 def _safe_path(base: Path, raw_path: Any, context: str) -> Path:
@@ -252,6 +283,7 @@ def _load_case(
             "additional_fixtures",
             "writable_outputs",
             "dialog",
+            "final_answer",
             "expected_tools",
             "oracle",
             "scoring",
@@ -479,6 +511,11 @@ def _load_case(
         max_tool_calls=max_tool_calls,
         additional_fixtures=tuple(additional_fixtures),
         writable_outputs=writable_outputs,
+        final_answer=(
+            _final_answer_policy(data["final_answer"], f"{path}: final_answer")
+            if "final_answer" in data
+            else None
+        ),
     )
 
 
@@ -504,6 +541,7 @@ def load_suite(path: Path, *, repo_root: Path = REPO_ROOT) -> EvalSuite:
             "metadata",
             "skill",
             "result_contract",
+            "final_answer",
             "objectives",
             "coverage",
             "defaults",
@@ -728,4 +766,9 @@ def load_suite(path: Path, *, repo_root: Path = REPO_ROOT) -> EvalSuite:
         timeout_seconds=timeout_seconds,
         sandbox=sandbox_policy,
         required_result_fields=required_result_fields,
+        final_answer=(
+            _final_answer_policy(data["final_answer"], f"{path}: final_answer")
+            if "final_answer" in data
+            else None
+        ),
     )

@@ -1,4 +1,8 @@
 schema_version: 1
+final_answer:
+  required_conclusions:
+    unavailable: [no discoverable device, no device]
+    failed_lookup: [failed lookup]
 kind: skill-eval-case
 id: no-device
 title: A database without discoverable devices is a failure, not an empty result

@@ -15,6 +15,15 @@ required:
 fields:
   task:
     required: [initial_user]
+  final_answer:
+    optional: [require_nonempty, required_conclusions]
+    require_nonempty_type: boolean
+    require_nonempty_default: true
+    required_conclusions_type: mapping-of-names-to-nonempty-lists-of-nonempty-phrases
+    matching: casefold-and-collapse-whitespace-substring-any-phrase-per-conclusion
+    rule: replaces-entire-suite-final-answer-policy-for-all-classifications
+    omitted: inherit-suite-policy
+    disabled: require_nonempty-false-and-no-required-conclusions
   fixture:
     required: [builder, definition, mount_path, read_only]
     builder_values: [synthetic-snapshotdb]

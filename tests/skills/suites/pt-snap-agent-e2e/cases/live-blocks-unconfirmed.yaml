@@ -1,4 +1,8 @@
 schema_version: 1
+final_answer:
+  required_conclusions:
+    candidate: [4096-byte candidate, candidate of 4096 bytes]
+    uncertainty: [not proof, unconfirmed]
 kind: skill-eval-case
 id: live-blocks-unconfirmed
 title: End-of-trace live blocks are not a confirmed leak

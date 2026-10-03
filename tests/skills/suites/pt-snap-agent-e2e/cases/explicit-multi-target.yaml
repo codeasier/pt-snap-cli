@@ -1,4 +1,8 @@
 schema_version: 1
+final_answer:
+  required_conclusions:
+    database: [/fixtures/target.db]
+    device: [device 1]
 kind: skill-eval-case
 id: explicit-multi-target
 title: Agent uses the user-specified database and device, not the first discovered ones

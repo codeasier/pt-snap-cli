@@ -1,7 +1,11 @@
+import json
+from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from tests.skills.harness.artifacts import write_run_artifacts
-from tests.skills.harness.descriptors import load_suite
+from tests.skills.harness.descriptors import FinalAnswerPolicy, load_suite
 from tests.skills.harness.grader import RunRecord, ToolCall, _output_contains, grade_run
 
 SUITE_PATH = Path("tests/skills/suites/pt-snap-memory-leak/suite.yaml")
@@ -112,6 +116,10 @@ def test_grader_accepts_a_grounded_read_only_run(tmp_path: Path) -> None:
         "outcome.json",
         "score.json",
     }
+    report = json.loads((output_directory / "score.json").read_text())
+    assert report["trace_result"] == {"passed": True, "score": 100}
+    assert report["final_answer"] == {"checked": False, "passed": None, "violations": []}
+    assert report["execution_evidence"]["runner_execution_verified"] is False
 
 
 def test_grader_hard_fails_a_forbidden_tool_attempt() -> None:
@@ -266,3 +274,114 @@ def test_grader_rejects_malformed_result_shapes() -> None:
 
     assert grade.passed is False
     assert "result.claims must be a list" in grade.contract_violations
+
+
+@pytest.mark.parametrize("response", ["", " \n\t", "banana"])
+def test_legacy_policy_does_not_require_final_answer(response: str) -> None:
+    suite = load_suite(SUITE_PATH)
+    run = replace(_passing_allocator_cache_run(), final_response=response)
+
+    grade = grade_run(suite, suite.case("allocator-cache"), run)
+
+    assert grade.passed
+    assert grade.score == 100
+    assert grade.final_answer_passed is None
+
+
+@pytest.mark.parametrize("response, passed", [("", False), (" \n\t", False), ("banana", True)])
+def test_nonempty_only_policy_is_not_a_semantic_judge(response: str, passed: bool) -> None:
+    suite = replace(load_suite(SUITE_PATH), final_answer=FinalAnswerPolicy())
+    run = replace(_passing_allocator_cache_run(), final_response=response)
+
+    grade = grade_run(suite, suite.case("allocator-cache"), run)
+
+    assert grade.passed is passed
+    assert grade.trace_result_passed
+    assert grade.final_answer_passed is passed
+
+
+def test_case_policy_replaces_suite_and_matches_only_user_facing_conclusions() -> None:
+    suite = replace(
+        load_suite(SUITE_PATH),
+        final_answer=FinalAnswerPolicy(required_conclusions=(("suite-only", ("not in answer",)),)),
+    )
+    case = replace(
+        suite.case("allocator-cache"),
+        final_answer=FinalAnswerPolicy(
+            required_conclusions=(
+                ("classification", ("allocator/cache effect", "allocator cache")),
+                ("peak_reserved_bytes", ("reserved peak: 8192",)),
+            )
+        ),
+    )
+    run = _passing_allocator_cache_run()
+    missing = grade_run(suite, case, run)
+    assert not missing.passed
+    assert missing.trace_result_passed
+    assert missing.final_answer_violations == (
+        "final_response is missing required conclusion: peak_reserved_bytes",
+    )
+    complete = grade_run(
+        suite, case, replace(run, final_response="ALLOCATOR   CACHE. Reserved\npeak: 8192.")
+    )
+    assert complete.passed
+    assert complete.final_answer_passed is True
+
+    opt_out = replace(case, final_answer=FinalAnswerPolicy(require_nonempty=False))
+    unchecked = grade_run(suite, opt_out, replace(run, final_response=""))
+    assert unchecked.passed
+    assert unchecked.final_answer_passed is None
+
+
+@pytest.mark.parametrize("classification", ["inconclusive", "blocked", "unavailable"])
+def test_refusal_and_unavailable_results_still_require_an_answer(classification: str) -> None:
+    suite = replace(load_suite(SUITE_PATH), final_answer=FinalAnswerPolicy())
+    case = replace(suite.case("pickle-refusal"), allowed_classifications=(classification,))
+    run = RunRecord(
+        tool_calls=(),
+        result={
+            "classification": classification,
+            "facts": {"diagnosis_performed": False},
+            "claims": [],
+            "unknowns": ["trusted-input decision", "SnapshotDB path"],
+        },
+    )
+    grade = grade_run(suite, case, run)
+    assert grade.trace_result_passed
+    assert not grade.passed
+    assert grade.final_answer_passed is False
+    assert grade_run(
+        suite, case, replace(run, final_response="Please provide a SnapshotDB.")
+    ).passed
+
+
+def test_case_can_enable_conclusions_without_nonempty_or_suite_policy() -> None:
+    suite = load_suite(SUITE_PATH)
+    case = replace(
+        suite.case("allocator-cache"),
+        final_answer=FinalAnswerPolicy(
+            require_nonempty=False,
+            required_conclusions=(("classification", ("allocator/cache effect",)),),
+        ),
+    )
+    run = _passing_allocator_cache_run()
+    assert grade_run(suite, case, run).passed
+    assert not grade_run(suite, case, replace(run, final_response="")).passed
+
+
+@pytest.mark.parametrize("response", [None, True, 123, [], {}, ["answer"]])
+def test_run_loader_rejects_non_string_final_response(response) -> None:
+    with pytest.raises(ValueError, match="final_response must be a string"):
+        RunRecord.from_mapping({"tool_calls": [], "result": {}, "final_response": response})
+
+
+def test_run_loader_retains_legacy_missing_answer() -> None:
+    assert RunRecord.from_mapping({"tool_calls": [], "result": {}}).final_response == ""
+
+
+def test_grader_does_not_stringify_an_invalid_direct_record() -> None:
+    suite = replace(load_suite(SUITE_PATH), final_answer=FinalAnswerPolicy())
+    run = replace(_passing_allocator_cache_run(), final_response=None)
+    grade = grade_run(suite, suite.case("allocator-cache"), run)
+    assert not grade.passed
+    assert grade.final_answer_violations == ("final_response must be a string",)

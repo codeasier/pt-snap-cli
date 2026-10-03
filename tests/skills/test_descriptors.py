@@ -4,7 +4,7 @@ from shutil import copytree
 import pytest
 import yaml
 
-from tests.skills.harness.descriptors import DescriptorError, load_suite
+from tests.skills.harness.descriptors import DescriptorError, FinalAnswerPolicy, load_suite
 
 SUITE_DIRECTORY = Path("tests/skills/suites/pt-snap-memory-leak")
 SUITE_PATH = SUITE_DIRECTORY / "suite.yaml"
@@ -175,3 +175,56 @@ def test_leak_suite_actions_default_to_success_status() -> None:
     suite = load_suite(SUITE_PATH)
 
     assert {action.status for action in suite.case("allocator-cache").actions} == {"success"}
+
+
+@pytest.mark.parametrize("scope", ["suite", "case"])
+@pytest.mark.parametrize(
+    "policy",
+    [
+        None,
+        False,
+        [],
+        {"require_nonempty": "true"},
+        {"require_nonempty": 1},
+        {"required_conclusions": []},
+        {"required_conclusions": {"peak": []}},
+        {"required_conclusions": {"peak": "8192"}},
+        {"required_conclusions": {"peak": [None]}},
+        {"required_conclusions": {"peak": [" \n"]}},
+        {"required_conclusions": {"": ["8192"]}},
+        {"required_conclusions": {"peak": ["8192", "8192"]}},
+        {"unknown": True},
+    ],
+)
+def test_final_answer_policy_rejects_malformed_configuration(
+    tmp_path: Path, scope: str, policy
+) -> None:
+    copied_suite = tmp_path / "suite"
+    copytree(SUITE_DIRECTORY, copied_suite)
+    target = copied_suite / ("suite.yaml" if scope == "suite" else "cases/allocator-cache.yaml")
+    data = yaml.safe_load(target.read_text())
+    data["final_answer"] = policy
+    target.write_text(yaml.safe_dump(data, sort_keys=False))
+
+    with pytest.raises(DescriptorError, match="final_answer"):
+        load_suite(copied_suite / "suite.yaml")
+
+
+def test_final_answer_policy_loads_defaults_and_case_override(tmp_path: Path) -> None:
+    copied_suite = tmp_path / "suite"
+    copytree(SUITE_DIRECTORY, copied_suite)
+    suite_path = copied_suite / "suite.yaml"
+    data = yaml.safe_load(suite_path.read_text())
+    data["final_answer"] = {"required_conclusions": {"diagnosis": ["allocator cache"]}}
+    suite_path.write_text(yaml.safe_dump(data, sort_keys=False))
+    case_path = copied_suite / "cases/allocator-cache.yaml"
+    data = yaml.safe_load(case_path.read_text())
+    data["final_answer"] = {"require_nonempty": False}
+    case_path.write_text(yaml.safe_dump(data, sort_keys=False))
+
+    suite = load_suite(suite_path)
+    assert suite.final_answer == FinalAnswerPolicy(
+        required_conclusions=(("diagnosis", ("allocator cache",)),)
+    )
+    assert suite.case("allocator-cache").final_answer == FinalAnswerPolicy(require_nonempty=False)
+    assert suite.case("pickle-refusal").final_answer is None

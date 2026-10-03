@@ -39,10 +39,13 @@ class RunRecord:
         calls = data.get("tool_calls", [])
         if not isinstance(calls, list) or not isinstance(data.get("result"), dict):
             raise ValueError("run record requires tool_calls list and result mapping")
+        final_response = data.get("final_response", "")
+        if not isinstance(final_response, str):
+            raise ValueError("run record final_response must be a string")
         return cls(
             tool_calls=tuple(ToolCall.from_mapping(call) for call in calls),
             result=dict(data["result"]),
-            final_response=str(data.get("final_response", "")),
+            final_response=final_response,
         )
 
 
@@ -63,11 +66,24 @@ class GradeResult:
     objectives: tuple[ObjectiveGrade, ...]
     matched_actions: dict[str, str]
     contract_violations: tuple[str, ...] = ()
+    trace_result_passed: bool = False
+    final_answer_passed: bool | None = None
+    final_answer_violations: tuple[str, ...] = ()
 
     def to_mapping(self) -> dict[str, Any]:
         return {
             "passed": self.passed,
             "score": self.score,
+            "trace_result": {"passed": self.trace_result_passed, "score": self.score},
+            "final_answer": {
+                "checked": self.final_answer_passed is not None,
+                "passed": self.final_answer_passed,
+                "violations": list(self.final_answer_violations),
+            },
+            "execution_evidence": {
+                "kind": "record_grading",
+                "runner_execution_verified": False,
+            },
             "gate_violations": list(self.gate_violations),
             "contract_violations": list(self.contract_violations),
             "matched_actions": self.matched_actions,
@@ -299,10 +315,29 @@ def _result_contract_checks(suite: EvalSuite, run: RunRecord) -> tuple[str, ...]
     return tuple(violations)
 
 
+def _final_answer_checks(
+    suite: EvalSuite, case: EvalCase, run: RunRecord
+) -> tuple[bool | None, tuple[str, ...]]:
+    policy = case.final_answer if case.final_answer is not None else suite.final_answer
+    if policy is None or (not policy.require_nonempty and not policy.required_conclusions):
+        return None, ()
+    if not isinstance(run.final_response, str):
+        return False, ("final_response must be a string",)
+    text = _normalize_text(run.final_response)
+    violations = []
+    if policy.require_nonempty and not text:
+        violations.append("final_response must be non-empty")
+    for name, alternatives in policy.required_conclusions:
+        if not any(_normalize_text(phrase) in text for phrase in alternatives):
+            violations.append(f"final_response is missing required conclusion: {name}")
+    return not violations, tuple(violations)
+
+
 def grade_run(suite: EvalSuite, case: EvalCase, run: RunRecord) -> GradeResult:
     matched, positions = _match_actions(case, run)
     gate_violations = _safety_checks(suite, case, run)
     contract_violations = _result_contract_checks(suite, run)
+    final_answer_passed, final_answer_violations = _final_answer_checks(suite, case, run)
     scorer_results = {
         "safety": (not gate_violations, gate_violations),
         "tool_path": _tool_path_score(suite, case, run, matched, positions),
@@ -340,11 +375,15 @@ def grade_run(suite: EvalSuite, case: EvalCase, run: RunRecord) -> GradeResult:
 
     by_id = {grade.objective_id: grade for grade in grades}
     mandatory_passed = all(by_id[objective_id].passed for objective_id in case.mandatory_objectives)
+    trace_result_passed = not gate_violations and not contract_violations and mandatory_passed
     return GradeResult(
-        passed=not gate_violations and not contract_violations and mandatory_passed,
+        passed=trace_result_passed and final_answer_passed is not False,
         score=round(sum(grade.earned for grade in grades), 2),
         gate_violations=gate_violations,
         objectives=tuple(grades),
         matched_actions=matched,
         contract_violations=contract_violations,
+        trace_result_passed=trace_result_passed,
+        final_answer_passed=final_answer_passed,
+        final_answer_violations=final_answer_violations,
     )

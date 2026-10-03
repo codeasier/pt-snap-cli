@@ -47,12 +47,21 @@ class CaseMetrics:
     call_count: int
     output_bytes: int
     error_conclusion: bool
+    trace_result_passed: bool
+    final_answer_passed: bool | None
+    final_answer_violations: tuple[str, ...]
 
     def to_mapping(self) -> dict[str, Any]:
         return {
             "case_id": self.case_id,
             "passed": self.passed,
             "score": self.score,
+            "trace_result": {"passed": self.trace_result_passed, "score": self.score},
+            "final_answer": {
+                "checked": self.final_answer_passed is not None,
+                "passed": self.final_answer_passed,
+                "violations": list(self.final_answer_violations),
+            },
             "call_count": self.call_count,
             "output_bytes": self.output_bytes,
             "error_conclusion": self.error_conclusion,
@@ -73,6 +82,10 @@ class BaselineSummary:
     def to_mapping(self) -> dict[str, Any]:
         return {
             "suite_id": self.suite_id,
+            "execution_evidence": {
+                "kind": "recorded_baseline_rescore",
+                "runner_execution_verified": False,
+            },
             "case_count": self.case_count,
             "passed_count": self.passed_count,
             "task_success_rate": self.task_success_rate,
@@ -91,6 +104,9 @@ def collect_case_metrics(case: EvalCase, run: RunRecord, grade: GradeResult) -> 
         call_count=len(run.tool_calls),
         output_bytes=run_output_bytes(run),
         error_conclusion=is_error_conclusion(case, run),
+        trace_result_passed=grade.trace_result_passed,
+        final_answer_passed=grade.final_answer_passed,
+        final_answer_violations=grade.final_answer_violations,
     )
 
 
