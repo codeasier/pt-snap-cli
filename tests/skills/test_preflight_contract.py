@@ -4,6 +4,7 @@ import json
 import re
 import shlex
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -96,7 +97,7 @@ def db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.delenv("PT_SNAP_DB_PATH", raising=False)
     monkeypatch.delenv("PT_SNAP_SKILLS_DIR", raising=False)
     path = tmp_path / "preflight.db"
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn, conn:
         conn.execute(
             "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
         )
@@ -169,11 +170,11 @@ def test_overview_status_drives_preflight_even_with_outer_success(db: Path, stat
         service = ImportMetadataService()
         service.write(db, service.build_metadata(source, service.calculate_sha256(source), None))
     elif state == "invalid":
-        with sqlite3.connect(db) as conn:
+        with closing(sqlite3.connect(db)) as conn, conn:
             conn.execute("CREATE TABLE pt_snap_metadata (id INTEGER)")
             conn.execute("INSERT INTO pt_snap_metadata VALUES (1)")
     elif state == "schema-error":
-        with sqlite3.connect(db) as conn:
+        with closing(sqlite3.connect(db)) as conn, conn:
             conn.execute("DROP TABLE dictionary")
     result = runner.invoke(app, ["overview", str(db), "--json"])
     if state == "schema-error":

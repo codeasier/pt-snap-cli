@@ -8,6 +8,7 @@ slicing in :class:`QueryService`.
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,8 @@ from pt_snap_cli.context import Context
 from pt_snap_cli.core.query_service import QueryService
 from pt_snap_cli.query.executor import QueryExecutor
 from pt_snap_cli.query.registry import QueryRegistry, _load_all_templates
+
+pytestmark = pytest.mark.usefixtures("owned_service_instances")
 
 
 @pytest.fixture(autouse=True)
@@ -193,7 +196,7 @@ class TestCallstackAnalysisMaxRowsPushdown:
         assert len(rows) == 2
 
     def test_missing_callstack_uses_placeholder(self, callstack_db: Path) -> None:
-        with sqlite3.connect(callstack_db) as conn:
+        with closing(sqlite3.connect(callstack_db)) as conn, conn:
             conn.execute(
                 "INSERT INTO trace_entry_0 (id, size, callstackId) VALUES (?, ?, ?)",
                 (100, 1, 99),

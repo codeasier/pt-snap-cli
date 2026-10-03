@@ -13,6 +13,7 @@ import ast
 import inspect
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -27,6 +28,8 @@ from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.registry import QueryRegistry, register_query
 
 runner = CliRunner()
+
+pytestmark = pytest.mark.usefixtures("owned_service_instances")
 
 
 def create_contract_db(db_path: Path) -> Path:
@@ -632,7 +635,7 @@ def test_query_json_contract_matches_api_semantics(contract_db: Path) -> None:
 @pytest.mark.parametrize("layout", ["v1", "v2"])
 def test_missing_callstack_query_json_contract(contract_db: Path, layout: str) -> None:
     name = "active_memory_callstack_at_event"
-    with sqlite3.connect(contract_db) as conn:
+    with closing(sqlite3.connect(contract_db)) as conn, conn:
         if layout == "v1":
             conn.executemany(
                 "INSERT INTO trace_entry_0 (id, callstack) VALUES (?, ?)",

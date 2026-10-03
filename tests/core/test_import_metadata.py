@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from pt_snap_cli.core.models import ImportMetadata
 
 
 def _create_snapshot_db(path: Path) -> Path:
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn, conn:
         conn.execute(
             "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
         )
@@ -96,7 +97,7 @@ def test_inspect_reports_missing_metadata(tmp_path: Path) -> None:
 
 def test_inspect_reports_invalid_metadata_columns(tmp_path: Path) -> None:
     db_path = _create_snapshot_db(tmp_path / "invalid.db")
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.execute("CREATE TABLE pt_snap_metadata (id INTEGER)")
         conn.execute("INSERT INTO pt_snap_metadata VALUES (1)")
 
@@ -110,7 +111,7 @@ def test_inspect_reports_unsupported_metadata_version(tmp_path: Path) -> None:
     db_path = _create_snapshot_db(tmp_path / "future.db")
     service = ImportMetadataService()
     service.write(db_path, _metadata())
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.execute("UPDATE pt_snap_metadata SET metadata_schema_version = 999")
 
     inspection = service.inspect(db_path)
@@ -123,7 +124,7 @@ def test_inspect_rejects_non_utc_completed_at(tmp_path: Path) -> None:
     db_path = _create_snapshot_db(tmp_path / "non-utc.db")
     service = ImportMetadataService()
     service.write(db_path, _metadata())
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.execute("UPDATE pt_snap_metadata SET completed_at = '2026-07-18T18:00:00+08:00'")
 
     inspection = service.inspect(db_path)
@@ -134,7 +135,7 @@ def test_inspect_rejects_non_utc_completed_at(tmp_path: Path) -> None:
 
 def test_inspect_rejects_duplicate_metadata_rows(tmp_path: Path) -> None:
     db_path = _create_snapshot_db(tmp_path / "duplicate.db")
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.execute("""
             CREATE TABLE pt_snap_metadata (
                 id INTEGER,

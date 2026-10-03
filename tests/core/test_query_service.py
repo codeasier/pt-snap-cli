@@ -16,6 +16,8 @@ from pt_snap_cli.core import (
 from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.registry import QueryRegistry, register_query
 
+pytestmark = pytest.mark.usefixtures("owned_service_instances")
+
 
 @pytest.fixture(autouse=True)
 def mock_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

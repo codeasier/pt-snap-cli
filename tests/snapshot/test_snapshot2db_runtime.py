@@ -1,5 +1,6 @@
 import pickle
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -51,7 +52,7 @@ def test_snapshot2db(dump_database):
 
     assert result is True
     assert database.exists()
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         assert connection.execute("SELECT COUNT(*) FROM trace_entry_0").fetchone()[0] == 8189
         assert connection.execute("SELECT COUNT(*) FROM block_0").fetchone()[0] == 3219
 
@@ -127,7 +128,7 @@ def test_fast_frame_import_matches_eager_database_exactly(monkeypatch, tmp_path)
         else:
             monkeypatch.setattr(snapshot2db, "replay_snapshot", original_replay)
         assert snapshot2db.dump(snapshot, database, 0)
-        with sqlite3.connect(database) as connection:
+        with closing(sqlite3.connect(database)) as connection, connection:
             return connection.execute(
                 "SELECT t.id, t.action, t.address, t.size, t.stream, "
                 "t.allocated, t.active, t.reserved, c.callstack "
@@ -247,7 +248,7 @@ def test_failed_dump_preserves_existing_database(tmp_path):
     database = tmp_path / "existing.db"
     with snapshot.open("wb") as stream:
         pickle.dump(representation, stream)
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         connection.execute("CREATE TABLE marker (value TEXT)")
         connection.execute("INSERT INTO marker VALUES ('preserved')")
         connection.commit()
@@ -255,7 +256,7 @@ def test_failed_dump_preserves_existing_database(tmp_path):
     with pytest.raises(KeyError, match="name"):
         snapshot2db.dump(snapshot, database, 0)
 
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         assert connection.execute("SELECT value FROM marker").fetchone() == ("preserved",)
 
 
@@ -271,7 +272,7 @@ def test_expandable_snapshot2db(dump_database):
 
     assert result is True
     assert database.exists()
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         assert connection.execute("SELECT COUNT(*) FROM trace_entry_0").fetchone()[0] == 8134
         assert connection.execute("SELECT COUNT(*) FROM block_0").fetchone()[0] == 3219
 
@@ -303,7 +304,7 @@ def test_snapshot2db_dumps_oom_event_without_addr(tmp_path: Path):
         restore_logs()
 
     assert result is True
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         action, address, size = connection.execute(
             "SELECT action, address, size FROM trace_entry_0"
         ).fetchone()
@@ -318,7 +319,7 @@ def test_dump_all_multiple_device_snapshot(dump_database):
 
     assert result is True
     assert database.exists()
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         tables = {
             row[0]
             for row in connection.execute(
@@ -352,7 +353,7 @@ def test_database_matches_pre_relocation_golden(dump_database, fixture_name, dev
     block_table = f"block_{device}"
 
     assert result is True
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         rows = (
             connection.execute(f"SELECT COUNT(*) FROM {trace_table}").fetchone()[0],
             connection.execute(f"SELECT COUNT(*) FROM {block_table}").fetchone()[0],
@@ -395,7 +396,7 @@ def test_database_schema_and_action_state_mapping_are_exact(dump_database):
 
     assert RUNTIME_ACTION_VALUE_MAP == ACTION_VALUE_MAP
     assert RUNTIME_BLOCK_STATE_VALUE_MAP == BLOCK_STATE_VALUE_MAP
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         assert connection.execute("PRAGMA table_info(callstack)").fetchall() == CALLSTACK_SCHEMA
         for device in (0, 1):
             assert (
@@ -423,7 +424,7 @@ def test_database_schema_and_action_state_mapping_are_exact(dump_database):
 
 def test_multi_device_database_rows_are_isolated(dump_database):
     _, database = dump_database("snapshot_with_multi_devices.pkl")
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         device_zero = connection.execute(
             "SELECT COUNT(*), SUM(size), MAX(reserved) FROM trace_entry_0"
         ).fetchone()
@@ -438,7 +439,7 @@ def test_multi_device_database_rows_are_isolated(dump_database):
 
 def test_callstack_serialization_preserves_frame_order(dump_database):
     _, database = dump_database("snapshot_1768383987920985470.pkl", 0)
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         callstack = connection.execute(
             "SELECT c.callstack FROM trace_entry_0 t "
             "JOIN callstack c ON c.id = t.callstackId "
@@ -452,7 +453,7 @@ def test_callstack_serialization_preserves_frame_order(dump_database):
 
 def test_callstack_table_is_deduplicated_and_covers_every_event(dump_database):
     _, database = dump_database("snapshot_1768383987920985470.pkl", 0)
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         rows, distinct_ids, distinct_texts = connection.execute(
             "SELECT COUNT(*), COUNT(DISTINCT id), COUNT(DISTINCT callstack) FROM callstack"
         ).fetchone()

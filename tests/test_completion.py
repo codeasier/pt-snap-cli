@@ -105,6 +105,31 @@ class TestCompleteSkillTargets:
 
 
 class TestCompleteDeviceIds:
+    @pytest.mark.parametrize("valid", [True, False])
+    def test_completion_closes_connection(self, tmp_path, monkeypatch, valid):
+        db_path = tmp_path / "completion.db"
+        if valid:
+            _create_sample_db(db_path)
+        else:
+            db_path.write_text("not SQLite")
+        monkeypatch.setenv(ENV_DB_PATH, str(db_path))
+        connections = []
+        original_connect = sqlite3.connect
+
+        def tracked_connect(*args, **kwargs):
+            conn = original_connect(*args, **kwargs)
+            connections.append(conn)
+            return conn
+
+        monkeypatch.setattr(sqlite3, "connect", tracked_connect)
+        assert complete_device_ids() == (["0", "1"] if valid else [])
+        assert len(connections) == 1
+        try:
+            with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                connections[0].execute("SELECT 1")
+        finally:
+            connections[0].close()
+
     def test_returns_device_ids_from_db(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         db_path = _create_sample_db(tmp_path / "test.db")
         monkeypatch.setenv(ENV_DB_PATH, str(db_path))

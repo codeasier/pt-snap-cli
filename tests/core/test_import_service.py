@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import pickle
 import sys
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -347,7 +348,7 @@ def test_malformed_metadata_rebuilds_database(
     first = service.import_snapshot(
         ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
     )
-    with sqlite3.connect(first.db_path) as conn:
+    with closing(sqlite3.connect(first.db_path)) as conn, conn:
         conn.execute("UPDATE pt_snap_metadata SET source_sha256 = 'invalid'")
 
     original_dump = service._backend.dump_to_db
@@ -375,7 +376,7 @@ def test_legacy_database_rebuilds_once_then_reuses(tmp_path: Path) -> None:
     import_service_cls = _import_service_type()
     service = import_service_cls()
     legacy_db = tmp_path / f"{EMPTY_CACHE_SNAPSHOT.name}.db"
-    with sqlite3.connect(legacy_db) as conn:
+    with closing(sqlite3.connect(legacy_db)) as conn, conn:
         conn.execute(
             "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
         )

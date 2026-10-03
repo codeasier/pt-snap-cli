@@ -1,6 +1,7 @@
 """Tests for query executor."""
 
 import sqlite3
+from contextlib import closing
 
 import pytest
 
@@ -396,7 +397,7 @@ class TestQueryExecutor:
 
     def test_legacy_callstack_schema_error_is_actionable(self, tmp_path):
         db_path = tmp_path / "legacy.db"
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn, conn:
             conn.execute("CREATE TABLE dictionary (table_name TEXT)")
             conn.execute("CREATE TABLE trace_entry_0 " "(id INTEGER, callstack TEXT)")
         executor = QueryExecutor(Context(db_path))
@@ -412,7 +413,7 @@ class TestQueryExecutor:
 
     def test_qualified_legacy_callstack_schema_error_is_actionable(self, tmp_path):
         db_path = tmp_path / "legacy-qualified.db"
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn, conn:
             conn.execute("CREATE TABLE dictionary (table_name TEXT)")
             conn.execute("CREATE TABLE trace_entry_0 (id INTEGER)")
         executor = QueryExecutor(Context(db_path))
@@ -428,7 +429,7 @@ class TestQueryExecutor:
 
     def test_variant_template_uses_inline_sql_on_v1_database(self, tmp_path):
         db_path = tmp_path / "v1.db"
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn, conn:
             conn.execute("CREATE TABLE dictionary (table_name TEXT)")
             conn.execute("CREATE TABLE trace_entry_0 (id INTEGER, size INTEGER, callstack TEXT)")
             conn.execute(
