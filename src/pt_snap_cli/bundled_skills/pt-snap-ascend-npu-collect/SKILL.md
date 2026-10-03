@@ -238,7 +238,7 @@ clears history after each dump, and can attach
 `torch_npu._C._npu_attach_out_of_memory_observer` for OOM.
 
 ```bash
-python3 -m verl.trainer.main_ppo ... \
+"<python_executable>" -m verl.trainer.main_ppo ... \
   trainer.device=npu \
   global_profiler.tool=torch_memory \
   actor_rollout_ref.actor.profiler.enable=True \
