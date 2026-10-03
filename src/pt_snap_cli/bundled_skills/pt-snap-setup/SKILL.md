@@ -57,9 +57,36 @@ If both commands succeed, save the first command's output as `<pt_snap_executabl
 ```bash
 "<python_executable>" -c "from pathlib import Path; import sys; print(Path(sys.argv[1]).open(encoding='utf-8').readline().strip())" "<pt_snap_executable>"
 ```
-Resolve the shebang interpreter and compare `realpath` values computed temporarily for the shebang interpreter and `<python_executable>`. For an `/usr/bin/env <name>` shebang, resolve `<name>` in the current `PATH` before comparing. Never replace `<python_executable>` with its `realpath`; canonicalization is only for this ownership comparison. Report `ready` only when `pt-snap --help` succeeds and both comparison paths identify the same interpreter.
+Resolve a plain absolute-path shebang as `<cli_python_executable>`, preserving its original path. For a simple `/usr/bin/env <name>` shebang, resolve `<name>` in the current `PATH` without dereferencing symlinks. If the shebang is missing, cannot be resolved, or uses arguments/wrappers whose semantics cannot be preserved (including `env -S`), report `CLI ownership unverified`; do not drop arguments and probe a different invocation.
 
-If the shebang is missing or cannot be resolved, report `CLI ownership unverified`. If it points to another interpreter, report `CLI belongs to another Python environment`. Do not report the selected Python environment as ready and do not reinstall automatically.
+Never replace `<python_executable>` with its `realpath`; preserve `<cli_python_executable>` too. Two different venvs, or a venv and its base environment, may share the same executable `realpath`. Probe both environments through their original execution paths, then compare **both** normalized `sys.executable` and normalized `sys.prefix`. Normalize with `normcase(realpath(...))` only for comparison: directory symlink aliases of the same environment may have different raw prefixes.
+
+For a resolved interpreter without shebang arguments, run this read-only ownership probe:
+```bash
+"<python_executable>" - "<cli_python_executable>" <<'PY'
+import json
+import os
+import subprocess
+import sys
+
+selected = {"executable": sys.executable, "prefix": sys.prefix}
+probe = "import json, sys; print(json.dumps({'executable': sys.executable, 'prefix': sys.prefix}))"
+try:
+    cli = json.loads(subprocess.check_output(
+        [sys.argv[1], "-c", probe], text=True, timeout=10,
+    ))
+    def identity(info):
+        return tuple(os.path.normcase(os.path.realpath(info[key]))
+                     for key in ("executable", "prefix"))
+    matches = identity(selected) == identity(cli)
+except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError) as error:
+    print(f"CLI ownership unverified: {error}")
+else:
+    print(json.dumps({"selected": selected, "cli": cli}))
+    print("matches selected Python" if matches else "CLI belongs to another Python environment")
+PY
+```
+Report `ready` only when `pt-snap --help` succeeds and the probe reports `matches selected Python`. A failed identity probe leaves ownership unverified. If either normalized identity component differs, report `CLI belongs to another Python environment`. Do not report the selected Python environment as ready and do not reinstall automatically.
 
 ### 3. If the CLI is unavailable or belongs elsewhere, check package availability
 Run this check if `pt-snap --help` failed or Step 2 did not verify ownership:
@@ -110,11 +137,11 @@ pt-snap --help
 "<python_executable>" -c "import pt_snap_cli; print(pt_snap_cli.__file__)"
 "<python_executable>" -m pip show pt-snap-cli
 ```
-Repeat the shebang comparison from Step 2 when `command -v pt-snap` and `pt-snap --help` succeed. Then report the final state using the result categories in the output template.
+Repeat the shebang resolution and environment identity probe from Step 2 when `command -v pt-snap` and `pt-snap --help` succeed. Then report the final state using the result categories in the output template.
 
 If installation succeeds but `pt-snap --help` still fails while the import succeeds, report `CLI missing but import works` and explain that the executable directory is not on the current shell `PATH`. Do not run another install automatically.
 
-If `pt-snap` still resolves to another interpreter, report `CLI belongs to another Python environment`, even when the selected Python can import the package. Do not report `ready` until CLI ownership matches.
+If `pt-snap` still resolves to another environment, report `CLI belongs to another Python environment`, even when the selected Python can import the package. Do not report `ready` until CLI ownership matches.
 
 ### 7. Stop if verification still fails
 If verification still fails after the confirmed install command, stop and report the exact failure. Do not guess another environment, do not try a different interpreter automatically, and do not keep running more install commands without user confirmation.
@@ -130,7 +157,8 @@ Report results in this structure:
 - Detected availability:
   - `command -v pt-snap`: `<executable path, failed, or not run>`
   - `pt-snap --help`: `<worked or failed>`
-  - CLI shebang interpreter: `<canonical interpreter path, unresolved, or not run>`
+  - CLI shebang interpreter: `<preserved execution path, unresolved, or not run>`
+  - Selected/CLI identity probes: `<raw sys.executable and sys.prefix, normalized comparison results, failed, or not run>`
   - CLI ownership: `<matches selected Python, belongs elsewhere, unresolved, or not run>`
   - `<python_executable> -c "import pt_snap_cli; print(pt_snap_cli.__file__)"`: `<worked, failed, or not run>`
   - `<python_executable> -m pip show pt-snap-cli`: `<found, not found, failed, or not run>`
@@ -142,9 +170,9 @@ Report results in this structure:
   - `<ready / CLI belongs to another Python environment / CLI ownership unverified / CLI missing but import works / not installed / installation declined / install failed>`
 
 Use these categories consistently before and after installation:
-- `ready`: CLI help succeeds and the CLI shebang resolves to the selected Python.
-- `CLI belongs to another Python environment`: CLI help succeeds, but its shebang resolves to a different interpreter.
-- `CLI ownership unverified`: CLI help succeeds, but its shebang is missing or cannot be resolved.
+- `ready`: CLI help succeeds and both identity probes match on normalized `sys.executable` and `sys.prefix`.
+- `CLI belongs to another Python environment`: CLI help succeeds, but the identity probes differ on either normalized `sys.executable` or `sys.prefix`.
+- `CLI ownership unverified`: CLI help succeeds, but its shebang cannot be resolved with its invocation semantics preserved, or an identity probe fails.
 - `CLI missing but import works`: the selected Python imports the package, but no matching CLI is available.
 - `not installed`: neither a matching CLI nor a package import is available and no install was attempted.
 - `installation declined`: installation was offered and the user declined it.
@@ -164,7 +192,7 @@ Use these categories consistently before and after installation:
 - `python` or `python3` selected once and its uncanonicalized `sys.executable` path used consistently.
 - Active Python environment identified with `<python_executable> -V`, `<python_executable> -m pip --version`, and `sys.executable`.
 - `command -v pt-snap` and `pt-snap --help` checked in the current shell.
-- Resolved CLI shebang interpreter compared with the selected Python before reporting `ready`.
+- Both interpreters probed through preserved execution paths; normalized `sys.executable` and `sys.prefix` compared before reporting `ready`.
 - Package import checked if the CLI is unavailable or its ownership is not verified.
 - `<python_executable> -m pip show pt-snap-cli` checked when the package import succeeds but the CLI is unavailable or belongs elsewhere.
 - User confirmation obtained before any `<python_executable> -m pip install ...` command.

@@ -110,3 +110,13 @@ pt-snap skill uninstall --project --target cursor
 | `pt-snap-memory-fragmentation` | 诊断分配器空洞和 reserved 池压力 |
 
 Skill 管理只通过 CLI 提供。
+
+### Setup 就绪判据
+
+`pt-snap-setup` 只有在 CLI 帮助执行成功，且所选 Python 与 CLI shebang 解释器的
+`sys.executable` 和 `sys.prefix` 规范化后都相同时，才报告 `ready`。
+仅比较可执行文件的 realpath 不够：不同 venv 可以共享同一基础解释器。
+两侧探测均保留原始执行路径，规范化只用于比较，因此同一环境的目录符号链接别名仍能匹配。
+简单的 `env <name>` shebang 按当前 `PATH` 解析；无法解析的 shebang、不支持的参数或
+包装器语义（包括 `env -S`），以及身份探测失败，均保留为 `CLI ownership unverified`。
+身份不匹配则报告 `CLI belongs to another Python environment`；安装仍需用户确认。
