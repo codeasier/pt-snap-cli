@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
+from typer.testing import CliRunner
+
+from pt_snap_cli.cli import app
+
 SKILL_PATH = Path("skills/pt-snap-memory-peak-breakdown/SKILL.md")
-CLI_PATH = Path("src/pt_snap_cli/cli.py")
 TEMPLATE_DIR = Path("src/pt_snap_cli/query/templates")
 
 
@@ -27,7 +31,6 @@ def test_skill_frontmatter_and_agent_routing() -> None:
 
 def test_skill_references_current_report_and_templates() -> None:
     skill = _skill()
-    cli = CLI_PATH.read_text(encoding="utf-8")
     templates = {
         "memory_peak": TEMPLATE_DIR / "statistical/memory_peak.yaml",
         "allocator_gap": TEMPLATE_DIR / "statistical/allocator_gap.yaml",
@@ -37,7 +40,9 @@ def test_skill_references_current_report_and_templates() -> None:
         ),
     }
 
-    assert '@report_app.command("peak-memory")' in cli
+    report_help = CliRunner().invoke(app, ["report", "peak-memory", "--help"])
+    assert report_help.exit_code == 0
+    assert "--metric" in re.sub(r"\x1b\[[0-9;]*m", "", report_help.output)
     assert "pt-snap report peak-memory --help" in skill
     for name, path in templates.items():
         assert f"  {name}:" in path.read_text(encoding="utf-8")

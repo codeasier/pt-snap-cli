@@ -1,6 +1,10 @@
 import re
 from pathlib import Path
 
+from typer.testing import CliRunner
+
+from pt_snap_cli.cli import app
+
 SKILL_PATH = Path("skills/pt-snap-memory-fragmentation/SKILL.md")
 TEMPLATE_ROOT = Path("src/pt_snap_cli/query/templates")
 CLI_PATH = Path("src/pt_snap_cli/cli.py")
@@ -26,7 +30,9 @@ def test_memory_fragmentation_skill_uses_current_pt_snap_surfaces() -> None:
     assert "pt-snap report peak-memory" in skill
     for command in ('@app.command("focus")', '@app.command("metadata")', '@app.command("query")'):
         assert command in cli
-    assert '@report_app.command("peak-memory")' in cli
+    report_help = CliRunner().invoke(app, ["report", "peak-memory", "--help"])
+    assert report_help.exit_code == 0
+    assert "--metric" in re.sub(r"\x1b\[[0-9;]*m", "", report_help.output)
 
     for template, path in templates.items():
         assert path.is_file()

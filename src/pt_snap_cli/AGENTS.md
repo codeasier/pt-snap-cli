@@ -12,6 +12,8 @@
 | `__init__.py` | Package exports and version wiring. |
 | `api.py` | High-level `SnapshotAnalyzer` API for library callers. |
 | `cli.py` | Typer CLI entrypoint for focus, import, split, metadata, capabilities, overview, query, report, config, and skill commands. |
+| `cli_reports.py`, `cli_skills.py` | Report and skill Typer groups registered by `cli.py`; call shared core services. |
+| `cli_output.py` | Common JSON-mode state, error emission, and terminal output helpers for all command modules. |
 | `completion.py` | Shell completion helpers for templates, categories, and device IDs. |
 | `config.py` | Atomic focus persistence and resolution across explicit paths, environment, project focus, and legacy global config. |
 | `context.py` | Read-only SQLite context with schema validation and device discovery. |

@@ -5,14 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import shlex
-import shutil
 import sys
-import textwrap
 from collections.abc import Mapping, Sequence
-from contextvars import ContextVar
 from dataclasses import asdict
 from pathlib import Path
-from typing import Annotated, Any, Literal, NoReturn, cast
+from typing import Annotated, cast
 
 import typer
 from typer.exceptions import Abort, Exit
@@ -28,18 +25,44 @@ except ImportError:  # pragma: no cover
     ClickAbort = Abort
 
 from pt_snap_cli import __version__
+from pt_snap_cli.cli_output import (
+    JSON_MODE as _JSON_MODE,
+)
+from pt_snap_cli.cli_output import (
+    echo_callstack_layout as _echo_callstack_layout,
+)
+from pt_snap_cli.cli_output import (
+    emit_json as _emit_json,
+)
+from pt_snap_cli.cli_output import (
+    error as _error,
+)
+from pt_snap_cli.cli_output import (
+    error_from_exc as _error_from_exc,
+)
+from pt_snap_cli.cli_output import (
+    json_flag as _json_flag,
+)
+from pt_snap_cli.cli_output import (
+    json_mode as _json_mode,
+)
+from pt_snap_cli.cli_output import (
+    print_database_overview as _print_database_overview,
+)
+from pt_snap_cli.cli_output import (
+    print_skill_listings as _print_skill_listings,
+)
+from pt_snap_cli.cli_reports import report_app
+from pt_snap_cli.cli_skills import skill_app
 from pt_snap_cli.completion import (
     complete_categories,
     complete_device_ids,
-    complete_skill_names,
-    complete_skill_targets,
     complete_template_names,
 )
 from pt_snap_cli.config import ENV_DB_PATH
 from pt_snap_cli.core import (
     CapabilityService,
     DatabaseMissingError,
-    DatabaseOverview,
     DatabaseSchemaError,
     FocusFileInvalidError,
     FocusNotConfiguredError,
@@ -53,19 +76,11 @@ from pt_snap_cli.core import (
     ImportToolMissingError,
     InvalidCategoryError,
     InvalidDeviceError,
-    InvalidSkillTargetError,
     JsonValue,
     OverviewService,
-    PeakMemoryReport,
     QueryExecutionError,
     QueryService,
-    ReportService,
     SkillCatalogError,
-    SkillInstallError,
-    SkillInstallReport,
-    SkillListing,
-    SkillNotFoundError,
-    SkillService,
     SnapshotFileInvalidError,
     SplitError,
     SplitOptions,
@@ -74,19 +89,11 @@ from pt_snap_cli.core import (
     TemplateInfo,
     TemplateNotFoundError,
     TemplateRenderError,
-    classify_error,
     dumps_json,
     json_error,
     json_success,
 )
 from pt_snap_cli.core.error_codes import DATABASE_NOT_FOUND, ERROR, INVALID_PARAMETER
-from pt_snap_cli.core.models import SKILL_RESTART_ACTIONS, SKILL_RESTART_HINT
-from pt_snap_cli.core.skill_service import (
-    format_skill_install_target,
-    format_skill_location,
-    human_skill_summary,
-    parse_host_option,
-)
 from pt_snap_cli.query.config import OUTPUT_COLUMN_OPTIONAL
 from pt_snap_cli.query.executor import reported_sql_limit
 from pt_snap_cli.query.registry import discover_categories, get_query
@@ -108,43 +115,8 @@ app = typer.Typer(
     add_completion=True,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
-report_app = typer.Typer(help="Generate memory analysis reports")
-skill_app = typer.Typer(help="Manage bundled agent skills", no_args_is_help=True)
 app.add_typer(report_app, name="report")
 app.add_typer(skill_app, name="skill")
-
-
-# Typer 0.27+ vendors Click as typer._click. Reading click.get_current_context()
-# therefore misses the live command and would keep JSON errors on stdout.
-_JSON_MODE: ContextVar[bool] = ContextVar("pt_snap_json_mode", default=False)
-
-
-def _json_mode() -> bool:
-    return _JSON_MODE.get()
-
-
-def _set_json_mode(value: bool) -> bool:
-    _JSON_MODE.set(bool(value))
-    return value
-
-
-def _json_flag() -> Any:
-    return typer.Option(
-        "--json",
-        help="Emit machine-readable JSON",
-        callback=_set_json_mode,
-    )
-
-
-def _emit_json(payload: object) -> None:
-    try:
-        typer.echo(dumps_json(payload))
-    except TypeError as exc:
-        _error(
-            str(exc),
-            code=ERROR,
-            hint="Result contained a value that cannot be serialized to JSON.",
-        )
 
 
 def _focus_fields(state: FocusState) -> dict[str, object]:
@@ -231,7 +203,7 @@ def _query_service() -> QueryService:
     return QueryService(_focus_service())
 
 
-def _echo_output_schema_column(column: Mapping[str, Any]) -> None:
+def _echo_output_schema_column(column: Mapping[str, object]) -> None:
     typer.echo(f"  {column['column']}: {column['type']}")
     for key in OUTPUT_COLUMN_OPTIONAL:
         if key not in column:
@@ -239,44 +211,10 @@ def _echo_output_schema_column(column: Mapping[str, Any]) -> None:
         value = column[key]
         if key == "interpretation_limits":
             typer.echo("    interpretation_limits:")
-            for item in value:
+            for item in cast(list[str], value):
                 typer.echo(f"      - {item}")
         else:
             typer.echo(f"    {key}: {value}")
-
-
-def _skill_service() -> SkillService:
-    return SkillService()
-
-
-def _skill_dest_dir(
-    dest_dir: Path | None,
-    target: str | None,
-    *,
-    project: bool = False,
-    user: bool = False,
-) -> Path | None:
-    if dest_dir is None:
-        return None
-    if target:
-        _error(
-            "--dir cannot be combined with --target.",
-            code=INVALID_PARAMETER,
-            hint="Use either --dir or --target.",
-        )
-    if project:
-        _error(
-            "--dir cannot be combined with --project.",
-            code=INVALID_PARAMETER,
-            hint="Use either --dir or --project.",
-        )
-    if user:
-        _error(
-            "--dir cannot be combined with --user.",
-            code=INVALID_PARAMETER,
-            hint="Use either --dir or --user.",
-        )
-    return dest_dir
 
 
 def version_callback(value: bool) -> None:
@@ -819,7 +757,7 @@ def query_database(
             state = None
         source = state.source if state is not None else "configured"
         path = state.db_path if state is not None else db_path
-        extra = []
+        extra: list[str] = []
         if state is not None and state.focus_file:
             extra.append(f"Focus file: {state.focus_file}")
         extra.append(
@@ -847,435 +785,6 @@ def query_database(
         _error_from_exc(e, text_prefix="Error executing query: ")
     finally:
         query_service.close()
-
-
-@report_app.command("peak-memory")
-def report_peak_memory(
-    db_path: Annotated[
-        Path | None, typer.Argument(help="Path to database file (optional if configured)")
-    ] = None,
-    device: Annotated[
-        int | None,
-        typer.Option(
-            "--device",
-            "-d",
-            help="Device ID to report",
-            autocompletion=complete_device_ids,
-        ),
-    ] = None,
-    metric: Annotated[
-        Literal["active", "allocated", "reserved"],
-        typer.Option(help="Peak metric to report: active, allocated, or reserved"),
-    ] = "active",
-    include_static: Annotated[
-        bool,
-        typer.Option("--include-static/--exclude-static", help="Include static memory group"),
-    ] = True,
-    limit: Annotated[int, typer.Option("--limit", "-n", help="Maximum callstack groups")] = 20,
-    json_output: Annotated[bool, _json_flag()] = False,
-) -> None:
-    """Generate a peak memory attribution report."""
-    focus_service = _focus_service()
-    report_service = ReportService(focus_service)
-    try:
-        report = report_service.peak_memory_report(
-            db_path=db_path,
-            device_id=device,
-            metric=metric,
-            include_static=include_static,
-            limit=limit,
-        )
-    except ValueError as e:
-        _error(str(e), code=INVALID_PARAMETER, hint="Use --metric active, allocated, or reserved.")
-    except FocusFileInvalidError as e:
-        _error_from_exc(e)
-    except FocusNotConfiguredError as e:
-        _error_from_exc(
-            e,
-            extra_lines=(
-                "Use 'pt-snap focus <database_path>' to set a project database, or provide db_path argument.",
-            ),
-        )
-    except DatabaseMissingError:
-        try:
-            state = focus_service.get_focus(explicit_db_path=db_path, explicit_device_id=device)
-        except FocusFileInvalidError:
-            state = None
-        source = state.source if state is not None else "configured"
-        path = state.db_path if state is not None else db_path
-        extra = []
-        if state is not None and state.focus_file:
-            extra.append(f"Focus file: {state.focus_file}")
-        extra.append(
-            "Use 'pt-snap focus <new_database_path>' to set a new project database, or provide db_path argument."
-        )
-        _error(
-            f"Database from {source} focus not found: {path}",
-            code=DATABASE_NOT_FOUND,
-            hint="Use 'pt-snap focus <new_database_path>' or pass a database path that exists.",
-            extra_lines=tuple(extra),
-        )
-    except InvalidDeviceError as e:
-        _error_from_exc(e)
-    except (
-        TemplateNotFoundError,
-        TemplateRenderError,
-        QueryExecutionError,
-        DatabaseSchemaError,
-    ) as e:
-        _error_from_exc(e, text_prefix="Error generating report: ")
-    finally:
-        report_service.close()
-
-    if json_output:
-        typer.echo(json.dumps(asdict(report), indent=2))
-        return
-
-    _print_peak_memory_report(report)
-
-
-def _print_peak_memory_report(report: PeakMemoryReport) -> None:
-    typer.secho("Peak memory report", fg=typer.colors.GREEN, bold=True)
-    typer.echo(f"Device: {report.device_id}")
-    typer.echo(f"Metric: {report.metric}")
-    typer.echo(f"Event ID: {report.event_id}")
-    typer.echo()
-
-    typer.secho("Peak counters:", fg=typer.colors.GREEN, bold=True)
-    if report.peak:
-        typer.echo(
-            f"  allocated: {report.peak.get('peak_allocated')} at event {report.peak.get('peak_allocated_event_id')}"
-        )
-        typer.echo(
-            f"  active: {report.peak.get('peak_active')} at event {report.peak.get('peak_active_event_id')}"
-        )
-        typer.echo(
-            f"  reserved: {report.peak.get('peak_reserved')} at event {report.peak.get('peak_reserved_event_id')}"
-        )
-    else:
-        typer.echo("  No peak counters found.")
-    typer.echo()
-
-    typer.secho("Allocator gap:", fg=typer.colors.GREEN, bold=True)
-    if report.allocator_gap:
-        gap = report.allocator_gap
-        typer.echo(
-            f"  active peak event: {gap.get('peak_active_event_id')} reserved-active gap={gap.get('reserved_active_gap_at_active_peak')}"
-        )
-        typer.echo(
-            f"  allocated peak event: {gap.get('peak_allocated_event_id')} reserved-allocated gap={gap.get('reserved_allocated_gap_at_allocated_peak')}"
-        )
-        typer.echo(
-            f"  reserved peak event: {gap.get('peak_reserved_event_id')} reserved-active gap={gap.get('reserved_active_gap_at_reserved_peak')}"
-        )
-        typer.echo(f"  all peaks same event: {bool(gap.get('all_peaks_same_event'))}")
-    else:
-        typer.echo("  No allocator gap data found.")
-    typer.echo()
-
-    typer.secho("Active memory by callstack:", fg=typer.colors.GREEN, bold=True)
-    if not report.callstack_groups:
-        typer.echo("  No active memory callstack groups found.")
-        return
-    for index, row in enumerate(report.callstack_groups, start=1):
-        typer.echo(
-            f"  [{index}] {row.get('category')} {row.get('size_bytes')} bytes, {row.get('block_count')} blocks ({row.get('percent_of_active_blocks')}%)"
-        )
-        typer.echo(f"      {row.get('callstack')}")
-
-
-@skill_app.command("list")
-def skill_list(
-    target: Annotated[
-        str | None,
-        typer.Option(
-            "--target",
-            "-t",
-            help="Comma-separated hosts to inspect: agents,claude,cursor,codex",
-            autocompletion=complete_skill_targets,
-        ),
-    ] = None,
-    project: Annotated[
-        bool, typer.Option("--project", help="Inspect only project-local skill directories")
-    ] = False,
-    user: Annotated[
-        bool, typer.Option("--user", help="Inspect only user-level skill directories")
-    ] = False,
-    dest_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--dir",
-            help="Inspect this skills directory instead of built-in agent/Claude/Cursor/Codex paths",
-        ),
-    ] = None,
-    json_output: Annotated[bool, _json_flag()] = False,
-) -> None:
-    """List bundled agent skills and whether they are installed."""
-    if project and user:
-        _error(
-            "--project and --user cannot be used together.",
-            code=INVALID_PARAMETER,
-            hint="Choose either --project or --user.",
-        )
-    custom_dir = _skill_dest_dir(dest_dir, target, project=project, user=user)
-    service = _skill_service()
-    try:
-        listings = service.list_skills(
-            hosts=None if custom_dir is not None else parse_host_option(target),
-            scopes=(
-                None
-                if custom_dir is not None
-                else (("project",) if project else (("user",) if user else None))
-            ),
-            dest_dir=custom_dir,
-        )
-    except (SkillCatalogError, InvalidSkillTargetError) as e:
-        _error_from_exc(e)
-
-    if json_output:
-        typer.echo(json.dumps(service.listing_to_dict(listings), indent=2))
-        return
-
-    if not listings:
-        typer.echo("No bundled agent skills are available.")
-        return
-
-    _print_skill_listings(listings)
-
-
-@skill_app.command("install")
-def skill_install(
-    names: Annotated[
-        list[str] | None,
-        typer.Argument(
-            help="Skill names to install. Omit to install every bundled skill.",
-            autocompletion=complete_skill_names,
-        ),
-    ] = None,
-    target: Annotated[
-        str | None,
-        typer.Option(
-            "--target",
-            "-t",
-            help="Comma-separated hosts: agents,claude,cursor,codex (default: agents,claude)",
-            autocompletion=complete_skill_targets,
-        ),
-    ] = None,
-    project: Annotated[
-        bool, typer.Option("--project", help="Install into the current project")
-    ] = False,
-    force: Annotated[
-        bool, typer.Option("--force", help="Replace existing skills that differ")
-    ] = False,
-    dest_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--dir",
-            help="Install into this skills directory (Windows, other agents, or a custom path)",
-        ),
-    ] = None,
-    json_output: Annotated[bool, _json_flag()] = False,
-) -> None:
-    """Install bundled agent skills into shared agent, Claude, Cursor, Codex, or custom directories."""
-    custom_dir = _skill_dest_dir(dest_dir, target, project=project)
-    service = _skill_service()
-    try:
-        report = service.install_skills(
-            names,
-            hosts=None if custom_dir is not None else parse_host_option(target),
-            scope="project" if project else "user",
-            force=force,
-            dest_dir=custom_dir,
-        )
-    except (
-        SkillCatalogError,
-        SkillNotFoundError,
-        InvalidSkillTargetError,
-        SkillInstallError,
-    ) as e:
-        _error_from_exc(e)
-
-    if json_output:
-        typer.echo(json.dumps(service.install_report_to_dict(report), indent=2))
-        return
-
-    _print_skill_mutation_report(report)
-
-
-@skill_app.command("upgrade")
-def skill_upgrade(
-    names: Annotated[
-        list[str] | None,
-        typer.Argument(
-            help="Skill names to upgrade. Omit to upgrade every installed bundled skill.",
-            autocompletion=complete_skill_names,
-        ),
-    ] = None,
-    target: Annotated[
-        str | None,
-        typer.Option(
-            "--target",
-            "-t",
-            help="Comma-separated hosts: agents,claude,cursor,codex (default: agents,claude)",
-            autocompletion=complete_skill_targets,
-        ),
-    ] = None,
-    project: Annotated[
-        bool, typer.Option("--project", help="Upgrade skills in the current project")
-    ] = False,
-    dest_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--dir",
-            help="Upgrade skills in this directory instead of a built-in host",
-        ),
-    ] = None,
-    json_output: Annotated[bool, _json_flag()] = False,
-) -> None:
-    """Replace outdated installed skills with the bundled copies."""
-    custom_dir = _skill_dest_dir(dest_dir, target, project=project)
-    service = _skill_service()
-    try:
-        report = service.upgrade_skills(
-            names,
-            hosts=None if custom_dir is not None else parse_host_option(target),
-            scope="project" if project else "user",
-            dest_dir=custom_dir,
-        )
-    except (
-        SkillCatalogError,
-        SkillNotFoundError,
-        InvalidSkillTargetError,
-        SkillInstallError,
-    ) as e:
-        _error_from_exc(e)
-
-    if json_output:
-        typer.echo(json.dumps(service.install_report_to_dict(report), indent=2))
-        return
-
-    _print_skill_mutation_report(report)
-
-
-@skill_app.command("uninstall")
-def skill_uninstall(
-    names: Annotated[
-        list[str] | None,
-        typer.Argument(
-            help="Skill names to uninstall. Omit to uninstall every bundled skill.",
-            autocompletion=complete_skill_names,
-        ),
-    ] = None,
-    target: Annotated[
-        str | None,
-        typer.Option(
-            "--target",
-            "-t",
-            help=(
-                "Comma-separated hosts: agents,claude,cursor,codex. "
-                "Defaults to agents,claude when --project is set"
-            ),
-            autocompletion=complete_skill_targets,
-        ),
-    ] = None,
-    project: Annotated[
-        bool, typer.Option("--project", help="Uninstall skills from the current project")
-    ] = False,
-    dest_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--dir",
-            help="Uninstall skills from this directory instead of a built-in host",
-        ),
-    ] = None,
-    json_output: Annotated[bool, _json_flag()] = False,
-) -> None:
-    """Remove bundled agent skills.
-
-    Without --target, --project, or --dir, remove every SKILL.md copy that
-    `pt-snap skill list` would report. A same-named path without SKILL.md
-    aborts the whole uninstall. Use those flags to limit destinations.
-    """
-    custom_dir = _skill_dest_dir(dest_dir, target, project=project)
-    service = _skill_service()
-    try:
-        unfiltered = custom_dir is None and target is None and not project
-        report = service.uninstall_skills(
-            names,
-            hosts=None if custom_dir is not None else parse_host_option(target),
-            scope="project" if project else "user",
-            dest_dir=custom_dir,
-            all_locations=unfiltered,
-        )
-    except (
-        SkillCatalogError,
-        SkillNotFoundError,
-        InvalidSkillTargetError,
-        SkillInstallError,
-    ) as e:
-        _error_from_exc(e)
-
-    if json_output:
-        typer.echo(json.dumps(service.install_report_to_dict(report), indent=2))
-        return
-
-    _print_skill_mutation_report(report)
-
-
-def _print_skill_listings(listings: list[SkillListing]) -> None:
-    width = max(shutil.get_terminal_size((80, 24)).columns - 2, 40)
-    width = min(width, 88)
-    status_colors = {
-        "installed": typer.colors.GREEN,
-        "outdated": typer.colors.YELLOW,
-        "missing": typer.colors.RED,
-    }
-    for index, item in enumerate(listings):
-        if index:
-            typer.echo()
-        typer.secho(item.name, fg=typer.colors.GREEN, bold=True)
-        locations = ", ".join(
-            format_skill_location(location)
-            for location in item.locations
-            if location.status != "missing"
-        )
-        typer.echo("  Status     ", nl=False)
-        typer.secho(item.status, fg=status_colors.get(item.status, typer.colors.WHITE))
-        typer.echo(f"  Locations  {locations or '—'}")
-        summary = human_skill_summary(item.description)
-        if summary:
-            typer.echo(
-                textwrap.fill(
-                    summary,
-                    width=width,
-                    initial_indent="  ",
-                    subsequent_indent="  ",
-                )
-            )
-
-
-def _print_skill_mutation_report(report: SkillInstallReport) -> None:
-    if not report.results:
-        typer.echo("No matching skills were found.")
-        return
-
-    messages = {
-        "already_installed": "Already installed",
-        "updated": "Updated",
-        "installed": "Installed",
-        "not_installed": "Not installed",
-        "uninstalled": "Uninstalled",
-    }
-    for item in report.results:
-        prefix = messages.get(item.action, item.action.capitalize())
-        line = f"{prefix} {item.name} -> {format_skill_install_target(item)}"
-        if item.action in {"installed", "updated", "uninstalled"}:
-            typer.secho(line, fg=typer.colors.GREEN)
-        else:
-            typer.echo(line)
-    if any(item.action in SKILL_RESTART_ACTIONS for item in report.results):
-        typer.echo()
-        typer.secho(SKILL_RESTART_HINT, fg=typer.colors.YELLOW)
 
 
 @app.command("config")
@@ -1373,62 +882,6 @@ def show_database_overview(
         _emit_json(json_success(**service.overview_to_dict(overview)))
         return
     _print_database_overview(overview)
-
-
-def _print_database_overview(overview: DatabaseOverview) -> None:
-    inspection = overview.metadata
-    typer.echo(f"Database: {overview.db_path}")
-    typer.echo(f"Focus source: {overview.focus_source}")
-    typer.echo(f"Import metadata: {inspection.status}")
-    if inspection.reason is not None:
-        typer.echo(f"Metadata reason: {inspection.reason}")
-    if not overview.devices:
-        typer.echo("Devices: none")
-        return
-    typer.echo("Devices:")
-    for device in overview.devices:
-        if device.first_event_id is None or device.last_event_id is None:
-            typer.echo(f"  {device.device_id}: no events")
-        else:
-            typer.echo(
-                f"  {device.device_id}: events {device.first_event_id}..{device.last_event_id}"
-            )
-
-
-def _echo_callstack_layout(layout: str | None, error: str | None = None) -> None:
-    if layout == "v1":
-        typer.echo("Callstack layout: v1 (inline text)")
-    elif layout == "v2":
-        typer.echo("Callstack layout: v2 (deduplicated)")
-    elif error:
-        typer.secho(f"Warning: {error}", fg=typer.colors.YELLOW)
-
-
-def _error(
-    message: str,
-    *,
-    code: str | None = None,
-    hint: str | None = None,
-    extra_lines: tuple[str, ...] = (),
-    text_prefix: str = "Error: ",
-) -> NoReturn:
-    if _json_mode():
-        typer.echo(dumps_json(json_error(code or ERROR, message, hint)), err=True)
-        raise typer.Exit(1) from None
-    typer.secho(f"{text_prefix}{message}", fg=typer.colors.RED)
-    for line in extra_lines:
-        typer.echo(line)
-    raise typer.Exit(1) from None
-
-
-def _error_from_exc(
-    exc: BaseException,
-    *,
-    extra_lines: tuple[str, ...] = (),
-    text_prefix: str = "Error: ",
-) -> NoReturn:
-    code, hint = classify_error(exc)
-    _error(str(exc), code=code, hint=hint, extra_lines=extra_lines, text_prefix=text_prefix)
 
 
 # Flag-only options used when a parse failure happens before the --json callback.
