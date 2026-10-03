@@ -5,6 +5,7 @@ import pickle
 import sqlite3
 import tempfile
 from collections.abc import Callable
+from contextlib import ExitStack, suppress
 from pathlib import Path
 
 from pt_snap_cli.core.errors import ImportExecutionError, ImportToolMissingError
@@ -26,7 +27,7 @@ class SnapshotImportBackend:
         output_dir.mkdir(parents=True, exist_ok=True)
         run_dump_to_db = self._load_run_dump_to_db()
 
-        with tempfile.TemporaryDirectory(dir=output_dir) as tmp_dir_name:
+        with tempfile.TemporaryDirectory(dir=output_dir) as tmp_dir_name, ExitStack() as cleanup:
             tmp_dir = Path(tmp_dir_name)
             tmp_db_path = tmp_dir / db_path.name
             try:
@@ -51,6 +52,13 @@ class SnapshotImportBackend:
             had_destination = db_path.exists()
             backup_path: Path | None = None
             backup_fd: int | None = None
+
+            def close_backup() -> None:
+                if backup_fd is not None:
+                    with suppress(OSError):
+                        os.close(backup_fd)
+
+            cleanup.callback(close_backup)
             try:
                 if had_destination and post_publish is not None:
                     backup_fd, backup_name = tempfile.mkstemp(
@@ -69,7 +77,12 @@ class SnapshotImportBackend:
                                 chunk = src.read(1024 * 1024)
                                 if not chunk:
                                     break
-                                os.write(backup_fd, chunk)
+                                remaining = memoryview(chunk)
+                                while remaining:
+                                    written = os.write(backup_fd, remaining)
+                                    if written <= 0:
+                                        raise OSError("Could not write rollback backup")
+                                    remaining = remaining[written:]
                         os.fchmod(backup_fd, source_mode or 0o600)
                     except BaseException:
                         try:

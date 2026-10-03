@@ -116,7 +116,8 @@ exclude_lines = [
     "if __name__ == .__main__.",
     "if TYPE_CHECKING:",
 ]
-fail_under = 0
+# Line + branch coverage baseline; CI also guards critical runtime files separately.
+fail_under = 90
 
 [tool.coverage.xml]
 output = "coverage.xml"

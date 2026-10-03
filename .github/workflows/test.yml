@@ -100,6 +100,13 @@ jobs:
       - name: Run tests with coverage
         run: pytest tests/test_fixture_provenance.py && pytest --cov --cov-report=xml --cov-report=term-missing
 
+      - name: Guard critical runtime coverage
+        # Separate floors prevent strong modules from masking a weak boundary.
+        run: |
+          python -m coverage report --include='*/core/snapshot_import_backend.py' --fail-under=90
+          python -m coverage report --include='*/simulate/simulated_caching_allocator.py' --fail-under=88
+          python -m coverage report --include='*/simulate/snapshot_mutator.py' --fail-under=84
+
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         if: matrix.python-version == '3.13' && always()
