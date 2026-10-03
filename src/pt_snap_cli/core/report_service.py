@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from pt_snap_cli.core.focus_service import FocusService
 from pt_snap_cli.core.models import PeakMemoryReport
@@ -46,7 +46,8 @@ class ReportService:
             start_dir=start_dir,
         )
         peak = peak_result.rows[0] if peak_result.rows else {}
-        event_id = peak.get(_EVENT_ID_BY_METRIC[metric])
+        # memory_peak selects an INTEGER event ID (or NULL for an empty trace).
+        event_id = cast(int | None, peak.get(_EVENT_ID_BY_METRIC[metric]))
 
         if event_id is None:
             return PeakMemoryReport(

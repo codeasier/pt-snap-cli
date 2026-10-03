@@ -1,7 +1,7 @@
 import os
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ...base import Block, BlockState, DeviceSnapshot, TraceEntry
 from ...representation import UnsafePickleError, load_snapshot_representation, replay_snapshot
@@ -168,7 +168,8 @@ def dump(pickle_file: str | Path, dump_file: str | Path, device: int | None = No
     except Exception as e:
         dump_logger.error(f"Failed to load pickle file: {e}")
         return False
-    device_traces = data.get("device_traces", [])
+    # Snapshot format: one list of trace dictionaries per device.
+    device_traces = cast(list[list[object]], data.get("device_traces", []))
     # 当指定device为空时dump所有记录了跟踪事件的device，否则仅dump指定device
     need_dump_devices = [device for device in range(len(device_traces)) if device_traces[device]]
     dump_logger.info(f"Recognized have trace events devices {need_dump_devices}.")

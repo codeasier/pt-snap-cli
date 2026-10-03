@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+# pyright: reportAny=error, reportExplicitAny=error, reportUnknownArgumentType=error, reportUnknownVariableType=error, reportUnknownMemberType=error
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from pt_snap_cli.config import FocusSource
 
@@ -89,7 +90,7 @@ class TemplateInfo:
     category: str | None
     devices: str | None
     parameters: dict[str, TemplateParameter]
-    output_schema: list[dict[str, Any]] | None
+    output_schema: list[dict[str, object]] | None
     semantics_version: int | None = None
     interpretation_limits: list[str] = field(default_factory=list)
 
@@ -99,7 +100,7 @@ class QueryResult:
     total: int
     returned: int
     device_id: int | None
-    rows: list[dict[str, Any]]
+    rows: list[dict[str, object]]
     template: str | None = None
     semantics_version: int | None = None
     has_more: bool = False
@@ -113,9 +114,9 @@ class PeakMemoryReport:
     device_id: int | None
     metric: str
     event_id: int | None
-    peak: dict[str, Any]
-    allocator_gap: dict[str, Any] | None
-    callstack_groups: list[dict[str, Any]]
+    peak: dict[str, object]
+    allocator_gap: dict[str, object] | None
+    callstack_groups: list[dict[str, object]]
 
 
 @dataclass(frozen=True)

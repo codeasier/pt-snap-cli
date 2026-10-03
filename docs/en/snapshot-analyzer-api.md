@@ -7,6 +7,12 @@ template discovery, capability listing, database overview, query execution, and
 SnapshotDB import metadata. Import it from `pt_snap_cli.api`; it is not
 re-exported from the package root.
 
+`list_templates()` and `execute_query()` return ordinary dictionaries annotated
+as `TemplateSummaryPayload` and `QueryResultPayload` (`TypedDict` definitions in
+`pt_snap_cli.api`). Dynamic query cells and metadata values are typed as `object`;
+narrow them using the template's output contract before performing typed
+operations. The annotations do not convert values or change the result keys.
+
 ## Create an Analyzer
 
 ```python

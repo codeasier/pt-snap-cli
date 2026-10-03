@@ -1,6 +1,6 @@
 import os.path
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from ...representation import load_snapshot_representation, replay_snapshot
 from ...util import get_logger
@@ -26,14 +26,16 @@ def run_slice_dump(
             "history event recoding during collection."
         )
         return
-    if device < 0 or len(df["device_traces"]) <= device or not df["device_traces"][device]:
+    # These are the sequence fields of the snapshot format; no values are coerced.
+    traces = cast(list[list[object]], df["device_traces"])
+    segments = cast(list[object], df["segments"])
+    if device < 0 or len(traces) <= device or not traces[device]:
         dump_logger.warning(
             f"The snapshot file did not record any event data for the specified device {device}."
         )
         return
     dump_logger.info(
-        f"Start loading snapshot with {len(df['segments'])} segments, "
-        f"{len(df['device_traces'][device])} events"
+        f"Start loading snapshot with {len(segments)} segments, " f"{len(traces[device])} events"
     )
     dump_logger.info("Successfully loaded snapshot, starting to replay and dump.")
     slice_dump_hooker = SliceDumpHooker(

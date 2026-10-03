@@ -6,6 +6,11 @@
 执行查询和检查 SnapshotDB 导入 metadata 的高层 Python 门面。应从
 `pt_snap_cli.api` 导入；包根目录不会重新导出它。
 
+`list_templates()` 和 `execute_query()` 返回普通字典，分别使用
+`pt_snap_cli.api` 中的 `TemplateSummaryPayload` 和 `QueryResultPayload`
+（`TypedDict`）进行类型标注。动态查询单元格和 metadata 值标注为 `object`；
+进行有类型约束的操作前，应按模板输出契约收窄类型。这些标注不会转换值或改变结果键。
+
 ## 创建 Analyzer
 
 ```python
