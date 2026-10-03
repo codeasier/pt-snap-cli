@@ -101,14 +101,47 @@ Treat a large `reserved - active` gap without corresponding active growth as an 
 ### 2. Find end-of-trace dynamic candidates
 
 Run an initial ranked query, keeping the result bounded. Prefer `--json`. Default
-`total` equals this page's `returned` count; do not treat it as the full
-matching set. If `has_more` or `truncated` is true, continue with `offset` or a
-larger `-n` instead of concluding from the first page. Add `--exact-total` only
-when a matching-row count is required. `--timeout` is independent of `-n`.
+`total` equals this window's `returned` count; do not treat it as the full
+matching set. `leak_detection` accepts only `min_size` and `limit`: it has no
+`offset`, and both CLI and API reject that unknown parameter. `has_more` or
+`truncated` means the result is incomplete, not that offset paging is supported.
+`--timeout` is independent of `-n`.
 
 ```bash
 pt-snap query '<db_path>' --device <device_id> --template-use leak_detection --params '{"min_size":<min_size>}' -n 100 --json
 ```
+
+If the result is incomplete and a full candidate set is needed:
+
+1. Repeat with the same database, device, and `min_size`, adding `--exact-total`:
+
+   ```bash
+   pt-snap query '<db_path>' --device <device_id> --template-use leak_detection --params '{"min_size":<min_size>}' -n 100 --exact-total --json
+   ```
+
+   The exact `total` is a matching **row count**, not bytes or GiB. The count
+   ignores `limit`; it does not make the returned rows complete.
+2. If `total` is zero, report no matching candidates and stop this candidate
+   listing. Do not pass zero to `-n`: `-n 0` means unlimited, not an empty window.
+3. Only when the positive exact total is affordable within the memory/output
+   budget, request that many rows in one bounded window. Replace `<positive_total>`
+   below with that count. Remove any explicit `limit` from `--params` (as below),
+   or raise it to the same count; a smaller explicit `limit` still caps `-n`.
+
+   ```bash
+   pt-snap query '<db_path>' --device <device_id> --template-use leak_detection --params '{"min_size":<min_size>}' -n <positive_total> --json
+   ```
+
+4. Verify `returned` equals the exact count and both `has_more` and `truncated`
+   are false before claiming completeness. The enlarged result **replaces** the
+   earlier rows; never append windows or add their counts/bytes together, because
+   every rerun starts at the same ranked beginning.
+
+If the full count exceeds the budget, retain a bounded sample and explicitly
+report incomplete candidate/byte coverage. An exact row count alone does not
+give total candidate bytes. A higher `min_size` can narrow a follow-up query,
+but changes the scope and requires a new count; do not call that the original
+complete set. Never use an unlimited window to bypass the budget.
 
 `leak_detection` includes only dynamic blocks with a recorded allocation and no recorded free completion. It intentionally excludes static blocks whose allocation predates tracing. Interpret its columns from the `leak_detection` entry in `pt-snap capabilities --json`; do not treat candidates as confirmed leaks.
 

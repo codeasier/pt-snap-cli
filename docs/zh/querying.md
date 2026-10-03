@@ -79,6 +79,36 @@ pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
 仍存活的候选，不是已确认泄漏。用 `pt-snap query --template-info leak_detection`
 读取字段单位与解释限制。
 
+### 获取完整候选窗口
+
+`leak_detection` 只接受 `min_size` 与 `limit`，**没有 `offset`**。传入
+`offset` 会被拒绝（CLI JSON 返回 `INVALID_PARAMETER`，Python API 抛出
+`TemplateRenderError`）。`has_more: true` 表示结果不完整，不保证支持 offset 分页。
+
+先执行有界查询。需要完整候选集时，在保持返回窗口有界的前提下获取精确计数：
+
+```bash
+pt-snap query '<db_path>' --device <device_id> --template-use leak_detection --params '{"min_size":1024}' -n 100 --exact-total --json
+```
+
+精确 `total` 是匹配的**行数**，不是字节数或 GiB，且忽略 `limit`。若为零，
+报告没有匹配候选即可，不要再用 `-n 0` 查询（它表示不限制）。只有总数为正且
+内存/输出预算可承受时，才使用同一数据库、设备和过滤条件，通过
+`-n <positive_total>` 单次获取该行数：
+
+```bash
+pt-snap query '<db_path>' --device <device_id> --template-use leak_detection --params '{"min_size":1024}' -n <positive_total> --json
+```
+
+删除 `--params` 中显式的 `limit`，或同步增大到该总数；否则较小的 `limit`
+仍会限制扩大后的窗口。确认 `returned` 等于精确计数，且 `has_more` 与
+`truncated` 均为 false。用新结果**替换**旧结果，不要追加重叠窗口或累加各次
+计数/字节数。API 采用相同流程，使用 `exact_total=True` 和正数 `max_rows`。
+
+完整结果超出预算时，保留有界样本并明确报告候选/字节覆盖不完整。精确行数
+无法给出候选总字节数。增大 `min_size` 会改变分析范围，需要重新计数，不能
+据此声称已经覆盖原始范围的全部结果。
+
 ## 参数校验
 
 `--params` 会在渲染任何 SQL 之前按模板定义进行校验：
@@ -224,9 +254,12 @@ QueryService 调用的共享预算（页面查询与可选 COUNT 共用），作
 `--template-info --json` 包含 `semantics_version`、`interpretation_limits`
 以及 `output_schema` 上的字段语义。
 
-`event`、`block`、`allocation` 与 `leak_detection` 在主排序后用 `id` 做稳定
-次序。带 `limit` / `offset` 的截断列表应带着相同排序键提高 `offset`
-（或 `-n`）续页。`active_memory_callstack_at_event` 没有 `offset`，`-n`
+`event`、`block` 与 `allocation` 支持 `offset` 分页，在主排序后用 `id` 做稳定
+次序。它们带 `limit` / `offset` 的截断列表应带着相同排序键提高 `offset` 续页。
+`leak_detection` 也有稳定的 `id` 次序，但没有 `offset`，应遵循上文的
+[完整候选窗口流程](#获取完整候选窗口)。增大 `-n` 是替换先前窗口，不是获取
+不重叠的下一页。`has_more` 不代表支持 offset。
+`active_memory_callstack_at_event` 没有 `offset`，`-n`
 也无法突破 CTE 内的 `top_n`；该模板应增大 `top_n` 续页。
 
 `--json` 失败时 stdout 为空，stderr 为：
