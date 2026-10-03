@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from typer.main import get_command
 
 from pt_snap_cli.cli import app
@@ -101,6 +102,65 @@ def test_helper_skill_routes_by_goal_and_input_type() -> None:
     for name in ROUTED_SKILLS:
         assert f"`{name}`" in skill
     assert "CSV, SVG, and other visualization files are not SnapshotDB input" in skill
+
+
+@pytest.mark.parametrize(
+    ("goal", "missing_cli_route"),
+    [
+        ("Install or verify the CLI", "`pt-snap-setup`"),
+        ("Collect an Ascend NPU pickle", "`pt-snap-ascend-npu-collect`"),
+        ("Leak / live allocations at end of trace", "`pt-snap-setup` first"),
+        ("What was live at a peak event", "`pt-snap-setup` first"),
+        ("Allocator gaps / reserved-pool pressure", "`pt-snap-setup` first"),
+    ],
+)
+def test_helper_missing_cli_matrix_routes_by_goal(goal: str, missing_cli_route: str) -> None:
+    matrix = _skill().split("## Routing matrix", 1)[1].split("Exact next-skill names:", 1)[0]
+    rows = [
+        [cell.strip() for cell in line.strip("|").split("|")]
+        for line in matrix.splitlines()
+        if line.startswith("|")
+    ]
+    missing_cli_column = rows[0].index("`pt-snap` missing")
+    row = next(row for row in rows[2:] if row[0] == goal)
+    assert row[missing_cli_column] == missing_cli_route
+
+
+def test_helper_missing_cli_preserves_unchecked_status_and_collection_priority() -> None:
+    prerequisite = " ".join(
+        _skill()
+        .split("## Prerequisite: check skill availability", 1)[1]
+        .split("### Interpret availability", 1)[0]
+        .split()
+    )
+    assert "report catalog/directory status as `unchecked`" in prerequisite
+    assert "For Ascend NPU capture, choose `pt-snap-ascend-npu-collect` first" in prerequisite
+    assert "For existing SnapshotDB analysis or CLI installation/verification" in prerequisite
+    assert "hand off to `pt-snap-setup`" in prerequisite
+
+
+def test_helper_collection_handoff_requires_host_loading_and_handles_failure() -> None:
+    collection = " ".join(
+        _skill().split("### Need Ascend NPU collection", 1)[1].split("## Boundaries", 1)[0].split()
+    )
+    assert "already loaded by the host or the host's supported loader succeeds" in collection
+    assert "Missing `pt-snap` does not block collection" in collection
+    assert "If loading fails or no loader is available, pause the collection handoff" in collection
+    assert "configure the known skill directory for host discovery and restart" in collection
+    assert "Source readability is not host-loading evidence" in collection
+    assert "Do not install packages or skills implicitly" in collection
+    assert "TorchNPU/environment verification remains owned by the collection skill" in collection
+
+
+def test_helper_capture_then_analysis_keeps_separate_stage_decisions() -> None:
+    missing_cli = " ".join(
+        _skill().split("### `pt-snap` missing", 1)[1].split("## Boundaries", 1)[0].split()
+    )
+    assert "For capture followed by analysis, route collection first" in missing_cli
+    assert "After capture, route to setup if the CLI is still missing" in missing_cli
+    assert "trusted import remains an independent decision" in missing_cli
+    assert "only after a SnapshotDB exists" in missing_cli
+    assert "For pickle-only analysis, explain the independent trusted-input decision" in missing_cli
 
 
 def test_helper_skill_keeps_pickle_import_and_focus_as_handoffs() -> None:

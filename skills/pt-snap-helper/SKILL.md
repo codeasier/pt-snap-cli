@@ -32,8 +32,13 @@ pt-snap skill list --json
 Parse `skills[].name` and `skills[].status`. Status is `installed`, `outdated`,
 or `missing`.
 
-If `pt-snap` is missing, stop routing diagnostics and hand off to
-`pt-snap-setup`. Do not install the Python package from this skill.
+If `pt-snap` is missing, report catalog/directory status as `unchecked`, not
+`missing` or `installed`; do not attempt CLI probes. Choose by the current goal.
+For Ascend NPU capture, choose `pt-snap-ascend-npu-collect` first, subject to
+host-loading evidence below. For existing SnapshotDB analysis or CLI
+installation/verification, stop routing diagnostics and hand off to
+`pt-snap-setup`. Pickle-only analysis still requires a separate trusted import
+decision. Do not install the Python package from this skill.
 
 ### Interpret availability in the inspected scope
 
@@ -181,10 +186,15 @@ overview and apply these same checks. Metadata alone does not replace overview.
 Choose one next skill. If the goal is still ambiguous after this table, ask
 the user; do not start all diagnostic skills.
 
+Apply the capture row first when capture is the current stage, including a
+capture-then-analysis request. The missing-CLI analysis cells apply when the
+user is ready for analysis, not to the earlier collection stage. Every handoff
+requires host-loading evidence; a next-skill name alone is not a completed handoff.
+
 | User goal | Existing SnapshotDB | Only pickle | `pt-snap` missing | Need Ascend NPU capture |
 | --- | --- | --- | --- | --- |
 | Install or verify the CLI | `pt-snap-setup` | `pt-snap-setup` | `pt-snap-setup` | `pt-snap-setup` |
-| Collect an Ascend NPU pickle | `pt-snap-ascend-npu-collect` | `pt-snap-ascend-npu-collect` | `pt-snap-setup` first | `pt-snap-ascend-npu-collect` |
+| Collect an Ascend NPU pickle | `pt-snap-ascend-npu-collect` | `pt-snap-ascend-npu-collect` | `pt-snap-ascend-npu-collect` | `pt-snap-ascend-npu-collect` |
 | Leak / live allocations at end of trace | `pt-snap-memory-leak` | Trusted import first, then leak | `pt-snap-setup` first | Collect first, then trusted import, then leak |
 | What was live at a peak event | `pt-snap-memory-peak-breakdown` | Trusted import first, then peak | `pt-snap-setup` first | Collect first, then trusted import, then peak |
 | Allocator gaps / reserved-pool pressure | `pt-snap-memory-fragmentation` | Trusted import first, then fragmentation | `pt-snap-setup` first | Collect first, then trusted import, then fragmentation |
@@ -282,13 +292,38 @@ If they need to capture a pickle on Ascend NPU first, hand off to
 
 ### `pt-snap` missing
 
-Hand off to `pt-snap-setup`. That skill owns interpreter selection, ownership
-checks, and install approval. This helper must not run `pip` or assume Conda.
+For collection, use the collection branch below even without the CLI. For
+existing SnapshotDB analysis or an explicit CLI install/verify request, hand off
+to `pt-snap-setup`. That skill owns interpreter selection, ownership checks, and
+install approval. This helper must not run `pip` or assume Conda.
+
+For pickle-only analysis, explain the independent trusted-input decision and
+route to setup if CLI preparation is needed; setup approval is not import
+approval. Do not import or deserialize the pickle from this helper.
 
 ### Need Ascend NPU collection
 
-Hand off to `pt-snap-ascend-npu-collect`. Collection ends when a pickle exists
-on disk. It does not import or diagnose.
+Hand off to `pt-snap-ascend-npu-collect` only when that exact skill is already
+loaded by the host or the host's supported loader succeeds. Missing `pt-snap`
+does not block collection and does not require setup first. Keep catalog/directory
+status `unchecked` when the CLI is absent, and report host-loading evidence
+separately. Source readability is not host-loading evidence.
+
+If loading fails or no loader is available, pause the collection handoff and
+report the failure or unverified loading. Ask the user to configure the known
+skill directory for host discovery and restart, or provide a supported loader
+for that exact skill. If no copy is available, explain skill acquisition and
+restart as a separate user choice; if the user chooses CLI-based installation,
+setup owns package-install approval. Do not install packages or skills implicitly.
+Do not replace the unavailable skill with this helper's own collection procedure.
+
+TorchNPU/environment verification remains owned by the collection skill.
+Collection ends when a pickle exists on disk. It does not import or diagnose.
+
+For capture followed by analysis, route collection first and record analysis as
+a later stage. After capture, route to setup if the CLI is still missing;
+trusted import remains an independent decision. Hand off to a diagnostic skill
+only after a SnapshotDB exists, with the normal diagnostic preflight.
 
 ## Boundaries
 
@@ -305,7 +340,8 @@ Report:
 
 - `Goal`
 - `Input type` (`snapshotdb`, `pickle`, `missing-cli`, or `npu-collect`)
-- `Needed skills` and their `pt-snap skill list --json` status when available
+- `Needed skills` and their `pt-snap skill list --json` status when available;
+  otherwise catalog/directory status `unchecked`, plus separate host-loading evidence
 - `Next skill` (one of the five names)
 - `Install/restart notes` when a skill is missing or outdated
 - `Trusted import notes` when the user only has pickle

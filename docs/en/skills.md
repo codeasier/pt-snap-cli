@@ -4,6 +4,26 @@
 
 `pt-snap-cli` ships agent skills for routing (`pt-snap-helper`), setup, Ascend NPU collection, and memory diagnostics. Agents should start with `pt-snap-helper` and prefer `--json` on commands that accept it. The `pt-snap skill` commands copy those skills into the shared Agent Skills directory and into host-specific directories that Claude Code still requires.
 
+## Collection when the CLI is missing
+
+For Ascend NPU capture, `pt-snap-helper` routes to `pt-snap-ascend-npu-collect`
+without requiring `pt-snap-setup` first. The exact collection skill must already
+be loaded by the host or load successfully through its supported loader; the
+collection skill owns TorchNPU/environment verification. Without the CLI,
+catalog/directory status is `unchecked`, reported separately from host-loading
+evidence. Readable skill source is not proof of loading.
+
+If loading fails or is unavailable, the helper pauses collection handoff and
+explains how to make the known skill directory discoverable and restart, or use
+a supported loader. Acquiring a missing skill is a separate user choice; the
+helper does not implicitly install packages or skills.
+
+Existing SnapshotDB analysis with a missing CLI still routes to setup. For
+capture followed by analysis, collect first, then use setup if the CLI is still
+missing. Pickle-only analysis requires an independent trusted-import decision;
+setup approval does not approve import. Diagnostic handoff starts only after a
+SnapshotDB exists, with the normal capabilities/overview preflight.
+
 ## List skills
 
 ```bash
