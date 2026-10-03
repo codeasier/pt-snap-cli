@@ -247,6 +247,25 @@ The report command combines:
 
 and prints either a human-readable summary or JSON.
 
+The existing `callstack_groups` and `percent_of_active_blocks` values are preserved.
+JSON also exposes attribution `has_more`, `truncated`, `total_is_exact`, and
+`effective_params` (`event_id`, `include_static`, `min_size`, `top_n`). A full
+dynamic `top_n` window is conservatively **possibly incomplete**, even when it
+happens to contain every group. Text output labels this as partial. Increase
+`--limit` within a finite budget and replace the previous result; do not add
+ranked windows together. Static and preexisting groups are extra rows outside
+the dynamic `--limit` cap when included.
+
+`included_bytes` sums all returned groups. `percent_denominator: "included_bytes"`
+means row percentages are byte shares of this filtered/capped set, not all active
+memory or block counts. `active_bytes_at_event` is the active counter at the
+**selected metric's event**, including for allocated/reserved reports.
+`coverage_percent` is `100 * included_bytes / active_bytes_at_event`; it is `null`
+(text: unknown) when that counter is absent or non-positive, or no event exists.
+Coverage is not a completeness flag: `--exclude-static` can lower it without
+truncation, and reaching the cap can remain possibly incomplete at 100% coverage.
+An empty trace returns no groups, zero included bytes, and unknown coverage.
+
 ## JSON Output
 
 `--json` writes one JSON object to stdout. Success payloads include

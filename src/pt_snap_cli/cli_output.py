@@ -134,6 +134,29 @@ def print_peak_memory_report(report: PeakMemoryReport) -> None:
     typer.echo()
 
     typer.secho("Active memory by callstack:", fg=typer.colors.GREEN, bold=True)
+    if report.event_id is None:
+        typer.echo("  Attribution: unavailable (no peak event).")
+    elif report.has_more or report.truncated:
+        typer.echo("  Attribution: partial / possibly incomplete (dynamic top_n cap reached).")
+        typer.echo("  Increase --limit within a finite budget to check for additional groups.")
+    else:
+        typer.echo("  Attribution: complete for the effective filters.")
+    typer.echo(
+        f"  Parameters: include_static={report.effective_params.get('include_static')}, "
+        f"min_size={report.effective_params.get('min_size')}, "
+        f"top_n={report.effective_params.get('top_n')}"
+    )
+    typer.echo(
+        f"  Percentage denominator: {report.percent_denominator}={report.included_bytes} bytes "
+        "(included groups after filtering/top_n; not all active memory or block counts)."
+    )
+    coverage = (
+        f"{report.coverage_percent:.4f}%" if report.coverage_percent is not None else "unknown"
+    )
+    typer.echo(
+        f"  Active coverage at event {report.event_id}: {coverage} "
+        f"(included={report.included_bytes} bytes, active={report.active_bytes_at_event} bytes)."
+    )
     if not report.callstack_groups:
         typer.echo("  No active memory callstack groups found.")
         return

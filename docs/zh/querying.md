@@ -231,6 +231,22 @@ pt-snap report peak-memory /path/to/snapshot.db --json
 
 并输出人类可读摘要或 JSON。
 
+原有 `callstack_groups` 和 `percent_of_active_blocks` 数值保持不变。JSON 还会
+返回归因的 `has_more`、`truncated`、`total_is_exact` 和 `effective_params`
+（`event_id`、`include_static`、`min_size`、`top_n`）。动态分组恰好填满 `top_n`
+窗口时会保守标记为**可能不完整**，即使实际上已包含所有分组；文本输出显示 partial。
+可在有限预算内增大 `--limit`，用新结果替换旧结果，不要把不同排名窗口累加。
+包含静态内存时，static 和 preexisting 分组是动态 `--limit` 上限之外的额外行。
+
+`included_bytes` 是所有返回分组的字节总和。`percent_denominator: "included_bytes"`
+说明行百分比是筛选、截断后集合的字节占比，而非全部 active 内存或块数量的占比。
+`active_bytes_at_event` 是**所选 metric 对应事件**的 active counter，对 allocated
+和 reserved 报告也一样。`coverage_percent` 为
+`100 * included_bytes / active_bytes_at_event`；该 counter 缺失、非正数或没有事件时
+为 `null`（文本显示 unknown）。覆盖率不是完整性标志：`--exclude-static` 可以在
+没有截断时降低覆盖率，而满窗口即使覆盖率达到 100% 也仍可能不完整。
+空 trace 返回空分组、零 included bytes 和未知覆盖率。
+
 ## JSON 输出
 
 `--json` 向 stdout 写一个 JSON 对象。成功结果包含 `schema_version`（当前为 `1`）、
