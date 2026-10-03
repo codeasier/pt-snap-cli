@@ -60,7 +60,9 @@ def test_annotated_templates_share_a_json_serializable_contract() -> None:
     for name in _ANNOTATED:
         template = get_query(name)
         assert template is not None
-        assert template.semantics_version == 1
+        assert template.semantics_version == (
+            2 if name == "active_memory_callstack_at_event" else 1
+        )
         assert template.interpretation_limits
         info = get_template_info(name)
         assert info is not None
@@ -117,3 +119,19 @@ def test_callstack_percent_metadata_matches_truncated_byte_denominator() -> None
     category = _column("active_memory_callstack_at_event", "category")
     assert category["scope"] == "mixed"
     assert "Per-row scope" in " ".join(category["interpretation_limits"])
+
+
+def test_missing_callstack_contract_covers_normalization_and_group_boundaries() -> None:
+    column = _column("active_memory_callstack_at_event", "callstack")
+    limits = " ".join(column["interpretation_limits"])
+    for term in (
+        "[missing callstack]",
+        "empty strings",
+        "NULL text or IDs",
+        "missing joined allocation events or callstack records",
+        "merge before top_n",
+        "callstackId in v2",
+        "Whitespace-only",
+        "not unique group identities",
+    ):
+        assert term in limits

@@ -237,6 +237,119 @@ def test_active_memory_callstack_groups_match_across_layouts(v1_db: Path, v2_db:
     assert by_callstack["[missing callstack]"]["requested_bytes"] == 500
 
 
+@pytest.fixture(params=["v1", "v2"])
+def missing_callstack_db(request: pytest.FixtureRequest, tmp_path: Path) -> Path:
+    """Include every missing-link shape alongside real and synthetic groups."""
+    layout = request.param
+    create = create_v1_db if layout == "v1" else create_v2_db
+    path = create(tmp_path / f"missing-{layout}.db")
+    with sqlite3.connect(path) as conn:
+        conn.execute("DELETE FROM block_0")
+        conn.execute("DELETE FROM trace_entry_0")
+        # Empty text, NULL text, NULL ID, dangling ID, and missing alloc event.
+        texts = ["", None, None, None, "train.py:10", " ", "[missing callstack]"]
+        if layout == "v1":
+            conn.executemany(
+                "INSERT INTO trace_entry_0 (id, callstack) VALUES (?, ?)",
+                enumerate(texts, start=1),
+            )
+        else:
+            conn.execute("DELETE FROM callstack")
+            conn.executemany(
+                "INSERT INTO callstack (id, callstack) VALUES (?, ?)",
+                [(1, ""), (2, None), (5, texts[4]), (6, texts[5]), (7, texts[6])],
+            )
+            conn.executemany(
+                "INSERT INTO trace_entry_0 (id, callstackId) VALUES (?, ?)",
+                [(1, 1), (2, 2), (3, None), (4, 404), (5, 5), (6, 6), (7, 7)],
+            )
+        conn.executemany(
+            "INSERT INTO block_0 (id, size, requestedSize, allocEventId, freeEventId) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [
+                (1, 100, 90, 1, -1),
+                (2, 200, 180, 2, -1),
+                (3, 300, 270, 3, -1),
+                (4, 400, 360, 4, -1),
+                (5, 500, 450, 8, -1),  # No trace row for alloc event 8.
+                (6, 600, 540, 5, -1),
+                (7, 700, 630, 5, -1),  # Same real callstack aggregates.
+                (8, 10, 9, 6, -1),  # Whitespace is not empty text.
+                (9, 20, 18, 7, -1),  # Literal label is not missing text.
+                (10, 50, 45, -1, -1),
+                (11, 70, 63, -1, 20),
+            ],
+        )
+    return path
+
+
+@pytest.mark.parametrize("include_static", [True, False])
+@pytest.mark.parametrize("top_n", [-1, 1])
+def test_missing_callstacks_merge_before_ranking_and_preserve_totals(
+    missing_callstack_db: Path, include_static: bool, top_n: int
+) -> None:
+    rows = _execute(
+        missing_callstack_db,
+        "active_memory_callstack_at_event",
+        {"event_id": 10, "include_static": include_static, "top_n": top_n},
+    )
+    dynamic = [row for row in rows if row["category"] == "dynamic_live_at_event"]
+    assert len(dynamic) == (4 if top_n == -1 else 1)
+    missing = dynamic[0]
+    assert missing["callstack"] == "[missing callstack]"
+    assert (missing["block_count"], missing["size_bytes"], missing["requested_bytes"]) == (
+        5,
+        1500,
+        1350,
+    )
+    if top_n == -1:
+        assert dynamic[1]["callstack"] == "train.py:10"
+        assert dynamic[1]["block_count"] == 2
+        assert dynamic[1]["size_bytes"] == 1300
+        assert [row["callstack"] for row in dynamic[2:]] == ["[missing callstack]", " "]
+    assert {row["category"] for row in rows} == (
+        {"dynamic_live_at_event", "static", "preexisting_live_at_event"}
+        if include_static
+        else {"dynamic_live_at_event"}
+    )
+    expected_size = (2830 if top_n == -1 else 1500) + (120 if include_static else 0)
+    expected_requested = (2547 if top_n == -1 else 1350) + (108 if include_static else 0)
+    expected_count = (9 if top_n == -1 else 5) + (2 if include_static else 0)
+    assert sum(row["size_bytes"] for row in rows) == expected_size
+    assert sum(row["requested_bytes"] for row in rows) == expected_requested
+    assert sum(row["block_count"] for row in rows) == expected_count
+    for row in rows:
+        assert row["percent_of_active_blocks"] == round(row["size_bytes"] * 100 / expected_size, 4)
+    assert sum(row["percent_of_active_blocks"] for row in rows) == pytest.approx(100, abs=0.0002)
+
+
+def test_active_memory_v2_keeps_nonempty_callstack_ids_separate(v2_db: Path) -> None:
+    with sqlite3.connect(v2_db) as conn:
+        conn.execute("INSERT INTO callstack (id, callstack) VALUES (99, 'train.py:10')")
+        conn.execute("UPDATE trace_entry_0 SET callstackId = 99 WHERE id = 4")
+    rows = _execute(v2_db, "active_memory_callstack_at_event", {"event_id": 5, "top_n": -1})
+    normal = [row for row in rows if row["callstack"] == "train.py:10"]
+    assert [(row["size_bytes"], row["block_count"]) for row in normal] == [(4096, 1), (1024, 1)]
+
+
+def test_missing_callstack_filter_and_page_keep_sql_denominator(missing_callstack_db: Path) -> None:
+    params = {"event_id": 10, "min_size": 200, "include_static": False, "top_n": -1}
+    result = QueryService().execute_query(
+        "active_memory_callstack_at_event", params=params, db_path=missing_callstack_db, max_rows=1
+    )
+    assert result.returned == 1
+    assert result.has_more is True
+    missing = result.rows[0]
+    assert missing["callstack"] == "[missing callstack]"
+    assert (missing["size_bytes"], missing["requested_bytes"], missing["block_count"]) == (
+        1400,
+        1260,
+        4,
+    )
+    # The normal 1300-byte group remains in the denominator, beyond max_rows.
+    assert missing["percent_of_active_blocks"] == round(1400 * 100 / 2700, 4)
+
+
 def test_v1_callstack_analysis_pagination_and_total(v1_db: Path) -> None:
     result = QueryService().execute_query(
         "callstack_analysis",
