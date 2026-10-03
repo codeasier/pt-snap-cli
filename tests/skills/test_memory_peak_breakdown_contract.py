@@ -48,7 +48,8 @@ def test_skill_references_current_report_and_templates() -> None:
         assert f"  {name}:" in path.read_text(encoding="utf-8")
         assert f"`{name}`" in skill.split("## Full-Trace Workflow")[0]
     assert "has_more" in skill
-    assert "-n <LIMIT>" in skill
+    assert "-n <GROUP_ROWS> --json" in skill
+    assert "-n <BLOCK_LIMIT> --json" in skill
     assert "increase `top_n`" in skill
 
 
@@ -157,7 +158,7 @@ def test_range_fallback_and_peak_event_semantics_are_explicit() -> None:
     assert "Never fabricate an event ID,\nsubstitute a full-trace value" in skill
 
 
-def test_preexisting_live_blocks_are_attributed_and_exempt_from_truncation() -> None:
+def test_special_groups_are_exempt_only_from_inner_ranking() -> None:
     normalized = _normalized_skill()
 
     assert "Attribution covers three categories returned by the templates" in _skill()
@@ -166,11 +167,26 @@ def test_preexisting_live_blocks_are_attributed_and_exempt_from_truncation() -> 
     )
     assert "no captured allocation event" in normalized
     assert "Keep `static`, `preexisting_live_at_event`, and `dynamic_live_at_event`" in _skill()
+    assert "groups are exempt from the inner `top_n` filter" in normalized
+    assert "not an exemption from the outer `-n` row cap" in normalized
+    assert "absent special categories are not fabricated" in normalized
+
+
+def test_group_and_block_caps_and_conservative_completeness_are_distinct() -> None:
+    skill = _skill()
+    normalized = _normalized_skill()
+
+    assert '"top_n": <LIMIT>}\' -n <GROUP_ROWS> --json' in skill
+    assert '"limit": <BLOCK_LIMIT>}\' -n <BLOCK_LIMIT> --json' in skill
+    assert "compute `<LIMIT> + 2` before command substitution" in normalized
+    assert "20 dynamic groups → 22 rows; 1 dynamic group → 3 rows" in normalized
+    assert "does not guarantee that all dynamic groups fit within `top_n`" in normalized
+    assert "does not prove that more groups exist" in normalized
+    assert "use `--exact-total` to resolve that uncertainty" in normalized
     assert (
-        "always returns `static` and `preexisting_live_at_event` groups regardless of `top_n`"
-        in normalized
+        "At fixed `top_n`, raising `-n` preserves common rows and their percentages" in normalized
     )
-    assert "the smallest dynamic groups are dropped while these special groups remain" in normalized
+    assert "do not concatenate or sum overlapping results" in normalized
 
 
 def test_attribution_caveats_prevent_reserved_and_static_overclaim() -> None:

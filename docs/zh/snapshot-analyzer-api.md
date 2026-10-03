@@ -161,8 +161,8 @@ for row in result["rows"]:
 | --- | --- |
 | `total` | `exact_total=True` 时为匹配集合的 `COUNT`；否则等于已返回行数 |
 | `returned` | `rows` 中实际返回的行数 |
-| `has_more` | 还有后续页时为 true（尾部 `LIMIT` 多取一行，或内部 `top_n` 窗口已满） |
-| `truncated` | 本次响应不是完整匹配集合时为 true |
+| `has_more` | 存在更多行时为 true；内部 `top_n` 窗口已满时也会保守地设为 true（即使恰好只有 N 个组） |
+| `truncated` | 本次响应不完整，或内部排名窗口已满而完整性未确认时为 true |
 | `total_is_exact` | `total` 来自 `COUNT`，或本页就是完整匹配集合时为 true |
 | `timeout_s` | 生效的执行超时秒数；未限制时为 `None` |
 | `device_id` | 本次执行选择的设备 |
@@ -178,8 +178,12 @@ analyzer 设备；未设置显式 analyzer 数据库时，再使用已解析项�
 `execute_query()` 调用的墙钟预算（秒），也可由 `PT_SNAP_QUERY_TIMEOUT`
 提供；页面查询与可选 COUNT 共用该预算。该环境变量作用于所有模板查询，
 包括 `report peak-memory`。它不改变行数上限。
-`active_memory_callstack_at_event` 应增大 `top_n` 续页，`-n` 无法突破
-CTE 上限。
+`active_memory_callstack_at_event` 应增大 `top_n` 扩大窗口，`max_rows`（CLI `-n`）
+无法突破 CTE 上限。对于有限正整数 `top_n=N` 且 `include_static=True`，设置
+`max_rows=N+2` 可在动态 top N 之外保留最多两个特殊组。这可避免外层二次截断，
+但不保证内部排名完整。窗口已满本身不证明存在更多组；扩大窗口或使用
+`exact_total=True` 可确认。新窗口替换旧窗口，不要累加。固定 `top_n` 时，
+改变 `max_rows` 不改变共有行的百分比；改变 `top_n` 则可能改变分母。
 
 查询行包含原始 SQLite 值，不会自动应用模板的 `output_schema` metadata。需要转换后的值
 或模型映射时，使用可选的 [ResultMapper API](result-mapper-api.md)。

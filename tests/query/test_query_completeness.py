@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
 
+from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import app
 from pt_snap_cli.config import Config
 from pt_snap_cli.context import Context
@@ -92,8 +94,8 @@ def _trace_db(tmp_path: Path, rows: list[tuple[int, int, int]]) -> Path:
     return db_path
 
 
-def _ranked_callstack_db(tmp_path: Path, dynamic_count: int = 4) -> Path:
-    """v1 SnapshotDB with ``dynamic_count`` live callstack groups plus specials."""
+def _ranked_callstack_db(tmp_path: Path, dynamic_count: int = 4, layout: str = "v1") -> Path:
+    """SnapshotDB with ``dynamic_count`` live callstack groups plus specials."""
     db_path = tmp_path / "ranked.db"
     conn = sqlite3.connect(str(db_path))
     conn.execute("CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)")
@@ -147,6 +149,12 @@ def _ranked_callstack_db(tmp_path: Path, dynamic_count: int = 4) -> Path:
         """,
         blocks,
     )
+    if layout == "v2":
+        conn.execute("CREATE TABLE callstack (id INTEGER PRIMARY KEY, callstack TEXT)")
+        conn.execute("INSERT INTO callstack SELECT id, callstack FROM trace_entry_0")
+        conn.execute("ALTER TABLE trace_entry_0 ADD COLUMN callstackId INTEGER")
+        conn.execute("UPDATE trace_entry_0 SET callstackId = id")
+        conn.execute("ALTER TABLE trace_entry_0 DROP COLUMN callstack")
     conn.commit()
     conn.close()
     return db_path
@@ -410,6 +418,103 @@ def test_top_n_window_is_not_reported_complete_by_default(tmp_path: Path) -> Non
     assert exact_full_window.has_more is False
     assert exact_full_window.truncated is False
     assert exact_full_window.total_is_exact is True
+
+
+@pytest.mark.parametrize("layout", ["v1", "v2"])
+@pytest.mark.parametrize("top_n", [1, 20])
+@pytest.mark.parametrize("extra_groups", [0, 1], ids=["exact-window", "overflow"])
+@pytest.mark.parametrize("large_specials", [False, True], ids=["specials-last", "specials-first"])
+def test_peak_group_row_cap_preserves_ranked_rows_and_denominator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    layout: str,
+    top_n: int,
+    extra_groups: int,
+    large_specials: bool,
+) -> None:
+    """The skill's N+2 outer cap preserves inner top N plus both special groups."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    dynamic_count = top_n + extra_groups
+    db_path = _ranked_callstack_db(tmp_path, dynamic_count, layout)
+    if large_specials:
+        with closing(sqlite3.connect(db_path)) as conn, conn:
+            conn.execute("UPDATE block_0 SET size = 100000, requestedSize = 100000 WHERE id = -10")
+            conn.execute("UPDATE block_0 SET size = 40000, requestedSize = 40000 WHERE id = -11")
+
+    with SnapshotAnalyzer(db_path, device_id=0) as analyzer:
+
+        def query(rank_cap: int, row_cap: int, exact: bool = False) -> dict:
+            params = {"event_id": 50, "include_static": True, "top_n": rank_cap}
+            args = [
+                "query",
+                str(db_path),
+                "--device",
+                "0",
+                "--template-use",
+                "active_memory_callstack_at_event",
+                "--params",
+                json.dumps(params),
+                "-n",
+                str(row_cap),
+                "--json",
+            ]
+            if exact:
+                args.append("--exact-total")
+            result = runner.invoke(app, args)
+            assert result.exit_code == 0, result.output
+            payload = json.loads(result.stdout)
+            api = analyzer.execute_query(
+                "active_memory_callstack_at_event",
+                params=params,
+                max_rows=row_cap,
+                exact_total=exact,
+            )
+            for key in ("rows", "returned", "total", "has_more", "truncated", "total_is_exact"):
+                assert payload[key] == api[key]
+            return payload
+
+        clipped = query(top_n, top_n)
+        ranked = query(top_n, top_n + 2)
+        counted = query(top_n, top_n + 2, exact=True)
+        widened = query(top_n + 2, top_n + 4)
+
+    assert clipped["returned"] == top_n
+    assert clipped["rows"] == ranked["rows"][:top_n]
+    if top_n == 1:
+        assert clipped["rows"][0]["category"] == (
+            "static" if large_specials else "dynamic_live_at_event"
+        )
+    categories = [row["category"] for row in ranked["rows"]]
+    assert categories.count("dynamic_live_at_event") == top_n
+    assert categories.count("static") == categories.count("preexisting_live_at_event") == 1
+    assert ranked["returned"] == top_n + 2
+    ranked_bytes = sum(row["size_bytes"] for row in ranked["rows"])
+    expected_bytes = 1000 * sum(range(extra_groups + 1, dynamic_count + 1))
+    expected_bytes += 140000 if large_specials else 90
+    assert ranked_bytes == expected_bytes
+    for row in ranked["rows"]:
+        assert row["percent_of_active_blocks"] == pytest.approx(
+            round(100 * row["size_bytes"] / expected_bytes, 4)
+        )
+    assert sum(row["percent_of_active_blocks"] for row in ranked["rows"]) == pytest.approx(
+        100, abs=0.002
+    )
+    assert sum(row["percent_of_active_blocks"] for row in clipped["rows"]) < 100
+    # A full inner window is conservative even when it contains every dynamic group.
+    for payload in (clipped, ranked):
+        assert payload["has_more"] is True
+        assert payload["truncated"] is True
+        assert payload["total_is_exact"] is False
+        assert payload["total"] == payload["returned"]
+    assert counted["rows"] == ranked["rows"]
+    assert counted["total"] == dynamic_count + 2
+    assert counted["total_is_exact"] is True
+    assert counted["has_more"] is bool(extra_groups)
+    assert counted["truncated"] is bool(extra_groups)
+    assert widened["returned"] == dynamic_count + 2
+    assert widened["has_more"] is widened["truncated"] is False
+    assert widened["total_is_exact"] is True
+    assert not (tmp_path / ".pt-snap").exists()
 
 
 def test_inner_top_n_without_category_uses_row_count(tmp_path: Path) -> None:

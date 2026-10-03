@@ -174,8 +174,8 @@ The result contains:
 | --- | --- |
 | `total` | Matching-row `COUNT` when `exact_total=True`; otherwise the returned-row count |
 | `returned` | Number of rows included in `rows` |
-| `has_more` | True when a later page exists (extra-row probe on a trailing `LIMIT`, or a full inner `top_n` window) |
-| `truncated` | True when this response is not the complete matching set |
+| `has_more` | True when more rows exist, or conservatively when an inner `top_n` window is full (even if exactly N groups exist) |
+| `truncated` | True when this response is incomplete or completeness is unconfirmed by a full inner ranking window |
 | `total_is_exact` | True when `total` is a `COUNT`, or when the page is the complete matching set |
 | `timeout_s` | Effective execution timeout in seconds, or `None` when unbounded |
 | `device_id` | Device selected for execution |
@@ -193,8 +193,14 @@ is a wall-clock budget for one `execute_query()` call in seconds (or
 `PT_SNAP_QUERY_TIMEOUT`); the page query and optional COUNT share it. The
 same environment variable applies to every template query, including
 `report peak-memory`. It does not change the row cap. Continue
-`active_memory_callstack_at_event` by increasing `top_n`; `-n` cannot
-raise that CTE cap.
+`active_memory_callstack_at_event` by increasing `top_n`; `max_rows` (CLI `-n`)
+cannot raise that CTE cap. For finite positive `top_n=N` with
+`include_static=True`, set `max_rows=N+2` to retain up to two special groups
+alongside the dynamic top N. This prevents outer truncation, not inner ranking
+incompleteness. A full window alone does not prove more groups exist; widen it
+or use `exact_total=True` to check. Replace earlier windows rather than summing
+them. At fixed `top_n`, changing `max_rows` does not change common rows'
+percentages; changing `top_n` can change their denominator.
 
 Rows contain raw SQLite values. Template `output_schema` metadata is not applied
 automatically; use the optional [ResultMapper API](result-mapper-api.md) when
