@@ -15,6 +15,7 @@ Authored workflows: [skills](../../skills/AGENTS.md).
 | `suites/pt-snap-memory-leak/` | Address reuse, pending free, allocator cache and pickle refusal |
 | `suites/pt-snap-memory-leak-iterations/` | Trusted iteration markers, missing markers, multiple cleanups and incomplete capture |
 | `README.md`, `__main__.py` | Harness formats and validate/grade/baseline command entry |
+| `test_*_contract.py` | Static and executable contracts for authored skill content and routing indexes |
 
 ## Test Routing and Policy
 

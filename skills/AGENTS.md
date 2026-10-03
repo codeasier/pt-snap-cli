@@ -6,12 +6,12 @@ Parent scope: [repository](../AGENTS.md).
 
 | Skill | Boundary |
 | --- | --- |
-| `pt-snap-helper` | Read-only routing, skill availability/host-loading evidence, diagnostic preflight handoff |
-| `pt-snap-setup` | Active interpreter/CLI ownership, explicitly approved package installation, re-verification |
-| `pt-snap-ascend-npu-collect` | Ascend NPU capture configuration and artifact inventory |
-| `pt-snap-memory-leak` | End-live retention candidates, peak survival, callstack/release/iteration evidence |
-| `pt-snap-memory-peak-breakdown` | Blocks and allocation stacks live at selected metric peaks |
-| `pt-snap-memory-fragmentation` | Allocator gaps, segment retention/churn and fragmentation-consistent pressure |
+| [pt-snap-helper](pt-snap-helper/SKILL.md) | Routes by user goal and input type; read-only availability/host-loading checks and diagnostic preflight handoff |
+| [pt-snap-setup](pt-snap-setup/SKILL.md) | Active interpreter/CLI ownership, explicitly approved package installation, re-verification |
+| [pt-snap-ascend-npu-collect](pt-snap-ascend-npu-collect/SKILL.md) | Collect Ascend NPU pickles through capture configuration and artifact inventory |
+| [pt-snap-memory-leak](pt-snap-memory-leak/SKILL.md) | End-live retention candidates, peak survival, callstack/release/iteration evidence |
+| [pt-snap-memory-peak-breakdown](pt-snap-memory-peak-breakdown/SKILL.md) | Blocks and allocation stacks live at selected metric peaks |
+| [pt-snap-memory-fragmentation](pt-snap-memory-fragmentation/SKILL.md) | Allocator gaps, segment retention/churn and fragmentation-consistent pressure |
 
 ## Mutation and Handoff Boundaries
 
@@ -19,7 +19,7 @@ Parent scope: [repository](../AGENTS.md).
   canonical paths are for ownership comparison only. Do not assume Conda or
   switch environments. Explain PyPI/editable choices and obtain confirmation
   for each install attempt. Setup does not write focus/config or analysis reports.
-- Collection guides recording/dumping and lists artifacts; it does not install,
+- Collection skills guide capture configuration and list artifacts; they do not install,
   deserialize/import snapshots, persist focus or diagnose CSV/SVG/pickle inputs.
   Trusted import remains a separate decision.
 - Helper distinguishes catalog source, inspected installation locations and
