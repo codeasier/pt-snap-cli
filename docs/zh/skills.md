@@ -16,7 +16,7 @@ pt-snap skill list --target claude --user
 
 - `installed` — 至少一个检查位置存在内容匹配的副本
 - `outdated` — 已有副本但与随包版本不同，或路径存在但没有 `SKILL.md`
-- `missing` — 未找到副本
+- `missing` — 在本次检查的位置未找到副本
 
 `--target` 接受逗号分隔的 `agents`、`claude`、`cursor`、`codex`。`--user` 和 `--project` 分别只检查用户级或当前项目目录。不传这些选项时，`list` 会同时检查两个范围。
 
@@ -43,6 +43,24 @@ pt-snap skill uninstall --dir C:\Users\you\custom-skills
 ```
 
 ## 安装 skill
+
+### 自定义目录可用性与 helper 交接
+
+执行 `pt-snap skill install --dir '<skills_dir>' --json` 后，用
+`pt-snap skill list --dir '<skills_dir>' --json` 复查同一目录，传入包含各 skill
+子目录的父目录。默认的 `pt-snap skill list --json` 只检查内置宿主位置，仍可能
+显示 `missing`；自定义目录不会自动登记。JSON 的 `locations` 列出实际检查路径。
+
+磁盘状态与宿主加载状态是两回事。`installed` 不代表宿主能发现该自定义目录或已经
+加载 skill；JSON 中可读的 `source_dir` 是目录源，也不能证明安装或加载成功。
+如果所需 skill 已被宿主加载（或通过宿主支持的加载器成功加载），即使默认列表
+显示 `missing`，`pt-snap-helper` 也可直接交接，无需重复安装。如果宿主无法加载，
+helper 会暂停诊断交接，请用户配置宿主发现目录并重启。如果已知当前使用的副本
+过期，应先升级并重启，再进行诊断。若预期的自定义位置确实为 `missing` 或
+`outdated`，安装或升级时应保留同一个 `--dir`；helper 只说明命令，不执行。
+交接时会分别报告检查位置的状态和宿主加载证据。
+
+### 安装命令
 
 ```bash
 pt-snap skill install

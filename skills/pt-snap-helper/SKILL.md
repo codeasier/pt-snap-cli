@@ -35,8 +35,46 @@ or `missing`.
 If `pt-snap` is missing, stop routing diagnostics and hand off to
 `pt-snap-setup`. Do not install the Python package from this skill.
 
-If a needed skill is `missing` or `outdated`, tell the user how to install or
-upgrade it. Do not run install or upgrade from this skill.
+### Interpret availability in the inspected scope
+
+`missing` means no copy was found in the inspected locations, not that the
+skill is unavailable to the current host. The default list checks built-in
+host directories in user and project scopes; custom install directories are
+not registered automatically. Inspect `skills[].locations` for each path and
+status rather than assuming the summary describes the host's active copy.
+A readable `source_dir` is catalog content, not proof of installation or host
+loading. Do not relabel a CLI status based on source readability.
+
+If the user installed with `--dir`, recheck the same skills directory (the
+parent containing `<skill-name>/SKILL.md`, not the individual skill folder):
+
+```bash
+pt-snap skill list --dir '<skills_dir>' --json
+```
+
+Use the known install destination or ask the user for it; do not guess or scan
+unrelated directories. Do not combine `--dir` with `--target`, `--user`, or
+`--project`. A custom-directory `installed` result verifies the on-disk copy;
+it does not establish that the host discovers that directory or has loaded it.
+
+### Decide the handoff using host-loading evidence
+
+- If the active copy is known to be outdated, request an upgrade and restart
+  before diagnostic handoff. An outdated copy in another inspected location
+  does not establish that the active copy is outdated.
+- If the host has already loaded the needed skill, hand off to it even when
+  the default list says `missing`. Otherwise, use the host's supported skill
+  loader when it exposes that exact skill and hand off after loading succeeds.
+  Do not require a redundant install just to change the default list status.
+- If the host cannot load the skill, pause the diagnostic handoff. For a custom
+  directory with an `installed` copy, ask the user to make that directory
+  discoverable through the host's supported configuration and restart; do not
+  recommend reinstalling an identical copy. If the intended location is truly
+  `missing` or `outdated`, explain the corresponding install or upgrade command
+  for that location. Do not run install or upgrade from this skill.
+- Report the inspected directory/scope, its status, and host-loading evidence
+  separately in the handoff. If loading is unverified, say so and give the next
+  action; never substitute this helper's own diagnostic analysis.
 
 Install or upgrade examples the user can run after they confirm they want
 the skills installed or updated. Do not run these commands from this skill:
@@ -46,6 +84,13 @@ pt-snap skill install pt-snap-helper --json
 pt-snap skill install --json
 pt-snap skill upgrade pt-snap-helper --json
 pt-snap skill upgrade --json
+```
+
+For a custom destination, preserve the same directory and needed skill name:
+
+```bash
+pt-snap skill install <needed-skill> --dir '<skills_dir>' --json
+pt-snap skill upgrade <needed-skill> --dir '<skills_dir>' --json
 ```
 
 After any install, upgrade, or uninstall that changes skill files, the host
