@@ -3,6 +3,7 @@
 import json
 import sqlite3
 import tempfile
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -166,7 +167,7 @@ class TestSnapshotAnalyzerWithDB:
         self, valid_db: Path, tmp_path: Path
     ) -> None:
         second_db = tmp_path / "device-one.db"
-        with sqlite3.connect(second_db) as conn:
+        with closing(sqlite3.connect(second_db)) as conn:
             conn.execute(
                 "CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT)"
             )
@@ -253,8 +254,8 @@ class TestSnapshotAnalyzerWithDB:
                 analyzer.execute_query("leak_detection")
 
     def test_execute_query_with_focus(self, valid_db: Path) -> None:
-        analyzer = SnapshotAnalyzer(db_path=valid_db)
-        result = analyzer.execute_query("leak_detection", max_rows=10)
+        with SnapshotAnalyzer(db_path=valid_db) as analyzer:
+            result = analyzer.execute_query("leak_detection", max_rows=10)
         assert "total" in result
         assert "returned" in result
         assert "device_id" in result
@@ -268,8 +269,8 @@ class TestSnapshotAnalyzerWithDB:
 
     def test_execute_query_max_rows_zero(self, valid_db: Path) -> None:
         """max_rows=0 returns all rows."""
-        analyzer = SnapshotAnalyzer(db_path=valid_db)
-        result = analyzer.execute_query("leak_detection", max_rows=0)
+        with SnapshotAnalyzer(db_path=valid_db) as analyzer:
+            result = analyzer.execute_query("leak_detection", max_rows=0)
         # leak_detection on empty table returns 0 rows
         assert result["total"] == 0
         assert result["returned"] == 0
@@ -314,7 +315,8 @@ class TestSnapshotAnalyzerWithDB:
         assert "pt-snap-helper" in skill_names
 
     def test_get_database_overview(self, valid_db: Path) -> None:
-        payload = SnapshotAnalyzer(db_path=valid_db).get_database_overview()
+        with SnapshotAnalyzer(db_path=valid_db) as analyzer:
+            payload = analyzer.get_database_overview()
         assert payload["db_path"] == str(valid_db.resolve())
         assert payload["devices"] == [
             {"device_id": 0, "first_event_id": None, "last_event_id": None}

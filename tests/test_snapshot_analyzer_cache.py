@@ -15,6 +15,7 @@ import os
 import sqlite3
 import tempfile
 import time
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -55,13 +56,17 @@ def valid_db() -> Path:
     db_path.unlink(missing_ok=True)
 
 
+@pytest.fixture
+def analyzer(valid_db):
+    with SnapshotAnalyzer(db_path=valid_db) as instance:
+        yield instance
+
+
 class TestSnapshotAnalyzerContextCache:
-    def test_repeated_queries_reuse_cached_context(self, valid_db: Path) -> None:
+    def test_repeated_queries_reuse_cached_context(self, valid_db: Path, analyzer) -> None:
         """Two consecutive ``execute_query`` calls must share one cached
         Context so that the second call avoids the schema validation
         and sqlite3.connect handshake."""
-        analyzer = SnapshotAnalyzer(db_path=valid_db)
-
         first_ctx = analyzer.context_cache.get(valid_db)
         analyzer.execute_query("leak_detection")
         second_ctx = analyzer.context_cache.get(valid_db)
@@ -69,9 +74,7 @@ class TestSnapshotAnalyzerContextCache:
         assert first_ctx is second_ctx
         assert len(analyzer.context_cache) == 1
 
-    def test_invalidate_context_cache_forces_refresh(self, valid_db: Path) -> None:
-        analyzer = SnapshotAnalyzer(db_path=valid_db)
-
+    def test_invalidate_context_cache_forces_refresh(self, valid_db: Path, analyzer) -> None:
         first_ctx = analyzer.context_cache.get(valid_db)
         analyzer.invalidate_context_cache(valid_db)
         assert len(analyzer.context_cache) == 0
@@ -79,8 +82,7 @@ class TestSnapshotAnalyzerContextCache:
         second_ctx = analyzer.context_cache.get(valid_db)
         assert second_ctx is not first_ctx
 
-    def test_db_file_replacement_invalidates_cache(self, valid_db: Path) -> None:
-        analyzer = SnapshotAnalyzer(db_path=valid_db)
+    def test_db_file_replacement_invalidates_cache(self, valid_db: Path, analyzer) -> None:
         first_ctx = analyzer.context_cache.get(valid_db)
 
         # Recreate the file with new content. ``os.replace`` updates
@@ -101,9 +103,8 @@ class TestSnapshotAnalyzerContextCache:
         assert second_ctx.device_ids == [1]
 
     def test_analyzer_can_use_externally_supplied_cache(self, valid_db: Path) -> None:
-        shared = ContextCache(maxsize=2)
-        analyzer = SnapshotAnalyzer(db_path=valid_db, context_cache=shared)
-
-        assert analyzer.context_cache is shared
-        analyzer.execute_query("leak_detection")
-        assert len(shared) == 1
+        with closing(ContextCache(maxsize=2)) as shared:
+            with SnapshotAnalyzer(db_path=valid_db, context_cache=shared) as analyzer:
+                assert analyzer.context_cache is shared
+                analyzer.execute_query("leak_detection")
+                assert len(shared) == 1

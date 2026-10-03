@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from types import TracebackType
 from typing import Any
 
 from pt_snap_cli.config import Config
@@ -54,6 +55,8 @@ class SnapshotAnalyzer:
         # Explicit ``is not None`` because an empty cache is falsy via
         # ``__len__`` and would be silently replaced otherwise.
         self._context_cache = context_cache if context_cache is not None else ContextCache()
+        self._owns_context_cache: bool = context_cache is None
+        self._closed: bool = False
         self._query_service = QueryService(self._focus_service, context_cache=self._context_cache)
         self._metadata_service = ImportMetadataService()
         self._capability_service = CapabilityService(
@@ -65,16 +68,50 @@ class SnapshotAnalyzer:
             context_cache=self._context_cache,
         )
 
+    def close(self) -> None:
+        """End this analyzer's lifetime, closing only its internally owned cache.
+
+        Safe to call repeatedly. An injected cache remains the caller's
+        responsibility and can still be used by other analyzers.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        self._query_service.close()
+        if self._owns_context_cache:
+            self._context_cache.close()
+
+    def __enter__(self) -> SnapshotAnalyzer:
+        self._ensure_open()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("SnapshotAnalyzer is closed.")
+
     @property
     def context_cache(self) -> ContextCache:
         """Return the :class:`ContextCache` this analyzer uses."""
         return self._context_cache
 
     def invalidate_context_cache(self, db_path: Path | str | None = None) -> None:
-        """Drop a cached context (or every cached context when ``db_path`` is None)."""
+        """Drop cached contexts, including from an explicitly shared cache.
+
+        This cleanup operation remains available after close(). While open,
+        the analyzer can create fresh contexts on its next query or overview.
+        """
         self._context_cache.invalidate(db_path)
 
     def get_focus(self) -> FocusState:
+        self._ensure_open()
         state = self._focus_service.get_focus(
             explicit_db_path=self._db_path,
             explicit_device_id=self._device_id,
@@ -89,6 +126,7 @@ class SnapshotAnalyzer:
         )
 
     def set_focus(self, db_path: str | None = None, device_id: int | None = None) -> FocusState:
+        self._ensure_open()
         if db_path is None and device_id is None:
             return self.get_focus()
         candidate_db = Path(db_path) if db_path is not None else self._db_path
@@ -117,6 +155,7 @@ class SnapshotAnalyzer:
         return self.get_focus()
 
     def list_templates(self, category: str | None = None) -> list[dict[str, Any]]:
+        self._ensure_open()
         return [
             {
                 "name": template.name,
@@ -127,6 +166,7 @@ class SnapshotAnalyzer:
         ]
 
     def get_template_info(self, name: str) -> dict[str, Any] | None:
+        self._ensure_open()
         try:
             info = self._query_service.get_template_info(name)
         except TemplateNotFoundError:
@@ -144,6 +184,7 @@ class SnapshotAnalyzer:
         exact_total: bool = False,
         timeout_s: float | None = None,
     ) -> dict[str, Any]:
+        self._ensure_open()
         try:
             result = self._query_service.execute_query(
                 template=template,
@@ -170,9 +211,11 @@ class SnapshotAnalyzer:
         }
 
     def list_capabilities(self) -> dict[str, Any]:
+        self._ensure_open()
         return self._capability_service.catalog_to_dict(self._capability_service.catalog())
 
     def get_database_overview(self, db_path: str | None = None) -> dict[str, Any]:
+        self._ensure_open()
         resolved_path = db_path if db_path is not None else self._db_path
         try:
             overview = self._overview_service.inspect(resolved_path)
@@ -187,6 +230,7 @@ class SnapshotAnalyzer:
         return self._overview_service.overview_to_dict(overview)
 
     def get_database_metadata(self, db_path: str | None = None) -> dict[str, Any]:
+        self._ensure_open()
         resolved = self._focus_service.resolve_focus(
             explicit_db_path=db_path if db_path is not None else self._db_path,
             explicit_device_id=self._device_id,

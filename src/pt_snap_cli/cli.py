@@ -845,6 +845,8 @@ def query_database(
         json.JSONDecodeError,
     ) as e:
         _error_from_exc(e, text_prefix="Error executing query: ")
+    finally:
+        query_service.close()
 
 
 @report_app.command("peak-memory")
@@ -922,6 +924,8 @@ def report_peak_memory(
         DatabaseSchemaError,
     ) as e:
         _error_from_exc(e, text_prefix="Error generating report: ")
+    finally:
+        report_service.close()
 
     if json_output:
         typer.echo(json.dumps(asdict(report), indent=2))
@@ -1362,6 +1366,8 @@ def show_database_overview(
         DatabaseSchemaError,
     ) as e:
         _error_from_exc(e)
+    finally:
+        service.close()
 
     if json_output:
         _emit_json(json_success(**service.overview_to_dict(overview)))

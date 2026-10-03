@@ -23,6 +23,43 @@ analyzer = SnapshotAnalyzer(
 显式设备覆盖。省略 `db_path` 时，数据库解析顺序与 CLI 相同：`PT_SNAP_DB_PATH`、
 最近的 `.pt-snap/focus.json`，最后是 legacy 全局配置。
 
+## 连接生命周期与缓存所有权
+
+analyzer 会为查询和概览复用只读 SQLite 连接。使用 `with` 可确定性释放连接，
+操作抛出异常时也会清理：
+
+```python
+with SnapshotAnalyzer(Path("/path/to/snapshot.db")) as scoped_analyzer:
+    overview = scoped_analyzer.get_database_overview()
+    result = scoped_analyzer.execute_query("leak_detection")
+```
+
+对于下文示例中 `analyzer` 这样的长生命周期实例，使用完毕后应在 `finally` 中调用
+`analyzer.close()`。`close()` 是幂等的；上下文管理器退出时会调用它，且不会吞掉异常。
+关闭后，focus、发现、metadata、概览和查询方法，以及再次进入 `with`，均抛出
+`RuntimeError("SnapshotAnalyzer is closed.")`。需要继续工作时请新建 analyzer。
+
+默认情况下 analyzer 拥有缓存，关闭时会释放缓存内所有连接。如果传入
+`context_cache=shared_cache`，该缓存属于**借用**：关闭 analyzer 不会使缓存失效，
+也不会关闭其他 analyzer 仍依赖的连接。调用方须在所有借用者使用完毕后调用
+`shared_cache.close()`：
+
+```python
+from contextlib import closing
+from pt_snap_cli.core.context_cache import ContextCache
+
+with closing(ContextCache()) as shared_cache:
+    with SnapshotAnalyzer(Path("/path/to/snapshot.db"), context_cache=shared_cache) as first:
+        first.get_database_overview()
+    with SnapshotAnalyzer(Path("/path/to/snapshot.db"), context_cache=shared_cache) as second:
+        second.execute_query("leak_detection")  # 复用仍然打开的缓存。
+```
+
+公开的 `context_cache` 属性与 `invalidate_context_cache(db_path=None)` 保持可用，
+关闭后也可访问。显式失效操作仍会关闭指定的缓存连接，包括共享连接。与 analyzer 的
+`close()` 不同，缓存失效（或 `context_cache.close()`）不会终止尚未关闭的 analyzer：
+下一次查询或概览可以重新填充缓存。直接使用公开 cache 时，其生命周期由调用方独立管理。
+
 ## 查看和修改 Focus
 
 ```python
