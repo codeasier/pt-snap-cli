@@ -219,3 +219,12 @@ Unions with multiple non-None members and unsupported types retain the TEXT
 fallback. Regression tests cover both optional spellings, reversed union order,
 generated schema, numeric ordering, and nullable value round trips. Audited
 upstream source mappings and license terms are unchanged.
+
+## 2026-10-03 — Explicit snapshot value boundary (issue #165)
+
+Local first-party typing change in `snapshot/representation.py`: replace `Any`
+values with `object`, narrow canonicalization containers explicitly, and make
+discarded side-effect return values explicit. Database/slice adaptor consumers
+annotate the existing per-device trace-list and segment-list format assumptions.
+No serialization, validation, replay, or database layout behavior changes.
+Audited upstream source mappings and license terms remain unchanged.

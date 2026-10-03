@@ -1,11 +1,14 @@
 """High-level API for PyTorch memory snapshot analysis."""
 
+# Keep dynamic values explicit at this public boundary; do not reintroduce Any.
+# pyright: reportAny=error, reportExplicitAny=error, reportUnknownArgumentType=error, reportUnknownVariableType=error, reportUnknownMemberType=error
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Any
+from typing import TypedDict
 
 from pt_snap_cli.config import Config
 from pt_snap_cli.core import (
@@ -21,6 +24,25 @@ from pt_snap_cli.core import (
     TemplateNotFoundError,
 )
 from pt_snap_cli.core.context_cache import ContextCache
+
+
+class TemplateSummaryPayload(TypedDict):
+    name: str
+    description: str
+    category: str | None
+
+
+class QueryResultPayload(TypedDict):
+    total: int
+    returned: int
+    device_id: int | None
+    rows: list[dict[str, object]]
+    template: str | None
+    semantics_version: int | None
+    has_more: bool
+    truncated: bool
+    total_is_exact: bool
+    timeout_s: float | None
 
 
 @dataclass
@@ -45,24 +67,28 @@ class SnapshotAnalyzer:
         *,
         context_cache: ContextCache | None = None,
     ) -> None:
-        self._config = Config()
-        self._db_path = db_path
-        self._device_id = device_id
-        self._focus_service = FocusService(self._config)
+        self._config: Config = Config()
+        self._db_path: Path | None = db_path
+        self._device_id: int | None = device_id
+        self._focus_service: FocusService = FocusService(self._config)
         # Share one context cache across the analyzer so that long-lived
         # SnapshotAnalyzer instances reuse a single
         # SQLite connection and skip schema validation on every query.
         # Explicit ``is not None`` because an empty cache is falsy via
         # ``__len__`` and would be silently replaced otherwise.
-        self._context_cache = context_cache if context_cache is not None else ContextCache()
+        self._context_cache: ContextCache = (
+            context_cache if context_cache is not None else ContextCache()
+        )
         self._owns_context_cache: bool = context_cache is None
         self._closed: bool = False
-        self._query_service = QueryService(self._focus_service, context_cache=self._context_cache)
-        self._metadata_service = ImportMetadataService()
-        self._capability_service = CapabilityService(
+        self._query_service: QueryService = QueryService(
+            self._focus_service, context_cache=self._context_cache
+        )
+        self._metadata_service: ImportMetadataService = ImportMetadataService()
+        self._capability_service: CapabilityService = CapabilityService(
             query_service=self._query_service,
         )
-        self._overview_service = OverviewService(
+        self._overview_service: OverviewService = OverviewService(
             self._focus_service,
             metadata_service=self._metadata_service,
             context_cache=self._context_cache,
@@ -141,7 +167,7 @@ class SnapshotAnalyzer:
 
         if candidate_db is not None:
             try:
-                self._focus_service.validate_session_db(candidate_db, candidate_device)
+                _ = self._focus_service.validate_session_db(candidate_db, candidate_device)
             except DatabaseMissingError as exc:
                 raise FileNotFoundError(str(exc)) from exc
             except DatabaseSchemaError as exc:
@@ -154,7 +180,7 @@ class SnapshotAnalyzer:
             self._device_id = device_id
         return self.get_focus()
 
-    def list_templates(self, category: str | None = None) -> list[dict[str, Any]]:
+    def list_templates(self, category: str | None = None) -> list[TemplateSummaryPayload]:
         self._ensure_open()
         return [
             {
@@ -165,7 +191,7 @@ class SnapshotAnalyzer:
             for template in self._query_service.list_templates(category)
         ]
 
-    def get_template_info(self, name: str) -> dict[str, Any] | None:
+    def get_template_info(self, name: str) -> dict[str, object] | None:
         self._ensure_open()
         try:
             info = self._query_service.get_template_info(name)
@@ -177,13 +203,13 @@ class SnapshotAnalyzer:
     def execute_query(
         self,
         template: str,
-        params: dict[str, Any] | None = None,
+        params: dict[str, object] | None = None,
         device_id: int | None = None,
         max_rows: int | None = None,
         *,
         exact_total: bool = False,
         timeout_s: float | None = None,
-    ) -> dict[str, Any]:
+    ) -> QueryResultPayload:
         self._ensure_open()
         try:
             result = self._query_service.execute_query(
@@ -210,11 +236,11 @@ class SnapshotAnalyzer:
             "timeout_s": result.timeout_s,
         }
 
-    def list_capabilities(self) -> dict[str, Any]:
+    def list_capabilities(self) -> dict[str, object]:
         self._ensure_open()
         return self._capability_service.catalog_to_dict(self._capability_service.catalog())
 
-    def get_database_overview(self, db_path: str | None = None) -> dict[str, Any]:
+    def get_database_overview(self, db_path: str | None = None) -> dict[str, object]:
         self._ensure_open()
         resolved_path = db_path if db_path is not None else self._db_path
         try:
@@ -229,7 +255,7 @@ class SnapshotAnalyzer:
             raise ValueError(str(exc)) from exc
         return self._overview_service.overview_to_dict(overview)
 
-    def get_database_metadata(self, db_path: str | None = None) -> dict[str, Any]:
+    def get_database_metadata(self, db_path: str | None = None) -> dict[str, object]:
         self._ensure_open()
         resolved = self._focus_service.resolve_focus(
             explicit_db_path=db_path if db_path is not None else self._db_path,
