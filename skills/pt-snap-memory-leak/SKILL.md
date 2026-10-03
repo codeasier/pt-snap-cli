@@ -243,6 +243,35 @@ This baseline describes successfully freed blocks, bucketed by `freeEventId - al
 
 ### 7. Classify findings conservatively
 
+Before any positive or negative per-step / per-iteration conclusion (including
+"not a per-step leak"), establish and report iteration evidence:
+
+- State the trusted iteration count, boundaries mapped to event IDs, source,
+  and coverage range. Use workload code, logs, or an explicit verified marker
+  convention to establish the mapping; allocator event counts, waveform minima,
+  and cleanup counts are not iteration counts.
+- `segment_unmap` is only a conditional supporting clue. One `empty_cache`
+  call can emit multiple unmap events; one iteration can perform multiple
+  cleanups, or none. Group events and cleanup calls only according to the
+  verified workload mapping, never by assuming one event or cleanup equals
+  one step. Do not directly count `segment_unmap` events as steps.
+- Check capture start/end and missing markers against that source. Separate
+  fully covered iterations from partial iterations and uncaptured work; do not
+  extrapolate a captured count to the whole run. If count, boundaries, source,
+  or coverage cannot be established, report the unsupported fields and the
+  per-step conclusion as `unknown`. A verified complete subrange may support
+  a conclusion scoped only to that subrange, with the rest explicitly unknown.
+- Within verified comparable boundaries, correlate allocation identities and
+  release events with live bytes after expected cleanup. Three surviving blocks
+  over three verified iterations can support accumulation; three blocks alone
+  cannot establish a fixed per-step population or rule out accumulation. Keep
+  observed per-iteration accumulation a candidate, not a confirmed leak; check
+  application ownership and expected lifetime before assigning a category.
+- Jaccard similarity of `(action, callstackId)` sets is only supporting evidence
+  of similar event kinds. Sets discard multiplicity, ordering, allocation
+  identity, and byte sizes; even high similarity cannot prove that unreturned
+  bytes are the only per-iteration difference.
+
 Use these result categories:
 
 - `strong leak candidate`: dynamic live bytes grow across comparable captures or phases, persist after expected cleanup, and have ownership evidence. Do not use this category from end-of-trace survival alone.
@@ -262,9 +291,10 @@ Report results in this order:
 3. `End-of-trace evidence`: dynamic candidate count, dynamic bytes by callstack, static bytes, and representative blocks.
 4. `Peak-occupancy evidence`: callstack bytes and block counts at the active peak versus the final event, identity-matched blocks if any, and static plus `[preexisting live]` memory that carries no per-callstack attribution.
 5. `Lifecycle evidence`: representative alloc, free-requested, and free-completed event IDs, with ambiguities called out.
-6. `Findings`: category, confidence, evidence, inference, and affected callstack or allocation family.
-7. `Unknowns`: missing timing, ownership, capture-boundary, callstack, or repeated-capture evidence.
-8. `Suggested validation`: targeted experiments that could confirm or reject each leading hypothesis.
+6. `Iteration evidence`: trusted iteration count, event-ID boundaries, workload code/log/verified marker source, and coverage range; distinguish complete and partial iterations. Report unsupported fields and per-step conclusions as `unknown` before any positive or negative per-step finding. Include scoped per-iteration live-byte/lifecycle evidence when available.
+7. `Findings`: category, confidence, evidence, inference, and affected callstack or allocation family; per-iteration accumulation remains a candidate, not a confirmed leak.
+8. `Unknowns`: missing timing, ownership, capture-boundary, callstack, repeated-capture, or iteration-mapping evidence, including uncaptured work.
+9. `Suggested validation`: targeted experiments that could confirm or reject each leading hypothesis, including workload logs or explicit marker conventions when iteration mapping is unknown.
 
 Useful validation experiments include repeated snapshots at equivalent workload milestones, extending tracing beyond expected cleanup, explicitly releasing suspected application references, synchronizing the device before the capture ends, and comparing behavior before and after allocator cache cleanup. Explain that cache cleanup can change reserved memory without proving that application references were released.
 
@@ -298,5 +328,8 @@ Useful validation experiments include repeated snapshots at equivalent workload 
 - Representative lifecycle events were checked for address reuse and ambiguous pairing.
 - Dynamic block state was not used as leak evidence.
 - Event-ID distances were not presented as time durations.
+- Every positive or negative per-step conclusion was preceded by a trusted iteration count, event-ID boundaries, source, and coverage range; otherwise the unsupported fields and conclusion were `unknown`.
+- Complete iterations were separated from partial or uncaptured work; multiple allocator events or cleanup calls per iteration were reconciled with workload code, logs, or a verified marker convention instead of counted as steps.
+- Per-iteration accumulation remained a candidate, not a confirmed leak, and Jaccard set similarity was not used to claim a unique byte difference.
 - Every finding has a conservative category and confidence level.
 - Unknowns and validation experiments are included.

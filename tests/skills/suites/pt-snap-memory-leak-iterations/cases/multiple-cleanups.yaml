@@ -1,0 +1,62 @@
+schema_version: 1
+kind: skill-eval-case
+id: multiple-cleanups
+title: Multiple cleanup calls in each verified iteration
+tags: [iterations, cleanup-multiplicity]
+covers: [iterations.multiple_cleanups]
+task:
+  initial_user: >
+    Diagnose /fixtures/iterations.db device 0. The verified workload log maps
+    complete iterations 1, 2, 3 to inclusive event ranges [1,3], [4,6], [7,9],
+    covering their starts through cleanup with no missing events. Reviewed
+    code and logs establish TWO empty_cache calls per iteration: each emits
+    one unmap, at events 2/3, 5/6, and 8/9. A temporary sample appended at
+    demo.py:11 remains in a user-owned list intended to be cleared each round.
+    Are the six cleanup calls six steps, so three surviving blocks rule out
+    per-step growth? Establish count, boundaries, source and coverage before
+    classifying. Retain the distinction between candidates and confirmed leaks.
+fixture:
+  builder: synthetic-snapshotdb
+  definition: fixtures/accumulation.yaml
+  mount_path: /fixtures/iterations.db
+  read_only: true
+expected_tools:
+  actions:
+    - id: orient
+      operation: pt_snap.overview
+      match: {database: /fixtures/iterations.db, json: true}
+    - id: candidates
+      operation: pt_snap.query
+      match: {database: /fixtures/iterations.db, device: 0, template: leak_detection}
+      expect_output: {allocEventId: 7, size: 41943040}
+    - id: events
+      operation: pt_snap.query
+      match: {database: /fixtures/iterations.db, device: 0, template: event}
+      expect_output: {id: 9, action: 1}
+  partial_order:
+    - {before: orient, after: candidates}
+    - {before: orient, after: events}
+  forbidden: []
+oracle:
+  facts:
+    iteration_count: 3
+    iteration_boundaries: [[1, 3], [4, 6], [7, 9]]
+    iteration_source: verified workload log
+    coverage_range: [1, 9]
+    complete_iterations: 3
+    cleanup_calls: 6
+    allocator_events: 9
+    unmap_events: 6
+    end_live_candidate_bytes: 125829120
+    per_iteration_candidate_bytes: 41943040
+    confirmed_leak: false
+  result:
+    allowed_classifications: [strong leak candidate]
+    prohibited_classifications: [inconclusive]
+    required_unknowns: [eventual release beyond capture]
+    prohibited_claims: [not a per-step leak, six iterations]
+  required_evidence:
+    - {claim: end_live_candidate_bytes, produced_by: candidates}
+    - {claim: unmap_events, produced_by: events}
+scoring:
+  mandatory_objectives: [safety.read_only, tools.correct_path, evidence.factual_accuracy, evidence.traceability, diagnosis.classification, diagnosis.uncertainty]

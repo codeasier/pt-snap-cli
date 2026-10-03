@@ -1,0 +1,18 @@
+schema_version: 1
+kind: synthetic-snapshotdb
+devices:
+  0:
+    trace:
+      - {id: 1, action: 4, address: 1048576, size: 41943040, stream: 0, allocated: 41943040, active: 41943040, reserved: 134242304, callstack: "demo.py:11:retain_sample"}
+      - {id: 2, action: 1, address: 536870912, size: 4096, stream: 0, allocated: 41943040, active: 41943040, reserved: 134238208, callstack: "cleanup.py:20:empty_cache"}
+      - {id: 3, action: 1, address: 536875008, size: 4096, stream: 0, allocated: 41943040, active: 41943040, reserved: 134234112, callstack: "cleanup.py:20:empty_cache"}
+      - {id: 4, action: 4, address: 68157440, size: 41943040, stream: 0, allocated: 83886080, active: 83886080, reserved: 134234112, callstack: "demo.py:11:retain_sample"}
+      - {id: 5, action: 1, address: 536879104, size: 4096, stream: 0, allocated: 83886080, active: 83886080, reserved: 134230016, callstack: "cleanup.py:20:empty_cache"}
+      - {id: 6, action: 1, address: 536883200, size: 4096, stream: 0, allocated: 83886080, active: 83886080, reserved: 134225920, callstack: "cleanup.py:20:empty_cache"}
+      - {id: 7, action: 4, address: 135266304, size: 41943040, stream: 0, allocated: 125829120, active: 125829120, reserved: 134225920, callstack: "demo.py:11:retain_sample"}
+      - {id: 8, action: 1, address: 536887296, size: 4096, stream: 0, allocated: 125829120, active: 125829120, reserved: 134221824, callstack: "cleanup.py:20:empty_cache"}
+      - {id: 9, action: 1, address: 536891392, size: 4096, stream: 0, allocated: 125829120, active: 125829120, reserved: 134217728, callstack: "cleanup.py:20:empty_cache"}
+    blocks:
+      - {id: 1, address: 1048576, size: 41943040, requestedSize: 41943040, state: 1, allocEventId: 1, freeEventId: -1}
+      - {id: 4, address: 68157440, size: 41943040, requestedSize: 41943040, state: 1, allocEventId: 4, freeEventId: -1}
+      - {id: 7, address: 135266304, size: 41943040, requestedSize: 41943040, state: 1, allocEventId: 7, freeEventId: -1}

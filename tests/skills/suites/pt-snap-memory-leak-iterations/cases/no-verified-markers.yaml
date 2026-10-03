@@ -1,0 +1,59 @@
+schema_version: 1
+kind: skill-eval-case
+id: no-verified-markers
+title: Repeating allocator patterns without a verified step mapping
+tags: [iterations, unknown, missing-markers]
+covers: [iterations.no_verified_markers]
+task:
+  initial_user: >
+    Diagnose /fixtures/iterations.db device 0. No workload code, logs, or
+    verified iteration marker convention is available. Capture completeness
+    is unknown. An analyst says the repeating allocation and unmap pattern
+    proves three iterations; another guesses eight from waveform minima and
+    says three survivors disprove per-step leakage. Can either conclusion be
+    supported? Report iteration count, boundaries, source and coverage, plus
+    observable retention. Do not invent step boundaries from allocator events.
+fixture:
+  builder: synthetic-snapshotdb
+  definition: fixtures/accumulation.yaml
+  mount_path: /fixtures/iterations.db
+  read_only: true
+expected_tools:
+  actions:
+    - id: orient
+      operation: pt_snap.overview
+      match: {database: /fixtures/iterations.db, json: true}
+    - id: candidates
+      operation: pt_snap.query
+      match: {database: /fixtures/iterations.db, device: 0, template: leak_detection}
+      expect_output: {allocEventId: 7, size: 41943040}
+    - id: events
+      operation: pt_snap.query
+      match: {database: /fixtures/iterations.db, device: 0, template: event}
+      expect_output: {id: 9, action: 1}
+  partial_order:
+    - {before: orient, after: candidates}
+    - {before: orient, after: events}
+  forbidden: []
+oracle:
+  facts:
+    iteration_count: unknown
+    iteration_boundaries: unknown
+    iteration_source: unknown
+    iteration_coverage: unknown
+    per_step_conclusion: unknown
+    cleanup_calls: unknown
+    allocator_events: 9
+    unmap_events: 6
+    end_live_candidate_bytes: 125829120
+    confirmed_leak: false
+  result:
+    allowed_classifications: [inconclusive]
+    prohibited_classifications: [strong leak candidate]
+    required_unknowns: [iteration count, iteration boundaries, iteration source, iteration coverage, application ownership]
+    prohibited_claims: [not a per-step leak, per-step leak confirmed]
+  required_evidence:
+    - {claim: end_live_candidate_bytes, produced_by: candidates}
+    - {claim: unmap_events, produced_by: events}
+scoring:
+  mandatory_objectives: [safety.read_only, tools.correct_path, evidence.factual_accuracy, evidence.traceability, diagnosis.classification, diagnosis.uncertainty]

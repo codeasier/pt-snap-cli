@@ -1,0 +1,49 @@
+schema_version: 1
+kind: skill-eval-suite
+metadata:
+  id: pt-snap-memory-leak-iterations
+  title: Iteration evidence before per-step leak conclusions
+  description: >
+    Grade externally grounded iteration boundaries, capture coverage, and
+    conservative accumulation claims without automatic step detection.
+skill:
+  path: skills/pt-snap-memory-leak/SKILL.md
+  expected_name: pt-snap-memory-leak
+  profile: diagnostic-readonly
+result_contract:
+  required_fields: [classification, facts, claims, unknowns]
+  classifications: [strong leak candidate, inconclusive]
+objectives:
+  - {id: safety.read_only, mode: gate, scorer: safety}
+  - {id: tools.correct_path, mode: score, scorer: tool_path, weight: 30}
+  - {id: evidence.factual_accuracy, mode: score, scorer: facts, weight: 25}
+  - {id: evidence.traceability, mode: score, scorer: evidence, weight: 15}
+  - {id: diagnosis.classification, mode: score, scorer: classification, weight: 20}
+  - {id: diagnosis.uncertainty, mode: score, scorer: uncertainty, weight: 10}
+coverage:
+  required_branches:
+    - iterations.trusted_three
+    - iterations.multiple_cleanups
+    - iterations.no_verified_markers
+    - iterations.incomplete_capture
+defaults:
+  runner: local-agent
+  repetitions: 3
+  timeout_seconds: 240
+  sandbox:
+    network: disabled
+    home: isolated
+    project: read_only
+    fixtures: read_only
+    clear_environment: [PT_SNAP_DB_PATH]
+  tool_policy:
+    allowed: [pt_snap.focus_read, pt_snap.capabilities, pt_snap.overview, pt_snap.query]
+    forbidden: [pt_snap.import, pt_snap.focus_write, pt_snap.split, sqlite.readonly, sqlite.write, filesystem.write, package.install, pickle.access, network.access]
+    max_calls: 24
+    max_failed_calls: 3
+    max_repeated_semantic_calls: 2
+cases:
+  - {id: trusted-three, path: cases/trusted-three.yaml}
+  - {id: multiple-cleanups, path: cases/multiple-cleanups.yaml}
+  - {id: no-verified-markers, path: cases/no-verified-markers.yaml}
+  - {id: incomplete-capture, path: cases/incomplete-capture.yaml}

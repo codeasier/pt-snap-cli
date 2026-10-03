@@ -1,0 +1,66 @@
+schema_version: 1
+kind: skill-eval-case
+id: trusted-three
+title: Three verified iterations retain one new block each
+tags: [iterations, accumulation, external-evidence]
+covers: [iterations.trusted_three]
+task:
+  initial_user: >
+    Diagnose /fixtures/iterations.db device 0. The verified workload log maps
+    complete iterations 1, 2, 3 to inclusive event ranges [1,3], [4,6], [7,9];
+    capture covers all three from start through cleanup with no missing events.
+    Each iteration calls empty_cache once, emitting two segment_unmap events.
+    Reviewed workload code says demo.py:11 appends one temporary sample to a
+    user-owned list intended to be cleared at each iteration end; the list
+    remains referenced through capture end. Another analyst guessed eight
+    steps from the waveform and ruled out per-step growth because only three
+    blocks survived. Evaluate that claim. Jaccard similarity of adjacent
+    (action, callstackId) sets is 1.0; does that prove the only difference is
+    unreturned bytes? Report iteration count, boundaries, source, coverage,
+    per-iteration candidate growth, and confirmation limits.
+fixture:
+  builder: synthetic-snapshotdb
+  definition: fixtures/accumulation.yaml
+  mount_path: /fixtures/iterations.db
+  read_only: true
+expected_tools:
+  actions:
+    - id: orient
+      operation: pt_snap.overview
+      match: {database: /fixtures/iterations.db, json: true}
+    - id: candidates
+      operation: pt_snap.query
+      match: {database: /fixtures/iterations.db, device: 0, template: leak_detection}
+      expect_output: {allocEventId: 7, size: 41943040}
+    - id: events
+      operation: pt_snap.query
+      match: {database: /fixtures/iterations.db, device: 0, template: event}
+      expect_output: {id: 9, action: 1}
+  partial_order:
+    - {before: orient, after: candidates}
+    - {before: orient, after: events}
+  forbidden: []
+oracle:
+  facts:
+    iteration_count: 3
+    iteration_boundaries: [[1, 3], [4, 6], [7, 9]]
+    iteration_source: verified workload log
+    coverage_range: [1, 9]
+    complete_iterations: 3
+    cleanup_calls: 3
+    allocator_events: 9
+    unmap_events: 6
+    end_live_candidate_bytes: 125829120
+    per_iteration_candidate_bytes: 41943040
+    confirmed_leak: false
+    jaccard_proves_unique_byte_difference: false
+  result:
+    allowed_classifications: [strong leak candidate]
+    prohibited_classifications: [inconclusive]
+    required_unknowns: [eventual release beyond capture]
+    prohibited_claims: [not a per-step leak, eight iterations, Jaccard proves the only difference is unreturned bytes]
+  required_evidence:
+    - {claim: end_live_candidate_bytes, produced_by: candidates}
+    - {claim: unmap_events, produced_by: events}
+scoring:
+  mandatory_objectives: [safety.read_only, tools.correct_path, evidence.factual_accuracy, evidence.traceability, diagnosis.classification, diagnosis.uncertainty]

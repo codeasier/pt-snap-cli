@@ -1,0 +1,61 @@
+schema_version: 1
+kind: skill-eval-case
+id: incomplete-capture
+title: Partial capture cannot establish whole-run iteration counts
+tags: [iterations, partial-capture, unknown]
+covers: [iterations.incomplete_capture]
+task:
+  initial_user: >
+    Diagnose /fixtures/iterations.db device 0. A verified workload log says
+    events 1-3 are only a trailing fragment of an iteration whose start was
+    not captured. Inclusive ranges [4,6] and [7,9] are two complete iterations
+    through their expected cleanup. Their step numbers and the total run
+    length are unavailable. Tracing ends at event 9 while the workload
+    continues. There is no ownership evidence for demo.py:11. Can you infer
+    the whole-run count or rule out per-step leakage from three surviving
+    blocks? Separate any fully covered subrange evidence from unknown
+    whole-run conclusions, and request missing capture/ownership evidence.
+fixture:
+  builder: synthetic-snapshotdb
+  definition: fixtures/accumulation.yaml
+  mount_path: /fixtures/iterations.db
+  read_only: true
+expected_tools:
+  actions:
+    - id: orient
+      operation: pt_snap.overview
+      match: {database: /fixtures/iterations.db, json: true}
+    - id: candidates
+      operation: pt_snap.query
+      match: {database: /fixtures/iterations.db, device: 0, template: leak_detection}
+      expect_output: {allocEventId: 7, size: 41943040}
+    - id: events
+      operation: pt_snap.query
+      match: {database: /fixtures/iterations.db, device: 0, template: event}
+      expect_output: {id: 9, action: 1}
+  partial_order:
+    - {before: orient, after: candidates}
+    - {before: orient, after: events}
+  forbidden: []
+oracle:
+  facts:
+    whole_run_iteration_count: unknown
+    whole_run_per_step_conclusion: unknown
+    complete_iterations: 2
+    partial_iterations: 1
+    iteration_boundaries: [[4, 6], [7, 9]]
+    iteration_source: verified workload log
+    coverage_range: [4, 9]
+    subrange_per_iteration_candidate_bytes: 41943040
+    end_live_candidate_bytes: 125829120
+    confirmed_leak: false
+  result:
+    allowed_classifications: [inconclusive]
+    prohibited_classifications: [strong leak candidate]
+    required_unknowns: [whole-run iteration count, uncaptured work, application ownership, eventual release beyond capture]
+    prohibited_claims: [not a per-step leak, whole run contains three iterations]
+  required_evidence:
+    - {claim: end_live_candidate_bytes, produced_by: candidates}
+    - {claim: subrange_per_iteration_candidate_bytes, produced_by: events}
+scoring:
+  mandatory_objectives: [safety.read_only, tools.correct_path, evidence.factual_accuracy, evidence.traceability, diagnosis.classification, diagnosis.uncertainty]
