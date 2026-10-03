@@ -33,9 +33,10 @@ def _make_invalid_db(tmp_path: Path, name: str = "invalid.db") -> Path:
 
 
 class TestContextCache:
-    def test_get_creates_context(self, tmp_path: Path) -> None:
+    def test_get_creates_context(self, tmp_path: Path, request) -> None:
         db_path = _make_db(tmp_path)
         cache = ContextCache(maxsize=4)
+        request.addfinalizer(cache.close)
 
         ctx = cache.get(db_path)
 
@@ -44,9 +45,10 @@ class TestContextCache:
         assert ctx.device_ids == [0]
         assert len(cache) == 1
 
-    def test_get_returns_cached_context_on_second_call(self, tmp_path: Path) -> None:
+    def test_get_returns_cached_context_on_second_call(self, tmp_path: Path, request) -> None:
         db_path = _make_db(tmp_path)
         cache = ContextCache(maxsize=4)
+        request.addfinalizer(cache.close)
 
         first = cache.get(db_path)
         second = cache.get(db_path)
@@ -71,10 +73,11 @@ class TestContextCache:
         with pytest.raises(SchemaVersionError):
             cache.get(bad_db)
 
-    def test_same_mtime_replacement_refreshes_cached_context(self, tmp_path: Path) -> None:
+    def test_same_mtime_replacement_refreshes_cached_context(self, tmp_path: Path, request) -> None:
         """Replacing a database with the same mtime must refresh its context."""
         db_path = _make_db(tmp_path)
         cache = ContextCache(maxsize=4)
+        request.addfinalizer(cache.close)
         first = cache.get(db_path)
         original_stat = db_path.stat()
 
@@ -94,7 +97,7 @@ class TestContextCache:
         assert second is not first
         assert second.device_ids == [1]
 
-    def test_replaced_database_redetects_callstack_layout(self, tmp_path: Path) -> None:
+    def test_replaced_database_redetects_callstack_layout(self, tmp_path: Path, request) -> None:
         db_path = tmp_path / "layout.db"
         conn = sqlite3.connect(str(db_path))
         conn.execute(
@@ -105,6 +108,7 @@ class TestContextCache:
         conn.close()
 
         cache = ContextCache(maxsize=4)
+        request.addfinalizer(cache.close)
         first = cache.get(db_path)
         assert first.callstack_layout == "v1"
 
@@ -123,9 +127,10 @@ class TestContextCache:
         assert second is not first
         assert second.callstack_layout == "v2"
 
-    def test_invalidate_path_drops_entry(self, tmp_path: Path) -> None:
+    def test_invalidate_path_drops_entry(self, tmp_path: Path, request) -> None:
         db_path = _make_db(tmp_path)
         cache = ContextCache(maxsize=4)
+        request.addfinalizer(cache.close)
         ctx = cache.get(db_path)
         assert len(cache) == 1
 
@@ -147,8 +152,9 @@ class TestContextCache:
         cache.invalidate()
         assert len(cache) == 0
 
-    def test_lru_eviction(self, tmp_path: Path) -> None:
+    def test_lru_eviction(self, tmp_path: Path, request) -> None:
         cache = ContextCache(maxsize=2)
+        request.addfinalizer(cache.close)
         db_a = _make_db(tmp_path, "a.db")
         db_b = _make_db(tmp_path, "b.db")
         db_c = _make_db(tmp_path, "c.db")

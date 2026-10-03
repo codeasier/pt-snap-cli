@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,8 @@ from pt_snap_cli.core.query_service import QueryService
 from pt_snap_cli.query.config import QueryTemplate
 from pt_snap_cli.query.executor import QueryExecutionError, QueryExecutor
 from pt_snap_cli.query.registry import QueryRegistry, _load_all_templates, get_query
+
+pytestmark = pytest.mark.usefixtures("owned_service_instances")
 
 
 @pytest.fixture(autouse=True)
@@ -243,7 +246,7 @@ def missing_callstack_db(request: pytest.FixtureRequest, tmp_path: Path) -> Path
     layout = request.param
     create = create_v1_db if layout == "v1" else create_v2_db
     path = create(tmp_path / f"missing-{layout}.db")
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn, conn:
         conn.execute("DELETE FROM block_0")
         conn.execute("DELETE FROM trace_entry_0")
         # Empty text, NULL text, NULL ID, dangling ID, and missing alloc event.
@@ -324,7 +327,7 @@ def test_missing_callstacks_merge_before_ranking_and_preserve_totals(
 
 
 def test_active_memory_v2_keeps_nonempty_callstack_ids_separate(v2_db: Path) -> None:
-    with sqlite3.connect(v2_db) as conn:
+    with closing(sqlite3.connect(v2_db)) as conn, conn:
         conn.execute("INSERT INTO callstack (id, callstack) VALUES (99, 'train.py:10')")
         conn.execute("UPDATE trace_entry_0 SET callstackId = 99 WHERE id = 4")
     rows = _execute(v2_db, "active_memory_callstack_at_event", {"event_id": 5, "top_n": -1})

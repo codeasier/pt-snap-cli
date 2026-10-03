@@ -196,6 +196,7 @@ def test_memory_peak_cte_matches_original(
 
 def test_memory_peak_null_start_and_end_runs_via_query_service(
     memory_peak_db: Path,
+    request,
 ) -> None:
     """End-to-end smoke test: the rewritten template is reachable through
     the QueryService -> QueryExecutor pipeline used by the CLI and
@@ -206,7 +207,9 @@ def test_memory_peak_null_start_and_end_runs_via_query_service(
     config = Config()
     config.write_project_focus(memory_peak_db, device_id=0)
 
-    result = QueryService().execute_query("memory_peak")
+    service = QueryService()
+    request.addfinalizer(service.close)
+    result = service.execute_query("memory_peak")
 
     assert result.total == 1
     row = result.rows[0]

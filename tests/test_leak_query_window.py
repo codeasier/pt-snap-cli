@@ -3,6 +3,7 @@
 import json
 import shlex
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,8 @@ from typer.testing import CliRunner
 from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import app
 from pt_snap_cli.core import TemplateRenderError
+
+pytestmark = pytest.mark.usefixtures("owned_service_instances")
 
 ROOT = Path(__file__).resolve().parents[1]
 runner = CliRunner()
@@ -25,7 +28,7 @@ def leak_db(tmp_path, monkeypatch):
     monkeypatch.delenv("PT_SNAP_QUERY_TIMEOUT", raising=False)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     path = tmp_path / "leak-window.db"
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn, conn:
         conn.executescript("""
             CREATE TABLE dictionary (`table` TEXT, `column` TEXT, `key` TEXT, `value` TEXT);
             CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY, callstack TEXT);

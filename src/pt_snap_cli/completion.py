@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import closing
 from pathlib import Path
 
 from pt_snap_cli.config import DB_PATH_KEY, Config
@@ -75,7 +76,7 @@ def complete_device_ids() -> list[str]:
 
     try:
         uri = f"file:{db_path}?mode=ro"
-        with sqlite3.connect(uri, uri=True) as conn:
+        with closing(sqlite3.connect(uri, uri=True)) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'trace_entry_%'"

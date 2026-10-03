@@ -27,6 +27,8 @@ from pt_snap_cli.query.executor import (
 )
 from pt_snap_cli.query.registry import QueryRegistry, _load_all_templates, register_query
 
+pytestmark = pytest.mark.usefixtures("owned_service_instances")
+
 runner = CliRunner()
 
 

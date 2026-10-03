@@ -7,6 +7,8 @@ import pytest
 from pt_snap_cli.core import DatabaseSchemaError, FocusNotConfiguredError, OverviewService
 from pt_snap_cli.core.import_metadata import ImportMetadataService
 
+pytestmark = pytest.mark.usefixtures("owned_service_instances")
+
 
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

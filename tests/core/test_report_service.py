@@ -8,6 +8,8 @@ import pytest
 from pt_snap_cli.core.report_service import ReportService
 from pt_snap_cli.query.registry import QueryRegistry, _load_all_templates
 
+pytestmark = pytest.mark.usefixtures("owned_service_instances")
+
 
 @pytest.fixture(autouse=True)
 def _reload_query_templates():

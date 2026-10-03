@@ -2,6 +2,7 @@
 
 import sqlite3
 import tempfile
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -134,7 +135,7 @@ class TestContext:
     def test_device_trace_bounds_empty_and_populated(self, valid_db: Path) -> None:
         ctx = Context(valid_db)
         assert ctx.device_trace_bounds() == [(0, None, None)]
-        with sqlite3.connect(str(valid_db)) as conn:
+        with closing(sqlite3.connect(str(valid_db))) as conn, conn:
             conn.execute("INSERT INTO trace_entry_0 (id, action) VALUES (3, 4), (9, 4)")
             conn.commit()
         assert Context(valid_db).device_trace_bounds() == [(0, 3, 9)]
