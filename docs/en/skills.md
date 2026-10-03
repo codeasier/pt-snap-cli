@@ -114,3 +114,15 @@ After an install, upgrade, or uninstall that changes skill files, restart the ag
 | `pt-snap-memory-fragmentation` | Diagnosing allocator gaps and reserved-pool pressure |
 
 Skill management is CLI-only.
+
+### Setup readiness
+
+`pt-snap-setup` reports `ready` only after CLI help succeeds and the selected
+Python and CLI shebang interpreter match on both normalized `sys.executable`
+and `sys.prefix`. Matching executable realpaths alone is insufficient: different
+venvs can share a base interpreter. Both probes preserve the original execution
+paths; normalization is only for comparison, so directory symlink aliases of the
+same environment still match. Simple `env <name>` shebangs use the current `PATH`.
+Unresolved shebangs, unsupported argument/wrapper semantics (including `env -S`),
+or failed identity probes leave `CLI ownership unverified`. A mismatch reports
+`CLI belongs to another Python environment`; installation still requires confirmation.
