@@ -1,70 +1,57 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-09 -->
+# Query Engine
 
-# query
+Parent scope: [package runtime](../AGENTS.md).
 
-## Purpose
-`query` implements the template-driven query subsystem. It loads YAML query definitions, validates template parameters, renders device-specific SQL with Jinja2, executes queries through the read-only database context, maps result types, and provides fluent builder utilities for constructing SQL programmatically.
+## Data Flow and Ownership
 
-## Key Files
-| File | Description |
-|------|-------------|
-| `__init__.py` | Query package marker/exports. |
-| `builder.py` | Fluent `QueryBuilder` for SELECT statements with conditions, grouping, ordering, limits, and offsets. |
-| `condition.py` | Composable SQL condition objects that emit parameterized SQL fragments. |
-| `config.py` | YAML query config loader and `QueryTemplate`/`QueryParameter` validation. |
-| `executor.py` | Jinja2 SQL rendering and query execution through `Context`. |
-| `mapper.py` | Result type conversion and optional model-factory mapping. |
-| `registry.py` | Singleton registry that loads packaged YAML templates and exposes listing/lookup helpers. |
+`templates/<category>/*.yaml` → `config.py` → `registry.py` →
+`core/query_service.py` → `executor.py`/`Context` → mapped rows and adapter output.
+The [template guide](templates/AGENTS.md) owns SQL/metadata authoring rules.
 
-## Subdirectories
-| Directory | Purpose |
-|-----------|---------|
-| `templates/` | Built-in YAML query templates grouped by category (see `templates/AGENTS.md`). |
+| Module | Boundary |
+| --- | --- |
+| `config.py` | QueryConfig/QueryTemplate/QueryParameter parsing and parameter validation |
+| `registry.py` | Singleton catalog, recursive packaged YAML discovery, category/name lookup |
+| `executor.py` | Variant selection, StrictUndefined Jinja rendering, row-limit pushdown, SQLite execution/timeout |
+| `mapper.py` | Result conversions and optional registered model factories |
+| `builder.py`, `condition.py` | Fluent SQL construction with parameterized value conditions |
 
-## For AI Agents
+## Registration and Rendering
 
-### Working In This Directory
-- When changing template behavior, check YAML templates, `config.py`, `registry.py`, `executor.py`, and CLI template metadata output together. Field semantics ride the same YAML → config → registry → core → API/CLI path as `choices`; do not add a second schema.
-- `semantics_version` is independent of YAML `version` and SnapshotDB schema / callstack layout. v1/v2 SQL variants share one semantic contract.
-- Keep SQL value filters parameterized where using builder/condition APIs.
-- Device-specific template SQL should use injected table names such as `device_trace_table` and `device_block_table`.
-- Keep direct `QueryParameter` validation errors local; `QueryExecutor` must normalize them to its `TemplateRenderError` before the core boundary.
-- Variant SQL is selected from `Context.callstack_layout`; unknown or conflicting
-  layouts must fail variant templates with a layout-specific error rather than a
-  generic re-import message. Non-variant templates keep working.
-- `QueryTemplate.validate_params()` rejects undeclared parameter names and enforces `QueryParameter.choices`; extra render-context variables (`device_id`, table names, the pushed-down `limit`) are injected by `QueryExecutor.render()` after validation, not passed through `params`.
+- Packaged templates load through the registry at import time. Executors have no
+  template directory: `_configs` contains only runtime `load_config()` /
+  `register_template()` registrations, which override same-named catalog entries.
+- Validate caller parameters before injecting `device_id`, device table names
+  and a pushed-down `limit`. Undeclared names and invalid choices must fail;
+  internal render variables are not permission to accept arbitrary user params.
+- Parameter validation errors become executor `TemplateRenderError`, then core
+  domain errors at the service boundary. Preserve actionable layout/timeout
+  errors instead of replacing every failure with generic re-import guidance.
+- Compiled Jinja caching includes template name and SQL body. v1/v2 variants
+  cannot share a compiled body accidentally. `StrictUndefined` remains enabled.
 
-### Testing Requirements
-- Run `pytest tests/query` for query subsystem changes; real SQLite template semantics live in `test_peak_memory_templates.py`, `test_callstack_schema_compat.py`, and `test_query_max_rows_pushdown.py`.
-- Run `pytest tests/test_cli.py` when template listing/info/output behavior changes.
+## Layout, Semantics and Completeness
 
-### Common Patterns
-- Registry lookup is global and package templates load at import time. It is the only loader for packaged templates: `QueryExecutor` has no template directory, and its `_configs` holds only templates attached at runtime through `load_config()` / `register_template()`, which take precedence over registry entries of the same name.
-- `StrictUndefined` is used during template rendering so missing template variables fail loudly.
-- Template categories are inferred from directory structure when not explicitly declared in YAML.
-- `QueryService` translates executor errors to `core.errors` and owns cached Context/QueryExecutor reuse.
-- Finite trailing ``LIMIT`` pages fetch one extra row to set ``has_more``. A
-  finite inner ``top_n`` window that is full also sets ``has_more`` /
-  ``truncated`` (continue by raising ``top_n``; ``-n`` cannot lift that CTE
-  cap). Exact ``total`` is opt-in (``exact_total`` / ``--exact-total``) and
-  shares the same QueryService timeout budget as the page query. Execution
-  timeout is a SQLite progress handler (``timeout_s`` / ``--timeout`` /
-  ``PT_SNAP_QUERY_TIMEOUT``) and is not a row cap.
+Select `query_variants.v1`/`v2` from `Context.callstack_layout`; non-variant queries
+continue to work when layout is unset. The context only detects layout; queries
+must not migrate it. v2 aggregates nonempty callstacks by ID, not display text.
 
-## Dependencies
+Field metadata (`units`, `metric_semantics`, `scope`, `denominator`, `sentinel`,
+`interpretation_limits`) and template `semantics_version` use the same
+config → registry → core → CLI/API path as parameter `choices`. Do not introduce
+a parallel metadata schema. YAML version, semantics version and database layout
+are different contracts.
 
-### Internal
-- `pt_snap_cli.context.Context` provides database connections and device discovery.
-- `src/pt_snap_cli/query/templates/` provides built-in templates.
-- `core.query_service` consumes registry and executor APIs.
+Trailing `LIMIT`, inner ranking `top_n`, output `max_rows`, and execution timeout
+are distinct. Tightening a trailing limit must preserve offset and stable order;
+`-n` cannot lift a CTE's `top_n`. The service owns extra-row probes, conservative
+inner-window completeness and exact-total budgeting. The executor's SQLite
+progress handler must be cleared even on failure, especially with cached Contexts.
 
-### External
-- `pyyaml` for YAML parsing.
-- `jinja2` for SQL template rendering.
+## Verification
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
-
-- Callstack-dependent templates may declare `query_variants.v1` / `query_variants.v2`.
-  `QueryExecutor` selects the body from `Context.callstack_layout`. Keep v2 SQL
-  grouped by `callstackId`; do not regress it to grouping by callstack text.
+Run `pytest tests/query` from the repository root; use the
+[query test map](../../../tests/query/AGENTS.md) for narrower changes. Rendering
+tests alone do not verify SQLite semantics. Changes to contracts/listing also
+need `tests/core/test_query_service.py`, `tests/test_contract_cli_api.py`, and
+the affected CLI/JSON cases.

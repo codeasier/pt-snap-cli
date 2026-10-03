@@ -1,44 +1,21 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-09 -->
+# Issue Forms
 
-# ISSUE_TEMPLATE
+Parent scope: [automation](../AGENTS.md).
 
-## Purpose
-`ISSUE_TEMPLATE` contains structured GitHub issue forms for bugs, documentation requests, feature requests, questions, and template chooser configuration.
+| File | Purpose |
+| --- | --- |
+| `01-bug-report.yml` | Reproduction and environment details |
+| `02-feature-request.yml` | Proposed behavior and use case |
+| `03-documentation.yml` | Documentation errors or improvements |
+| `04-question.yml` | Usage questions |
+| `config.yml` | Blank-issue policy and contact links |
 
-## Key Files
-| File | Description |
-|------|-------------|
-| `01-bug-report.yml` | Form for reproducible defects and environment details. |
-| `02-feature-request.yml` | Form for proposed enhancements. |
-| `03-documentation.yml` | Form for documentation improvements or corrections. |
-| `04-question.yml` | Form for usage questions. |
-| `config.yml` | GitHub issue chooser configuration and valid contact links. |
+Numbered filenames control chooser ordering. Preserve GitHub issue-form
+`name`, `description`, and structured `body` fields; `config.yml` does not have
+an `issue_templates` key. Keep prompts aligned with CLI, SnapshotDB and agent-skill
+terminology in the README/docs. Contact links must lead to enabled destinations.
 
-## Subdirectories
-| Directory | Purpose |
-|-----------|---------|
-| None | Issue templates are flat YAML files. |
-
-## For AI Agents
-
-### Working In This Directory
-- Keep issue forms scoped to this Python CLI project.
-- Preserve valid GitHub issue form YAML structure.
-- Ordering is controlled by numbered filenames; `config.yml` has no `issue_templates` key.
-
-### Testing Requirements
-- Validate YAML syntax and run `pytest tests/test_governance.py` after path/schema edits.
-
-### Common Patterns
-- Forms collect structured fields rather than relying on free-form Markdown only.
-
-## Dependencies
-
-### Internal
-- Repository README/docs provide canonical terminology for issue prompts.
-
-### External
-- GitHub issue form YAML schema.
-
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+The PR template is `../pull_request_template.md`, outside this directory. Changes
+to form names/paths or chooser schema require YAML validation and
+`pytest tests/test_governance.py` from the repository root; the governance suite
+checks the expected form set and supported template placement.

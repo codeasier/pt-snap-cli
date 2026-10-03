@@ -1,29 +1,54 @@
-<!-- Parent: ../AGENTS.md -->
+# Skill Contracts and Local Evaluations
 
-# skill evaluations
+Parent scope: [test contracts](../AGENTS.md).
+Authored workflows: [skills](../../skills/AGENTS.md).
 
-## Purpose
-`tests/skills` contains static skill contracts and a local-first evaluation
-harness for versioned suite/case descriptors, synthetic SnapshotDB scenarios,
-tool-call traces, deterministic grading, and runner adapters.
+## Harness and Suites
 
-## Scope
 | Path | Responsibility |
 | --- | --- |
-| `schemas/` | Human-readable v1 suite and case descriptor contracts. |
-| `harness/` | Strict descriptor loading, synthetic fixture construction, trace grading, runner protocols, and local artifacts. |
-| `suites/` | Reviewed skill-specific and Agent CLI e2e objectives, decision branches, cases, and declarative SQLite fixtures. |
-| `README.md` | Descriptor, gateway, run-record, grading, and local command reference. |
-| `test_*_contract.py` | Static and executable contracts for shipped `SKILL.md` files. |
+| `schemas/`, `harness/descriptors.py` | Strict, versioned declarative suite/case contracts |
+| `harness/fixtures.py`, `gateway.py` | Synthetic SnapshotDB construction and semantic tool-call policy |
+| `harness/grader.py`, `runners.py` | Normalized run records, deterministic grades and runner adapters |
+| `harness/artifacts.py`, `metrics.py` | Local run artifacts, call/output/error/task metrics |
+| `suites/pt-snap-agent-e2e/` | CLI discovery/recovery and acceptance branches, recorded baseline runs |
+| `suites/pt-snap-memory-leak/` | Address reuse, pending free, allocator cache and pickle refusal |
+| `suites/pt-snap-memory-leak-iterations/` | Trusted iteration markers, missing markers, multiple cleanups and incomplete capture |
+| `README.md`, `__main__.py` | Harness formats and validate/grade/baseline command entry |
 
-## Invariants
-- Keep evaluation definitions declarative; do not embed shell, Python, Jinja, or arbitrary expressions in YAML.
-- Diagnostic suites use generated SnapshotDB files only. Never expose, import, or deserialize pickle fixtures in an agent run. The `agent-cli` e2e suite may require semantic `pt_snap.import`; still do not materialize pickle inputs.
-- Treat forbidden operations as hard failures and grade allowed tool calls by normalized semantics rather than shell text.
-- Keep live model execution local and explicit. Normal pytest coverage must not require network access, provider credentials, or a model runtime.
-- Write generated transcripts, databases, scores, and reports only under temporary directories or the ignored `.skill-evals/` directory.
+## Test Routing and Policy
 
-## Focused Tests
-- Run `pytest tests/skills` for harness, descriptor, fixture, grader, or skill contract changes.
-- Run `python -m tests.skills validate tests/skills/suites/<skill>/suite.yaml` after editing a suite or case descriptor.
-- Run `python -m tests.skills baseline tests/skills/suites/pt-snap-agent-e2e/suite.yaml <runs-dir>` to emit task success rate, call count, output size, and error-conclusion metrics.
+- `test_helper_contract.py` / `test_helper_availability.py` cover routing and the
+  difference between scoped filesystem status and host-loaded skills.
+- `test_preflight_contract.py` covers capabilities/overview order, full-result
+  reuse and nested metadata status handling across diagnostic skills.
+- `test_setup_contract.py` covers active-interpreter preservation; remaining
+  approval instructions also need static review. `test_ascend_npu_collect_contract.py`
+  verifies capture-only workflow boundaries without hardware execution.
+- Memory leak/peak/fragmentation and iteration contract modules check shipped
+  instructions. Harness unit tests verify descriptors, fixtures, gateway and
+  grading; static contract success is not evidence of a live model run.
+
+Keep YAML definitions declarative: no embedded shell, Python, Jinja or executable
+expressions. Diagnostic runs use generated databases and never receive pickle
+fixtures. The `agent-cli` profile may require semantic `pt_snap.import`, but the
+evaluation still must not materialize pickle inputs. Forbidden operations are
+hard failures; grade normalized semantics rather than shell spelling.
+
+Live model execution is explicit and local, outside normal pytest. Keep generated
+databases, transcripts, grades and reports in temporary paths or `.skill-evals/`.
+Baseline aggregation reads recorded runs; it does not execute an agent.
+
+## Focused Commands
+
+From the repository root:
+
+```bash
+pytest tests/skills
+python -m tests.skills validate tests/skills/suites/pt-snap-memory-leak-iterations/suite.yaml
+python -m tests.skills baseline tests/skills/suites/pt-snap-agent-e2e/suite.yaml tests/skills/suites/pt-snap-agent-e2e/baselines/target
+```
+
+`grade` and `baseline` can write reports when given `--output`; choose an ignored
+or temporary location. Authored skill changes also need bundled-copy parity tests
+and actual CLI/query tests for the commands the instructions teach.

@@ -1,48 +1,28 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+# English User Guides
 
-# en
+Parent scope: [documentation](../AGENTS.md).
+Translation counterpart: [Chinese guides](../zh/AGENTS.md).
 
-## Purpose
-`docs/en` contains the English documentation set for installing and using `pt-snap-cli`, managing focus, querying and splitting snapshots, installing bundled agent skills, understanding the SQLite schema, and using the high-level and result mapping Python APIs.
+## Topic Ownership
 
-## Key Files
-| File | Description |
-|------|-------------|
-| `quickstart.md` | End-to-end installation and first-query walkthrough. |
-| `focus-management.md` | Focus resolution, project focus files, environment variables, and global config behavior. |
-| `querying.md` | Query listing, template info, parameter usage, result limits, and built-in templates. |
-| `splitting.md` | Snapshot slicing strategies, output formats, replay validation, and publication guarantees. |
-| `skills.md` | Bundled agent-skill listing, helper entry, install destinations, and status meanings. |
-| `database.md` | Snapshot SQLite table/schema reference. |
-| `snapshot-analyzer-api.md` | High-level Python API for focus, template discovery, capabilities, overview, queries, and import metadata. |
-| `result-mapper-api.md` | Result mapping API documentation. |
+| Guide | Required behavior coverage |
+| --- | --- |
+| `quickstart.md` | PyPI/source setup, trusted import, focus and first query |
+| `focus-management.md` | Explicit/environment/project/global resolution and persistence |
+| `querying.md` | Template discovery, params, semantics, pagination/completeness and timeout |
+| `splitting.md` | Strategy/device/format, original event IDs, replay validation and absent-destination publication |
+| `skills.md` | Helper entry, catalog versus loaded skills, host/custom destinations and mutation commands |
+| `database.md` | Snapshot tables, v1/v2 callstack layout, metadata and sentinel meanings |
+| `snapshot-analyzer-api.md` | Session focus, typed query results, inspection and close/context-manager ownership |
+| `result-mapper-api.md` | Type converters and model factories, separate from high-level analysis |
 
-## Subdirectories
-| Directory | Purpose |
-|-----------|---------|
-| None | English docs are flat topic files. |
+Keep English examples usable as copyable commands and Python snippets. Explain
+placeholders and separate read-only inspection from focus/install/import writes.
+Check the same-named Chinese topic when editing behavior, and keep both README
+links and `docs/README.md` aligned when topics change.
 
-## For AI Agents
-
-### Working In This Directory
-- Keep examples executable against current CLI options and template names.
-- Mirror user-visible changes in `../zh/` when appropriate.
-
-### Testing Requirements
-- Verify referenced commands and options against `src/pt_snap_cli/cli.py`.
-- Verify template details against `src/pt_snap_cli/query/templates/`.
-
-### Common Patterns
-- Topic files correspond to major product areas rather than source modules.
-- `skills.md` documents `pt-snap skill list` / `install` / `upgrade` / `uninstall`, built-in and `--dir` destinations, and must stay aligned with `SkillService`.
-
-## Dependencies
-
-### Internal
-- CLI, query template, and schema details should be checked against `src/pt_snap_cli/` before editing.
-
-### External
-- Markdown only.
-
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+Use exact public command, JSON field and template names from the implementation
+map in the parent guide. A CLI result's `total` need not be an exact full count;
+do not erase the completeness flags when simplifying examples. A reserved or
+allocated metric peak does not make active-block attribution a decomposition of
+every byte in that selected metric.

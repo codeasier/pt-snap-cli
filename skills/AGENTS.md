@@ -1,66 +1,63 @@
-<!-- Parent: ../AGENTS.md -->
+# Authored Agent Workflows
 
-# skills
+Parent scope: [repository](../AGENTS.md).
 
-## Purpose
-`skills` contains agent workflows shipped with the repository. The helper
-skill is a read-only router by user goal and input type. Setup owns the
-only Python-environment mutation boundary and installs after explicit approval;
-collection skills guide Ascend NPU snapshot capture without importing
-or diagnosing the pickle; diagnostic skills consume installed `pt-snap`
-surfaces against existing SnapshotDB data without writes.
+## Workflow Ownership
 
-## Scope
-| Path | Responsibility |
+| Skill | Boundary |
 | --- | --- |
-| `pt-snap-helper/SKILL.md` | Routes by user goal and input type to the five skills; checks `pt-snap skill list --json`; points SnapshotDB work at `capabilities` then `overview` before diagnosis; does not install, import, or persist focus. |
-| `pt-snap-setup/SKILL.md` | Detect the active interpreter, verify CLI ownership, request install approval, and re-verify the same environment. |
-| `pt-snap-ascend-npu-collect/SKILL.md` | Collect Ascend NPU pickles via native APIs, framework config, or OOM env; inventory artifacts without import or diagnosis. |
-| `pt-snap-memory-leak/SKILL.md` | Diagnose end-of-trace live allocations, peak survival, callstack attribution, and release evidence without persisting analysis state. |
-| `pt-snap-memory-peak-breakdown/SKILL.md` | Explain active memory at active, allocated, or reserved peak events without leak, fragmentation, or OOM overclaims. |
-| `pt-snap-memory-fragmentation/SKILL.md` | Diagnose allocator gaps, runtime segment retention/churn, and fragmentation-consistent pressure without persisting analysis state. |
+| `pt-snap-helper` | Read-only routing, skill availability/host-loading evidence, diagnostic preflight handoff |
+| `pt-snap-setup` | Active interpreter/CLI ownership, explicitly approved package installation, re-verification |
+| `pt-snap-ascend-npu-collect` | Ascend NPU capture configuration and artifact inventory |
+| `pt-snap-memory-leak` | End-live retention candidates, peak survival, callstack/release/iteration evidence |
+| `pt-snap-memory-peak-breakdown` | Blocks and allocation stacks live at selected metric peaks |
+| `pt-snap-memory-fragmentation` | Allocator gaps, segment retention/churn and fragmentation-consistent pressure |
 
-## Invariants
-- Preserve the selected `sys.executable` path for every Python and pip command; canonical paths are only for ownership comparison.
-- Never assume Conda, switch environments, use plain `pip`, or install automatically.
-- Keep `editable` and PyPI choices explicit, and obtain confirmation before every install attempt.
-- Do not add setup steps that write reports or modify pt-snap focus/configuration.
-- Collection skills guide capture configuration and artifact inventory only.
-  They must not install packages, import or deserialize pickle snapshots,
-  persist focus, treat CSV/SVG as SnapshotDB input, or start diagnostic
-  queries. Import remains a separate trusted-input decision.
-- Diagnostic skills must not install packages, import pickle snapshots, persist
-  focus, classify every allocation without a free event as a confirmed leak, or
-  turn allocator gaps into definitive fragmentation claims.
-- Diagnostic skills pass the database and device explicitly and delegate missing
-  tooling to `pt-snap-setup`.
-- Helper skills stay read-only navigation. They must not install packages, copy
-  skills, import pickle, persist focus, or run diagnostic analysis.
-- Prefer packaged query templates for diagnostics. Any raw SQLite fallback must
-  document why a template is insufficient and enforce read-only access.
+## Mutation and Handoff Boundaries
 
-## Packaging
-Repository `skills/*/SKILL.md` is the authoring source. Wheel installs read
-`src/pt_snap_cli/bundled_skills/`. After adding or editing a skill, copy the
-same `SKILL.md` into that packaged tree. `pt-snap skill list`, `install`,
-`upgrade`, and `uninstall` manage copies in the shared `.agents/skills`
-tree, Claude's independent directories, optional Cursor/Codex extras, or
-an explicit `--dir`. Unfiltered `uninstall` (no `--target`, `--project`,
-or `--dir`) removes every installed copy that `list` would report and
-that contains `SKILL.md`. A same-named path without `SKILL.md` aborts
-the whole unfiltered uninstall before any deletion.
-`--target` / `--project` / `--dir` keep narrower destinations. After
-install or upgrade, the host agent must be restarted.
+- Setup preserves the selected `sys.executable` for every Python/pip command;
+  canonical paths are for ownership comparison only. Do not assume Conda or
+  switch environments. Explain PyPI/editable choices and obtain confirmation
+  for each install attempt. Setup does not write focus/config or analysis reports.
+- Collection guides recording/dumping and lists artifacts; it does not install,
+  deserialize/import snapshots, persist focus or diagnose CSV/SVG/pickle inputs.
+  Trusted import remains a separate decision.
+- Helper distinguishes catalog source, inspected installation locations and
+  host loading. Default `missing` does not mean unavailable in a custom directory
+  or already-loaded host. `source_dir` proves neither installation nor loading.
+  Helper may orient with read-only probes; it does not diagnose or copy/install.
+- Diagnostic skills use explicit database/device and installed CLI surfaces.
+  Missing tooling routes to setup. They do not mutate focus, import pickle or
+  install packages. Prefer `--json` on supported commands.
 
-## Focused Tests
-- Run `pytest tests/skills/test_helper_contract.py` after helper-skill changes.
-  Static coverage checks routing names, command `--json` coverage, skill-list
-  availability, and the pickle/focus/install read-only boundary.
-- Run `pytest tests/skills/test_setup_contract.py` after setup-skill changes. The current executable test covers active-interpreter path preservation; review the remaining approval and reporting instructions statically.
-- Run `pytest tests/skills/test_ascend_npu_collect_contract.py` after
-  collection-skill changes. Collection workflows are not `diagnostic-readonly`
-  or `agent-cli` eval suites, so collection coverage stays in the static
-  contract.
-- Run `pytest tests/skills` after diagnostic-skill changes. Static contracts
-  check current surfaces and safety boundaries; suite/case evaluations cover
-  decision paths, structured evidence, and tool-call policy.
+## Diagnostic Evidence Contracts
+
+- Start with full `capabilities --json` and `overview <db> --json`. Reuse only
+  complete compatible results for the same environment/CLI and resolved database;
+  apply the skill's identity/freshness checks. Read `import_metadata.status`,
+  not just exit status or outer `ok`; preserve stop and legacy-data rules.
+- Validate required query contracts from the catalog rather than probing each
+  template again. A missing required template or failed probe is not permission
+  to substitute raw SQL. Any separately justified fallback must stay read-only.
+- Ranked leak windows replace earlier windows when widened; they are not offset
+  pages to sum. Respect `top_n`, output caps and completeness flags.
+- Peak/end survival requires complete per-block enumeration in the same database
+  and device, matching `(id, allocEventId)` rather than address/callstack alone.
+- Per-step claims need trusted iteration boundaries, count and source. Allocation
+  events, cleanup events and trace duration are not iteration counts; insufficient
+  evidence stays unknown. End-live allocations are candidates, not proven leaks;
+  allocator gaps alone do not establish fragmentation or OOM causality.
+
+## Packaging and Validation
+
+Author `skills/<name>/SKILL.md` and mirror it identically into
+`src/pt_snap_cli/bundled_skills/<name>/SKILL.md`. Catalog/destination/status and
+uninstall preflight rules belong to [SkillService](../src/pt_snap_cli/core/AGENTS.md).
+Changed installed skill files require host restart; disk status is not proof of
+the current session's loaded content.
+
+Run `pytest tests/test_bundled_skills.py tests/skills` from the repository root.
+Use the [evaluation guide](../tests/skills/AGENTS.md) for focused contracts and
+declarative suites. New instructions teaching CLI/query behavior also need the
+owning executable tests; deterministic grading is distinct from live-model or
+Ascend hardware validation.

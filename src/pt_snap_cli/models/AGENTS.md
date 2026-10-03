@@ -1,42 +1,23 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-05-26 -->
+# Library Domain Models
 
-# models
+Parent scope: [package runtime](../AGENTS.md).
 
-## Purpose
-`models` contains library-facing domain objects for PyTorch memory snapshot data, including allocation blocks, events, and enum values that describe allocator state and event types.
+This scope owns exported dataclasses and allocator enums. It is separate from
+`core/models.py` service payloads and `snapshot/base/entities.py` replay objects.
 
-## Key Files
-| File | Description |
-|------|-------------|
-| `__init__.py` | Public model exports. |
-| `_enums.py` | Enum definitions for snapshot concepts. |
-| `block.py` | Block-related data model. |
-| `event.py` | Event-related data model. |
+| File | Contract |
+| --- | --- |
+| `_enums.py` | Library event actions and block states |
+| `block.py` | `MemoryBlock`; negative IDs are historical; `free_event_id` of `None` or `-1` is active |
+| `event.py` | `MemoryEvent`; negative IDs are virtual, nonnegative IDs are runtime events |
+| `__init__.py` | Public exports |
 
-## Subdirectories
-| Directory | Purpose |
-|-----------|---------|
-| None | Domain models are flat. |
+Preserve sentinel meanings and optional-field defaults when changing models.
+Library snake_case attributes and SnapshotDB/query column spellings are different
+boundaries; do not rename one by assuming every consumer uses the same shape.
+Query `ResultMapper` conversions/model factories are in `query/mapper.py`.
 
-## For AI Agents
-
-### Working In This Directory
-- Keep model fields aligned with the snapshot schema and query output mapping expectations.
-- Update exports in `__init__.py` when adding public models.
-
-### Testing Requirements
-- Run `pytest tests/models` and any package-level model tests after changing models or enums.
-
-### Common Patterns
-- Models are used by library-facing code more than the CLI, which usually prints plain dictionaries from query execution.
-
-## Dependencies
-
-### Internal
-- Query result mapping may depend on model-compatible types and enum values.
-
-### External
-- Standard Python dataclass/enum-style modeling; no heavy external model framework is used here.
-
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+From the repository root, run `pytest tests/models tests/test_models.py` for
+model/enum changes and `pytest tests/query/test_mapper.py` for mapping changes.
+Review `__init__.py` exports and both ResultMapper API guides when changing public
+construction or conversion behavior.

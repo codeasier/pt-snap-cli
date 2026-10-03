@@ -1,51 +1,39 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+# Service Boundary Tests
 
-# core tests
+Parent scope: [test contracts](../AGENTS.md).
+Implementation: [core services](../../src/pt_snap_cli/core/AGENTS.md).
 
-## Purpose
-`tests/core` verifies focus, import, split, metadata, query, report, and skill services between CLI/API callers and lower-level config, context, query, and snapshot modules.
+## Focused Test Map
 
-## Key Files
-| File | Description |
-|------|-------------|
-| `test_focus_service.py` | Tests focus service resolution, validation, project/global writes, and device handling. |
-| `test_context_cache.py` | Tests bounded Context reuse, invalidation, close behavior, and file replacement detection. |
-| `test_import_*.py` | Tests import models/errors, metadata/cache decisions, safe publication, reuse, and failure handling. |
-| `test_json_codec.py` | Tests Path/dataclass JSON serialization and success/error envelopes. |
-| `test_query_service.py` | Tests query service template listing/info, focus resolution, execution, row limiting, and error translation. |
-| `test_capability_service.py` | Tests the read-only capability catalog (version, template contracts, skills). |
-| `test_overview_service.py` | Tests read-only device bounds and import-metadata status. |
-| `test_report_service.py` | Tests higher-level report composition and normalized results. |
-| `test_split_service.py` | Tests split contracts, devices, formats, replay validation, cleanup, races, and publication. |
-| `test_skill_service.py` | Tests skill catalog discovery, install status, host destinations, and conflict handling. |
+| Files | Behavior under test |
+| --- | --- |
+| `test_focus_service.py` | Resolution, database/device validation, project/global persistence |
+| `test_context_cache.py` | LRU eviction, replacement signatures, invalidation and close |
+| `test_query_service.py` | Catalog/result contracts, focus/device selection, executor reuse and error normalization |
+| `test_capability_service.py`, `test_overview_service.py` | Catalog and read-only device/event-bound/metadata probes |
+| `test_report_service.py` | Named-query composition and report fields |
+| `test_import_models.py`, `test_import_errors.py`, `test_import_metadata.py` | Import inputs, error context, metadata/cache/source identity |
+| `test_import_service.py` | Staging, import reuse, source changes, publication/focus transaction |
+| `test_import_backend_failures.py` | Backup short/zero writes, publication/focus/rollback faults, fd closure and recovery evidence |
+| `test_split_service.py` | Strategy/device validation, formats, replay, cleanup, races and no-replace publication |
+| `test_skill_service.py` | Catalog precedence, host/scope/custom destinations, status and mutation preflight |
+| `test_json_codec.py` | Path/dataclass conversion and JSON envelopes |
 
-## Subdirectories
-| Directory | Purpose |
-|-----------|---------|
-| None | Service tests are flat. |
+## What to Assert
 
-## For AI Agents
+- Assert normalized service errors and stable result fields, not incidental
+  lower-layer messages. Add CLI/API contract cases when a shared result changes.
+- Publication fault injection must check the previous destination, focus file,
+  temporary files and owned descriptors. A raised exception alone does not prove
+  rollback. Rollback failure is a distinct path with recovery evidence.
+- Split failure/race cases must prove no partially published directory and no
+  replacement of an independently created destination.
+- Skill mutation preflight must cover non-skill paths and all selected locations
+  before deleting any copy; list status and host loading are separate concepts.
+- Cache work also exercises `tests/test_analyzer_lifecycle.py`,
+  `tests/test_snapshot_analyzer_cache.py`, and `tests/test_query_cache_perf.py`.
+  Service reuse after close and analyzer terminal closure need separate cases.
 
-### Working In This Directory
-- Update these tests when `src/pt_snap_cli/core/` behavior changes.
-- Assert service-level errors rather than low-level implementation exceptions.
-
-### Testing Requirements
-- Run `pytest tests/core` for service-layer changes.
-- Run `pytest tests/test_fixture_provenance.py` first when selected import/split tests deserialize committed fixtures.
-
-### Common Patterns
-- Focus-writing tests isolate CWD, `PT_SNAP_DB_PATH`, and home from persistent user config.
-- Import and split tests assert that failures do not replace existing destinations or publish partial output.
-- Import publication tests cover focus-write rollback as part of the reported import transaction.
-
-## Dependencies
-
-### Internal
-- `src/pt_snap_cli/core/` is the primary code under test.
-
-### External
-- `pytest`.
-
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+Run `pytest tests/core` or the owning file from the repository root. Follow the
+parent's fixture gate before import/split cases and resource ownership rules for
+all cached services. Cross-runtime changes additionally use `tests/snapshot/`.
