@@ -1,4 +1,8 @@
 schema_version: 1
+final_answer:
+  required_conclusions:
+    partial_result: [only two rows, only 2 rows]
+    uncertainty: [remaining matching rows are unknown, remaining rows are unknown]
 kind: skill-eval-case
 id: truncated-query
 title: Agent treats a truncated query as incomplete evidence

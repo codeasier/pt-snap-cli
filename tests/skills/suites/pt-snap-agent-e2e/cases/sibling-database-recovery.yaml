@@ -1,4 +1,8 @@
 schema_version: 1
+final_answer:
+  required_conclusions:
+    sibling: [/fixtures/gone.pickle.db]
+    provenance: [import provenance is missing, import provenance unavailable]
 kind: skill-eval-case
 id: sibling-database-recovery
 title: A missing focus target with a sibling DB is inspected with metadata, not query

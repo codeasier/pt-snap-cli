@@ -1,4 +1,8 @@
 schema_version: 1
+final_answer:
+  required_conclusions:
+    unavailable: [database is missing, database not found]
+    failed_lookup: [failed lookup]
 kind: skill-eval-case
 id: missing-database
 title: A missing database is a failure, not an empty successful result

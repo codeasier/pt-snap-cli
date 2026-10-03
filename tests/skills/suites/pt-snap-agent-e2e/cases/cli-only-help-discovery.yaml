@@ -1,4 +1,8 @@
 schema_version: 1
+final_answer:
+  required_conclusions:
+    helper: [pt-snap-helper]
+    host_reload: [restart the agent, restart your agent]
 kind: skill-eval-case
 id: cli-only-help-discovery
 title: CLI-only agent finds helper guidance from help and skill list

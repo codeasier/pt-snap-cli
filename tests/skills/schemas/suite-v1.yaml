@@ -22,6 +22,14 @@ fields:
   result_contract:
     required: [required_fields, classifications]
     required_result_fields: [classification, facts, claims, unknowns]
+  final_answer:
+    optional: [require_nonempty, required_conclusions]
+    require_nonempty_type: boolean
+    require_nonempty_default: true
+    required_conclusions_type: mapping-of-names-to-nonempty-lists-of-nonempty-phrases
+    matching: casefold-and-collapse-whitespace-substring-any-phrase-per-conclusion
+    rule: optional-hard-gate-for-all-classifications-case-block-replaces-suite-block
+    omitted: unchecked-for-legacy-compatibility
   objectives:
     item_required: [id, mode, scorer]
     mode_values: [gate, score]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -72,6 +73,23 @@ def test_target_baseline_is_a_perfect_score() -> None:
     assert summary.error_conclusion_rate == 0.0
     assert summary.passed_count == summary.case_count == len(CASE_IDS)
     assert all(grade.passed and grade.score == 100 for _case, _run, grade, _metrics in rows)
+    assert all(grade.final_answer_passed is True for _case, _run, grade, _metrics in rows)
+
+
+@pytest.mark.parametrize("case_id", CASE_IDS)
+@pytest.mark.parametrize("response", ["", " \n\t", "banana"])
+def test_target_baseline_rejects_empty_or_unrelated_answers(case_id: str, response: str) -> None:
+    suite = load_suite(SUITE_PATH)
+    case = suite.case(case_id)
+    run = replace(_load_run(TARGET_BASELINE, case_id), final_response=response)
+
+    grade = grade_run(suite, case, run)
+
+    assert grade.trace_result_passed
+    assert grade.score == 100  # The score measures the trace/result objectives only.
+    assert grade.final_answer_passed is False
+    assert not grade.passed
+    assert grade.final_answer_violations
 
 
 def test_pre_change_baseline_records_current_gaps() -> None:
@@ -155,3 +173,44 @@ def test_baseline_cli_writes_metrics(tmp_path: Path, monkeypatch, capsys) -> Non
     case_bytes = [case["output_bytes"] for case in payload["cases"]]
     assert payload["mean_output_bytes"] == round(sum(case_bytes) / len(case_bytes), 4)
     assert [case["case_id"] for case in payload["cases"]] == list(CASE_IDS)
+    assert payload["execution_evidence"] == {
+        "kind": "recorded_baseline_rescore",
+        "runner_execution_verified": False,
+    }
+    assert all("trace_result" in case and "final_answer" in case for case in payload["cases"])
+
+
+def test_grade_cli_fails_missing_answer_conclusion_and_preserves_report(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    from tests.skills import __main__ as skills_main
+
+    record = json.loads((TARGET_BASELINE / "explicit-multi-target.json").read_text())
+    record["final_response"] = "Queried /fixtures/target.db."
+    run_path = tmp_path / "run.json"
+    run_path.write_text(json.dumps(record))
+    output = tmp_path / "artifacts"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "tests.skills",
+            "grade",
+            str(SUITE_PATH),
+            "explicit-multi-target",
+            str(run_path),
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert skills_main.main() == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report == json.loads((output / "score.json").read_text())
+    assert report["passed"] is False
+    assert report["trace_result"] == {"passed": True, "score": 100}
+    assert report["final_answer"] == {
+        "checked": True,
+        "passed": False,
+        "violations": ["final_response is missing required conclusion: device"],
+    }
+    assert report["execution_evidence"]["runner_execution_verified"] is False

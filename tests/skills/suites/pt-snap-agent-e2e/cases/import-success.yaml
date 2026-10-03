@@ -1,4 +1,8 @@
 schema_version: 1
+final_answer:
+  required_conclusions:
+    database: [/outputs/imported.db]
+    focus: [focus was updated, focus updated]
 kind: skill-eval-case
 id: import-success
 title: Successful import reports the published database and focus change
