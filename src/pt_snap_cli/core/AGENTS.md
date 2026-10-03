@@ -1,68 +1,80 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+# Product Services
 
-# core
+Parent scope: [package runtime](../AGENTS.md).
 
-## Purpose
-`core` contains the product service layer shared by CLI and Python API adapters. It owns focus, import publication and metadata, snapshot splitting, query orchestration, reports, CLI-only agent-skill install/list, stable result models, and domain-specific errors over lower-level config, context, query, and snapshot modules.
+Core owns product semantics over config, Context, queries and snapshot mechanisms.
+CLI/API adapters consume its results and errors; presentation stays in adapters.
 
-## Key Files
-| File | Description |
-|------|-------------|
-| `__init__.py` | Re-exports service classes, models, and errors for package consumers. |
-| `context_cache.py` | Bounded Context reuse with path identity, file-signature invalidation, and explicit close/invalidate behavior. |
-| `errors.py` | Domain exception types used by CLI/API service boundaries. |
-| `error_codes.py` | Stable CLI JSON error codes and hints mapped from domain exceptions. |
-| `json_codec.py` | Shared Path/dataclass JSON serialization and success/error envelopes. |
-| `focus_service.py` | Focus resolution, validation, project/global focus writes, and device selection. |
-| `import_service.py` | Failure-safe snapshot import, cache reuse, metadata writes, and optional focus update. |
-| `import_metadata.py` | Import metadata schema, inspection, hashing, validation, and cache decisions. |
-| `models.py` | Dataclasses for focus, import, split, template, query, and report service boundaries. |
-| `query_service.py` | Template listing/info and query execution orchestration using resolved focus and `QueryExecutor`. |
-| `capability_service.py` | Read-only CLI version, full template contracts, and bundled skill listing for `pt-snap capabilities`. |
-| `overview_service.py` | Read-only device list, per-device event-id bounds, and import-metadata status for `pt-snap overview`. |
-| `report_service.py` | Higher-level reports composed from shared query services. |
-| `snapshot_import_backend.py` | Adapter from trusted snapshot runtime replay to staged SnapshotDB output. |
-| `split_service.py` | Argument/device validation, replay-safe slicing, staging cleanup, and exclusive publication. |
-| `skill_service.py` | Bundled agent-skill discovery, install-status detection, and host-directory publication. |
+## Service Boundaries
 
-## Subdirectories
-| Directory | Purpose |
-|-----------|---------|
-| None | Service-layer modules are flat. |
+| Files | Responsibility |
+| --- | --- |
+| `focus_service.py` | Resolve/validate database and device; explicit project/global focus writes |
+| `context_cache.py` | Bounded persistent Context LRU with resolved-path and file-signature invalidation |
+| `query_service.py` | Catalog contracts, focus/device selection, executor reuse, completeness and timeout budget |
+| `capability_service.py`, `overview_service.py` | Full catalog and read-only database/device/event-bound/import-metadata probes |
+| `report_service.py` | Compose named queries into peak-memory reports rather than duplicate SQL |
+| `import_service.py`, `import_metadata.py` | Trusted-input import validation, source/cache identity, metadata, optional focus |
+| `snapshot_import_backend.py` | Runtime adapter, temporary database, publication and rollback resources |
+| `split_service.py` | Strategy/device validation, staging, replay validation and exclusive directory publication |
+| `skill_service.py` | Skill discovery, status, install/upgrade/uninstall destination policy |
+| `models.py`, `errors.py` | Shared dataclass results and normalized domain failures |
+| `error_codes.py`, `json_codec.py` | Stable JSON error classification/hints and serializable envelopes |
 
-## For AI Agents
+## Ownership and Query Lifetime
 
-### Working In This Directory
-- Translate low-level exceptions into `core.errors` so CLI and API callers receive consistent failures.
-- Preserve explicit device precedence over focused device, and validate devices against `Context.device_ids`.
-- Keep service models stable when changing CLI/API output shapes.
-- Preserve existing import destinations when publication or the requested focus update fails, and never replace an existing split destination.
+- A caller-supplied `ContextCache` is borrowed. Check `is not None`, since an
+  empty cache is falsy. `QueryService` and `OverviewService` close only owned
+  caches; `ReportService` owns and closes its internally constructed query service.
+- `QueryService.close()` releases its executor references and owned cache but
+  allows reuse. This differs from terminal `SnapshotAnalyzer.close()`.
+- Cache keys are resolved paths; the signature is `(mtime_ns, inode, size)`.
+  Replacement or eviction closes the old Context. Executor reuse follows the
+  actual Context instance; invalidation must not reuse an executor bound to an
+  evicted connection.
+- Finite trailing pages probe one extra row. A full inner `top_n` window is
+  conservatively incomplete too. Keep `has_more`, `truncated`, `total`, and
+  `total_is_exact` consistent; exact totals are opt-in and share the page query's
+  timeout budget. `PT_SNAP_QUERY_TIMEOUT` is a time bound, not a row limit.
 
-### Testing Requirements
-- Run `pytest tests/core` for service changes; import tests isolate CWD, environment focus, and home before any default focus write.
-- Also run CLI/API tests when service behavior changes user-visible output or errors.
-- Run `pytest tests/snapshot` when import or split changes cross into the snapshot runtime.
+## Import and Split Transactions
 
-### Common Patterns
-- `FocusService` delegates persistence to `Config` and validation to `Context`.
-- `QueryService` resolves focus, chooses a target device, reuses a cached context/executor, executes a named template, and applies row limiting.
-- `ImportService` validates a temporary database, publishes it with a retained rollback link, and commits requested focus before releasing that link. `SplitService` validates staged slices before a no-replace directory publish.
-- `ReportService` composes named query results instead of reimplementing SQL.
+Import runs the backend in a temporary directory, then writes/validates metadata
+before replacing the destination. When focus is requested and a destination
+already exists, rollback uses a copied backup held by a secure file descriptor
+until the post-publication action succeeds. This is a backup copy, not a hard link.
+Handle short/zero writes and close descriptors on every failure path.
 
-### Change Together
-- Context cache changes require `tests/core/test_context_cache.py`, `tests/test_snapshot_analyzer_cache.py`, and `tests/test_query_cache_perf.py`.
-- Import publication or focus transaction changes require `tests/core/test_import_service.py` and `tests/test_config.py`.
+Normal post-publication failure restores the previous destination (or removes a
+new one). If rollback itself fails, preserve recovery evidence and report that
+failure explicitly; never claim unconditional atomic restoration after I/O failure.
+See `tests/core/test_import_backend_failures.py` and `test_import_service.py`.
 
-## Dependencies
+Split requires exactly one positive `slices`/`max_entries` strategy and an absent
+destination. It validates selected-device slices by replay before publication;
+concurrent destination creation must fail rather than replace another result.
 
-### Internal
-- `pt_snap_cli.config` for focus persistence and precedence.
-- `pt_snap_cli.context` for database validation and device discovery.
-- `pt_snap_cli.query` for template registry and SQL execution.
-- `pt_snap_cli.snapshot` for trusted representation loading, replay, database adaptation, and slicing.
+## Skill Catalog and Mutation
 
-### External
-- `sqlite3` standard library exceptions are normalized at service boundaries.
+- Default catalog precedence: `PT_SNAP_SKILLS_DIR`, repository `skills/`, then
+  packaged `bundled_skills/`; an explicit service `catalog_dir` overrides this.
+- Default install targets shared `~/.agents/skills` and independent Claude
+  skills (`~/.claude/skills` or `$CLAUDE_CONFIG_DIR/skills`). Explicit Cursor/Codex
+  targets retain their native extras; `--dir` is a separate custom destination.
+- List reports `installed`, `outdated`, `missing` across selected locations;
+  filesystem status does not prove the current host loaded the skill.
+- Unfiltered CLI uninstall discovers all built-in hosts and both scopes, removing
+  installed/outdated copies containing `SKILL.md`. A same-named non-skill path
+  aborts the entire operation before deletion. Explicit target/project/directory
+  filters retain narrower destinations.
+- `uninstall_skills(all_locations=True)` rejects `hosts`, `dest_dir`, and scope
+  other than `user`. Keep this service constraint aligned with `cli_skills.py`.
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+## Change Together
+
+Use [service tests](../../../tests/core/AGENTS.md) for the owning suite. Shared
+result/error changes also require `tests/test_contract_cli_api.py` and JSON
+contracts; template metadata must flow through `template_info_to_dict` to both
+adapters. Keep the `models.py` Any/Unknown type gates intact. Runtime changes
+also follow [snapshot guidance](../snapshot/AGENTS.md), and skill content changes
+follow [authoring/evaluation](../../../skills/AGENTS.md).

@@ -1,21 +1,33 @@
-<!-- Parent: ../AGENTS.md -->
+# Executable Fixture Acceptance
 
-# fixtures
+Parent scope: [test contracts](../AGENTS.md).
 
-## Purpose
-`tests/fixtures` owns committed test inputs. Snapshot pickle files are executable
-inputs with a separate acceptance lifecycle; they are not trusted merely because
-they are tracked by Git.
+Snapshot pickle files are executable inputs with a separate review lifecycle.
+Being tracked by Git is not evidence that a new or modified object is trusted.
 
-## Snapshot Acceptance
-- `snapshots/PROVENANCE.md` records source evidence, review limits, introduction commits, sizes, and exact SHA-256 values.
-- `snapshots/SHA256SUMS` is the machine-readable allowlist enforced by `tests/test_fixture_provenance.py` without deserialization.
-- Git LFS pointers are acceptable in checkouts only when their OID and declared size match the reviewed object.
-- Before adding or changing a pickle, document its source, rights/privacy review, sanitization evidence, purpose, introduction decision, size, checksum, and static opcode review.
-- Existing objects may rely only on a historical exception explicitly recorded in `snapshots/PROVENANCE.md`; that exception does not waive evidence requirements for replacements or additions.
-- Do not deserialize a new or changed fixture to inspect it. Complete provenance and non-executing static review first, obtain explicit maintainer approval, then update the manifest and tests.
+## Evidence Owners
 
-## Verification
-- Run `pytest tests/test_fixture_provenance.py` before import, split, benchmark, or snapshot suites that load committed pickles.
-- Any `.pkl`/`.pickle` present in `snapshots/` but missing from `SHA256SUMS` stops the entire pytest session at startup (`tests/conftest.py`), and the message lists the unexpected and missing names. The `.gitignore` rule for `*.pickle` only keeps such files out of Git; it does not make them acceptable here. Store local snapshots elsewhere (e.g. `.tmp/`).
-- Changes to fixture trust records require `git diff --check` and review of `.gitattributes`/`.gitignore` when Git LFS or sensitive-data rules are affected.
+| Record | Responsibility |
+| --- | --- |
+| `snapshots/PROVENANCE.md` | Source, rights/privacy review, sanitization evidence/limits, purpose, introduction decision, sizes and hashes |
+| `snapshots/SHA256SUMS` | Machine-readable accepted object names and SHA-256 digests |
+| `tests/_fixture_provenance.py` | Reviewed size table, exact manifest/set check, byte or LFS pointer validation without deserialization |
+| `tests/test_fixture_provenance.py` | Regression coverage for the acceptance gate |
+
+Before adding/replacing a pickle, complete provenance and non-executing static
+opcode review and obtain explicit maintainer approval. Update the evidence,
+manifest and expected sizes together. Historical exceptions apply only to the
+objects named by their recorded decision, not replacements.
+
+## Verification and LFS
+
+Run `pytest tests/test_fixture_provenance.py` from the repository root before
+import, split, runtime or benchmark code loads committed snapshots.
+`tests/conftest.py` also enforces the gate before collection, including unexpected
+pickles ignored by Git. Keep local analysis snapshots outside `snapshots/`.
+
+A Git LFS pointer is accepted only when its object ID and declared size match the
+reviewed object. Passing this check does not hydrate the object or make the pointer
+deserializable. Hydrate selected benchmark/runtime inputs before loading, then
+rerun verification. Changes to LFS handling require reviewing `.gitattributes`
+and `.gitignore` alongside these records.

@@ -1,44 +1,44 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+# User Documentation and Evidence
 
-# docs
+Parent scope: [repository](../AGENTS.md).
 
-## Purpose
-`docs` contains end-user and API documentation for the CLI, focus management, query templates, agent skills, snapshot database format, high-level and result mapping Python APIs, and retained legal evidence. It is split into English and Chinese language trees with a top-level README for navigation.
+`docs/README.md` is the topic/language index. [English](en/AGENTS.md) and
+[Chinese](zh/AGENTS.md) guides share behavioral coverage; `legal/` retains evidence
+referenced by the index and snapshot provenance. Agent implementation rules belong
+in scoped AGENTS guides, not in user walkthroughs.
 
-## Key Files
-| File | Description |
-|------|-------------|
-| `README.md` | Documentation landing page and language/topic navigation. |
+## Verify Against the Owning Implementation
 
-## Subdirectories
-| Directory | Purpose |
-|-----------|---------|
-| `en/` | English documentation guides (see `en/AGENTS.md`). |
-| `zh/` | Chinese documentation guides (see `zh/AGENTS.md`). |
-| `legal/` | Governance evidence referenced by the documentation index and snapshot provenance record. |
+| Topic | Source of truth |
+| --- | --- |
+| Root commands/help/JSON | `cli.py`, `cli_output.py`, `core/json_codec.py`, `core/error_codes.py` |
+| Reports and skill commands | `cli_reports.py`, `cli_skills.py` and owning core services |
+| API/lifecycle | `api.py`, core result models, CLI/API contract tests |
+| Focus and read-only inspection | `config.py`, `context.py`, focus/overview/metadata services |
+| Query parameters/semantics/completeness | YAML templates, query config/registry/executor, QueryService |
+| Snapshot schema/import/split | Runtime adaptors, import metadata/backend and SplitService |
+| Distribution and install | `pyproject.toml`, SkillService, authored/bundled skill parity |
 
-## For AI Agents
+Paths in this table are within `src/pt_snap_cli/` unless stated otherwise.
+Commands must be checked against group modules too; not all options live in
+`cli.py` after command-group separation.
 
-### Working In This Directory
-- Keep English and Chinese docs synchronized when changing user-visible behavior.
-- Verify command names, options, and template names against source code before updating docs.
-- Prefer updating existing guides over creating new documentation pages.
+## Change-Together Rules
 
-### Testing Requirements
-- For documentation-only changes, review rendered Markdown structure and verify referenced commands/options exist.
-- If examples depend on behavior changes, run the matching CLI or service tests.
+- Public behavior changes update both language guides and relevant README entry
+  points. Topic additions/moves also update `docs/README.md` navigation.
+- Installation walkthroughs lead with PyPI; keep editable developer setup
+  separate. Agent integration uses skills plus CLI, and host restart/loading
+  must be distinguished from on-disk installation status.
+- Query examples preserve sentinels, units, denominators, completeness and layout
+  compatibility. API examples should show owned resource lifetimes and avoid
+  implying that session focus persists like CLI focus.
+- Import/split examples state pickle trust/code-execution and publication behavior.
+  Snapshot schema docs describe both reader layouts and the current writer.
+- Legal evidence and runtime provenance have different maintenance contracts from
+  prose guides. Preserve provenance's append-only history and the fixed branding
+  evidence allowlist enforced by `tests/test_governance.py`.
 
-### Common Patterns
-- The two language trees mirror the same topics: quick start, focus management, querying, snapshot splitting, agent skills, database schema, SnapshotAnalyzer API, and result mapper API.
-
-## Dependencies
-
-### Internal
-- `src/pt_snap_cli/cli.py` defines documented CLI commands and options.
-- `src/pt_snap_cli/query/templates/` defines documented built-in template names and parameters.
-
-### External
-- Markdown is the only documentation format used here.
-
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+For documentation-only edits, verify relative links, referenced source and
+existing contract tests. Run the owning executable test when an example's behavior
+is in doubt; do not invoke import, install or publication just to validate prose.

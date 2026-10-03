@@ -1,48 +1,49 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+# CI and Release Lifecycles
 
-# workflows
+Parent scope: [automation](../AGENTS.md).
 
-## Purpose
-`workflows` contains GitHub Actions definitions for continuous integration and release automation.
+## Test Workflow
 
-## Key Files
-| File | Description |
-|------|-------------|
-| `test.yml` | Reusable provenance, lint, type, test-matrix, coverage, build, and wheel smoke checks. |
-| `release.yml` | Tag workflow that gates build and publication on the tagged commit's reusable quality workflow. |
+`test.yml` runs for main pushes, main-targeted PR opened/synchronize/reopened/edited
+events, and `workflow_call`. Provenance, lint and Python test-matrix jobs are
+independent. Concurrency is keyed by GitHub ref and superseded runs are cancelled.
 
-## Subdirectories
-| Directory | Purpose |
-|-----------|---------|
-| None | Workflow YAML files are flat. |
+| Job/step | Gate |
+| --- | --- |
+| Snapshot provenance | Full Git history; base/head comparison; PR decision required only in PR mode |
+| Lint & Format | Python 3.13, editable dev install, Ruff, Black, basedpyright with the selected interpreter |
+| Test matrix | Python 3.10–3.13; fixture provenance first, then pytest with branch coverage |
+| Overall coverage | `pyproject.toml` fail-under 90 with branches enabled |
+| Critical runtime coverage | Import backend 90; simulated allocator 88; snapshot mutator 84, checked independently |
+| Python 3.13 packaging | Upload coverage, build wheel, run clean-wheel Agent acceptance |
 
-## For AI Agents
+Coverage reporting writes `.coverage`/`coverage.xml`; building writes `dist/` and
+intermediates. Dependency installation/build isolation may access the network.
+The [acceptance script](../scripts/clean_wheel_agent_acceptance.py) uses temporary
+paths but imports a reviewed executable fixture. These are more than YAML checks.
 
-### Working In This Directory
-- Keep workflow Python versions and commands aligned with `pyproject.toml`.
-- Treat release workflow edits as high-impact and verify syntax carefully.
-- Do not bypass tests, lint, type checks, or publishing safeguards without explicit instruction.
-- Keep snapshot provenance inputs and declaration parsing aligned with `.github/scripts/check_snapshot_provenance.py` and the PR template.
-- Keep release validation before PyPI publication; release notes and package version must be validated in `build`.
+## Release Workflow
 
-### Testing Requirements
-- Validate YAML syntax.
-- Run equivalent local commands when changing CI command sequences.
-- Run `pytest tests/test_governance.py tests/test_release_workflow.py` for provenance or release workflow changes.
+`release.yml` triggers on `v*` tag pushes and enforces:
 
-### Common Patterns
-- Workflows install the package with development extras before verification.
-- The test workflow defines independent provenance, lint, and Python-version test jobs that may run concurrently.
-- Release ordering is `quality` -> `build` -> `publish` -> `github-release`; the local reusable workflow is resolved from the tag commit.
+`quality` → `build` → `publish` → `github-release`.
 
-## Dependencies
+- `quality` invokes `./.github/workflows/test.yml` at the tagged commit.
+- `build` fetches full history for setuptools-scm, builds sdist/wheel, verifies
+  the installed wheel's version matches the tag, runs `pt-snap --version`, and
+  extracts a nonempty matching `CHANGELOG.md` section before uploading artifacts.
+- `publish` uses the protected `pypi` environment and OIDC trusted publishing.
+- `github-release` publishes the same distributions and extracted notes only
+  after PyPI publication succeeds.
 
-### Internal
-- `pyproject.toml` defines package metadata, dev extras, and tool configuration.
-- `tests/` and source files are exercised by CI.
+Do not substitute a different commit's CI result or publish before version/notes
+validation. For non-PR provenance checks, tag runs compare against the prior tag
+(or root commit fallback); pushes use the before SHA with a root fallback.
 
-### External
-- GitHub Actions hosted runners and packaging/publishing actions.
+## Verification
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+Review `pyproject.toml`, both workflow YAMLs, the provenance/acceptance scripts and
+`tests/test_release_workflow.py` together when changing execution order. Validate
+YAML and run `pytest tests/test_governance.py tests/test_release_workflow.py` from
+the repository root. Full CI tests the matrix and installed wheel; static tests
+do not prove a release environment is configured or a publication occurred.

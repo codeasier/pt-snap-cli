@@ -1,69 +1,63 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+# Test Contracts and Resources
 
-# tests
+Parent scope: [repository](../AGENTS.md).
 
-## Purpose
-`tests` contains the pytest suite for CLI/API contracts, configuration, services, query behavior, packaging/governance, and the first-party snapshot runtime. Most tests use temporary data; snapshot and import suites may use only checksum-verified executable fixtures under `tests/fixtures/snapshots/`.
+Run pytest from the repository root. `pyproject.toml` discovers `tests/test_*.py`
+and nested `test_*.py` modules. The full suite is deterministic and does not
+require a live model provider or NPU; use temporary SQLite data for analysis.
 
-## Key Files
-| File | Description |
-|------|-------------|
-| `conftest.py` | Verifies executable fixture provenance at session start and registers repository-wide pytest markers. |
-| `run_tests.sh` | Developer-specific Conda/coverage wrapper; prefer direct `pytest` unless its local environment exists. |
-| `test_api.py` | Tests for the public `SnapshotAnalyzer` API layer. |
-| `test_cli.py` | CLI behavior tests, including focus, query listing, template info, skill install/list, and output limits. |
-| `test_cli_json.py` | `--json` success/error contracts for focus, import, split, query, config, and compatible metadata/report fields. |
-| `test_bundled_skills.py` | Packaged `bundled_skills/` copies must match repository `skills/*/SKILL.md`. |
-| `test_completion.py` | Shell completion helper tests. |
-| `test_config.py` | Configuration and focus precedence tests. |
-| `test_contract_cli_api.py` | Normalized behavior contract between CLI and `SnapshotAnalyzer`. |
-| `test_context.py` | SQLite context, schema validation, and device discovery tests. |
-| `test_fixture_provenance.py` | Non-deserializing coverage, SHA-256, size, and Git LFS pointer validation for executable fixtures. |
-| `test_governance.py` | Snapshot provenance and repository governance contracts. |
-| `test_models.py` | Package-level model behavior tests. |
-| `test_package.py` | Package metadata/import/version tests. |
-| `test_release_workflow.py` | Release workflow and package publication contract tests. |
-| `test_snapshot_analyzer_cache.py`, `test_query_cache_perf.py` | Analyzer cache invalidation and repeated-query connection reuse contracts. |
-| `test_snapshot_db.py` | SnapshotDb write pragmas and query-index creation. |
-| `test_baseline_import.py` | Import benchmark metric parsing and platform RSS normalization. |
+## Suite Routing
 
-## Subdirectories
-| Directory | Purpose |
-|-----------|---------|
-| `core/` | Service-layer tests for focus, import, split, query, metadata, and reports (see `core/AGENTS.md`). |
-| `fixtures/` | Reviewed executable inputs and their trust/checksum records (see `fixtures/AGENTS.md`). |
-| `models/` | Domain model and enum unit tests governed by this guide. |
-| `query/` | Query builder, config, executor, mapper, registry, and condition tests (see `query/AGENTS.md`). |
-| `snapshot/` | Representation, replay, database adaptor, and slicing runtime tests (see `snapshot/AGENTS.md`). |
-| `skills/` | Static skill contracts and local-first suite/case evaluation harness (see `skills/AGENTS.md`). |
+| Scope | Guide / tests | Contract |
+| --- | --- | --- |
+| Service boundaries | [core](core/AGENTS.md) | Focus/cache ownership, query/report, import/split publication, skill destinations |
+| Query engine and SQL | [query](query/AGENTS.md) | Validation, rendering, real SQLite semantics, completeness/timeouts |
+| Snapshot mechanisms | [snapshot](snapshot/AGENTS.md) | Replay, mutations, records, schema and slices |
+| Executable inputs | [fixtures](fixtures/AGENTS.md) | Review, checksum/size manifest, LFS hydration |
+| Skills and evaluation | [skills](skills/AGENTS.md) | Static contracts, synthetic fixtures, descriptors and deterministic grading |
+| Models | `models/`, `test_models.py` | Domain dataclasses/enums and sentinel behavior |
 
-## For AI Agents
+## Cross-Surface Test Map
 
-### Working In This Directory
-- Add or update focused tests with behavior changes; `tests/test_cli.py` is the first place to check for user-facing command behavior.
-- Use temporary directories and SQLite fixtures instead of relying on local `.pt-snap/focus.json` or real snapshot databases.
-- Keep tests deterministic across working directories and user machines.
-- Isolate CWD, `PT_SNAP_DB_PATH`, and `Path.home()` in tests that resolve or persist focus.
-- Keep live agent runs out of normal pytest; skill evaluation definitions and deterministic graders live under `tests/skills/`.
+| Files | What must stay aligned |
+| --- | --- |
+| `test_cli.py`, `test_cli_json.py`, `test_completion.py` | Typer commands/help/output/errors, JSON envelopes and completion handle cleanup |
+| `test_api.py`, `test_contract_cli_api.py` | Public analyzer behavior and normalized CLI/API parity |
+| `test_analyzer_lifecycle.py` | Terminal analyzer closure, borrowed/owned caches, constructor failures |
+| `test_snapshot_analyzer_cache.py`, `test_query_cache_perf.py` | Connection/executor reuse, file replacement and explicit invalidation |
+| `test_config.py`, `test_context.py` | Focus precedence/atomic writes, read-only validation and device discovery |
+| `test_bundled_skills.py`, `test_package.py` | Authored/packaged skill parity, package metadata/import/version |
+| `test_governance.py`, `test_release_workflow.py` | Provenance, issue/PR templates, bilingual contracts, release ordering |
+| `test_snapshot_db.py`, `test_baseline_import.py` | Writer pragmas/indexes and benchmark measurement parsing |
+| `test_leak_query_window.py` | Real CLI/SQLite verification of bounded leak-skill query windows |
 
-### Testing Requirements
-- Run `pytest` for the full suite.
-- Use targeted commands such as `pytest tests/query/test_executor.py` for narrow query changes.
-- Run `pytest tests/test_fixture_provenance.py` before tests that deserialize committed snapshot fixtures.
+## Fixture Gate and Isolation
 
-### Common Patterns
-- CLI tests exercise Typer commands through test runners and assert printed output.
-- Query tests build minimal SQLite schemas and YAML-like config objects around the template pipeline.
-- Snapshot/import tests may deserialize only objects accepted by `fixtures/snapshots/PROVENANCE.md` and `SHA256SUMS`; never load a new or changed pickle before review.
-- `conftest.py` aborts the whole pytest session before collection when any `.pkl`/`.pickle` in `tests/fixtures/snapshots/` is not listed in `SHA256SUMS` (or a listed one is absent); the exit message names the offending files. Keep local analysis snapshots outside that directory, for example under `.tmp/`. There is deliberately no override flag.
+`conftest.py:pytest_sessionstart` calls `_fixture_provenance.py` before collection.
+Unexpected/missing pickle names, hash/size mismatch, or inconsistent review
+manifests abort the session; there is no override. Local snapshots belong outside
+the committed fixture directory. The gate validates bytes or reviewed LFS pointer
+identity without unpickling; runtime tests still require hydrated inputs.
 
-## Dependencies
+Tests that resolve/write focus must isolate CWD, `PT_SNAP_DB_PATH`, and home.
+Skill mutation tests also isolate host environment variables and destination
+directories. Do not let tests discover user focus or write installed skills.
 
-### Internal
-- Tests import `pt_snap_cli` package modules from `src/` via editable install or test environment path configuration.
+## Resource Ownership
 
-### External
-- `pytest` is the test runner.
+- `ResourceWarning` and `PytestUnraisableExceptionWarning` are errors. Autouse
+  `collect_test_resources` triggers GC during teardown so leaks are attributed
+  to the owning test, rather than hidden by a later collection.
+- Explicitly close SQLite handles. For a transaction plus lifetime scope, use
+  `with closing(connection) as conn, conn:`; the SQLite context manager alone
+  commits/rolls back but does not close.
+- `owned_service_instances` is opt-in for tests that directly construct imported
+  analyzer/query/overview/report services. It wraps only test-module bindings
+  and registers `.close()` finalizers. Do not use it in lifecycle tests where
+  it could hide the defect being tested, or patch production constructors.
+- Cache fixtures own their teardown. Borrowed-cache tests must verify that one
+  service's cleanup leaves another user operational.
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+CLI help may contain ANSI color sequences; normalize color when asserting
+semantic command/option text. Prefer executing help to matching adapter source
+layout. Keep error/exit-code tests alongside successful output assertions.

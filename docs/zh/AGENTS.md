@@ -1,48 +1,29 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+# Chinese User Guides
 
-# zh
+Parent scope: [documentation](../AGENTS.md).
+Topic reference: [English guide map](../en/AGENTS.md).
 
-## Purpose
-`docs/zh` contains the Chinese documentation set for `pt-snap-cli`, covering the same user-facing areas as the English docs: quick start, focus management, querying, snapshot splitting, agent skills, database schema, and the high-level and result mapping Python APIs.
+The same-named Markdown topics mirror the English guides. Translate explanatory
+prose while preserving executable identifiers: CLI flags, template names, JSON
+keys, Python APIs, schema columns and paths must stay exact.
 
-## Key Files
-| File | Description |
-|------|-------------|
-| `quickstart.md` | Chinese installation and first-query walkthrough. |
-| `focus-management.md` | Chinese guide to focus resolution and persistence. |
-| `querying.md` | Chinese guide to query templates, parameters, and output. |
-| `splitting.md` | Chinese guide to snapshot slicing, formats, replay validation, and publication. |
-| `skills.md` | Chinese guide to bundled agent-skill listing, helper entry, and installation. |
-| `database.md` | Chinese snapshot SQLite schema reference. |
-| `snapshot-analyzer-api.md` | Chinese guide to the high-level focus, query, capabilities, overview, and metadata Python API. |
-| `result-mapper-api.md` | Chinese result mapping API guide. |
+## Translation Contracts
 
-## Subdirectories
-| Directory | Purpose |
-|-----------|---------|
-| None | Chinese docs are flat topic files. |
+- Preserve differences between session focus and persisted project/global focus,
+  catalog content and installed/host-loaded skills, and trusted collection/import
+  versus read-only diagnosis.
+- Keep units, denominators, sentinels, event ranges, and incomplete-query caveats
+  explicit. Translate leak/fragmentation candidates conservatively rather than
+  upgrading them into confirmed causes.
+- `database.md` and `querying.md` describe v1/v2 layout behavior consistently with
+  their English counterparts; semantics version is a separate contract.
+- `snapshot-analyzer-api.md` retains context-manager/close examples and borrowed
+  cache ownership. `splitting.md` retains exactly-one-strategy and no-replace
+  destination requirements as well as pickle security language.
+- `skills.md` follows the authored skills and SkillService for shared/native/custom
+  destinations, restart requirements and installation status meanings.
 
-## For AI Agents
-
-### Working In This Directory
-- Keep translations aligned with `../en/` and current source behavior.
-- Preserve Chinese terminology consistently across guides.
-
-### Testing Requirements
-- Verify commands, options, and template names against source before editing examples.
-
-### Common Patterns
-- Files mirror the English documentation topics one-for-one.
-- `skills.md` must stay aligned with `../en/skills.md` and `SkillService`.
-
-## Dependencies
-
-### Internal
-- `../en/` is the sibling language reference for topic coverage.
-- `src/pt_snap_cli/` is the behavior source of truth.
-
-### External
-- Markdown only.
-
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+After behavior edits, compare commands/examples with the English topic and source,
+then check `README_zh.md` and `docs/README.md` navigation. Use the parent's
+implementation/test map; translation-only wording changes do not need a package
+install or snapshot import to validate them.

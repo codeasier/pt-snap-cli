@@ -1,55 +1,55 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-09 -->
+# Packaged Query Contracts
 
-# templates
+Parent scope: [query engine](../AGENTS.md).
 
-## Purpose
-`templates` contains the packaged YAML query templates used by the registry and CLI/API query execution. Templates are grouped by category and define metadata, parameters, SQL, and output schemas.
+Each YAML `queries` entry is a public named contract: parameters, SQL, output
+schema and optional interpretation metadata. Categories default to the directory
+name. Package data includes category YAML files; deeper layout changes require
+reviewing `pyproject.toml` rather than assuming recursive wheel inclusion.
 
-## Key Files
-| File | Description |
-|------|-------------|
-| None | Template YAML files are grouped in category subdirectories. |
+## Template Families
 
-## Subdirectories
-| Directory | Purpose |
-|-----------|---------|
-| `basic/` | Core allocation, block, and event inspection templates. |
-| `business/` | Higher-level analysis templates such as leak detection. |
-| `statistical/` | Point-in-time, aggregation, gap, callstack, and peak templates. |
+| Directory | Responsibilities |
+| --- | --- |
+| `basic/` | Allocation, block and event inspection/pagination |
+| `business/` | Leak candidates, preexisting live blocks, freed lifetimes, active-memory callstack attribution |
+| `statistical/` | Peak metrics, active-at-event blocks, allocator gaps, callstack aggregates |
 
-## For AI Agents
+## Authoring Rules
 
-### Working In This Directory
-- Keep each YAML template's `queries` entry name aligned with the file/topic and documented template name.
-- Include accurate parameter defaults, required flags, descriptions, and output schema entries.
-- Field semantics (`units`, `metric_semantics`, `scope`, `denominator`, `sentinel`, `interpretation_limits`) and template-level `semantics_version` / `interpretation_limits` are optional and validated by `QueryTemplate.from_dict`. Omit them on templates that do not yet declare an interpretation contract. v1/v2 SQL variants must share one `output_schema`.
-- `semantics_version` is the field-interpretation contract, distinct from YAML `version` and SnapshotDB schema / callstack layout.
-- Any parameter rendered as a SQL identifier or keyword (`order_by`, `order_dir`, or similar) must declare `choices`; `order_by` choices must be columns present in `output_schema`. `tests/query/test_registry.py` enforces this for packaged templates. Empty `choices`, a non-list `choices`, or a default outside the list raise at `QueryParameter` construction; `_load_yaml_templates` warns and skips that YAML file, so the template is absent rather than listed.
-- Callers cannot pass undeclared parameters; `QueryTemplate.validate_params()` rejects unknown names, so declare every input the SQL reads.
-- Use Jinja variables provided by `QueryExecutor`, especially device-specific table names.
-- Make ranked/grouped results deterministic with explicit tie-breakers and keep every selected result column in `output_schema`.
+- Declare every caller input, accurate defaults/required flags, and each result
+  column in `output_schema`. Unannotated fields with only `column`/`type` stay valid.
+- SQL identifier/keyword parameters such as `order_by` and `order_dir` require
+  `choices`; ordering columns must exist in the output schema. Invalid choices
+  definitions/defaults fail construction, and registry loading warns and skips
+  the YAML file. Verify the template remains discoverable after editing.
+- Use injected device table names. Keep grouped/ranked/paginated results
+  deterministic with explicit tie-breakers. Do not invent offset support for
+  templates that only expose a ranked window.
+- Put inline-callstack v1 and ID-callstack v2 SQL under `query_variants` in one
+  entry, sharing name, parameters, description and output schema. Unaffected
+  queries retain a single `query`.
+- Interpretation changes require reviewing `semantics_version` and field
+  metadata, not bumping the database layout or YAML document version instead.
 
-### Testing Requirements
-- Run `pytest tests/query/test_registry.py tests/query/test_config.py tests/query/test_executor.py` after metadata/rendering changes; add the owning SQLite integration suite for SQL semantics.
-- Run `pytest tests/test_cli.py` if list or template-info output changes.
+## Attribution Edge Cases
 
-### Common Patterns
-- Category is inferred from the subdirectory unless explicitly set in the YAML.
-- SQL is rendered through Jinja2 before execution against SQLite.
+`active_memory_callstack_at_event` normalizes missing dynamic attribution
+(empty/NULL text, NULL IDs, absent joined rows) before ranking into
+`[missing callstack]`. Keep static and preexisting categories separate. Nonempty
+v2 stacks retain ID grouping; whitespace and a captured literal missing-label
+string are real data, not the missing group. Display labels are not unique group
+identities. Preserve special groups and their totals when applying `top_n`.
 
-## Dependencies
+## Change Together
 
-### Internal
-- `pt_snap_cli.query.config.QueryConfig` parses template YAML.
-- `pt_snap_cli.query.registry` discovers and registers packaged templates.
-- `pt_snap_cli.query.executor.QueryExecutor` renders and executes template SQL.
+Run the config, registry and executor tests for contracts/rendering:
 
-### External
-- YAML syntax via `pyyaml` and Jinja2 expressions inside SQL strings.
+```bash
+pytest tests/query/test_registry.py tests/query/test_config.py tests/query/test_executor.py
+```
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
-
-- For callstack-dependent templates, put v1 inline SQL and v2 `callstackId` SQL
-  under `query_variants` instead of duplicating the template file. Keep the
-  public name, parameters, and `output_schema` identical.
+Add the owning real-SQLite suite from [query tests](../../../../tests/query/AGENTS.md). In particular,
+attribution requires v1/v2, mixed missing/nonmissing, ranking and denominator
+cases. Review service/CLI/API metadata and both querying guides for any public
+contract change; skills may depend on parameter names and completeness flags.

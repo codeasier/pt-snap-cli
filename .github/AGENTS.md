@@ -1,46 +1,44 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-26 | Updated: 2026-08-08 -->
+# Repository Automation
 
-# .github
+Parent scope: [repository](../AGENTS.md).
 
-## Purpose
-`.github` contains GitHub project automation: issue forms, pull request templates, snapshot provenance enforcement, release workflow, and CI verification definitions.
+| Path | Contract |
+| --- | --- |
+| [workflows](workflows/AGENTS.md) | CI quality gates and tag-driven release ordering |
+| [ISSUE_TEMPLATE](ISSUE_TEMPLATE/AGENTS.md) | Numbered issue forms and chooser configuration |
+| `pull_request_template.md` | Default PR template and machine-parsed snapshot decision labels |
+| `scripts/check_snapshot_provenance.py` | Base/head Git-blob comparison and PR declaration validation |
+| `scripts/clean_wheel_agent_acceptance.py` | Supplied wheel acceptance in temporary home/CWD/venv |
 
-## Key Files
-| File | Description |
-|------|-------------|
-| `pull_request_template.md` | Default PR body, including exact snapshot provenance labels parsed by the guard. |
-| `scripts/check_snapshot_provenance.py` | Base/head blob comparison plus PR decision validation. |
+## Provenance Guard
 
-## Subdirectories
-| Directory | Purpose |
-|-----------|---------|
-| `ISSUE_TEMPLATE/` | Numbered `.yml` issue forms and chooser config (see `ISSUE_TEMPLATE/AGENTS.md`). |
-| `scripts/` | Repository governance scripts, including snapshot provenance validation. |
-| `workflows/` | GitHub Actions workflow definitions (see `workflows/AGENTS.md`). |
+The guard compares the supplied base/head commits, not just working-tree content.
+Changes anywhere under `src/pt_snap_cli/snapshot/`, including `AGENTS.md`, trigger
+the PR decision requirement. Supply exactly one `Snapshot provenance decision:`
+with `updated` or `no-update`. `updated` requires new nonblank provenance content;
+`no-update` requires one specific `Snapshot provenance no-update reason:` and no
+provenance-file change. Placeholder text and duplicate declarations fail.
 
-## For AI Agents
+Existing provenance lines cannot be rewritten, reordered or deleted. This
+content check also runs on main pushes and tag releases. Preserve PR `edited`
+events so correcting a declaration can rerun CI.
 
-### Working In This Directory
-- Treat workflow changes as CI-affecting; keep dependency installation and verification commands aligned with `pyproject.toml`.
-- Keep issue and PR templates concise and consistent with repository scope.
+## Installed-Wheel Acceptance
 
-### Testing Requirements
-- Validate YAML syntax for workflow or issue template edits.
-- For workflow changes, mirror commands locally where practical before relying on CI.
-- Run `pytest tests/test_governance.py tests/test_release_workflow.py` when provenance scripts, workflow wiring, or PR declarations change.
+The acceptance script installs a supplied wheel offline into a temporary venv
+with system dependencies available, and verifies that `pt_snap_cli` resolves
+inside that venv. It clears source/catalog/focus environment overrides and uses
+temporary HOME/CWD for helper installation and import-created focus.
 
-### Common Patterns
-- `test.yml` is both normal CI and the local reusable workflow called by a tag release.
-- Snapshot runtime PRs require one validated provenance decision; non-PR runs still enforce append-only provenance content.
+It then checks help, bundled catalog/install status, capabilities, trusted fixture
+import/reuse, overview and a peak query. This is executable CLI acceptance, not a
+live model evaluation. The script accepts only the expected committed
+`snapshot_with_empty_cache.pkl` path; run fixture provenance verification first.
 
-## Dependencies
+## Change Together
 
-### Internal
-- `pyproject.toml` defines the Python versions, package dependencies, and tools invoked by workflows.
-- `tests/` contains the suite run by CI.
-
-### External
-- GitHub Actions runners and standard GitHub issue/PR template formats.
-
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+Keep guard labels, the default PR template, and workflow inputs aligned. Run
+`pytest tests/test_governance.py tests/test_release_workflow.py` from the repository
+root for governance/wiring changes. Read scripts before invoking them: the guard
+is read-only, while wheel acceptance creates an environment and loads trusted
+pickle data. Workflow/package changes also use the source packaging contracts.

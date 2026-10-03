@@ -1,49 +1,37 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-08-08 | Updated: 2026-08-08 -->
+# Snapshot Runtime Tests
 
-# snapshot tests
+Parent scope: [test contracts](../AGENTS.md).
+Implementation: [snapshot runtime](../../src/pt_snap_cli/snapshot/AGENTS.md).
 
-## Purpose
-`tests/snapshot` verifies the first-party snapshot representation, entities, allocator simulation/replay, SQLite adaptors, and slice runtime using synthetic objects and checksum-verified fixtures.
+## Runtime Test Map
 
-## Key Files
-| File | Description |
-|------|-------------|
-| `helpers.py` | Shared segment and device-snapshot invariant assertions. |
-| `golden_observations.py` | Stable runtime row counts, schemas, action maps, and import observations. |
-| `test_snapshot2db_runtime.py` | Replay-driven SnapshotDB generation and schema/runtime behavior. |
-| `test_slice_dump_runtime.py` | Slice boundaries, formats, event IDs, replay, and output behavior. |
-| `test_replay_executor.py`, `test_simulate.py` | Replay sequencing and allocator simulation behavior. |
-| `test_entity2record.py`, `test_sqlite_meta.py` | Database record conversion and SQLite schema/value mapping. |
+| Files | Boundary |
+| --- | --- |
+| `test_entities.py`, `test_file_util.py` | Entity normalization, representation/loading and trusted-input behavior |
+| `test_replay_executor.py`, `test_simulate.py` | Replay ordering and allocator simulation |
+| `test_replay_boundaries.py` | Rejected allocator/mutator operations, state preservation and edge conditions |
+| `test_snapshot_mutator.py`, `test_snapshot_lookup.py`, `test_allocator_hook_dispatcher.py` | Mutation, lookup and callback contracts |
+| `test_snapshot2db_runtime.py`, `test_entity2record.py`, `test_callstack_interner.py` | Replay-driven database generation, records and interned stacks |
+| `test_sqlite_meta.py` | Schema/value conversion, optional/PEP 604 affinities and real SQLite round trips |
+| `test_slice_dump_runtime.py` | Slice boundaries, formats, original IDs and replay validity |
+| `helpers.py`, `golden_observations.py` | Reusable invariants and reviewed schema/action/import observations |
+| `test_logger.py`, `test_timer.py` | Runtime utility behavior |
 
-## Subdirectories
-| Directory | Purpose |
-|-----------|---------|
-| None | Snapshot runtime tests are grouped in this directory. |
+## Evidence Rules
 
-## For AI Agents
+- Use reviewed, checksum-verified committed fixtures or minimal temporary
+  snapshots constructed in the test. Keep committed inputs read-only.
+- After rejected operations, assert allocator state as well as the exception.
+  For slices, replay and check event IDs/device/state, not just file existence or
+  serialized bytes.
+- Golden observations change only for intentional reviewed behavior/schema
+  changes. Do not regenerate them to make a failing test pass without explaining
+  the changed contract.
+- Database tests own/close writer handles and verify actual column/value behavior;
+  nullable-affinity tests should exercise sorting and NULL round trips.
 
-### Working In This Directory
-- Deserialize only objects accepted by `tests/fixtures/snapshots/PROVENANCE.md` and `SHA256SUMS`, or temporary pickles generated inside the test itself.
-- Keep synthetic fixtures minimal and preserve explicit event IDs when testing slice boundaries.
-- Update golden observations only for intentional, reviewed runtime changes; do not regenerate them to hide regressions.
-
-### Testing Requirements
-- Run `pytest tests/test_fixture_provenance.py` before `pytest tests/snapshot` for runtime changes.
-- Run affected `tests/core/test_import_*.py` or `tests/core/test_split_service.py` when behavior crosses the product boundary.
-- Run `pytest tests/test_governance.py` for changes under `src/pt_snap_cli/snapshot/` or its provenance declaration.
-
-### Common Patterns
-- Tests validate allocator invariants after replay rather than comparing serialization bytes alone.
-- Temporary paths isolate generated databases and slices; committed pickle fixtures remain read-only inputs.
-
-## Dependencies
-
-### Internal
-- `src/pt_snap_cli/snapshot/` is the primary runtime under test.
-- `tests/fixtures/AGENTS.md` defines acceptance for snapshot inputs used by runtime and import baselines.
-
-### External
-- `pytest` and Python standard-library pickle/SQLite behavior.
-
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+Run `pytest tests/test_fixture_provenance.py` before `pytest tests/snapshot`.
+Import publication/focus behavior lives in `tests/core/test_import_*.py`, while
+product split validation/publication lives in `tests/core/test_split_service.py`.
+Runtime/provenance edits also require `tests/test_governance.py`; the CI runtime
+coverage floors are independent of the overall coverage result.

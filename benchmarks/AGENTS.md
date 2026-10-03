@@ -1,26 +1,36 @@
-<!-- Parent: ../AGENTS.md -->
+# Opt-In Performance Measurements
 
-# benchmarks
+Parent scope: [repository](../AGENTS.md).
 
-## Purpose
-`benchmarks` contains opt-in performance measurements. These scripts are not
-pytest entry points: they can consume substantial CPU, memory, and time, and the
-import benchmark deserializes reviewed executable fixtures.
+These are standalone scripts, not pytest targets. They can consume substantial
+CPU/memory/time; the import benchmark deserializes reviewed executable fixtures.
 
-## Entry Points
-| File | Behavior |
+| Script | Inputs and side effects |
 | --- | --- |
-| `baseline_import.py` | Runs warmup/formal imports in temporary directories, profiles one import, and prints timing, RSS, database, and correctness summaries. |
-| `sqlite_write_throughput.py` | Compares default and optimized SQLite writers using temporary databases. |
+| `baseline_import.py` | Warmup/formal imports, optional profiling/correctness queries, temporary databases, timing/RSS/database/frame summaries; import uses `set_focus=False` |
+| `sqlite_write_throughput.py` | Synthetic rows against default/optimized writers in temporary databases |
 
-## Safety And Execution
-- Run from the repository root with `PYTHONPATH=src python benchmarks/<script>.py`.
-- Run `pytest tests/test_fixture_provenance.py` before `baseline_import.py`; it loads pickle fixtures listed in `tests/fixtures/snapshots/SHA256SUMS`.
-- Before selecting the 131k or 628k samples, hydrate their Git LFS objects (for example, `git lfs pull --include="tests/fixtures/snapshots/*.pickle"`) and verify their on-disk sizes match `tests/fixtures/snapshots/PROVENANCE.md`; the checksum gate also accepts an unhydrated pointer, but the benchmark cannot deserialize one.
-- `baseline_import.py` defaults to the large 131k and 628k samples. Use `--samples 8k` and reduced run counts for a short check.
-- Both scripts keep generated databases in temporary directories; do not redirect benchmark output into tracked source paths.
-- Compare performance with the same interpreter, platform, fixture hashes, arguments, and warmup/run counts.
+## Preparation and Execution
 
-## Focused Tests
-- Run `pytest tests/test_baseline_import.py` for metric parsing and platform RSS normalization.
-- Runtime/import changes also require the owning core or snapshot tests; benchmark output alone is not correctness evidence.
+Run from the repository root with `PYTHONPATH=src python benchmarks/<script>.py`.
+Before the import benchmark, run `pytest tests/test_fixture_provenance.py` and
+follow [fixture acceptance](../tests/fixtures/AGENTS.md). The large `131k`/`628k`
+inputs use Git LFS; hydrate selected objects and rerun verification. The checksum
+gate accepts a valid pointer, but benchmark loading cannot use that pointer.
+
+The import benchmark defaults to the large samples. For a bounded check, use
+`--samples 8k --runs-8k 1 --skip-profile`; it still loads pickle, performs a
+warmup and runs correctness queries unless separately disabled. Keep outputs in
+temporary/ignored locations. Dependency setup and sample hydration are separate
+from running these scripts.
+
+## Comparisons and Tests
+
+Use the same interpreter, platform, fixture hashes, arguments, warmup and run
+counts when comparing changes. RSS normalization is platform-dependent; do not
+compare raw resource output as though all systems use the same units.
+
+Run `pytest tests/test_baseline_import.py` for parsing/RSS helper changes.
+Import/runtime changes also need their core/snapshot correctness suites, and
+SQLite writer/index changes need `tests/test_snapshot_db.py`. Faster benchmark
+results do not replace replay, schema or publication correctness evidence.
