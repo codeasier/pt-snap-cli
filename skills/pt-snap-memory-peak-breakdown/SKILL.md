@@ -30,8 +30,16 @@ Require one coherent database/device pair:
 
 Also obtain:
 
-- `<LIMIT>`: maximum callstack groups and representative blocks. Default to 20
-  only when the user has not requested another value.
+- `<LIMIT>`: finite positive dynamic callstack group cap (`top_n`, or report
+  `--limit`). Default to 20 only when the user has not requested another value.
+- `<GROUP_ROWS>`: total callstack query output row cap (`-n`). With
+  `include_static=true`, compute `<LIMIT> + 2` before command substitution to
+  reserve space for up to two special groups (20 dynamic groups → 22 rows;
+  1 dynamic group → 3 rows). This prevents outer truncation of the ranked result,
+  but does not guarantee that all dynamic groups fit within `top_n`.
+- `<BLOCK_LIMIT>`: separate finite positive representative block cap (template
+  `limit` and `-n`). Default to 20 unless the user requests another value; the
+  callstack query's two extra rows do not apply to this block listing.
 - `<METRIC>`: the metric whose event needs representative blocks. If the user
   requests all three metrics, inspect each metric's own event.
 - Optional inclusive `<START_ID>` and `<END_ID>` for a bounded event range.
@@ -46,9 +54,11 @@ observations.
 
 Validate every value before substituting it into a command:
 
-- `<DEVICE>`, `<LIMIT>`, `<START_ID>`, `<END_ID>`, and every `<EVENT_ID>` must
+- `<DEVICE>`, `<LIMIT>`, `<GROUP_ROWS>`, `<BLOCK_LIMIT>`, `<START_ID>`, `<END_ID>`, and every `<EVENT_ID>` must
   match `^[0-9]+$` after trimming whitespace. Reject any other value and ask the
   user or the query output again.
+- Require `<LIMIT>`, `<GROUP_ROWS>`, and `<BLOCK_LIMIT>` to be greater than zero.
+  Substitute the computed `<GROUP_ROWS>` as decimal digits, not shell arithmetic.
 - Treat `<DB>` as an opaque filesystem path. Reject values containing quotes,
   `$`, backticks, or other shell metacharacters instead of escaping them.
 - Prefer argument-array execution where the host agent supports it; otherwise
@@ -192,12 +202,12 @@ Use `active_blocks_at_event` at the chosen metric's peak event, not at the end o
 the trace and not at another metric's event:
 
 ```bash
-pt-snap query "<DB>" --device <DEVICE> --template-use active_blocks_at_event --params '{"event_id": <EVENT_ID>, "include_static": true, "limit": <LIMIT>}' -n <LIMIT>
+pt-snap query "<DB>" --device <DEVICE> --template-use active_blocks_at_event --params '{"event_id": <EVENT_ID>, "include_static": true, "limit": <BLOCK_LIMIT>}' -n <BLOCK_LIMIT> --json
 ```
 
 If all three peaks need block examples, run this once per distinct metric event
 and label the event/metric association. Reuse results when metrics share an
-event. Prefer `--json`. Keep `<LIMIT>` and `-n` positive; if `has_more` or
+event. Keep `<BLOCK_LIMIT>` and `-n` positive; if `has_more` or
 `truncated` is true, do not treat the listing as complete. Default `total`
 equals `returned` unless `--exact-total` is set.
 
@@ -221,14 +231,24 @@ Choose the requested metric's returned event, then run point-in-time
 attribution there:
 
 ```bash
-pt-snap query "<DB>" --device <DEVICE> --template-use active_memory_callstack_at_event --params '{"event_id": <EVENT_ID>, "include_static": true, "top_n": <LIMIT>}' -n <LIMIT>
-pt-snap query "<DB>" --device <DEVICE> --template-use active_blocks_at_event --params '{"event_id": <EVENT_ID>, "include_static": true, "limit": <LIMIT>}' -n <LIMIT>
+pt-snap query "<DB>" --device <DEVICE> --template-use active_memory_callstack_at_event --params '{"event_id": <EVENT_ID>, "include_static": true, "top_n": <LIMIT>}' -n <GROUP_ROWS> --json
+pt-snap query "<DB>" --device <DEVICE> --template-use active_blocks_at_event --params '{"event_id": <EVENT_ID>, "include_static": true, "limit": <BLOCK_LIMIT>}' -n <BLOCK_LIMIT> --json
 ```
 
 `active_memory_callstack_at_event` has no `offset`, and `-n` cannot raise the
-CTE `top_n` cap. If `has_more` or `truncated` is true on that template,
-increase `top_n` (keep `-n` at least as large) instead of treating the ranked
-page as the full dynamic set.
+CTE `top_n` cap. Check `has_more`, `truncated`, and `total_is_exact` after every
+query. If completeness is unconfirmed, first ensure `-n` is at least `top_n + 2`
+with static inclusion, then increase `top_n` and recompute `<GROUP_ROWS>` when
+full dynamic coverage is needed. A full ranking window sets `has_more=true`
+conservatively: it does not prove that more groups exist. Widen the window or
+use `--exact-total` to resolve that uncertainty; a count equal to `returned`
+can clear the signal. Each wider query replaces the earlier ranked window;
+do not concatenate or sum overlapping results.
+
+At fixed `top_n`, raising `-n` preserves common rows and their percentages.
+The percentage denominator includes the inner-ranked groups before the outer
+row cap, so a clipped listing need not sum to 100%. Increasing `top_n` can
+change that denominator; do not carry percentages across ranking windows.
 
 The selected event must be one returned by the bounded `memory_peak` and
 `allocator_gap` results. The point-in-time queries do not accept range bounds;
@@ -266,10 +286,12 @@ their event ID carries the range selection forward.
   treat those as unknown dynamic attribution rather than dropping them.
   Use `category` to distinguish synthetic groups; a display label alone is not
   a unique group identity (captured literal labels remain separate).
-- The callstack template always returns `static` and
-  `preexisting_live_at_event` groups regardless of `top_n`; when dynamic groups
-  exceed `top_n`, the smallest dynamic groups are dropped while these special
-  groups remain in the output.
+- With `include_static=true`, eligible `static` and
+  `preexisting_live_at_event` groups are exempt from the inner `top_n` filter.
+  This is not an exemption from the outer `-n` row cap, which can drop special
+  groups or dynamic top groups according to the final size ordering. Reserve
+  up to two extra output rows using `<GROUP_ROWS>`; absent special categories
+  are not fabricated.
 
 ### Claims
 
@@ -289,7 +311,8 @@ their event ID carries the range selection forward.
 Return a concise report with these sections:
 
 1. **Scope**: absolute SnapshotDB path, device, full trace or inclusive event
-   range, static inclusion, limit, and selected metric/event.
+   range, static inclusion, dynamic group cap, total group row cap,
+   representative block cap, completeness flags, and selected metric/event.
 2. **Separate peaks**: active, allocated, and reserved values with each metric's
    own earliest peak event ID.
 3. **Same-event gaps**: counters and `reserved - active` / `reserved - allocated`
@@ -324,5 +347,5 @@ and do not run point-in-time attribution with a fabricated event ID.
   callstack strings.
 - Do not turn point-in-time active-block attribution into leak, fragmentation,
   cache-ownership, or OOM root-cause claims.
-- Keep listing queries bounded with `<LIMIT>` and `-n`. Prefer `--json` and do
+- Keep listing queries bounded with their separate group/block caps and `-n`. Prefer `--json` and do
   not treat a page as complete when `has_more` or `truncated` is true.

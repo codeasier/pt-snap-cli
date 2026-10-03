@@ -177,7 +177,7 @@ live at `event_id` are also included:
 ### 3. Attribute active memory to callstacks at that event
 
 ```bash
-pt-snap query --template-use active_memory_callstack_at_event --params '{"event_id": 1234, "include_static": true, "top_n": 20}'
+pt-snap query --template-use active_memory_callstack_at_event --params '{"event_id": 1234, "include_static": true, "top_n": 20}' -n 22 --json
 ```
 
 This query:
@@ -188,8 +188,21 @@ This query:
 - emits static and preexisting memory as dedicated groups instead of inventing a callstack
 
 `top_n` only bounds dynamic callstack groups; `static` and
-`preexisting_live_at_event` groups are always returned and are never pushed out
-by larger dynamic groups.
+`preexisting_live_at_event` groups, when included and present, are exempt from
+that inner filter. The outer `-n` cap still applies to all output rows and can
+drop special groups or dynamic top groups. For finite positive `top_n=N` with
+`include_static=true`, use `-n N+2` (substitute the computed integer: `top_n=1`
+needs `-n 3`, and `top_n=20` needs `-n 22`). This preserves the ranked result,
+not necessarily the full dynamic set. The representative block query has its
+own `limit` / `-n` cap; it does not need two extra rows.
+
+At fixed `top_n`, increasing `-n` preserves common rows and their percentages:
+the denominator is the included groups' bytes after inner ranking but before
+the outer row cap. A clipped listing need not sum to 100%. Increasing `top_n`
+can change the denominator. Check completeness flags before claiming full
+coverage; a full ranking window conservatively sets `has_more=true` even when
+there are exactly N dynamic groups. Widen the window or use `--exact-total`
+to resolve that uncertainty.
 
 ### 4. Compare peak event gaps across metrics
 
@@ -283,7 +296,9 @@ use the [complete candidate window](#retrieving-a-complete-candidate-window)
 workflow above. Increasing `-n` replaces the earlier window rather than
 fetching a disjoint next page. `has_more` does not imply offset support.
 `active_memory_callstack_at_event` has no `offset`; `-n` cannot raise the
-CTE `top_n` cap. Continue that template by increasing `top_n`.
+CTE `top_n` cap. Widen that template by increasing `top_n`, keeping `-n` at
+least `top_n + 2` with static inclusion. Replace the previous ranked result;
+do not concatenate or sum overlapping windows.
 
 On `--json` failure, stdout is empty. stderr is:
 

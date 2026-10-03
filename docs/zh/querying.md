@@ -165,7 +165,7 @@ pt-snap query --template-use active_blocks_at_event --params '{"event_id": 1234,
 ### 3. 对该时刻的活跃内存做调用栈归因
 
 ```bash
-pt-snap query --template-use active_memory_callstack_at_event --params '{"event_id": 1234, "include_static": true, "top_n": 20}'
+pt-snap query --template-use active_memory_callstack_at_event --params '{"event_id": 1234, "include_static": true, "top_n": 20}' -n 22 --json
 ```
 
 这个查询会：
@@ -175,7 +175,18 @@ pt-snap query --template-use active_memory_callstack_at_event --params '{"event_
 - 按分配调用栈做聚合
 - 对静态内存和 preexisting 内存单独分组，而不是伪造调用栈
 
-`top_n` 只限制动态调用栈分组的数量；`static` 和 `preexisting_live_at_event` 分组始终返回，不会被更大的动态分组挤出结果。
+`top_n` 只限制动态调用栈分组的数量；启用包含且实际存在的 `static` 和
+`preexisting_live_at_event` 分组不受这层内部筛选限制。外层 `-n` 仍限制所有
+输出行，可能裁掉特殊组或动态 top 组。对于有限正整数 `top_n=N` 且
+`include_static=true`，使用 `-n N+2`（代入计算后的整数：`top_n=1` 配
+`-n 3`，`top_n=20` 配 `-n 22`）。这只保证排名结果不被二次裁剪，不保证
+动态全集完整。代表 block 查询有独立的 `limit` / `-n` 上限，不需要额外两行。
+
+固定 `top_n` 时，增大 `-n` 不改变共有行及其百分比：分母是内部排名后、
+外层行数截断前所包含分组的字节数。裁剪后的列表百分比之和可能不足 100%。
+增大 `top_n` 则可能改变分母。宣称完整覆盖前应检查完整性标志；排名窗口已满
+会保守地设置 `has_more=true`，即使动态组恰好只有 N 个。扩大窗口或使用
+`--exact-total` 可消除这种不确定性。
 
 ### 4. 比较不同指标的峰值与 gap
 
@@ -260,7 +271,8 @@ QueryService 调用的共享预算（页面查询与可选 COUNT 共用），作
 [完整候选窗口流程](#获取完整候选窗口)。增大 `-n` 是替换先前窗口，不是获取
 不重叠的下一页。`has_more` 不代表支持 offset。
 `active_memory_callstack_at_event` 没有 `offset`，`-n`
-也无法突破 CTE 内的 `top_n`；该模板应增大 `top_n` 续页。
+也无法突破 CTE 内的 `top_n`；该模板应增大 `top_n` 扩大窗口，并在包含静态组时
+保持 `-n` 至少为 `top_n + 2`。新排名结果替换旧结果，不要拼接或累加重叠窗口。
 
 `--json` 失败时 stdout 为空，stderr 为：
 
