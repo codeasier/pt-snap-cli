@@ -120,3 +120,31 @@ def test_eager_frame_objects_intern_to_the_same_text_as_raw_frames():
 
     assert raw_id == eager_id == 0
     assert len(interner) == 1
+
+
+def test_original_order_and_recursive_frames_survive_interning():
+    interner = CallstackInterner()
+    interner.intern(_raw_event([INNER, INNER, OUTER]))
+    interner.intern(_raw_event([dict(INNER), dict(OUTER)]))
+    assert interner.frame_records() == [{"id": 0, **INNER}, {"id": 1, **OUTER}]
+    assert interner.stack_frame_records() == [
+        {"callstackId": 0, "position": 0, "frameId": 0},
+        {"callstackId": 0, "position": 1, "frameId": 0},
+        {"callstackId": 0, "position": 2, "frameId": 1},
+        {"callstackId": 1, "position": 0, "frameId": 0},
+        {"callstackId": 1, "position": 1, "frameId": 1},
+    ]
+
+
+def test_display_text_collisions_do_not_merge_distinct_structured_stacks():
+    interner = CallstackInterner()
+    first = _raw_event([{"filename": "x", "line": 1, "name": "f\ny:2 g"}])
+    second = _raw_event(
+        [
+            {"filename": "y", "line": 2, "name": "g"},
+            {"filename": "x", "line": 1, "name": "f"},
+        ]
+    )
+    assert first.get_callstack() == second.get_callstack()
+    assert interner.intern(first) != interner.intern(second)
+    assert len(interner) == 2

@@ -312,14 +312,46 @@ CREATE TABLE callstack (
 
 | 属性 | 保证 |
 |------|------|
-| 唯一性 | 每条不同的调用栈文本只有一行，因此按 `callstackId` 分组等价于按文本分组 |
+| 唯一性 | 每组不同的有序结构化帧数组只有一行；显示文本本身不能无损标识调用栈 |
 | 作用域 | 数据库内所有设备共享，表名不带设备后缀 |
 | 覆盖度 | 导入产生的每个事件都能解析到一行；只有外部生成的数据库才可能出现 `callstackId` 为 `NULL` |
 
-当前 `pt-snap import` 写入的是这种 v2 布局（`import_format_version = 2`）。
+当前 `pt-snap import` 保留这种 v2 文本布局，同时增加结构化帧表
+（`import_format_version = 3`）。格式 2 数据库的文本布局相同，但没有原始帧记录。
 调用栈去重之前生成的数据库在每张 `trace_entry_<device>` 表中内联存储
 `callstack` TEXT，没有共享 `callstack` 表（有 metadata 时为
 `import_format_version = 1`）。
+
+### 结构化帧与有序数组（格式 3）
+
+`frame` 对原始 `(filename, line, name)` 三元组去重；`callstack_frame`
+把调用栈关联到有序的帧 ID 数组：
+
+```sql
+CREATE TABLE frame (
+    id INTEGER PRIMARY KEY,
+    filename TEXT NOT NULL,
+    line INTEGER NOT NULL,
+    name TEXT NOT NULL
+);
+CREATE TABLE callstack_frame (
+    callstackId INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    frameId INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX idx_callstack_frame_position
+    ON callstack_frame (callstackId, position);
+```
+
+两张表在设备之间共享。事件通过 `trace_entry_<device>.callstackId` 关联数组，
+按 `position ASC` 读取即可还原快照原始顺序；位置 0 是最内层帧。帧树分析反向
+遍历，从最外层调用者开始。递归中的同一帧保留各自位置，即使帧 ID 相同。
+空数组没有关联行。结构化字段直接保留冒号、空白、中文和内嵌换行，无需拆解显示文本。
+
+使用 `event_frames` 读取事件有序帧，使用 `active_memory_frame_tree_at_event`
+读取各父子节点的占用。详见[调用栈帧内存拆解](querying.md#调用栈帧内存拆解)。
+旧文本数据库仍可用于原有查询，新查询需要从原始快照重新导入。导入器检测格式变化
+后重建缓存；只读分析不会迁移数据库。
 
 ### 调用栈布局兼容
 
@@ -331,8 +363,8 @@ CREATE TABLE callstack (
 | v1（旧版） | `trace_entry_<device>.callstack` TEXT，无 `callstackId`，无共享表 | 直接读该列 |
 
 `event`、`callstack_analysis` 和 `active_memory_callstack_at_event` 保持相同的
-模板名、参数和输出契约。查询引擎按识别到的布局选择 v1 或 v2 SQL。其他模板不依赖
-这次拆分。
+模板名、参数和输出契约。查询引擎按识别到的布局选择 v1 或 v2 SQL。
+结构化帧查询额外要求格式 3 的两张帧表，不会从旧显示文本猜测原始帧。
 
 识别过程是只读的：`focus`、`query`、报告和 Python API 都以 SQLite
 `mode=ro` 打开数据库。布局不会写入 `.pt-snap/focus.json`。列冲突、设备布局不一致、

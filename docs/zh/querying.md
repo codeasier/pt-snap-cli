@@ -396,6 +396,55 @@ CLI 和 Python API 的查询结果包含原始 SQLite 值。模板的 `output_sc
 `SnapshotAnalyzer.execute_query()` 的结果还包含 `template` 与 `semantics_version`，
 便于把行与契约对应起来。
 
+## 调用栈帧内存拆解
+
+使用当前版本导入后，可以读取原始有序帧数组，或拆解指定事件后的存活内存：
+
+```bash
+pt-snap query --template-use event_frames --params '{"event_id":100}' --json
+pt-snap query --template-use active_memory_frame_tree_at_event --params '{"event_id":100}' --json
+pt-snap report memory-tree --event-id 100
+pt-snap report memory-tree --event-id 100 --json
+pt-snap report memory-tree --event-id 100 --format html > memory-tree.html
+```
+
+HTML 文件可直接在本地打开：点击帧放大、重置查看整棵树、搜索文件或函数。
+宽度表示存活内存块的字节数，不是 CPU 时间或累计分配量，无需启动服务器。
+`--device` 选择设备，`--exclude-static` 排除静态和采集前已存在的内存，
+`--min-size` 按单个块大小筛选；`--event-id` 必填。报告不做排名或行数截断。
+
+| 字段 | 含义 |
+| --- | --- |
+| `node_id`、`parent_id` | 完整调用路径身份及直接父节点；`root` 为总占用 |
+| `depth`、`frame_id` | 从调用者开始的层级和结构化帧身份 |
+| `size_bytes`、`requested_bytes`、`block_count` | 当前节点及所有后代的占用和块数 |
+| `self_bytes`、`self_requested_bytes`、`self_block_count` | 记录的分配栈终止于当前节点的自身占用和块数 |
+| `percent_of_total` | 根节点总占用的 0–100 字节百分比；分母在块和类别筛选后、输出行截断前计算 |
+
+每个节点满足“总占用 = 自身占用 + 各直接子节点总占用”。可以对所有节点的
+`self_bytes` 求和，或对树的一组完整切面求和；不能跨层累加 `size_bytes`，
+否则同一分配会重复计算。记录的调用栈可能止于中间节点，所以中间节点也可能有
+自身占用。递归帧以及不同调用者下的相同帧保留为不同路径。
+
+动态内存只统计 `allocEventId <= event_id` 且 `freeEventId` 晚于该事件或未记录
+的块。`freeEventId` 对应 `free_completed`，因此待释放内存仍计入。
+静态内存、采集前已存在的内存、缺失或损坏调用栈分别作为显式虚拟叶节点。
+这表示 active 内存块占用，不是 reserved 内存拆解；事件 ID 是顺序标记，不是
+耗时。`min_size` 和 `include_static` 会改变根节点分母。直接查询若设置
+`-n`/`max_rows`，需检查完整性字段，截断结果不能当作完整树。
+旧文本数据库需要从原始快照重新导入，分析器不会从文本猜测原始帧。
+
+Python API 使用相同模板和契约：
+
+```python
+from pathlib import Path
+from pt_snap_cli import SnapshotAnalyzer
+
+with SnapshotAnalyzer(db_path=Path("snapshot.pkl.db"), device_id=0) as analyzer:
+    frames = analyzer.execute_query("event_frames", params={"event_id": 100})
+    tree = analyzer.execute_query("active_memory_frame_tree_at_event", params={"event_id": 100})
+```
+
 ## 模板架构
 
 查询模板使用 YAML 格式定义，包含：
