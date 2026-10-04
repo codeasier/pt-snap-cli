@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal, cast
 
 from pt_snap_cli.core.focus_service import FocusService
-from pt_snap_cli.core.models import PeakMemoryReport
+from pt_snap_cli.core.models import PeakMemoryReport, QueryResult
 from pt_snap_cli.core.query_service import QueryService
 
 PeakMetric = Literal["active", "allocated", "reserved"]
@@ -30,6 +30,26 @@ class ReportService:
     def close(self) -> None:
         """Release connections owned by this report service; allow later reuse."""
         self._query_service.close()
+
+    def memory_tree_report(
+        self,
+        event_id: int,
+        db_path: Path | str | None = None,
+        device_id: int | None = None,
+        include_static: bool = True,
+        min_size: int = 0,
+    ) -> QueryResult:
+        """Return a complete frame tree using the shared query contract."""
+        return self._query_service.execute_query(
+            "active_memory_frame_tree_at_event",
+            params={
+                "event_id": event_id,
+                "include_static": include_static,
+                "min_size": min_size,
+            },
+            db_path=db_path,
+            device_id=device_id,
+        )
 
     def peak_memory_report(
         self,

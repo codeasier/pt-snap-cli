@@ -228,3 +228,17 @@ discarded side-effect return values explicit. Database/slice adaptor consumers
 annotate the existing per-device trace-list and segment-list format assumptions.
 No serialization, validation, replay, or database layout behavior changes.
 Audited upstream source mappings and license terms remain unchanged.
+
+## 2026-10-05 — Structured frames and ordered callstack storage
+
+Local first-party changes in `tools/adaptors/database/callstack.py`,
+`snapshot_db.py`, and `tools/adaptors/snapshot2db.py`: intern original frame
+fields (`filename`, `line`, `name`) in a shared `frame` table and preserve
+zero-based original positions, including recursive repetitions, in
+`callstack_frame`. Events retain `callstackId` and the existing display text.
+Stack identity now follows ordered structured frames rather than rendered text,
+so ambiguous display strings no longer collapse distinct frame arrays.
+Allocator replay, block lifetimes, synthetic events and counters are unchanged.
+The importer records format version 3 so old text-only caches are rebuilt.
+This provides lossless frame-field evidence for caller-path memory attribution;
+audited upstream source mappings and license terms are unchanged.

@@ -1,0 +1,34 @@
+version: "1.0"
+queries:
+  event_frames:
+    description: Read an event's structured callstack frames in the original snapshot order
+    semantics_version: 1
+    interpretation_limits:
+      - "Requires an import with structured frame tables (import_format_version >= 3). Legacy text is not split or guessed."
+      - "position is the zero-based original snapshot index. root_first reverses traversal without changing position. Empty captured stacks return no frame rows."
+    parameters:
+      event_id:
+        type: int
+        required: true
+        description: Event whose ordered frame array is requested
+      frame_order:
+        type: str
+        default: original
+        choices: [original, root_first]
+        description: Original snapshot order or outermost caller first
+    query: |
+      SELECT t.id AS event_id, t.callstackId AS stack_id,
+             cf.position, f.id AS frame_id, f.filename, f.line, f.name
+      FROM {{ device_trace_table }} t
+      JOIN callstack_frame cf ON cf.callstackId = t.callstackId
+      JOIN frame f ON f.id = cf.frameId
+      WHERE t.id = {{ event_id|int }}
+      ORDER BY cf.position {% if frame_order == 'root_first' %}DESC{% else %}ASC{% endif %}
+    output_schema:
+      - {column: event_id, type: int, units: event_id}
+      - {column: stack_id, type: int, metric_semantics: identifier}
+      - {column: position, type: int, metric_semantics: ordering_marker}
+      - {column: frame_id, type: int, metric_semantics: identifier}
+      - {column: filename, type: str}
+      - {column: line, type: int}
+      - {column: name, type: str}

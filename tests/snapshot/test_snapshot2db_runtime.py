@@ -79,6 +79,40 @@ def test_snapshot2db_uses_shared_load_and_replay_entrypoints(monkeypatch, tmp_pa
     assert calls == {"load": 1, "replay": 1, "raw_frames": True}
 
 
+def test_dump_persists_original_frame_fields_and_positions(tmp_path):
+    frames = [
+        {"filename": "训练:模型.py", "line": 17, "name": "内部\n分配"},
+        {"filename": "outer.py", "line": 20, "name": "outer"},
+    ]
+    representation = {
+        "segments": [],
+        "device_traces": [
+            [
+                {
+                    "id": 17,
+                    "action": "segment_free",
+                    "addr": 0x1000,
+                    "size": 64,
+                    "stream": 0,
+                    "frames": frames,
+                }
+            ]
+        ],
+    }
+    snapshot = tmp_path / "structured.pkl"
+    database = tmp_path / "structured.db"
+    with snapshot.open("wb") as stream:
+        pickle.dump(representation, stream)
+    assert snapshot2db.dump(snapshot, database)
+    with closing(sqlite3.connect(database)) as conn:
+        rows = conn.execute(
+            "SELECT f.filename, f.line, f.name FROM trace_entry_0 t "
+            "JOIN callstack_frame cf ON cf.callstackId=t.callstackId "
+            "JOIN frame f ON f.id=cf.frameId WHERE t.id=17 ORDER BY cf.position"
+        ).fetchall()
+        assert [dict(zip(("filename", "line", "name"), row, strict=True)) for row in rows] == frames
+
+
 def test_fast_frame_import_matches_eager_database_exactly(monkeypatch, tmp_path):
     representation = {
         "segments": [],
@@ -328,6 +362,8 @@ def test_dump_all_multiple_device_snapshot(dump_database):
         }
     assert tables == {
         "callstack",
+        "frame",
+        "callstack_frame",
         "dictionary",
         "trace_entry_0",
         "block_0",

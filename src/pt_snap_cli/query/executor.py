@@ -246,6 +246,12 @@ class QueryExecutor:
 
     def _execution_error(self, error: sqlite3.OperationalError) -> QueryExecutionError:
         detail = str(error)
+        if re.search(r"no such table: (?:frame|callstack_frame)\b", detail):
+            return QueryExecutionError(
+                "Query execution failed: structured callstack frames are unavailable. "
+                "Re-import the original snapshot with this version of pt-snap; "
+                "legacy callstack text cannot reconstruct original frame fields reliably."
+            )
         if "no such table: callstack" in detail or re.search(
             r"no such column: (?:[\w]+\.)?callstackId", detail
         ):

@@ -40,6 +40,19 @@ _CALLSTACK_TABLE_COLUMNS = [
     SqliteColumn(name=CallstackFieldDefs.CALLSTACK),
 ]
 
+_FRAME_TABLE_COLUMNS = [
+    SqliteColumn(name="id", data_type=int, primary_key=True),
+    SqliteColumn(name="filename", not_null=True),
+    SqliteColumn(name="line", data_type=int, not_null=True),
+    SqliteColumn(name="name", not_null=True),
+]
+
+_CALLSTACK_FRAME_TABLE_COLUMNS = [
+    SqliteColumn(name="callstackId", data_type=int, not_null=True),
+    SqliteColumn(name="position", data_type=int, not_null=True),
+    SqliteColumn(name="frameId", data_type=int, not_null=True),
+]
+
 _BLOCK_TABLE_COLUMNS = [
     SqliteColumn(name=BlockFieldDefs.ID, data_type=int, primary_key=True),
     SqliteColumn(name=BlockFieldDefs.ADDR, data_type=int),
@@ -103,6 +116,15 @@ class SnapshotDb(SqliteDB):
             SqliteTable(self.CALLSTACK_TABLE_NAME, _CALLSTACK_TABLE_COLUMNS),
             delete_if_exists=True,
         )
+        self.create_table(SqliteTable("frame", _FRAME_TABLE_COLUMNS), delete_if_exists=True)
+        self.create_table(
+            SqliteTable("callstack_frame", _CALLSTACK_FRAME_TABLE_COLUMNS), delete_if_exists=True
+        )
+        self.conn.execute(
+            "CREATE UNIQUE INDEX idx_callstack_frame_position "
+            "ON callstack_frame (callstackId, position)"
+        )
+        self.conn.commit()
 
     def get_trace_entry_table(self, device: int = 0):
         return self.get_table_by_name(self.get_trace_table_name_by_device(device))

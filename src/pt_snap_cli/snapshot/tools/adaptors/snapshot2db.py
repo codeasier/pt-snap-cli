@@ -155,6 +155,11 @@ class DumpEventHooker(SimulateHooker, AllocatorHooker):
 
     def flush_callstacks(self):
         self.db_handler.insert_callstacks(self.callstacks.records())
+        db = self.db_handler.db
+        db.get_table_by_name("frame").insert_records(db.conn, self.callstacks.frame_records())
+        db.get_table_by_name("callstack_frame").insert_records(
+            db.conn, self.callstacks.stack_frame_records()
+        )
 
     def close(self, *, commit: bool = True):
         self.db_handler.close(commit=commit)
