@@ -98,6 +98,7 @@ See the [documentation index](docs/README.md) for all English and Chinese guides
 | Splitting snapshots | [Splitting Snapshots](docs/en/splitting.md) |
 | Agent skills | [Agent Skills](docs/en/skills.md) |
 | Database format | [SnapshotDB Schema](docs/en/database.md) |
+| Sharded artifact contract (P0; not an exporter) | [Sharded SnapshotDB protocol](docs/en/sharded-snapshotdb.md) |
 | Python API | [SnapshotAnalyzer API](docs/en/snapshot-analyzer-api.md) |
 | Result mapping utility | [ResultMapper API](docs/en/result-mapper-api.md) |
 
