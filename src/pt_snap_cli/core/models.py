@@ -107,6 +107,7 @@ class QueryResult:
     truncated: bool = False
     total_is_exact: bool = False
     timeout_s: float | None = None
+    scope: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -264,6 +265,7 @@ class DatabaseOverview:
     focus_source: FocusSource
     devices: list[DeviceTraceBounds]
     metadata: MetadataInspection
+    dataset: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)

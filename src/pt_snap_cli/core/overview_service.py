@@ -6,6 +6,7 @@ from typing import Any
 
 from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionError
 from pt_snap_cli.core.context_cache import ContextCache
+from pt_snap_cli.core.dataset_resolver import DatasetResolver
 from pt_snap_cli.core.errors import (
     DatabaseMissingError,
     DatabaseSchemaError,
@@ -13,7 +14,7 @@ from pt_snap_cli.core.errors import (
 )
 from pt_snap_cli.core.focus_service import FocusService
 from pt_snap_cli.core.import_metadata import ImportMetadataService
-from pt_snap_cli.core.models import DatabaseOverview, DeviceTraceBounds
+from pt_snap_cli.core.models import DatabaseOverview, DeviceTraceBounds, MetadataInspection
 
 
 class OverviewService:
@@ -48,7 +49,21 @@ class OverviewService:
         if resolved.db_path is None:
             raise FocusNotConfiguredError("No database path specified and no database configured.")
 
+        dataset = DatasetResolver().inspect(resolved.db_path)
         db_path = resolved.db_path.expanduser().resolve()
+        if dataset is not None:
+            return DatabaseOverview(
+                db_path=db_path,
+                focus_source=resolved.source,
+                devices=[
+                    DeviceTraceBounds(device.device_id, 0, device.event_count - 1)
+                    for device in sorted(
+                        dataset.validation.manifest.devices, key=lambda d: d.device_id
+                    )
+                ],
+                metadata=MetadataInspection(db_path, "unavailable", reason="metadata_missing"),
+                dataset=dataset.to_dict(),
+            )
         ctx = self._validated_context(db_path)
         try:
             raw_bounds = ctx.device_trace_bounds()
@@ -74,6 +89,7 @@ class OverviewService:
         return {
             "db_path": str(overview.db_path),
             "focus_source": overview.focus_source,
+            **({"dataset": overview.dataset} if overview.dataset is not None else {}),
             "devices": [
                 {
                     "device_id": device.device_id,

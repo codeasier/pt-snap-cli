@@ -94,6 +94,7 @@ from pt_snap_cli.core import (
     json_success,
 )
 from pt_snap_cli.core.error_codes import DATABASE_NOT_FOUND, ERROR, INVALID_PARAMETER
+from pt_snap_cli.core.errors import InvalidParameterError
 from pt_snap_cli.query.config import OUTPUT_COLUMN_OPTIONAL
 from pt_snap_cli.query.executor import reported_sql_limit
 from pt_snap_cli.query.registry import discover_categories, get_query
@@ -236,7 +237,12 @@ def main(
 
 @app.command("focus")
 def focus_database(
-    db_path: Annotated[Path | None, typer.Argument(help="Path to SQLite database file")] = None,
+    db_path: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Path to SQLite database, complete manifest.json, or dataset directory"
+        ),
+    ] = None,
     device: Annotated[
         int | None,
         typer.Option(
@@ -257,7 +263,7 @@ def focus_database(
     if db_path is None and device is None:
         try:
             state = focus_service.get_focus()
-        except FocusFileInvalidError as e:
+        except (FocusFileInvalidError, DatabaseSchemaError) as e:
             _error_from_exc(e)
 
         if json_output:
@@ -297,6 +303,7 @@ def focus_database(
             FocusFileInvalidError,
             FocusNotConfiguredError,
             DatabaseMissingError,
+            DatabaseSchemaError,
             InvalidDeviceError,
         ) as e:
             _error_from_exc(e)
@@ -454,7 +461,10 @@ def split_snapshot(
 @app.command("metadata")
 def show_database_metadata(
     db_path: Annotated[
-        Path | None, typer.Argument(help="Path to database file (optional if configured)")
+        Path | None,
+        typer.Argument(
+            help="Path to database, manifest.json, or dataset directory (optional if configured)"
+        ),
     ] = None,
     json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
@@ -491,7 +501,10 @@ def show_database_metadata(
 @app.command("query")
 def query_database(
     db_path: Annotated[
-        Path | None, typer.Argument(help="Path to database file (optional if configured)")
+        Path | None,
+        typer.Argument(
+            help="Path to database, manifest.json, or dataset directory (optional if configured)"
+        ),
     ] = None,
     template_use: Annotated[
         str | None,
@@ -508,6 +521,10 @@ def query_database(
             help="Device ID to query",
             autocompletion=complete_device_ids,
         ),
+    ] = None,
+    slice_index: Annotated[
+        int | None,
+        typer.Option("--slice", help="Explicit dataset slice index for event inspection"),
     ] = None,
     list_templates: Annotated[
         bool, typer.Option("--list", help="List all available query templates")
@@ -702,6 +719,7 @@ def query_database(
             max_rows=max_rows,
             exact_total=exact_total,
             timeout_s=timeout,
+            slice_index=slice_index,
         )
         if json_output:
             resolved = focus_service.resolve_focus(
@@ -725,6 +743,7 @@ def query_database(
                     total_is_exact=result.total_is_exact,
                     timeout_s=result.timeout_s,
                     rows=result.rows,
+                    **({"scope": result.scope} if result.scope is not None else {}),
                 )
             )
             return
@@ -779,6 +798,7 @@ def query_database(
     except (
         TemplateRenderError,
         QueryExecutionError,
+        InvalidParameterError,
         DatabaseSchemaError,
         json.JSONDecodeError,
     ) as e:
@@ -860,7 +880,10 @@ def show_capabilities(
 @app.command("overview")
 def show_database_overview(
     db_path: Annotated[
-        Path | None, typer.Argument(help="Path to database file (optional if configured)")
+        Path | None,
+        typer.Argument(
+            help="Path to database, manifest.json, or dataset directory (optional if configured)"
+        ),
     ] = None,
     json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
@@ -882,6 +905,12 @@ def show_database_overview(
         _emit_json(json_success(**service.overview_to_dict(overview)))
         return
     _print_database_overview(overview)
+    if overview.dataset is not None:
+        typer.echo(f"Dataset: {overview.dataset['format']} ({overview.dataset['status']})")
+        typer.echo(f"Slices/devices: {overview.dataset['devices']}")
+        typer.echo(
+            "Text callstacks available; structured frames and cross-slice queries unavailable."
+        )
 
 
 # Flag-only options used when a parse failure happens before the --json callback.

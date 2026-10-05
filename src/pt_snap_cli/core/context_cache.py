@@ -39,7 +39,9 @@ class ContextCache:
             raise ValueError("maxsize must be positive")
         self._maxsize = maxsize
         # Insertion order doubles as LRU recency (oldest first).
-        self._entries: OrderedDict[Path, tuple[Context, FileSignature]] = OrderedDict()
+        self._entries: OrderedDict[Path, tuple[Context, tuple[FileSignature, str | None]]] = (
+            OrderedDict()
+        )
 
     @property
     def maxsize(self) -> int:
@@ -48,7 +50,7 @@ class ContextCache:
     def __len__(self) -> int:
         return len(self._entries)
 
-    def get(self, db_path: Path | str) -> Context:
+    def get(self, db_path: Path | str, *, generation: str | None = None) -> Context:
         """Return a cached or freshly opened :class:`Context` for ``db_path``.
 
         On a hit the cached entry is promoted to most-recently-used. On a
@@ -65,7 +67,9 @@ class ContextCache:
 
         # Probe metadata first so a missing/inaccessible file raises
         # consistently whether the cache is hit or missed.
-        current_signature = self._file_signature(key)
+        # A dataset reader can supply its validated manifest/member content identity.
+        # Single-DB callers retain the original filesystem-signature behavior.
+        current_signature = (self._file_signature(key), generation)
 
         cached = self._entries.get(key)
         if cached is not None:

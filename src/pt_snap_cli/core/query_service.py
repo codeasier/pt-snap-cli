@@ -9,6 +9,8 @@ from typing import Any
 
 from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionError
 from pt_snap_cli.core.context_cache import ContextCache
+from pt_snap_cli.core.dataset_contract import QueryScope
+from pt_snap_cli.core.dataset_resolver import DatasetResolver, ResolvedDataset
 from pt_snap_cli.core.errors import (
     DatabaseMissingError,
     DatabaseSchemaError,
@@ -202,6 +204,7 @@ class QueryService:
         *,
         exact_total: bool = False,
         timeout_s: float | None = None,
+        slice_index: int | None = None,
     ) -> QueryResult:
         resolved = self._focus_service.resolve_focus(
             explicit_db_path=db_path,
@@ -211,10 +214,22 @@ class QueryService:
         if resolved.db_path is None:
             raise FocusNotConfiguredError("No database path specified and no database configured.")
 
-        ctx = self._validated_context(resolved.db_path)
-        target_device = self._resolve_device_id(ctx, resolved.device_id, device_id)
-        executor = self._get_executor(ctx)
+        dataset = DatasetResolver().inspect(resolved.db_path)
+        scope: dict[str, object] | None = None
         query_params = params or {}
+        if dataset is not None:
+            selected = dataset.device(device_id if device_id is not None else resolved.device_id)
+            member, query_params, scope = self._dataset_query(
+                dataset, selected.device_id, template, query_params, slice_index
+            )
+            ctx = self._validated_context(member, generation=dataset.fingerprint)
+            target_device = selected.device_id
+        else:
+            if slice_index is not None:
+                raise InvalidParameterError("slice_index requires a manifest dataset.")
+            ctx = self._validated_context(resolved.db_path)
+            target_device = self._resolve_device_id(ctx, resolved.device_id, device_id)
+        executor = self._get_executor(ctx)
         timeout_s = resolve_query_timeout(timeout_s)
         started = time.monotonic()
 
@@ -271,6 +286,86 @@ class QueryService:
             truncated=truncated,
             total_is_exact=total_is_exact,
             timeout_s=timeout_s,
+            scope=scope,
+        )
+
+    def _dataset_query(
+        self,
+        dataset: ResolvedDataset,
+        device_id: int,
+        template: str,
+        params: dict[str, Any],
+        slice_index: int | None,
+    ) -> tuple[Path, dict[str, Any], dict[str, object]]:
+        template_obj = get_query(template)
+        if template_obj is None:
+            raise TemplateNotFoundError(f"Template '{template}' not found")
+        if template != "event":
+            raise QueryExecutionError(
+                "Dataset queries currently support only event addressing; "
+                "cross-slice aggregation/lifecycle queries are not supported."
+            )
+        try:
+            validated = template_obj.validate_params(params)
+        except (TypeError, ValueError) as exc:
+            raise TemplateRenderError(str(exc)) from exc
+        device = dataset.device(device_id)
+        if slice_index is not None:
+            paths = dataset.paths(QueryScope("slice", device_id, slice_index))
+            item = device.slices[slice_index]
+            low, high = item.start_event_id, item.end_event_id
+        else:
+            low, high = 0, device.event_count - 1
+        event_id = validated.get("id")
+        start = validated.get("min_id")
+        end = validated.get("max_id")
+        if event_id is not None:
+            if (
+                not isinstance(event_id, int)
+                or isinstance(event_id, bool)
+                or not low <= event_id <= high
+            ):
+                raise InvalidParameterError("Event ID must be a real ID within the selected scope.")
+            low = high = event_id
+        else:
+            for value in (start, end):
+                if value is not None and (
+                    not isinstance(value, int)
+                    or isinstance(value, bool)
+                    or not low <= value <= high
+                ):
+                    raise InvalidParameterError(
+                        "Event range must lie within the selected real scope."
+                    )
+            low = start if isinstance(start, int) else low
+            high = end if isinstance(end, int) else high
+        paths = dataset.paths(
+            QueryScope("event_range", device_id, start_event_id=low, end_event_id=high)
+        )
+        if len(paths) != 1:
+            raise QueryExecutionError(
+                "Event range spans slices; cross-slice execution is not supported. "
+                "Select a real id, a single-slice range, or --slice."
+            )
+        item = next(item for item in device.slices if dataset.root / item.file == paths[0])
+        return (
+            paths[0],
+            {
+                **params,
+                "min_id": max(low, start) if isinstance(start, int) else low,
+                "max_id": min(high, end) if isinstance(end, int) else high,
+            },
+            {
+                "kind": "event_range",
+                "device_id": device_id,
+                "slice_index": item.index,
+                "first_event_id": low,
+                "last_event_id": high,
+                "db_path": str(paths[0]),
+                "dataset_path": str(dataset.root),
+                "fingerprint": dataset.fingerprint,
+                "boundary_events_included": False,
+            },
         )
 
     def _get_executor(self, ctx: Context) -> QueryExecutor:
@@ -308,8 +403,10 @@ class QueryService:
             raise InvalidDeviceError("No devices found in database.")
         return ctx.device_ids[0]
 
-    def _validated_context(self, db_path: Path) -> Context:
+    def _validated_context(self, db_path: Path, *, generation: str | None = None) -> Context:
         try:
+            if generation is not None:
+                return self._context_cache.get(db_path, generation=generation)
             return self._context_cache.get(db_path)
         except DatabaseNotFoundError as exc:
             raise DatabaseMissingError(str(exc)) from exc
