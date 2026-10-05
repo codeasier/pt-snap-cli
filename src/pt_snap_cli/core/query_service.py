@@ -222,7 +222,9 @@ class QueryService:
             member, query_params, scope = self._dataset_query(
                 dataset, selected.device_id, template, query_params, slice_index
             )
-            ctx = self._validated_context(member, generation=dataset.fingerprint)
+            ctx = self._validated_context(
+                member, generation=dataset.fingerprint, immutable=dataset.callstack_layout == "v1"
+            )
             target_device = selected.device_id
         else:
             if slice_index is not None:
@@ -403,10 +405,12 @@ class QueryService:
             raise InvalidDeviceError("No devices found in database.")
         return ctx.device_ids[0]
 
-    def _validated_context(self, db_path: Path, *, generation: str | None = None) -> Context:
+    def _validated_context(
+        self, db_path: Path, *, generation: str | None = None, immutable: bool = False
+    ) -> Context:
         try:
             if generation is not None:
-                return self._context_cache.get(db_path, generation=generation)
+                return self._context_cache.get(db_path, generation=generation, immutable=immutable)
             return self._context_cache.get(db_path)
         except DatabaseNotFoundError as exc:
             raise DatabaseMissingError(str(exc)) from exc

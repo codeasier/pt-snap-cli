@@ -139,6 +139,17 @@ prior absence, not a valid focus JSON. Preserve evidence for manual recovery;
 no unconditional I/O/crash atomicity or concurrent-writer lock is promised.
 See [native import](quickstart.md#optional-import-a-native-sharded-dataset).
 
+Explicit compatible import (`--format msinsight`) has the same requested-focus
+compensation, but **never replaces** an existing compatible output, even with
+force. Only fully attested identical pt-snap caches can be reused; otherwise use
+a new output. GUI still requires the same original pickle plus adjacent cache,
+although pt-snap focus needs only the complete artifact. All compatible members
+are checked for aliases/live/dangling sidecars before any SQLite open; bare
+validation and cached queries use `mode=ro&immutable=1` for finalized closed
+members, preserving original checkpointed-WAL bytes/inventory. This is not a live
+writer lock; native non-WAL checks and standalone defaults remain unchanged.
+
+
 ## Error Handling
 
 **No focus configured:**

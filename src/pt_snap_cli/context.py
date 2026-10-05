@@ -44,12 +44,17 @@ class Context:
         devices: list[int] | None = None,
         *,
         persistent: bool = False,
+        immutable: bool = False,
     ):
         """Initialize context with database path.
 
         Args:
             db_path: Path to the SQLite database file.
             devices: Optional list of device IDs to filter.
+            immutable: Internal opt-in for a closed, finalized compatibility
+                dataset after ALL member/parent/sidecar checks. Never use this
+                to read a live WAL or as a concurrency/sandbox guarantee. The
+                standalone default remains mode=ro without immutable.
             persistent: When True, the connection stays open after each
                 ``connect()`` call so it can be reused. The caller is
                 responsible for invoking ``close()`` to release it.
@@ -61,6 +66,9 @@ class Context:
         self.db_path = Path(db_path)
         self._devices = devices
         self._persistent = persistent
+        # Opt-in only after dataset-wide finalized-member checks. Standalone
+        # analysis keeps mode=ro without immutable and its existing WAL behavior.
+        self._immutable = immutable
         self._conn: sqlite3.Connection | None = None
         self._connect_depth = 0
         self._device_ids: list[int] | None = None
@@ -260,6 +268,8 @@ class Context:
             # Keep the colon in Windows drive prefixes while encoding SQLite URI metacharacters.
             encoded_path = quote(self.db_path.as_posix(), safe="/:")
             uri = f"file:{encoded_path}?mode=ro"
+            if self._immutable:
+                uri += "&immutable=1"
             self._conn = sqlite3.connect(uri, uri=True)
             self._conn.row_factory = sqlite3.Row
 

@@ -142,7 +142,9 @@ class DatasetResolver:
             # SQLite open, without following aliases or repairing the artifact.
             for device in planned.devices:
                 for item in device.slices:
-                    _require_readonly_member(root, root / item.file)
+                    _require_readonly_member(
+                        root, root / item.file, immutable=not isinstance(planned, NativeManifest)
+                    )
             validation = (
                 validate_native_dataset(root, planned)
                 if isinstance(planned, NativeManifest)
@@ -153,7 +155,9 @@ class DatasetResolver:
             for device in validation.manifest.devices:
                 for item in device.slices:
                     member = root / item.file
-                    _require_readonly_member(root, member)
+                    _require_readonly_member(
+                        root, member, immutable=not isinstance(planned, NativeManifest)
+                    )
                     digest.update(item.file.encode("utf-8"))
                     digest.update(_hash_file(member).encode("ascii"))
             if before != _hash_file(manifest_path):

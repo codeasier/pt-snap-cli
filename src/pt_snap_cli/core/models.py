@@ -138,9 +138,10 @@ class ImportOptions:
         output_dir: Parent of the generated standalone DB or native dataset.
             Defaults to the snapshot file's parent directory.
         events_per_slice: Positive real-event capacity per device shard; None
-            preserves standalone behavior. Negative boundaries do not count.
+            preserves standalone behavior unless msinsight is explicit (500000).
+            Negative boundaries do not count.
         format: None selects single-db or pt-snap-native-v2 from capacity;
-            compatibility-v1/msinsight remain explicitly unavailable.
+            msinsight/compatibility-v1 explicitly selects fixed-target inline v1.
         device: Optional device id to focus on. When None, all available
             devices are imported.
         set_focus: When True (default), also write project focus so subsequent

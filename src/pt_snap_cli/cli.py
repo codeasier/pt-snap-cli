@@ -389,16 +389,22 @@ def import_snapshot(
     output_dir: Annotated[Path | None, typer.Option("--output-dir", "-o")] = None,
     device: Annotated[int | None, typer.Option("--device", "-d")] = None,
     no_focus: Annotated[bool, typer.Option("--no-focus", help="Skip focus update")] = False,
-    force: Annotated[bool, typer.Option("--force", help="Rebuild even when cache matches")] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Rebuild native/single DB; never replace compatible output"),
+    ] = False,
     events_per_slice: Annotated[
         int | None,
         typer.Option(
-            "--events-per-slice", help="Real events per device shard; opt into a native dataset"
+            "--events-per-slice",
+            help="Real events per device shard; native unless --format msinsight",
         ),
     ] = None,
     output_format: Annotated[
         str | None,
-        typer.Option("--format", help="single-db or pt-snap-native-v2 (compatibility-v1 reserved)"),
+        typer.Option(
+            "--format", help="single-db, pt-snap-native-v2, or msinsight (compatibility-v1)"
+        ),
     ] = None,
     json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:

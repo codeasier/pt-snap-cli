@@ -16,6 +16,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
+from .dataset_files import require_readonly_member
+from .errors import DatabaseSchemaError
+
 MANIFEST_SCHEMA_VERSION = 1
 MSINSIGHT_REVISION = "101f65b877a267ffd5f66ea3834706057ba243e5"
 ACTION_NAMES = (
@@ -470,13 +473,24 @@ def validate_dataset(directory: Path | str) -> DatasetValidation:
         with path.open(encoding="utf-8") as source:
             data: object = json.load(source, object_pairs_hook=_unique_object)
         manifest = parse_manifest(data)
+        # Preflight ALL members before the first SQLite open, also for callers
+        # using this bare P0 validator rather than DatasetResolver.
+        for device in manifest.devices:
+            for item in device.slices:
+                member = _safe_file(root, item.file)
+                try:
+                    require_readonly_member(root, member, immutable=True)
+                except DatabaseSchemaError as exc:
+                    raise DatasetContractError(item.file, "transport", str(exc)) from exc
         identities: dict[tuple[int, int], tuple[object, ...]] = {}
         boundaries = 0
         for device in manifest.devices:
             for item in device.slices:
                 db_path = _safe_file(root, item.file)
                 try:
-                    with closing(sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)) as conn:
+                    with closing(
+                        sqlite3.connect(db_path.as_uri() + "?mode=ro&immutable=1", uri=True)
+                    ) as conn:
                         conn.execute("PRAGMA query_only=ON")
                         boundaries += _validate_slice(conn, device, item, identities)
                 except sqlite3.DatabaseError as exc:

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from contextlib import nullcontext
+from dataclasses import replace
 from pathlib import Path
 
 from pt_snap_cli.core.dataset_import_backend import DatasetImportBackend
@@ -25,6 +27,16 @@ from pt_snap_cli.core.models import (
     ImportMetadata,
     ImportOptions,
     ImportResult,
+)
+from pt_snap_cli.core.msinsight_export import (
+    COMPATIBILITY_FORMAT,
+    DEFAULT_CAPACITY,
+    MsinsightImportBackend,
+    build_compatible_manifest,
+    compatible_identity,
+    convert_shards,
+    inspect_owned_cache,
+    salted_hash,
 )
 from pt_snap_cli.core.native_dataset_contract import (
     NATIVE_FORMAT,
@@ -53,10 +65,13 @@ class ImportService:
         self._backend: SnapshotImportBackend = backend or SnapshotImportBackend()
         self._metadata_service: ImportMetadataService = metadata_service or ImportMetadataService()
         self._dataset_backend = dataset_backend or DatasetImportBackend()
+        self._msinsight_backend = MsinsightImportBackend()
 
     def import_snapshot(self, options: ImportOptions) -> ImportResult:
         self._validate_options(options)
         self._validate_snapshot_file(options.snapshot_file)
+        if options.format in (COMPATIBILITY_FORMAT, "msinsight"):
+            return self._import_compatible_dataset(options)
         if options.events_per_slice is not None:
             return self._import_dataset(options)
         output_dir = self._resolve_output_dir(options.snapshot_file, options.output_dir)
@@ -151,10 +166,8 @@ class ImportService:
             if options.format is not None
             else (NATIVE_FORMAT if capacity is not None else "single-db")
         )
-        if selected_format in ("compatibility-v1", "msinsight"):
-            raise InvalidParameterError(
-                "Compatibility/msinsight export is not available; use pt-snap-native-v2. No compatible output is generated."
-            )
+        if selected_format in (COMPATIBILITY_FORMAT, "msinsight"):
+            return
         if selected_format not in ("single-db", NATIVE_FORMAT):
             raise InvalidParameterError(f"Unsupported import format: {selected_format}")
         if (capacity is not None) != (selected_format == NATIVE_FORMAT):
@@ -263,6 +276,112 @@ class ImportService:
             generated.omitted_devices,
         )
 
+    def _import_compatible_dataset(self, options: ImportOptions) -> ImportResult:
+        capacity = options.events_per_slice or DEFAULT_CAPACITY
+        output = (
+            (options.output_dir if options.output_dir is not None else options.snapshot_file.parent)
+            .expanduser()
+            .absolute()
+        )
+        target = self._msinsight_backend.target_path(options.snapshot_file, output)
+        if target.resolve() != target or target.is_symlink():
+            raise ImportExecutionError("Compatible output must be canonical and non-symlink.")
+        source_hash = self._hash_source(options.snapshot_file)
+        try:
+            cache_hash = salted_hash(options.snapshot_file)
+        except OSError as exc:
+            raise ImportExecutionError(f"Cannot calculate msinsight cacheHash: {exc}") from exc
+        if target.exists():
+            try:
+                owned = inspect_owned_cache(target)
+                if (
+                    owned.identity != compatible_identity(source_hash, options.device, capacity)
+                    or owned.manifest.cache_hash != cache_hash
+                    or owned.manifest.source_file != str(options.snapshot_file.resolve())
+                    or owned.metadata.source_size != options.snapshot_file.stat().st_size
+                ):
+                    raise ValueError("Source/options/format identity changed")
+            except (
+                ValueError,
+                KeyError,
+                TypeError,
+                OSError,
+                sqlite3.DatabaseError,
+                DatabaseSchemaError,
+            ) as exc:
+                raise ImportExecutionError(
+                    f"Existing compatible output is not reusable; preserved even under --force. Choose a new output directory: {exc}"
+                ) from exc
+            self._recheck_source(options.snapshot_file, source_hash)
+            return ImportResult(
+                target,
+                options.device,
+                self._set_focus_if_requested(target, options),
+                True,
+                owned.metadata,
+                None,
+                target,
+                tuple(sorted(d.device_id for d in owned.manifest.devices)),
+                sum(len(d.slices) for d in owned.manifest.devices),
+                COMPATIBILITY_FORMAT,
+                owned.omitted_devices,
+            )
+        completed: ImportMetadata | None = None
+        generated: ShardedReplayResult | None = None
+
+        def finalize(result: ShardedReplayResult) -> None:
+            nonlocal completed, generated
+            convert_shards(result)
+            metadata = replace(
+                self._metadata_service.build_metadata(
+                    options.snapshot_file, source_hash, options.device
+                ),
+                import_format_version=1,
+            )
+            for item in result.slices:
+                _require_readonly_member(result.directory, item.file)
+                self._metadata_service.write(item.file, metadata)
+            manifest = build_compatible_manifest(
+                result, metadata, options.snapshot_file, capacity, cache_hash
+            )
+            with (result.directory / "manifest.json").open("x", encoding="utf-8") as file:
+                json.dump(manifest, file, indent=2)
+            validated = DatasetResolver().inspect(result.directory)
+            if validated is None or inspect_owned_cache(result.directory).metadata != metadata:
+                raise ImportExecutionError("Staged compatible artifact validation failed")
+            completed, generated = metadata, result
+
+        focus_state: FocusState | None = None
+
+        def focus(path: Path) -> None:
+            nonlocal focus_state
+            focus_state = self._set_focus_if_requested(path, options)
+
+        self._msinsight_backend.dump_to_dataset(
+            options.snapshot_file,
+            target,
+            capacity=capacity,
+            device=options.device,
+            expected=None,
+            finalize=finalize,
+            post_publish=focus if options.set_focus else None,
+            pre_publish=lambda: self._recheck_source(options.snapshot_file, source_hash),
+        )
+        assert completed is not None and generated is not None
+        return ImportResult(
+            target,
+            options.device,
+            focus_state,
+            False,
+            completed,
+            "database_missing",
+            target,
+            tuple(sorted({s.device for s in generated.slices})),
+            len(generated.slices),
+            COMPATIBILITY_FORMAT,
+            generated.omitted_devices,
+        )
+
     def _hash_source(self, source: Path) -> str:
         try:
             return self._metadata_service.calculate_sha256(source)
@@ -288,6 +407,7 @@ class ImportService:
             transaction = (
                 self._focus_service.project_focus_transaction()
                 if options.events_per_slice is not None
+                or options.format in (COMPATIBILITY_FORMAT, "msinsight")
                 else nullcontext()
             )
             with transaction:
