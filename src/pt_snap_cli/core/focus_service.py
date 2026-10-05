@@ -6,6 +6,7 @@ from typing import Any
 
 from pt_snap_cli.config import Config, FocusResolutionError
 from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionError
+from pt_snap_cli.core.dataset_resolver import DatasetResolver, ResolvedDataset
 from pt_snap_cli.core.errors import (
     DatabaseMissingError,
     DatabaseSchemaError,
@@ -55,7 +56,8 @@ class FocusService:
 
         if resolved.db_path is not None and resolved.db_path.exists():
             try:
-                ctx = Context(resolved.db_path)
+                dataset = DatasetResolver().inspect(resolved.db_path)
+                ctx = dataset if dataset is not None else Context(resolved.db_path)
                 available_devices = ctx.device_ids
                 callstack_layout = ctx.callstack_layout
                 callstack_layout_error = ctx.callstack_layout_error
@@ -78,8 +80,9 @@ class FocusService:
         device_id: int | None = None,
         base_dir: Path | None = None,
     ) -> FocusState:
-        db_path = Path(db_path).expanduser().resolve()
+        db_path = Path(db_path).expanduser().absolute()
         ctx = self._validated_context(db_path)
+        db_path = db_path.resolve()
         self._validate_device(ctx, device_id)
         self._config.write_project_focus(db_path, base_dir=base_dir, device_id=device_id)
         return FocusState(
@@ -93,8 +96,9 @@ class FocusService:
         )
 
     def set_global_focus(self, db_path: Path | str, device_id: int | None = None) -> FocusState:
-        db_path = Path(db_path).expanduser().resolve()
+        db_path = Path(db_path).expanduser().absolute()
         ctx = self._validated_context(db_path)
+        db_path = db_path.resolve()
         self._validate_device(ctx, device_id)
         self._config.write_global_focus(db_path, device_id=device_id)
         return FocusState(
@@ -161,8 +165,9 @@ class FocusService:
         db_path: Path | str,
         device_id: int | None = None,
     ) -> FocusState:
-        db_path = Path(db_path).expanduser().resolve()
+        db_path = Path(db_path).expanduser().absolute()
         ctx = self._validated_context(db_path)
+        db_path = db_path.resolve()
         self._validate_device(ctx, device_id)
         return FocusState(
             db_path=db_path,
@@ -174,7 +179,10 @@ class FocusService:
             callstack_layout_error=ctx.callstack_layout_error,
         )
 
-    def _validated_context(self, db_path: Path) -> Context:
+    def _validated_context(self, db_path: Path) -> Context | ResolvedDataset:
+        dataset = DatasetResolver().inspect(db_path)
+        if dataset is not None:
+            return dataset
         try:
             return Context(db_path)
         except DatabaseNotFoundError as exc:
@@ -182,7 +190,7 @@ class FocusService:
         except (SchemaVersionError, sqlite3.DatabaseError) as exc:
             raise DatabaseSchemaError(str(exc)) from exc
 
-    def _validate_device(self, ctx: Context, device_id: int | None) -> None:
+    def _validate_device(self, ctx: Context | ResolvedDataset, device_id: int | None) -> None:
         if device_id is None:
             return
         if device_id not in ctx.device_ids:

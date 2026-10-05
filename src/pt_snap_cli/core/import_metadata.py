@@ -11,6 +11,7 @@ from typing import Any
 
 from pt_snap_cli import __version__
 from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionError
+from pt_snap_cli.core.dataset_resolver import DatasetResolver
 from pt_snap_cli.core.errors import DatabaseMissingError, DatabaseSchemaError, ImportMetadataError
 from pt_snap_cli.core.models import (
     CacheDecision,
@@ -76,7 +77,11 @@ class ImportMetadataService:
         )
 
     def inspect(self, db_path: Path | str) -> MetadataInspection:
+        dataset = DatasetResolver().inspect(db_path)
         path = Path(db_path).expanduser().resolve()
+        if dataset is not None:
+            # Per-slice extensions are not a dataset-wide importer/source attestation.
+            return MetadataInspection(path, "unavailable", reason="metadata_missing")
         try:
             context = Context(path)
         except DatabaseNotFoundError as exc:

@@ -6,7 +6,8 @@
 
 本阶段冻结产物协议和共享校验模型，**不新增 CLI 导出器或跨片查询引擎**。现有
 `import` 默认仍生成一个原生 v2 DB；`split` 仍输出可回放 pickle/JSON。现有单库
-v1/v2 分析与 focus 不变。下述 `complete` 门槛只约束新数据集合同，不约束旧单库分析。
+v1/v2 单库分析不变。下述 P1 reader 新增将 complete 兼容 v1 manifest 或目录作为
+focus；`complete` 门槛只约束数据集，不约束旧单库分析。
 
 `pt_snap_cli.core.dataset_contract` 提供 `parse_manifest`、`validate_event_ids`、
 `validate_dataset`、不可变 manifest/device/slice 模型、`QueryScope` 和带
@@ -135,8 +136,9 @@ dictionary 的十进制整数 key 以文本存储，使用真实带设备后缀�
 | `slice` | `device_id`, `slice_index`；该片真实区间，边界独立 |
 | `event_range` | `device_id`、设备内闭区间 `start_event_id/end_event_id`；可跨片 |
 
-设备间没有全局事件顺序。边界 ID 不能作为范围端点。`query_execution=False`
-明确表示跨片执行留后续；scope 校验成功不使现有 CLI/API 自动接受 manifest 或目录。
+设备间没有全局事件顺序。边界 ID 不能作为范围端点。P0 的
+`DatasetValidation.query_execution=False` 描述校验而非执行。下述 P1 resolver
+使 CLI/API 接受完整 manifest/目录；跨片执行仍留后续。
 
 ```python
 from pt_snap_cli.core.dataset_contract import QueryScope, validate_dataset
@@ -147,6 +149,60 @@ QueryScope("event_range", device_id=0, start_event_id=1, end_event_id=3).validat
 )
 assert not inspection.structured_frames
 ```
+
+## 完整数据集 focus 与寻址（P1）
+
+已搬迁的兼容 v1 目录或其 `manifest.json` 可直接 focus；不要求原始 pickle、导入
+metadata、辅助引用表或扩展表：
+
+```bash
+pt-snap focus /capture/snapshot.pkl.msinsight --device 0 --json
+pt-snap overview --json
+pt-snap query --template-use event --params '{"id": 3}' --json
+pt-snap query --template-use event --slice 1 --json
+```
+
+`overview.dataset` 输出格式、manifest 版本/状态、内容指纹、真实/边界事件数、逐设备
+分片路径/范围及能力。事件范围排除负 ID 合成行（单库 overview 也如此）。支持文本调用栈，
+不保证每行有栈；结构化 frames 与跨片查询**不可用**，未知扩展的能力声明不会提升它们。
+数据集级导入 metadata 为 unavailable；逐片 metadata 不是整份数据集的来源证明。
+
+路径优先级仍为显式 → `PT_SNAP_DB_PATH` → 最近项目 focus → legacy global config；
+设备优先级仍为显式 → focused → 首个发现设备。CLI focus 只写选定的项目/全局 focus 文件，
+不写产物或检测布局；API 会话 focus 不写配置：
+
+```python
+from pathlib import Path
+from pt_snap_cli import SnapshotAnalyzer
+
+with SnapshotAnalyzer(Path("/capture/snapshot.pkl.msinsight"), device_id=0) as analyzer:
+    event = analyzer.execute_query("event", {"id": 3})
+    page = analyzer.execute_query("event", slice_index=1, exact_total=True)
+    print(event["scope"], page["total_is_exact"])
+```
+
+数据集 focus 当前只支持 `event` 模板：真实 ID 路由至所在片，闭区间 `min_id/max_id`
+必须落在一个片内，`--slice`/`slice_index` 列出该片真实事件。负 ID 不能作为整份数据集
+selector。输出 `scope` 标识实际 DB/device/slice、受限真实区间、数据集指纹和边界排除。
+总数和分页针对该 scope，**不是**隐式截断的整份数据集。CLI `effective_params` 的调用者
+参数默认值另受 `scope` 约束。跨片区间、无界多片查询、聚合/生命周期模板明确失败，不会
+静默选首片/最新片。直接对单库 v1/v2 查询保持原有语义。
+
+`core.dataset_resolver.DatasetResolver.inspect(path)` 返回不可变 `ResolvedDataset`
+（单库返回 `None`）；其 `paths(QueryScope(...))` 可寻址跨片范围的全部文件，但不执行查询。
+每次调用重新校验最终化 P0 合同并对 manifest/所有成员取内容哈希，不保存无界 manifest/
+连接缓存。哈希按有界块读取，工作量与产物大小成正比，不宣称性能收益。Context LRU 默认
+最多四个；数据集 generation 变化在下次 lookup 使旧 Context 失效，即使 size/mtime 相同。
+analyzer 自有缓存在退出时关闭，注入缓存仍由调用者所有；校验逐片打开并关闭连接。
+
+building、缺片/矛盾片、未知基础版本、不安全路径在 focus 写入或查询前拒绝。在打开
+**任何**分片前，resolver 先检查全部成员的规范非符号链接路径、SQLite header 及
+WAL/journal/SHM sidecar（包含悬空符号链接）。即使 checkpoint 已移除 sidecar，持久 WAL
+模式仍被拒绝：`mode=ro` 也可能重新创建它们。reader 不修复、不执行 checkpoint、不删除
+sidecar、不改变 journal mode；单库行为不变。这是只读检查，不是文件系统沙箱或并发生产端锁。native-v2 replay 的私有
+staging **没有已发布 manifest**，不能作为数据集；其中单个 DB 仍由已有单库入口读取。
+后续兼容 v1 生产端可直接使用同一 reader，不依赖生产端专属 metadata。本项不虚构
+native-v2 manifest 协议，不新增导出、缓存发布、迁移或跨片生命周期重建。
 
 ## 内部持续回放（P1）
 

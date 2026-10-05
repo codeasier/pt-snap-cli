@@ -52,6 +52,10 @@ deterministic names, replay validation, and failure-safe publication.
 
 See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
 
+Complete compatibility-v1 sharded artifacts can be focused by directory or
+`manifest.json`, without the archived pickle. See [dataset focus and addressing](docs/en/sharded-snapshotdb.md#complete-dataset-focus-and-addressing-p1)
+for read-only overview, event routing, `--slice`, and explicit cross-slice limits.
+
 ## Commands
 
 | Command | Description |

@@ -32,7 +32,11 @@ class TemplateSummaryPayload(TypedDict):
     category: str | None
 
 
-class QueryResultPayload(TypedDict):
+class _QueryScopePayload(TypedDict, total=False):
+    scope: dict[str, object]
+
+
+class QueryResultPayload(_QueryScopePayload):
     total: int
     returned: int
     device_id: int | None
@@ -209,6 +213,7 @@ class SnapshotAnalyzer:
         *,
         exact_total: bool = False,
         timeout_s: float | None = None,
+        slice_index: int | None = None,
     ) -> QueryResultPayload:
         self._ensure_open()
         try:
@@ -220,10 +225,11 @@ class SnapshotAnalyzer:
                 max_rows=max_rows,
                 exact_total=exact_total,
                 timeout_s=timeout_s,
+                slice_index=slice_index,
             )
         except FocusNotConfiguredError as exc:
             raise RuntimeError("No database configured. Call set_focus() first.") from exc
-        return {
+        payload: QueryResultPayload = {
             "total": result.total,
             "returned": result.returned,
             "device_id": result.device_id,
@@ -235,6 +241,9 @@ class SnapshotAnalyzer:
             "total_is_exact": result.total_is_exact,
             "timeout_s": result.timeout_s,
         }
+        if result.scope is not None:
+            payload["scope"] = result.scope
+        return payload
 
     def list_capabilities(self) -> dict[str, object]:
         self._ensure_open()

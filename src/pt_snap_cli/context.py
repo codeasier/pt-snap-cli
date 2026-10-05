@@ -204,7 +204,8 @@ class Context:
     def device_trace_bounds(self) -> list[tuple[int, int | None, int | None]]:
         """Return ``(device_id, first_event_id, last_event_id)`` for each device.
 
-        Bounds come from ``MIN(id)`` / ``MAX(id)`` on ``trace_entry_<device>``.
+        Bounds come from nonnegative real IDs on ``trace_entry_<device>``.
+        Negative synthetic boundary rows do not extend the real trace.
         Empty tables report ``None`` for both ends. The connection stays
         read-only (``mode=ro``).
         """
@@ -213,7 +214,7 @@ class Context:
             cursor = conn.cursor()
             for device_id in self.device_ids:
                 table = f"trace_entry_{device_id}"
-                cursor.execute(f"SELECT MIN(id), MAX(id) FROM {_quote_ident(table)}")
+                cursor.execute(f"SELECT MIN(id), MAX(id) FROM {_quote_ident(table)} WHERE id >= 0")
                 row = cursor.fetchone()
                 first = int(row[0]) if row is not None and row[0] is not None else None
                 last = int(row[1]) if row is not None and row[1] is not None else None

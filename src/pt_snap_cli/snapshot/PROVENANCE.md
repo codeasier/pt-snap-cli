@@ -253,3 +253,36 @@ constructor/commit failure while preserving the original single-DB data contract
 Synthetic failure/equivalence tests and bilingual docs are locally authored;
 reviewed fixtures are unchanged. Existing source mappings and MIT relicensing
 records are retained. GUI interoperability and streaming/RSS claims are not made.
+
+## 2026-10-05 — Read-only dataset focus and addressing (issue #200)
+
+Local original reader changes in `core/dataset_resolver.py`, focus/overview/query
+services and CLI/API adapters reuse the committed P0 compatibility-v1 validator.
+Manifest/device/slice fields, real-event range routing and completion facts were
+independently read via a fixed GitHub GET at Ascend/msinsight revision
+`101f65b877a267ffd5f66ea3834706057ba243e5`, source
+[manifest/routing interfaces](https://api.github.com/repos/Ascend/msinsight/git/blobs/8746d17db5a8e66b2ed0843962593c12851414e0).
+The source carries Copyright (c) 2026 Huawei Technologies Co.,Ltd. and Mulan PSL
+v2. No C++ implementation was copied; Python logic, synthetic SQLite regressions
+and bilingual reader documentation are locally authored. Complete-readiness and
+canonical artifact rules remain stricter than upstream building inspection.
+
+No allocator, importer, compatibility exporter, native-v2 staging protocol,
+fixture, license or retained source mapping is changed. The reader reports text
+stacks without promoting structured frames, refuses silent cross-slice template
+execution, and never loads source pickle or repairs external databases. Context
+LRU generation uses manifest/member content identity; real overview bounds exclude
+negative boundary rows. No GUI, wheel/profile or performance acceptance is claimed.
+
+## 2026-10-05 — Dataset read-only WAL preflight correction (issue #200)
+
+Local original correction in `core/dataset_resolver.py`: verify every declared
+member's canonical non-symlink path, WAL/journal/SHM sidecars (including dangling
+aliases) and SQLite file-header read/write versions before any SQLite connection.
+Checkpointed persistent-WAL databases are rejected even without existing sidecars,
+because `mode=ro` can recreate WAL/SHM files. Synthetic real-SQLite regressions
+record unchanged member/manifest hashes, inventory and no connection opens on
+rejection across resolver, focus, CLI and API. No repair, checkpoint, journal-mode
+change, artifact deletion or standalone-DB policy change is introduced. This is
+not concurrent-producer locking. Existing attribution, source mappings, fixtures
+and license records are unchanged; no live upstream artifact acceptance is claimed.

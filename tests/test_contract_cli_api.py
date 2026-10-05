@@ -26,6 +26,7 @@ from pt_snap_cli.core import InvalidDeviceError, TemplateRenderError
 from pt_snap_cli.core.json_codec import JSON_SCHEMA_VERSION
 from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.registry import QueryRegistry, register_query
+from tests.test_dataset_focus import make_dataset
 
 runner = CliRunner()
 
@@ -785,6 +786,68 @@ def test_capabilities_template_matches_template_info_json(
         assert entry["semantics_version"] == 2
         callstack = next(col for col in entry["output_schema"] if col["column"] == "callstack")
         assert "empty strings, NULL text or IDs" in " ".join(callstack["interpretation_limits"])
+
+
+@pytest.mark.parametrize("use_manifest", [False, True])
+def test_dataset_focus_overview_query_contract(tmp_path: Path, use_manifest: bool) -> None:
+    root = make_dataset(tmp_path / "dataset")
+    path = root / "manifest.json" if use_manifest else root
+    with SnapshotAnalyzer() as analyzer:
+        state = analyzer.set_focus(str(path), 2)
+        focus = _json_stdout(runner.invoke(app, ["focus", str(path), "--device", "2", "--json"]))
+        assert {key: focus[key] for key in _focus_payload(state)} == _focus_payload(state)
+        overview = _json_stdout(runner.invoke(app, ["overview", str(path), "--json"]))
+        api_overview = analyzer.get_database_overview()
+        assert {key: overview[key] for key in api_overview} == api_overview
+        metadata_result = runner.invoke(app, ["metadata", str(path), "--json"])
+        assert metadata_result.exit_code == 0, metadata_result.output
+        assert json.loads(metadata_result.stdout) == analyzer.get_database_metadata()
+        for params, selector in [
+            ({"id": 4}, []),
+            ({}, ["--slice", "1"]),
+            ({"min_id": 2, "max_id": 3}, []),
+        ]:
+            cli = _json_stdout(
+                runner.invoke(
+                    app,
+                    [
+                        "query",
+                        str(path),
+                        "--device",
+                        "2",
+                        "--template-use",
+                        "event",
+                        "--params",
+                        json.dumps(params),
+                        "--json",
+                        *selector,
+                    ],
+                )
+            )
+            api = analyzer.execute_query(
+                "event", params, device_id=2, slice_index=1 if selector else None
+            )
+            assert {key: cli[key] for key in api} == api
+            assert cli["scope"]["boundary_events_included"] is False
+        error = runner.invoke(
+            app, ["query", str(path), "--template-use", "event", "--params", '{"id": -1}', "--json"]
+        )
+        assert error.exit_code == 1
+        assert json.loads(error.stderr)["error"]["code"] == "INVALID_PARAMETER"
+        failure = runner.invoke(
+            app, ["query", str(path), "--template-use", "memory_peak", "--json"]
+        )
+        assert failure.exit_code == 1
+        assert "cross-slice" in json.loads(failure.stderr)["error"]["message"]
+        manifest = root / "manifest.json"
+        data = json.loads(manifest.read_text())
+        data["status"] = "building"
+        manifest.write_text(json.dumps(data))
+        error = runner.invoke(app, ["focus", str(path), "--json"])
+        assert error.exit_code == 1
+        assert json.loads(error.stderr)["error"]["code"] == "DATABASE_SCHEMA_INVALID"
+        with pytest.raises(ValueError, match="complete"):
+            analyzer.set_focus(str(path))
 
 
 def test_overview_error_contract_maps_four_domain_failures(tmp_path: Path) -> None:

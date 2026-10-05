@@ -7,8 +7,9 @@
 This freezes an artifact contract and shared validation models, **not a new CLI
 exporter or cross-slice query engine**. Existing `import` still defaults to one
 native v2 DB; `split` still produces replayable pickle/JSON. Existing single-DB
-v1/v2 analysis and focus are unchanged. The `complete` gate below applies only to
-this new dataset contract, not to legacy single-DB analysis.
+v1/v2 single-DB analysis is unchanged. The P1 reader below additionally accepts a
+complete compatibility-v1 manifest or directory as focus. The `complete` gate
+applies only to datasets, not to legacy single-DB analysis.
 
 `pt_snap_cli.core.dataset_contract` provides `parse_manifest`,
 `validate_event_ids`, `validate_dataset`, immutable manifest/device/slice models,
@@ -166,9 +167,9 @@ which P0 does not implement. Text stacks cannot substitute for these guarantees.
 | `event_range` | `device_id`, inclusive `start_event_id/end_event_id` within the real trace, possibly across slices |
 
 There is no global event order across devices. Boundary IDs cannot be range
-endpoints. `query_execution=False` explicitly declares that cross-slice execution
-is deferred; passing scope validation does not make existing CLI/API accept a
-manifest or directory.
+endpoints. P0 `DatasetValidation.query_execution=False` describes validation,
+not execution. P1 accepts complete manifests/directories through the resolver
+below; cross-slice execution remains deferred.
 
 ```python
 from pt_snap_cli.core.dataset_contract import QueryScope, validate_dataset
@@ -179,6 +180,75 @@ QueryScope("event_range", device_id=0, start_event_id=1, end_event_id=3).validat
 )
 assert not inspection.structured_frames
 ```
+
+## Complete dataset focus and addressing (P1)
+
+A relocated compatibility-v1 directory or its `manifest.json` can be focused
+without the original pickle, import metadata, or reference/extension tables:
+
+```bash
+pt-snap focus /capture/snapshot.pkl.msinsight --device 0 --json
+pt-snap overview --json
+pt-snap query --template-use event --params '{"id": 3}' --json
+pt-snap query --template-use event --slice 1 --json
+```
+
+`overview.dataset` reports format, manifest version/status, content fingerprint,
+real/boundary counts, per-device slice paths/ranges and capabilities. Event bounds
+exclude negative synthetic rows (also for standalone DB overview). Text stacks
+are available, but not necessarily populated; structured frames and cross-slice
+queries are **unavailable**, including when unknown extensions claim them.
+Dataset-wide import metadata is unavailable; per-slice metadata is not a source
+attestation for the entire dataset.
+
+Path precedence stays explicit → `PT_SNAP_DB_PATH` → nearest project focus → legacy
+global config; device precedence stays explicit → focused → first discovered.
+CLI focus only writes the chosen project/global focus file, never the artifact or
+detected layout. API session focus does not write it:
+
+```python
+from pathlib import Path
+from pt_snap_cli import SnapshotAnalyzer
+
+with SnapshotAnalyzer(Path("/capture/snapshot.pkl.msinsight"), device_id=0) as analyzer:
+    event = analyzer.execute_query("event", {"id": 3})
+    page = analyzer.execute_query("event", slice_index=1, exact_total=True)
+    print(event["scope"], page["total_is_exact"])
+```
+
+Only the `event` template is currently supported through dataset focus: a real ID
+routes to its containing slice; an inclusive `min_id/max_id` range must fit one
+slice; `--slice`/`slice_index` lists that slice's real events. Negative IDs are not
+whole-dataset selectors. Output `scope` identifies the actual DB/device/slice,
+restricted real interval, dataset fingerprint and boundary exclusion. Totals and
+pagination apply to this scope, **not** to an implicitly truncated full dataset.
+Caller parameter defaults in CLI `effective_params` are additionally constrained
+by `scope`. Cross-slice ranges, unbounded multi-slice queries and aggregate or
+lifecycle templates fail explicitly; they never silently choose the first/latest
+slice. Direct single-DB v1/v2 queries retain their existing semantics.
+
+`core.dataset_resolver.DatasetResolver.inspect(path)` returns an immutable
+`ResolvedDataset` (or `None` for a standalone DB). Its `paths(QueryScope(...))`
+addresses all matching files even for a cross-slice range, but does not execute it.
+It revalidates the finalized P0 contract on each call and hashes the manifest and
+members; no unbounded manifest/connection cache is retained. Hashing uses bounded
+chunks and is proportional to artifact size, not a performance claim. Context LRU
+size defaults to four; dataset generation changes invalidate contexts on next
+lookup even when size/mtime are unchanged. Analyzer-owned caches close on exit;
+injected caches remain caller-owned. Validation opens/closes slices sequentially.
+
+Building, missing/inconsistent slices, unknown base versions and unsafe paths
+are rejected before focus writes or query execution. Before opening **any** slice,
+the resolver checks every member's canonical non-symlink path, SQLite header and
+WAL/journal/SHM sidecars (including dangling symlinks). Persistent WAL mode is
+rejected even after checkpointing has removed its sidecars: `mode=ro` can recreate
+them. The reader does not repair, checkpoint, delete sidecars or change journal
+mode; standalone DB behavior is unchanged. This is read-only inspection, not a
+filesystem sandbox or a concurrent producer lock. Native-v2 replay's private staging directory has **no published manifest**
+and is rejected as a dataset; its individual DBs remain readable via the existing
+single-DB entry. A future compatibility-v1 producer can use this same reader
+without producer-specific metadata. No native-v2 manifest protocol, exporter,
+cache publication, migration, or cross-slice lifecycle reconstruction is invented.
 
 ## Internal continuous replay (P1)
 

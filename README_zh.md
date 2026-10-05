@@ -47,6 +47,10 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 
 完整的入门指南见 [Quick Start](docs/zh/quickstart.md)。
 
+完整兼容 v1 分片产物可以目录或 `manifest.json` 为 focus，无需已归档 pickle。
+只读 overview、事件路由、`--slice` 和跨片限制见
+[完整数据集 focus 与寻址](docs/zh/sharded-snapshotdb.md#完整数据集-focus-与寻址p1)。
+
 ## 命令
 
 | 命令 | 说明 |
