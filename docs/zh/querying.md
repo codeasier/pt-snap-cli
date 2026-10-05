@@ -71,6 +71,72 @@ pt-snap query '<db_path>' --device 0 --template-use event --params '{"id":123}' 
 分组没有可取回的采集分配栈；在原查询中省略 `stack_bytes` 可查看完整显示标签。
 查询保持只读，摘要不会改动数据库。
 
+## 数据集定点事件归因
+
+完整兼容 v1 或原生 v2 目录/manifest 支持 `event` 寻址，以及接受真实 `event_id` 的
+`active_blocks_at_event`、`active_memory_callstack_at_event`。后两者按设备路由实际事件，
+从所在片完整生命周期观察计算正向事件**之后**的集合：`allocEventId <= E` 且完成释放
+`freeEventId > E`（或 `-1`）。`free_requested` 不移除 active 内存。负边界行表示片内
+首事件之前，不是定点端点。原生稀疏 ID 不改号：片内 `event(id=gap)` 可返回空行，
+不存在事件的 active 归因则明确失败，不虚构 event 0。
+
+```bash
+pt-snap query '<dataset_dir>' --device 0 --template-use active_memory_callstack_at_event --params '{"event_id":700,"top_n":20}' --json
+pt-snap query '<dataset_dir>' --device 0 --template-use active_blocks_at_event --params '{"event_id":700,"limit":10}' --exact-total --json
+```
+
+请替换实际路径/设备/事件。片外 alloc/free 事件及完整 v1 内联或 v2 局部 ID 栈在
+分组/top_n **之前**解析，按实际来源片每批至多 256 个不同事件 ID。不补入外片真实行。
+原版产物无需 metadata 或引用表。生命周期用数据集 generation/设备/分配事件或稳定
+负身份，不用地址；`state_scope=slice_observation` 提醒存储 `state` 不一定是 E 时的
+pending-free 状态。block 行提供 `allocation_source`、`free_source`、状态和
+`lifecycle_id`。缺失动态来源仍保留字节及动态类别，与 static/preexisting 未知历史分开；
+`free=-1` 表示存活**或未知**，不证明泄漏。
+
+数据集分组始终提供完整 `source_stack_id`/`stack_id`、`stack_kind`、`stack_event_id`。
+无扩展的默认 `event` 行保留原始九个值；`stack_bytes>=0` 或已识别有序 frame 声明时
+才增加来源/frame 行字段，`scope.source_coverage` 仍返回。
+两种数据集布局均按完整文本的 canonical 身份分组；v2 仍按来源片真实局部 ID 查栈，
+来源 `local_stack_id`/`slice_index` 是 provenance，不是跨片分组 key。有覆盖的有序数组
+只使用精确原始 frame 身份，与格式化文本是否存在无关；`text_kind` 独立描述文本
+可用性。明确覆盖的数组（含空数组）是已采集原始证据；分组优先选择有文本的代表
+事件以便取回全文。非空 whitespace 和真实采集的字面量
+`[missing callstack]` 不是 missing。禁止按局部 ID 或缩略显示标签合并。`stack_bytes`
+只缩短显示；在同一数据集/设备用 `event(id=stack_event_id)` 取回全文。明确覆盖的原始
+有序 frames 也参与身份；不从文本重建 frames。
+
+`scope.source_coverage` 独立于 `has_more`/`truncated`/精确行数：active 查询覆盖的是
+**top_n/分页之前全部筛选 block**，包括 active/dynamic 字节、已解析 alloc/free 数、采集
+动态字节、未知/预存数、有序 frame 覆盖及降级。`event` 覆盖仅为 `returned_events`。
+完整 manifest/范围不证明历史来源或 frame 完整。百分比分母仍为动态 top_n **之后、
+max_rows 之前**所含字节，不是数据集 active 计数器。精确总数忽略行数/排名上限，但
+不改变百分比分母。
+
+一次调用的来源批次、分组和精确总数共用 deadline。manifest 校验/hash 及 Context
+设置耗时计入预算，但同步文件 I/O/校验只在阶段边界检查，不硬抢占，不保证 OS 级
+时间上限。SQL progress handler 退出即清除。Context LRU 有界（默认四个），借用
+cache 仍由调用者所有。不生成合并临时数据库。`ReportService.event_attribution(E, ...)`
+对给定事件复用同一路径。数据集全局峰值选择、`report peak-memory`、跨片事件范围、
+任意 SQL/全局 list/leak/group 合并仍明确不支持，等待各自合同实现。
+
+### 可选有序 frame reader 合同
+
+这是新增的仅 reader pt-snap 扩展，不是原版 producer 已有功能。当前原生/兼容 writer
+**不生成**有序 frame 表。manifest 声明 `extensions.ptSnapOrderedFrames={"version":1}`，
+并在有覆盖的来源片使用隔离的实际表：
+
+- `pt_snap_frame_coverage(eventId INTEGER PRIMARY KEY, frameCount INTEGER)`
+- `pt_snap_frame(eventId INTEGER, frameIndex INTEGER, frameJson TEXT, PRIMARY KEY(eventId,frameIndex))`
+
+原始 object 必须是有限数字的标准 JSON，嵌套深度至多 128；超深、非有限数或解析
+失败（包括递归错误）安全降级。每个覆盖的真实事件须有非负整数 `frameCount`、恰好 `0..frameCount-1` 索引及保留全部
+原始类型字段的 JSON **object**。保持顺序和重复帧；空数组须有明确 count=0 行。
+只有已识别版本/schema 及有效逐事件覆盖才输出 `frames`、`frames_status=ordered`。
+未知版本、缺失 schema/行、无效 JSON 或覆盖不全降级为 `frames=null`、
+`frames_status=text_only`；不会切分/反转格式化文本伪造原始 frames。P0/overview 的
+数据集级 `structured_frames=false` 仍是保守校验能力，不表示定点来源载荷必然无 frames。
+本接口不提供树渲染或 GUI 验收。
+
 ## 查询模板
 
 模板分为三个分类。用 `pt-snap capabilities --json` 一次查看完整清单（CLI 版本、全部模板契约和随包 skill），或用 `pt-snap query --list` 查看名称与描述。用 `--category` 过滤。

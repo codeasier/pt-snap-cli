@@ -38,6 +38,7 @@ class ResolvedDataset:
     root: Path
     validation: DatasetValidation
     fingerprint: str
+    ordered_frames_version: int | None = None
 
     @property
     def device_ids(self) -> list[int]:
@@ -91,7 +92,14 @@ class ResolvedDataset:
             "text_callstacks": True,
             "structured_frames": False,
             "cross_slice_queries": False,
-            "supported_queries": ["event: real ID, single-slice range, or explicit slice"],
+            "supported_queries": [
+                "event: real ID, single-slice range, or explicit slice",
+                "active_blocks_at_event: real point-event with batched alloc/free sources",
+                "active_memory_callstack_at_event: real point-event attribution before top_n",
+            ],
+            "cross_slice_sources": True,
+            "ordered_frames_reader_version": 1,
+            "structured_frames_scope": "validation_only; query source coverage is separate",
             "devices": [
                 {
                     "device_id": device.device_id,
@@ -162,6 +170,11 @@ class DatasetResolver:
                     digest.update(_hash_file(member).encode("ascii"))
             if before != _hash_file(manifest_path):
                 raise DatabaseSchemaError("Dataset manifest changed during inspection; retry.")
-            return ResolvedDataset(root, validation, digest.hexdigest())
+            extensions = raw.get("extensions") if isinstance(raw, dict) else None
+            frames = extensions.get("ptSnapOrderedFrames") if isinstance(extensions, dict) else None
+            version = frames.get("version") if isinstance(frames, dict) else None
+            return ResolvedDataset(
+                root, validation, digest.hexdigest(), version if type(version) is int else None
+            )
         except (DatasetContractError, OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise DatabaseSchemaError(f"Invalid dataset: {exc}") from exc

@@ -75,7 +75,27 @@ queries:
         {% if order_dir|upper == 'ASC' %}ASC{% else %}DESC{% endif %}, id ASC
       LIMIT {{ limit|int }}
       {% if offset > 0 %}OFFSET {{ offset|int }}{% endif %}
+    interpretation_limits:
+      - "Dataset point-event queries resolve alloc/free sources in batches before paging; scope.source_coverage describes all filtered blocks and is separate from row truncation. Stored state is a slice observation, not necessarily state at the target event."
     output_schema:
+      - column: lifecycle_id
+        type: str
+        interpretation_limits: ["Dataset only: generation/device/original alloc-event or stable negative lifetime identity; never address identity."]
+      - column: state_scope
+        type: str
+        interpretation_limits: ["Dataset only: slice_observation; state is not reconstructed at the requested event."]
+      - column: allocation_source
+        type: object
+        interpretation_limits: ["Dataset only: resolved original event, owning slice, full stack identity and optional covered ordered frames; NULL for unknown/preexisting or missing proof."]
+      - column: free_source
+        type: object
+        interpretation_limits: ["Dataset only: completed-free source, never free_requested; NULL for live/unknown or missing proof."]
+      - column: allocation_source_status
+        type: str
+        interpretation_limits: ["Dataset only: resolved, unknown_preexisting or missing; missing dynamic sources retain bytes/category."]
+      - column: free_source_status
+        type: str
+        interpretation_limits: ["Dataset only: resolved, live_or_unknown or missing; no recorded free does not prove a leak."]
       - column: id
         type: int
       - column: address

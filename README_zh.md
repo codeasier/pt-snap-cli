@@ -56,7 +56,10 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 默认单库导入不变；复用校验全部片及内容/选项/语义版本。不匹配的已识别目标须
 `--force`，未知目标保留。发布/focus 失败会补偿，回滚自身失败则保留并报告恢复证据
 （force 不是单次崩溃原子 swap）。详见
-[原生分库导入](docs/zh/quickstart.md#可选导入原生分库数据集)；当前仅支持有界数据集 `event` 查询。
+[原生分库导入](docs/zh/quickstart.md#可选导入原生分库数据集)。数据集 `event` 寻址及定点
+`active_blocks_at_event` / `active_memory_callstack_at_event` 共用跨片 alloc/free 批量来源，
+原版无扩展产物也适用。数据集全局 peak/list/leak 及 `report peak-memory` 仍明确不支持。
+详见[数据集定点归因与覆盖](docs/zh/querying.md#数据集定点事件归因)。
 
 显式 `pt-snap import snapshot.pkl --format msinsight --json` 生成
 `snapshot.pkl.msinsight/`，对齐固定 msinsight 版本的**同一原始 pickle + 邻接缓存**入口。

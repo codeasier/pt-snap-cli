@@ -230,10 +230,22 @@ queries:
         )
         ORDER BY size_bytes DESC, block_count DESC, callstack ASC
     output_schema:
+      - column: source_stack_id
+        type: str
+        interpretation_limits: ["Dataset only, always present: full generation/device/canonical text identity for both layouts, or exact raw ordered-frame identity when covered; source owner/local IDs are provenance, not grouping keys; resolve sources before grouping/top_n."]
+      - column: text_kind
+        type: str
+        interpretation_limits: ["Dataset only: captured/missing formatted text or special category; independent of raw ordered-array identity. Representative text is preferred when available."]
+      - column: frames
+        type: list
+        interpretation_limits: ["Dataset only: ordered raw JSON objects preserving duplicates, only for explicit recognized version/schema/per-event coverage; NULL means text-only or uncovered, never reconstructed from text."]
+      - column: frames_status
+        type: str
+        interpretation_limits: ["Dataset only: ordered or text_only; scope.source_coverage describes source/frame coverage before ranking/paging independently of truncated."]
       - column: stack_id
         type: str
         interpretation_limits:
-          - "Opt-in stack_bytes >= 0 only. Database/device-scoped identity: v1 full-text SHA-256, v2 callstackId, or category identity. Missing, static, preexisting and captured literal labels stay distinct. Never merge by display text."
+          - "Standalone opt-in stack_bytes >= 0 only; datasets always expose canonical content/ordered-frame identity. Standalone database/device-scoped identity: v1 full-text SHA-256, v2 callstackId, or category identity. Missing, static, preexisting and captured literal labels stay distinct. Never merge by display text."
       - column: stack_kind
         type: str
         interpretation_limits:
@@ -264,7 +276,7 @@ queries:
         interpretation_limits:
           - "Static and preexisting groups use synthetic labels rather than a captured allocation callstack. Dynamic rows use '[missing callstack]' for empty strings, NULL text or IDs, or missing joined allocation events or callstack records."
           - "All missing dynamic callstacks merge before top_n ranking; bytes, requested bytes, and block counts are retained. Missing attribution does not imply static or preexisting memory."
-          - "Nonempty callstacks are grouped by text in v1 and callstackId in v2. Whitespace-only text and a captured literal '[missing callstack]' are not missing and do not merge into the missing group. Display labels alone are not unique group identities."
+          - "Standalone nonempty callstacks are grouped by text in v1 and callstackId in v2. Datasets resolve local v2 IDs then group canonical full text across owners, or exact raw ordered-frame identity when explicitly covered. Whitespace-only text and a captured literal '[missing callstack]' are not missing and do not merge into the missing group. Display labels alone are not unique group identities."
       - column: category
         type: str
         units: text

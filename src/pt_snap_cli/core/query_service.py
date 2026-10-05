@@ -9,8 +9,10 @@ from typing import Any
 
 from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionError
 from pt_snap_cli.core.context_cache import ContextCache
+from pt_snap_cli.core.dataset_attribution import event_attribution, summarize_dataset_stacks
 from pt_snap_cli.core.dataset_contract import QueryScope
 from pt_snap_cli.core.dataset_resolver import DatasetResolver, ResolvedDataset
+from pt_snap_cli.core.dataset_sources import DatasetSourceResolver, QueryBudget
 from pt_snap_cli.core.errors import (
     DatabaseMissingError,
     DatabaseSchemaError,
@@ -206,6 +208,9 @@ class QueryService:
         timeout_s: float | None = None,
         slice_index: int | None = None,
     ) -> QueryResult:
+        timeout_s = resolve_query_timeout(timeout_s)
+        started = time.monotonic()
+        budget = QueryBudget(timeout_s, started)
         resolved = self._focus_service.resolve_focus(
             explicit_db_path=db_path,
             explicit_device_id=device_id,
@@ -215,10 +220,39 @@ class QueryService:
             raise FocusNotConfiguredError("No database path specified and no database configured.")
 
         dataset = DatasetResolver().inspect(resolved.db_path)
+        budget.remaining()
         scope: dict[str, object] | None = None
         query_params = params or {}
+        sources: DatasetSourceResolver | None = None
         if dataset is not None:
             selected = dataset.device(device_id if device_id is not None else resolved.device_id)
+            sources = DatasetSourceResolver(
+                dataset, selected.device_id, self._context_cache, budget
+            )
+            if template in ("active_blocks_at_event", "active_memory_callstack_at_event"):
+                template_obj = get_query(template)
+                if template_obj is None:
+                    raise TemplateNotFoundError(f"Template '{template}' not found")
+                try:
+                    validated = template_obj.validate_params(query_params)
+                except (TypeError, ValueError) as exc:
+                    raise TemplateRenderError(str(exc)) from exc
+                if slice_index is not None:
+                    dataset.paths(QueryScope("slice", selected.device_id, slice_index))
+                result = event_attribution(
+                    sources,
+                    template,
+                    validated,
+                    max_rows,
+                    exact_total,
+                    slice_index,
+                    template_obj.semantics_version,
+                )
+                stack_bytes = validated.get("stack_bytes")
+                if isinstance(stack_bytes, int) and stack_bytes >= 0:
+                    summarize_dataset_stacks(result.rows, stack_bytes)
+                budget.remaining()
+                return result
             member, query_params, scope = self._dataset_query(
                 dataset, selected.device_id, template, query_params, slice_index
             )
@@ -232,8 +266,6 @@ class QueryService:
             ctx = self._validated_context(resolved.db_path)
             target_device = self._resolve_device_id(ctx, resolved.device_id, device_id)
         executor = self._get_executor(ctx)
-        timeout_s = resolve_query_timeout(timeout_s)
-        started = time.monotonic()
 
         try:
             rows, has_more, _applied_limit = executor.execute_template_page(
@@ -241,7 +273,7 @@ class QueryService:
                 query_params,
                 device_id=target_device,
                 max_rows=max_rows,
-                timeout_s=timeout_s,
+                timeout_s=budget.remaining(),
             )
             offset = _validated_offset(template, query_params)
             rank_cap = _finite_top_n(template, query_params)
@@ -266,17 +298,55 @@ class QueryService:
         except ExecutorTemplateRenderError as exc:
             raise TemplateRenderError(str(exc)) from exc
         except ExecutorQueryTimeoutError as exc:
-            raise QueryTimeoutError(str(exc)) from exc
+            raise QueryTimeoutError(f"Query timed out after {timeout_s} seconds") from exc
         except ExecutorQueryExecutionError as exc:
             if get_query(template) is None:
                 raise TemplateNotFoundError(f"Template '{template}' not found") from exc
             raise QueryExecutionError(str(exc)) from exc
 
+        if sources is not None and scope is not None:
+            event_sources = sources.events(row["id"] for row in rows)
+            # Preserve the original default nine-column event payload. Explicit
+            # stack summaries or a recognized frame reader add source details.
+            event_template = get_query(template)
+            detail_budget = (
+                event_template.validate_params(query_params).get("stack_bytes", -1)
+                if event_template
+                else -1
+            )
+            detailed_rows = (
+                rows if sources.dataset.ordered_frames_version == 1 or detail_budget >= 0 else []
+            )
+            for row in detailed_rows:
+                source = event_sources[row["id"]]
+                row.update(
+                    {
+                        "source_stack_id": source.stack_id,
+                        "stack_id": source.stack_id,
+                        "stack_kind": source.stack_kind,
+                        "text_kind": source.text_kind,
+                        "stack_event_id": row["id"] if source.stack_kind == "captured" else None,
+                        "frames": source.frames,
+                        "frames_status": source.frames_status,
+                    }
+                )
+            scope["source_coverage"] = {
+                "range_complete": True,
+                "event_position": "after",
+                "coverage_scope": "returned_events",
+                "events_resolved": len(event_sources),
+                "ordered_frame_events": sum(s.frames is not None for s in event_sources.values()),
+                "source_queries": sources.query_count,
+            }
         template_obj = get_query(template)
         if template_obj is not None and "stack_bytes" in template_obj.parameters:
             stack_bytes = template_obj.validate_params(query_params)["stack_bytes"]
             if isinstance(stack_bytes, int) and stack_bytes >= 0:
-                summarize_stacks(rows, stack_bytes, ctx.callstack_layout)
+                if sources is not None:
+                    summarize_dataset_stacks(rows, stack_bytes)
+                else:
+                    summarize_stacks(rows, stack_bytes, ctx.callstack_layout)
+        budget.remaining()
         return QueryResult(
             total=total,
             returned=returned,
@@ -304,8 +374,8 @@ class QueryService:
             raise TemplateNotFoundError(f"Template '{template}' not found")
         if template != "event":
             raise QueryExecutionError(
-                "Dataset queries currently support only event addressing; "
-                "cross-slice aggregation/lifecycle queries are not supported."
+                "Dataset queries support event addressing and point-event active attribution; "
+                "dataset-global cross-slice aggregation/list/peak/leak queries are not supported."
             )
         try:
             validated = template_obj.validate_params(params)

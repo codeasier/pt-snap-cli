@@ -138,7 +138,8 @@ dictionary 的十进制整数 key 以文本存储，使用真实带设备后缀�
 
 设备间没有全局事件顺序。边界 ID 不能作为范围端点。P0 的
 `DatasetValidation.query_execution=False` 描述校验而非执行。下述 P1 resolver
-使 CLI/API 接受完整 manifest/目录；跨片执行仍留后续。
+使 CLI/API 接受完整 manifest/目录；通用跨片聚合仍留后续，定点来源解析见
+[查询指南](querying.md#数据集定点事件归因)。
 
 ```python
 from pt_snap_cli.core.dataset_contract import QueryScope, validate_dataset
@@ -182,12 +183,16 @@ with SnapshotAnalyzer(Path("/capture/snapshot.pkl.msinsight"), device_id=0) as a
     print(event["scope"], page["total_is_exact"])
 ```
 
-数据集 focus 当前只支持 `event` 模板：真实 ID 路由至所在片，闭区间 `min_id/max_id`
+数据集 focus 的 `event` 模板支持有界寻址：真实 ID 路由至所在片，闭区间 `min_id/max_id`
 必须落在一个片内，`--slice`/`slice_index` 列出该片真实事件。负 ID 不能作为整份数据集
 selector。输出 `scope` 标识实际 DB/device/slice、受限真实区间、数据集指纹和边界排除。
 总数和分页针对该 scope，**不是**隐式截断的整份数据集。CLI `effective_params` 的调用者
-参数默认值另受 `scope` 约束。跨片区间、无界多片查询、聚合/生命周期模板明确失败，不会
-静默选首片/最新片。直接对单库 v1/v2 查询保持原有语义。
+参数默认值另受 `scope` 约束。定点 `active_blocks_at_event` 和
+`active_memory_callstack_at_event` 现于分组/排名前批量解析 alloc/free/完整栈来源，
+原版无扩展产物也适用。生命周期身份、独立来源/frame 覆盖及版本化有序 frame reader
+接口详见[定点归因](querying.md#数据集定点事件归因)。数据集全局聚合/peak/list/leak、
+跨片事件区间及无界多片 event 查询仍明确失败，不静默选首片/最新片。直接单库 v1/v2
+查询保留现有语义。
 
 `core.dataset_resolver.DatasetResolver.inspect(path)` 返回不可变 `ResolvedDataset`
 （单库返回 `None`）；其 `paths(QueryScope(...))` 可寻址跨片范围的全部文件，但不执行查询。
@@ -247,7 +252,8 @@ trace 列与单库 v2 一致（`callstackId`，非内联文本），保留 OOM a
 最终化引用，保留 P1 打开前的别名/sidecar/持久 WAL 检查及有界借用 cache 所有权。
 无需源 pickle 即可 focus、metadata、overview 和单片 `event` 寻址。原生数据集 metadata
 为 available，外部兼容数据集为 unavailable（下述可识别兼容证明除外）。原生模式不隐含
-迁移、修复、跨片聚合/生命周期执行、兼容导出、salted hash 或 GUI 验收；P0 schema/manifest
+迁移、修复、数据集全局聚合/peak/list/leak、兼容导出、salted hash 或 GUI 验收；定点
+来源解析通过上述共享查询路径可用。P0 schema/manifest
 语义不变，仅兼容最终化 WAL 的只读传输修正见上文。
 
 发布、force/focus 补偿见[导入指南](quickstart.md#可选导入原生分库数据集)。完整 manifest

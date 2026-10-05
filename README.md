@@ -64,7 +64,11 @@ Nonmatching recognized targets require `--force`; unknown targets are preserved.
 Publication/focus failures are compensated, with explicit recovery evidence if
 rollback fails (force is not a single crash-atomic swap). See the
 [native import guide](docs/en/quickstart.md#optional-import-a-native-sharded-dataset).
-Only bounded dataset `event` queries are currently supported.
+Dataset `event` addressing and point-event `active_blocks_at_event` /
+`active_memory_callstack_at_event` share batched cross-shard alloc/free sources,
+including original artifacts without extensions. Dataset-global peak/list/leak
+queries and `report peak-memory` remain explicitly unsupported. See
+[dataset attribution and coverage](docs/en/querying.md#dataset-point-event-attribution).
 
 Explicit `pt-snap import snapshot.pkl --format msinsight --json` produces
 `snapshot.pkl.msinsight/` for the fixed msinsight revision's **same original

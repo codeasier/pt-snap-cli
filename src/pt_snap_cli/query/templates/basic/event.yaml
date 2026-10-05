@@ -149,6 +149,18 @@ queries:
         LIMIT {{ limit }}
         {% if offset > 0 %}OFFSET {{ offset }}{% endif %}
     output_schema:
+      - column: source_stack_id
+        type: str
+        interpretation_limits: ["Dataset only with stack_bytes>=0 or recognized ordered-frame declaration: full generation/device/canonical text identity for both layouts, or exact raw ordered-frame identity when covered; source owner/local IDs are provenance, not grouping keys; never merge by shortened text or bare local IDs."]
+      - column: text_kind
+        type: str
+        interpretation_limits: ["Dataset source detail only: captured or missing formatted text. Independent of captured ordered raw frames; text availability never changes raw-array identity."]
+      - column: frames
+        type: list
+        interpretation_limits: ["Dataset only with stack_bytes>=0 or recognized ordered-frame declaration: ordered raw JSON objects preserving duplicates, only for explicit recognized version/schema/per-event coverage; NULL is text-only/uncovered, not reconstructed from formatted text."]
+      - column: frames_status
+        type: str
+        interpretation_limits: ["Dataset only with stack_bytes>=0 or recognized ordered-frame declaration: ordered or text_only; scope.source_coverage covers returned_events separately from result truncation."]
       - column: id
         type: int
       - column: action

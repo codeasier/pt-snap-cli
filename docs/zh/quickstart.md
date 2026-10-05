@@ -80,8 +80,9 @@ pt-snap query --template-use event --slice 0 --json
 `--no-focus` 完全跳过 focus。回滚自身失败会保留并明确报告恢复路径，检查证据前不要删除。
 不保证任意 I/O 故障、并发 writer 或崩溃下无条件原子恢复。
 
-数据集 focus 当前只支持有界 `event` 寻址，不会静默在一片上运行峰值/生命周期/聚合。
-详见[原生 manifest 合同](sharded-snapshotdb.md#已发布原生数据集p2)。
+数据集 focus 支持有界 `event` 寻址及共用跨片来源的定点 active block/调用栈归因。
+数据集全局 peak/list/leak 聚合仍明确失败，不按一片近似。详见
+[定点覆盖](querying.md#数据集定点事件归因)及[原生 manifest 合同](sharded-snapshotdb.md#已发布原生数据集p2)。
 `SnapshotAnalyzer` 仍只负责分析，不新增 import/split 方法。
 
 ### 可选：导出 msinsight 兼容数据集
@@ -102,7 +103,8 @@ workspace。可信 pickle 与完整加载的内存成本仍适用。
 
 基础表是物理内联 v1 表，metadata import format 为 `1`。调用栈文本按**每个事件**
 复制，不按不同栈只存一次，磁盘与暂存转换空间可能明显增加；原生去重不变。
-不从格式化文本虚构有序结构化 frames。数据集当前只支持有界 `event` 查询。
+不从格式化文本虚构有序结构化 frames。数据集可用有界 `event` 和定点 active
+block/调用栈查询；全局聚合/报告事件选择仍不支持。
 
 兼容发布采用 **no-replace**：外部/原版/用户缓存即使 `--force` 也不覆盖、不删除。
 仅完整、已证明且身份相同的 pt-snap 缓存可复用（force 也复用）；否则换新

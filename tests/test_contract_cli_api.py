@@ -918,6 +918,59 @@ def test_compatible_import_focus_metadata_query_contract(tmp_path: Path, monkeyp
         assert not hasattr(analyzer, "import_snapshot")
 
 
+@pytest.mark.parametrize(
+    "template", ["event", "active_blocks_at_event", "active_memory_callstack_at_event"]
+)
+@pytest.mark.parametrize("frames", [False, True])
+def test_dataset_point_event_sources_cli_api_report_contract(
+    tmp_path: Path, template: str, frames: bool
+) -> None:
+    from pt_snap_cli.core.report_service import ReportService
+    from tests.core.test_dataset_attribution import add_frames, case
+
+    root = case(tmp_path)
+    if frames:
+        add_frames(root)
+    params = {"id": 0, "stack_bytes": 0} if template == "event" else {"event_id": 8}
+    if template == "active_memory_callstack_at_event":
+        params.update({"top_n": 1, "stack_bytes": 0})
+    cli = _json_stdout(
+        runner.invoke(
+            app,
+            [
+                "query",
+                str(root),
+                "--device",
+                "2",
+                "--template-use",
+                template,
+                "--params",
+                json.dumps(params),
+                "-n",
+                "1",
+                "--exact-total",
+                "--json",
+            ],
+        )
+    )
+    with SnapshotAnalyzer(root, device_id=2) as analyzer:
+        api = analyzer.execute_query(template, params, max_rows=1, exact_total=True)
+        assert {key: cli[key] for key in api} == api
+        assert cli["scope"]["source_coverage"]["range_complete"]
+        if template != "event":
+            assert (
+                cli["truncated"] and cli["scope"]["source_coverage"]["allocation_source_complete"]
+            )
+        if template == "active_memory_callstack_at_event":
+            report = ReportService()
+            try:
+                shared = report.event_attribution(8, root, 2, limit=1, stack_bytes=0)
+                assert shared.rows[0] == api["rows"][0]
+                assert shared.scope == api["scope"]
+            finally:
+                report.close()
+
+
 def test_overview_error_contract_maps_four_domain_failures(tmp_path: Path) -> None:
     missing = runner.invoke(app, ["overview", str(tmp_path / "missing.db"), "--json"])
     missing_error = json.loads(missing.stderr)["error"]
