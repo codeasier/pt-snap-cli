@@ -44,6 +44,46 @@ SnapshotDB 会记录每个事件后的 `allocated`、`active`、`reserved` 总�
 生命周期，供 `pt-snap query` 与 `pt-snap report` 使用。回放是命令工作流的一部分；
 快照运行时的 Python 模块不是公开 API。
 
+### 可选：导入原生分库数据集
+
+```bash
+pt-snap import snapshot.pkl --events-per-slice 50000 --output-dir captures --json
+pt-snap overview captures/snapshot.pkl.pt-snap-native-v2 --json
+pt-snap query --template-use event --slice 0 --json
+```
+
+不指定 `--events-per-slice` 时仍生成已有单 DB；指定后生成
+`<output-dir>/<完整输入文件名>.pt-snap-native-v2/`，省略 `--output-dir` 则放在源文件旁。
+此模式可显式指定 `--format pt-snap-native-v2`；`--format single-db` 不允许容量参数。
+`--format compatibility-v1` 和 `msinsight` 是保留边界并明确拒绝：原生产物**不是**
+msinsight 兼容导出。
+
+容量按**各设备**的真实时间顺序位置计数，不使用 `max(id)+1`，不计负 ID 合成边界。
+保留原始稀疏/非零 ID、OOM 和 workspace 事件。`--device` 选择一个有事件设备，默认
+导入全部有事件设备；空/仅静态及未选设备位置由 `omitted_devices` 披露。选择空设备或
+全部为空的输入会失败。分库不限制 pickle 加载、registry/block 行数或峰值 RSS。
+
+缓存复用须校验完整 manifest 与**全部**已关闭成员，并匹配源 SHA256、设备选择、容量、
+原生格式、manifest、导入语义、扩展及 metadata/布局合同版本。仅 CLI 发布版本变化不会
+重建；原生身份与后续兼容格式及 msinsight salted `cacheHash` 分离。JSON 增加
+`dataset_path`、`devices`、`slice_count`、`format`、`omitted_devices`、`reused` 和
+`rebuilt`；此模式下 `db_path` 为数据集目录。
+
+匹配目标可复用；不同或成员损坏的已识别原生数据集会保留，除非显式 `--force` 替换。
+未知目录、无关额外文件、非法 manifest 和符号链接目标即使 force 也不会被接管或删除，
+请换一个 `--output-dir`。所有设备/分片在目标同级暂存，完成回填、关闭、metadata 写入与
+校验，并在发布前复核源哈希；部分就绪片不构成缓存。
+
+新目标使用排他的目录 rename 发布。force 先把旧产物移入所有权受检的恢复目录，再发布
+新产物；**路径有短暂空档，不是单次原子 swap**。请求的项目 focus 纳入补偿，写入已修改
+文件后才抛错也要处理：普通失败恢复旧产物及旧 focus 原始字节/状态（或原先不存在）。
+`--no-focus` 完全跳过 focus。回滚自身失败会保留并明确报告恢复路径，检查证据前不要删除。
+不保证任意 I/O 故障、并发 writer 或崩溃下无条件原子恢复。
+
+数据集 focus 当前只支持有界 `event` 寻址，不会静默在一片上运行峰值/生命周期/聚合。
+详见[原生 manifest 合同](sharded-snapshotdb.md#已发布原生数据集p2)。
+`SnapshotAnalyzer` 仍只负责分析，不新增 import/split 方法。
+
 ### 可选：拆分快照
 
 如需生成更小、可独立回放的文件，可使用 `pt-snap split`。该命令不会读取或修改 focus：

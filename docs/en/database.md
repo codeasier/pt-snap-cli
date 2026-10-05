@@ -386,3 +386,23 @@ CREATE TABLE pt_snap_metadata (
 
 Legacy and externally produced compatible databases may omit this table. They
 remain queryable, but `pt-snap metadata` reports their metadata as unavailable.
+
+### Published native datasets
+
+`import --events-per-slice N` publishes a distinct `pt-snap-native-v2` manifest,
+not a compatibility-v1 manifest or another standalone DB layout. Each finalized
+shard uses the existing v2 tables plus `pt_snap_block_reference` (version 1), with
+`blockId INTEGER PRIMARY KEY`, `stream INTEGER NOT NULL`, `allocCallstack TEXT`,
+`freeCallstack TEXT`. These are text lifecycle sources, not structured frames or
+an automatic cross-shard JOIN. `pt_snap_metadata` is required and identical in all
+members; native manifest identity additionally versions source/device/capacity,
+format/manifest/import/extension contracts, independently of CLI release version.
+
+Real counts use positions per device, preserving original sparse IDs and native
+OOM/workspace events. Negative boundaries do not consume capacity. Reader
+validation includes full-member hashes and finalized identity/reference consistency
+before bounded `event` addressing; it never repairs or migrates files. Aggregate
+and lifecycle dataset queries remain unsupported. See the separate
+[native manifest protocol](sharded-snapshotdb.md#published-native-dataset-p2) and
+[transaction/recovery guide](quickstart.md#optional-import-a-native-sharded-dataset).
+P0 compatibility-v1 table order, inline callstack layout and reject rules are unchanged.

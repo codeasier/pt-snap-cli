@@ -56,6 +56,16 @@ Complete compatibility-v1 sharded artifacts can be focused by directory or
 `manifest.json`, without the archived pickle. See [dataset focus and addressing](docs/en/sharded-snapshotdb.md#complete-dataset-focus-and-addressing-p1)
 for read-only overview, event routing, `--slice`, and explicit cross-slice limits.
 
+Opt into a **native, not msinsight-compatible** dataset with
+`pt-snap import snapshot.pkl --events-per-slice 50000 --output-dir captures --json`.
+The output is `captures/snapshot.pkl.pt-snap-native-v2/`; default standalone import
+is unchanged. Reuse validates all shards and content/options/semantic versions.
+Nonmatching recognized targets require `--force`; unknown targets are preserved.
+Publication/focus failures are compensated, with explicit recovery evidence if
+rollback fails (force is not a single crash-atomic swap). See the
+[native import guide](docs/en/quickstart.md#optional-import-a-native-sharded-dataset).
+Only bounded dataset `event` queries are currently supported.
+
 ## Commands
 
 | Command | Description |
@@ -102,7 +112,7 @@ See the [documentation index](docs/README.md) for all English and Chinese guides
 | Splitting snapshots | [Splitting Snapshots](docs/en/splitting.md) |
 | Agent skills | [Agent Skills](docs/en/skills.md) |
 | Database format | [SnapshotDB Schema](docs/en/database.md) |
-| Sharded contract and internal replay (P0/P1; no CLI exporter) | [Sharded SnapshotDB protocol](docs/en/sharded-snapshotdb.md) |
+| Sharded protocols, native import and compatibility limits | [Sharded SnapshotDB protocol](docs/en/sharded-snapshotdb.md) |
 | Python API | [SnapshotAnalyzer API](docs/en/snapshot-analyzer-api.md) |
 | Result mapping utility | [ResultMapper API](docs/en/result-mapper-api.md) |
 

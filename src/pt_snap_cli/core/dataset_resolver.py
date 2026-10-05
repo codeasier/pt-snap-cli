@@ -1,7 +1,8 @@
 """Resolve finalized compatibility datasets above the single-DB Context layer.
 
 Original local reader of the P0 contract; no pickle, migration or producer code.
-Native-v2 private replay staging has no published manifest and is not a dataset.
+Native-v2 private replay staging is not a dataset until the native publisher closes,
+attests and validates its complete versioned manifest.
 """
 
 from __future__ import annotations
@@ -16,10 +17,20 @@ from pt_snap_cli.core.dataset_contract import (
     DatasetValidation,
     DeviceRecord,
     QueryScope,
+    _unique_object,
     parse_manifest,
     validate_dataset,
 )
+from pt_snap_cli.core.dataset_files import hash_file as _hash_file
+from pt_snap_cli.core.dataset_files import require_readonly_member as _require_readonly_member
 from pt_snap_cli.core.errors import DatabaseSchemaError, InvalidDeviceError, InvalidParameterError
+from pt_snap_cli.core.native_dataset_contract import (
+    NATIVE_FORMAT,
+    NativeManifest,
+    parse_native_manifest,
+    validate_native_dataset,
+    validate_native_scope,
+)
 
 
 @dataclass(frozen=True)
@@ -34,7 +45,7 @@ class ResolvedDataset:
 
     @property
     def callstack_layout(self) -> str:
-        return "v1"
+        return "v2" if isinstance(self.validation.manifest, NativeManifest) else "v1"
 
     @property
     def callstack_layout_error(self) -> None:
@@ -50,7 +61,11 @@ class ResolvedDataset:
     def paths(self, scope: QueryScope) -> tuple[Path, ...]:
         """Address all matching slices; this does not execute/aggregate queries."""
         try:
-            scope.validate(self.validation.manifest)
+            manifest = self.validation.manifest
+            if isinstance(manifest, NativeManifest):
+                validate_native_scope(scope, manifest)
+            else:
+                scope.validate(manifest)
         except DatasetContractError as exc:
             raise InvalidParameterError(str(exc)) from exc
         return tuple(
@@ -69,7 +84,7 @@ class ResolvedDataset:
             "manifest_path": str(self.root / "manifest.json"),
             "schema_version": manifest.schema_version,
             "status": manifest.status,
-            "format": "compatibility-v1",
+            "format": NATIVE_FORMAT if isinstance(manifest, NativeManifest) else "compatibility-v1",
             "fingerprint": self.fingerprint,
             "real_event_count": self.validation.real_event_count,
             "boundary_event_count": self.validation.boundary_event_count,
@@ -116,15 +131,23 @@ class DatasetResolver:
                 raise DatabaseSchemaError("Dataset manifest must not be a symlink.")
             before = _hash_file(manifest_path)
             with manifest_path.open(encoding="utf-8") as source:
-                raw: object = json.load(source)
-            planned = parse_manifest(raw)
+                raw: object = json.load(source, object_pairs_hook=_unique_object)
+            planned = (
+                parse_native_manifest(raw)
+                if isinstance(raw, dict) and raw.get("format") == NATIVE_FORMAT
+                else parse_manifest(raw)
+            )
             # mode=ro can create WAL/SHM files even after the last writer has
             # checkpointed and removed them. Check every member before the first
             # SQLite open, without following aliases or repairing the artifact.
             for device in planned.devices:
                 for item in device.slices:
                     _require_readonly_member(root, root / item.file)
-            validation = validate_dataset(root)
+            validation = (
+                validate_native_dataset(root, planned)
+                if isinstance(planned, NativeManifest)
+                else validate_dataset(root)
+            )
             digest = hashlib.sha256()
             digest.update(before.encode("ascii"))
             for device in validation.manifest.devices:
@@ -138,32 +161,3 @@ class DatasetResolver:
             return ResolvedDataset(root, validation, digest.hexdigest())
         except (DatasetContractError, OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise DatabaseSchemaError(f"Invalid dataset: {exc}") from exc
-
-
-def _require_readonly_member(root: Path, member: Path) -> None:
-    # Manifest parsing fixes canonical relative paths; reject member/parent
-    # symlinks before the header read, not only when the validator opens SQLite.
-    parts = member.relative_to(root).parts
-    for index in range(1, len(parts) + 1):
-        if root.joinpath(*parts[:index]).is_symlink():
-            raise DatabaseSchemaError(f"Dataset member must not use symlink paths: {member}")
-    if member.resolve() != member or not member.is_file():
-        raise DatabaseSchemaError(f"Dataset member is missing or not a canonical file: {member}")
-    for suffix in ("-wal", "-journal", "-shm"):
-        sidecar = Path(str(member) + suffix)
-        if sidecar.exists() or sidecar.is_symlink():
-            raise DatabaseSchemaError(f"Dataset member has a live SQLite sidecar: {member}")
-    with member.open("rb") as source:
-        header = source.read(20)
-    # SQLite's file-format write/read versions at offsets 18/19 mark WAL as 2.
-    # A sidecar-free WAL database is still unsafe to open with mode=ro.
-    if header[:16] == b"SQLite format 3\x00" and 2 in header[18:20]:
-        raise DatabaseSchemaError(f"Dataset member uses persistent WAL mode: {member}")
-
-
-def _hash_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for chunk in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()

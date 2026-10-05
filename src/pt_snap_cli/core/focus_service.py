@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import copy
+import os
 import sqlite3
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +78,121 @@ class FocusService:
             callstack_layout=callstack_layout,
             callstack_layout_error=callstack_layout_error,
         )
+
+    @staticmethod
+    def _safe_focus_path(path: Path) -> None:
+        if path.resolve() != path or path.is_symlink() or (path.exists() and not path.is_file()):
+            raise OSError(f"Unsafe project focus path: {path}")
+
+    @staticmethod
+    def _checkpoint_file(path: Path, content: bytes, mode: int) -> tuple[Path, tuple[int, int]]:
+        fd, name = tempfile.mkstemp(dir=path.parent, prefix=".focus.pt-snap-", suffix=".recovery")
+        backup = Path(name)
+        identity = os.fstat(fd)
+        try:
+            remaining = memoryview(content)
+            while remaining:
+                written = os.write(fd, remaining)
+                if written <= 0:
+                    raise OSError("Could not write focus recovery checkpoint")
+                remaining = remaining[written:]
+            os.fchmod(fd, mode)
+            os.fsync(fd)
+            FocusService._verify_checkpoint(backup, (identity.st_dev, identity.st_ino))
+        except BaseException:
+            try:
+                FocusService._verify_checkpoint(backup, (identity.st_dev, identity.st_ino))
+                backup.unlink()
+            except OSError:
+                pass
+            raise
+        finally:
+            os.close(fd)
+        return backup, (identity.st_dev, identity.st_ino)
+
+    @staticmethod
+    def _verify_checkpoint(path: Path, identity: tuple[int, int]) -> None:
+        FocusService._safe_focus_path(path)
+        info = path.lstat()
+        if (info.st_dev, info.st_ino) != identity:
+            raise OSError(f"Focus recovery checkpoint substituted: {path}")
+
+    @staticmethod
+    def _restore_project_focus(
+        path: Path, backup: Path, identity: tuple[int, int], expected_bytes: bytes
+    ) -> None:
+        FocusService._safe_focus_path(path)
+        FocusService._verify_checkpoint(backup, identity)
+        if backup.read_bytes() != expected_bytes:
+            raise OSError("Focus recovery checkpoint content changed; preserve evidence")
+        os.replace(backup, path)
+
+    @contextmanager
+    def project_focus_transaction(self) -> Iterator[None]:
+        """Import-only compensation, including writes that mutate and THEN raise.
+
+        Store old bytes verbatim, not normalized JSON. An I/O/alias failure during
+        compensation preserves the checkpoint and reports its recovery location.
+        This is not a concurrency lock or an arbitrary-crash atomicity promise.
+        """
+        from .errors import ImportExecutionError
+
+        path = self._config.project_focus_path()
+        self._safe_focus_path(path)
+        old = path.read_bytes() if path.exists() else None
+        state = copy.deepcopy(self._config._config)
+        backup: Path | None = None
+        identity: tuple[int, int] | None = None
+        path.parent.mkdir(parents=True, exist_ok=True)
+        backup, identity = self._checkpoint_file(
+            path,
+            old if old is not None else b"",
+            path.stat().st_mode & 0o777 if old is not None else 0o600,
+        )
+        preserve = False
+        try:
+            yield
+        except BaseException as focus_error:
+            self._config._config = state
+            try:
+                self._safe_focus_path(path)
+                if old is None:
+                    if path.exists():
+                        # Verified exact path; never unlink a symlink target.
+                        path.unlink()
+                elif not path.exists() or path.read_bytes() != old:
+                    assert backup is not None and identity is not None
+                    try:
+                        self._restore_project_focus(path, backup, identity, old)
+                    except BaseException:
+                        # A rename may have restored the exact bytes BEFORE an
+                        # injected/late I/O exception. Verify the actual outcome.
+                        self._safe_focus_path(path)
+                        if not path.exists() or path.read_bytes() != old:
+                            raise
+                    self._safe_focus_path(path)
+                    if not path.exists() or path.read_bytes() != old:
+                        raise OSError(
+                            "Project focus was not restored exactly; preserve recovery evidence"
+                        )
+                    if not backup.exists():
+                        backup = None
+            except BaseException as rollback_error:
+                preserve = True
+                raise ImportExecutionError(
+                    f"Focus update failed and focus rollback also failed: {rollback_error}. "
+                    f"Recovery focus checkpoint: {backup}; prior focus existed: {old is not None}."
+                ) from focus_error
+            raise
+        finally:
+            if backup is not None and identity is not None and not preserve:
+                # Failure to clean a committed checkpoint is safer than masking
+                # the real transaction outcome or deleting a substituted path.
+                try:
+                    self._verify_checkpoint(backup, identity)
+                    backup.unlink()
+                except OSError:
+                    pass
 
     def set_project_focus(
         self,

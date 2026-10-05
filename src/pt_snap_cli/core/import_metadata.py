@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import sqlite3
 from contextlib import closing
 from dataclasses import asdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -13,11 +12,16 @@ from pt_snap_cli import __version__
 from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionError
 from pt_snap_cli.core.dataset_resolver import DatasetResolver
 from pt_snap_cli.core.errors import DatabaseMissingError, DatabaseSchemaError, ImportMetadataError
+from pt_snap_cli.core.import_metadata_contract import (
+    metadata_from_mapping,
+    validate_import_metadata,
+)
 from pt_snap_cli.core.models import (
     CacheDecision,
     ImportMetadata,
     MetadataInspection,
 )
+from pt_snap_cli.core.native_dataset_contract import NativeManifest
 
 METADATA_TABLE = "pt_snap_metadata"
 METADATA_SCHEMA_VERSION = 1
@@ -27,7 +31,6 @@ IMPORT_FORMAT_VERSION = 2
 IMPORTER_NAME = "pt-snap-cli"
 HASH_CHUNK_SIZE = 1024 * 1024
 
-_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _REQUIRED_COLUMNS = {
     "id",
     "metadata_schema_version",
@@ -80,6 +83,8 @@ class ImportMetadataService:
         dataset = DatasetResolver().inspect(db_path)
         path = Path(db_path).expanduser().resolve()
         if dataset is not None:
+            if isinstance(dataset.validation.manifest, NativeManifest):
+                return MetadataInspection(path, "available", dataset.validation.manifest.metadata)
             # Per-slice extensions are not a dataset-wide importer/source attestation.
             return MetadataInspection(path, "unavailable", reason="metadata_missing")
         try:
@@ -236,19 +241,7 @@ class ImportMetadataService:
         }
 
     def _metadata_from_row(self, row: dict[str, Any]) -> ImportMetadata:
-        metadata = ImportMetadata(
-            metadata_schema_version=self._required_int(row["metadata_schema_version"]),
-            import_format_version=self._required_int(row["import_format_version"]),
-            source_sha256=self._required_str(row["source_sha256"]),
-            source_size=self._required_int(row["source_size"]),
-            source_name=self._required_str(row["source_name"]),
-            requested_device=self._optional_int(row["requested_device"]),
-            importer_name=self._required_str(row["importer_name"]),
-            importer_version=self._required_str(row["importer_version"]),
-            completed_at=self._required_str(row["completed_at"]),
-        )
-        self._validate_metadata(metadata, allow_unsupported_version=True)
-        return metadata
+        return metadata_from_mapping(row)
 
     @staticmethod
     def _validate_metadata(
@@ -261,19 +254,7 @@ class ImportMetadataService:
             and metadata.metadata_schema_version != METADATA_SCHEMA_VERSION
         ):
             raise ValueError("Unsupported metadata schema version")
-        if metadata.metadata_schema_version < 1 or metadata.import_format_version < 1:
-            raise ValueError("Metadata versions must be positive integers")
-        if not _SHA256_RE.fullmatch(metadata.source_sha256):
-            raise ValueError("source_sha256 must be a lowercase SHA-256 digest")
-        if metadata.source_size < 0 or not metadata.source_name:
-            raise ValueError("Source metadata is invalid")
-        if metadata.requested_device is not None and metadata.requested_device < 0:
-            raise ValueError("requested_device must be non-negative")
-        if not metadata.importer_name or not metadata.importer_version:
-            raise ValueError("Importer metadata is invalid")
-        parsed_time = datetime.fromisoformat(metadata.completed_at)
-        if parsed_time.tzinfo is None or parsed_time.utcoffset() != timedelta(0):
-            raise ValueError("completed_at must use UTC")
+        validate_import_metadata(metadata)
 
     @staticmethod
     def _required_int(value: Any) -> int:

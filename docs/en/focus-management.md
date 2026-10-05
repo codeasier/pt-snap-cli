@@ -112,6 +112,33 @@ ignore rules automatically.
 }
 ```
 
+## Complete Dataset Focus and Import Compensation
+
+A complete compatibility-v1 dataset or published `pt-snap-native-v2` directory/
+`manifest.json` can be focused with the same precedence and device rules:
+
+```bash
+pt-snap focus captures/snapshot.pkl.pt-snap-native-v2 --device 0 --json
+pt-snap query --template-use event --slice 0 --json
+```
+
+Native layout is `v2`; compatibility layout is `v1`. All declared members are
+validated before writing focus, with no artifact repairs or layout persistence.
+Native sparse IDs are addressed as original IDs, not positional counts. Only
+bounded `event` queries are supported through dataset focus; aggregate/lifecycle
+and cross-slice requests fail explicitly. API session focus is read-only and
+`SnapshotAnalyzer` has no import/split facade.
+
+Import writes project focus in the **current directory**, not the output directory.
+`--no-focus` skips it. A native dataset import focus failure, including mutation before an error,
+restores the old artifact plus exact prior focus bytes and in-memory config state
+(or prior absence) on ordinary compensation. If restoration fails, the error
+identifies the retained `.focus.pt-snap-*.recovery` checkpoint and/or dataset
+recovery directory. An empty checkpoint with `prior focus existed: False` records
+prior absence, not a valid focus JSON. Preserve evidence for manual recovery;
+no unconditional I/O/crash atomicity or concurrent-writer lock is promised.
+See [native import](quickstart.md#optional-import-a-native-sharded-dataset).
+
 ## Error Handling
 
 **No focus configured:**

@@ -1,4 +1,4 @@
-# Sharded SnapshotDB protocol (P0, compatibility v1)
+# Sharded SnapshotDB protocols (compatibility v1 and native v2)
 
 [中文](../zh/sharded-snapshotdb.md) | English
 
@@ -247,8 +247,64 @@ mode; standalone DB behavior is unchanged. This is read-only inspection, not a
 filesystem sandbox or a concurrent producer lock. Native-v2 replay's private staging directory has **no published manifest**
 and is rejected as a dataset; its individual DBs remain readable via the existing
 single-DB entry. A future compatibility-v1 producer can use this same reader
-without producer-specific metadata. No native-v2 manifest protocol, exporter,
-cache publication, migration, or cross-slice lifecycle reconstruction is invented.
+without producer-specific metadata. The P1 reader does not create a native manifest; publication requires the explicit
+P2 native protocol below. Compatibility export and cross-slice lifecycle execution
+remain separate work. In particular, the fixed original compatibility producer can
+leave finalized, sidecar-free WAL headers, which this reader still rejects. Transport
+support for those artifacts is a compatibility prerequisite, not passed upstream/GUI
+interoperability; analysis never rewrites them.
+
+## Published Native Dataset (P2)
+
+This is an **original, separately named and versioned** pt-snap protocol, not a
+relabeled P0 artifact. `ImportService`/CLI can publish the internal native replay
+result as `<output-dir>/<full-source-filename>.pt-snap-native-v2/`. The root must
+contain exactly `manifest.json` plus the declared `device_<id>` directories; each
+device directory contains exactly its canonical `slice_<index:05d>.db` members.
+
+Required native manifest fields:
+
+| Field | Contract |
+| --- | --- |
+| `format` | Exactly `pt-snap-native-v2`, independently dispatched from compatibility-v1 |
+| `schemaVersion`, `status` | Native manifest version `1`, only `complete` |
+| `sourceFile` | Nonempty source basename matching `metadata.source_name`; never opened by analysis |
+| `identity` | Exact fields `sourceSha256`, `requestedDevice`, `eventsPerSlice`, `outputFormat`, `manifestContractVersion`, `formatContractVersion`, `importContractVersion`, `extensionContractVersion`, `metadataSchemaVersion`, `importFormatVersion` |
+| `metadata` | Complete existing `ImportMetadata` object, identical to the single row in every shard |
+| `omittedDevices` | Distinct unselected/empty/static-only source device positions, disjoint from selected devices |
+| `devices` | Canonical decimal keys; positive `eventCount`, `sliceCount`, all `readySlices` in order, ordered `slices` |
+| Each slice | `index`, `startPosition`, `endPosition`, `startEventId`, `endEventId`, canonical relative `file`, `ready: true`, closed-member `sha256` |
+
+All semantic contract versions start at `1`; native metadata schema is `1` and DB
+import format is `2`. `requestedDevice` is null (all event-bearing devices) or one
+nonnegative integer. SHA256 strings are lowercase 64-digit hex. CLI
+`metadata.importer_version` is informational, **not** a cache invalidation axis.
+Native and future compatible identities are separately versioned; no native
+`cacheHash` is generated or accepted as an identity substitute.
+
+Positions continuously cover `0..eventCount-1` per device, with every nonfinal
+slice full and the final slice at most capacity. ID ranges are inclusive original
+chronological bounds and may be sparse/nonzero; real count comes from positions
+and actual rows, never `max(id)+1`. Negative synthetic rows are counted separately.
+Each member has exactly its native-v2 trace/block device tables, `dictionary`,
+`callstack`, `pt_snap_metadata`, and finalized `pt_snap_block_reference` v1. Native
+trace columns match the standalone v2 schema (`callstackId`, not inline text),
+with native OOM action 8 retained. Block IDs/lifetimes and text references must be
+finalized, consistent across slices and refer to original IDs in that device.
+Unknown extension declarations/tables do not grant structured-frame capability.
+
+The native resolver validates all member hashes, actual schemas/dictionaries,
+real count/ranges, metadata and finalized references, retaining the P1 pre-open
+alias/sidecar/persistent-WAL checks and bounded borrowed-cache ownership. Focus,
+metadata, overview and single-slice `event` addressing work without the source
+pickle. Native metadata is available dataset-wide; compatibility metadata remains
+unavailable. No migration, repair, cross-slice aggregation/lifecycle execution,
+msinsight exporter, salted hash policy or GUI acceptance is implied. The P0
+schema and reject policies above remain unchanged.
+
+Publication and force/focus compensation are described in the
+[import guide](quickstart.md#optional-import-a-native-sharded-dataset). A complete
+manifest becomes visible only with all finalized members, never one ready shard.
 
 ## Internal continuous replay (P1)
 

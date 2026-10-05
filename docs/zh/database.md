@@ -368,3 +368,19 @@ CREATE TABLE pt_snap_metadata (
 
 旧版或外部生成的兼容数据库可以不包含此表，仍可正常查询；`pt-snap metadata` 会将其
 metadata 状态报告为 unavailable。
+
+### 已发布原生数据集
+
+`import --events-per-slice N` 发布独立 `pt-snap-native-v2` manifest，不是兼容 v1
+manifest，也不改变单库布局。各最终化片使用已有 v2 表及 `pt_snap_block_reference`
+（版本 1）：`blockId INTEGER PRIMARY KEY`、`stream INTEGER NOT NULL`、
+`allocCallstack TEXT`、`freeCallstack TEXT`。它们记录文本生命周期来源，不是结构化
+frames 或自动跨片 JOIN。每片必需且一致的 `pt_snap_metadata` 之外，原生 manifest
+身份另包含源/设备/容量、格式/manifest/导入/扩展合同版本，与 CLI 发布版本分离。
+
+真实计数按各设备位置，保留原始稀疏 ID、OOM/workspace；负边界不占容量。
+reader 在有界 `event` 寻址前校验完整成员哈希、最终化身份/引用一致性，不修复、不迁移。
+数据集聚合/生命周期查询仍不支持。详见独立
+[原生 manifest 协议](sharded-snapshotdb.md#已发布原生数据集p2)及
+[事务恢复指南](quickstart.md#可选导入原生分库数据集)。
+P0 兼容 v1 表序、内联 callstack 布局和拒绝规则不变。
