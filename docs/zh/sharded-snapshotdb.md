@@ -1,0 +1,162 @@
+# 分片 SnapshotDB 协议（P0，兼容 v1）
+
+中文 | [English](../en/sharded-snapshotdb.md)
+
+## 范围与版本
+
+本阶段冻结产物协议和共享校验模型，**不新增 CLI 导出器或跨片查询引擎**。现有
+`import` 默认仍生成一个原生 v2 DB；`split` 仍输出可回放 pickle/JSON。现有单库
+v1/v2 分析与 focus 不变。下述 `complete` 门槛只约束新数据集合同，不约束旧单库分析。
+
+`pt_snap_cli.core.dataset_contract` 提供 `parse_manifest`、`validate_event_ids`、
+`validate_dataset`、不可变 manifest/device/slice 模型、`QueryScope` 和带
+`location/code` 的 `DatasetContractError`。生产端可在发布前与读取端共用同一合同。
+校验不加载 pickle、不创建缺失数据库、不迁移 SQLite、不写 focus。
+
+版本轴分别管理：
+
+- `schemaVersion=1`：本文的 manifest 和兼容基础表协议。
+- `pt_snap_metadata.import_format_version`：已有 pt-snap 导入格式，当前为 2；
+  **不是** manifest 版本，外部产物不要求该表。
+- 后续结构化 frame 扩展独立版本化。未知扩展不影响基础读取，也不意味着支持结构化 frames。
+
+## 目录与 manifest
+
+生产端布局为 `<原始 snapshot 路径>.msinsight/manifest.json`，分片相对于该目录放在
+`device_<id>/slice_<index:05d>.db`。允许显式指定已搬迁的产物目录进行校验；
+`sourceFile` 记录来源，不是要打开的路径。检查时不得加载源 pickle。
+
+```json
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "sourceFile": "/capture/snapshot.pkl",
+  "cacheHash": "producer-specific-opaque-identity",
+  "eventsPerSlice": 2,
+  "devices": {
+    "0": {
+      "eventCount": 4,
+      "sliceCount": 2,
+      "readySlices": [0, 1],
+      "slices": [
+        {"index": 0, "startEventId": 0, "endEventId": 1, "file": "device_0/slice_00000.db", "ready": true},
+        {"index": 1, "startEventId": 2, "endEventId": 3, "file": "device_0/slice_00001.db", "ready": true}
+      ]
+    }
+  }
+}
+```
+
+示例中所有字段必需。整数不能是布尔或浮点数；计数/区间使用有符号 64 位整数，
+版本/index/sliceCount/device ID 使用非负有符号 32 位整数。设备 key 为规范十进制
+ID（`0` 而非 `00`）。`sourceFile` 非空。`cacheHash` 是生产端不透明 token，
+外部产物可为空：**不能**假定它是 SHA-256 或源内容证据。未来缓存需要区分源内容、
+生产端/格式、基础/扩展版本、所选设备、容量和最终化 generation；单独的源路径、
+size/mtime、`cacheHash` 或单片 index 都不足以复用。本 P0 模块不执行缓存复用。
+
+`building` 只允许用 `parse_manifest(..., require_complete=False)` 检查部分就绪状态，
+仍须声明完整计划区间。`complete` 必须在**身份/生命周期回填结束后**使所有片就绪。
+就绪 index 不重复、不越界，并与各片布尔值一致。`validate_dataset` 只接受所有文件
+齐全的 complete 数据集；不会创建缺片。重复 JSON 成员被拒绝。
+
+各设备分片从 index 0 顺序排列；闭区间无重叠/缺口地连续覆盖 `0..eventCount-1`。
+每片最多 `eventsPerSlice` 个真实事件（允许中间片较短）。按真实事件位置计数，不能
+用 `max(id)+1` 推算。兼容 v1 **拒绝非零起点、稀疏、乱序或重复的原始真实 ID**，
+不得静默改号。空设备和仅有静态 block 的设备无法表示：请求此类设备时明确拒绝，
+不得虚构 event 0；全部为空的数据集被拒绝。可明确选择其他设备，但生产端必须披露省略。
+
+路径须严格对应声明的 device/index 相对路径；拒绝绝对/盘符/UNC 路径、`..`、`.`、
+空分量、反斜线、NUL、设备错配、别名及成员/父目录符号链接。校验以 `mode=ro`
+打开 SQLite，包括失败路径都关闭资源。这不是 OS 沙箱，也不锁住并发发布。
+
+## 固定基础 SQLite schema
+
+每片须有本设备的**实际表**，不能用兼容 VIEW 替代：`trace_entry_<id>`、`block_<id>`、
+`dictionary`。上游部分 `SELECT *` 按位置读取，因此列序属于合同。原生 v2 的
+`callstackId` 不能替代内联文本。
+
+| 表 | 按顺序排列的列（SQLite 声明类型） |
+| --- | --- |
+| `trace_entry_<id>` | `id INTEGER PRIMARY KEY`, `action INTEGER`, `address INTEGER`, `size INTEGER`, `stream INTEGER`, `allocated INTEGER`, `active INTEGER`, `reserved INTEGER`, `callstack TEXT` |
+| `block_<id>` | `id INTEGER PRIMARY KEY`, `address INTEGER`, `size INTEGER`, `requestedSize INTEGER`, `state INTEGER`, `allocEventId INTEGER`, `freeEventId INTEGER` |
+| `dictionary` | `table TEXT`, `column TEXT`, `key TEXT`, `value TEXT` |
+
+dictionary 的十进制整数 key 以文本存储，使用真实带设备后缀的表名与列名。每片包含
+以下完整且精确的映射：
+
+| 列 | key → value |
+| --- | --- |
+| `trace_entry_<id>.action` | `0 → segment_map`, `1 → segment_unmap`, `2 → segment_alloc`, `3 → segment_free`, `4 → alloc`, `5 → free_requested`, `6 → free_completed`, `7 → workspace_snapshot` |
+| `block_<id>.state` | `-1 → inactive`, `0 → active_pending_free`, `1 → active_allocated` |
+
+不接受未知基础 action/state。特别是原生 pt-snap 的 `oom=8` 不在固定版本兼容基线内；
+未来导出器须拒绝或协商独立扩展，不得重标记。指标/大小单位为字节；event ID 是按时间
+排序的身份，**不是时间戳**。
+
+## 边界事件与 block 生命周期
+
+- 真实事件保留非负原始 ID。`eventCount`、容量、范围及真实事件峰值只计数/筛选 `id >= 0`。
+- 负 trace ID 独立标识合成的左边界状态行（`segment_map=0` 或 `segment_alloc=2`）。
+  即使内存总量很大，也不能竞争真实峰值或占容量。ID 在片内局部，使用
+  `(device, slice, 负 ID)` 标识边界行；重复边界 segment 不等于新真实分配。
+  校验分别报告 `real_event_count/boundary_event_count`，不执行峰值查询。
+- 已解析 block 的身份是 `(device ID, 原始 allocation event ID)`；所有出现片中
+  `block.id == allocEventId >= 0`。释放后同地址复用产生**另一个** block。
+  禁止按地址或片内行号去重。
+- 预存/未解析 block 使用数据集/设备内稳定的负 `block.id`，`allocEventId=-1`。
+  重复出现保留 ID，同地址不同对象不得碰撞。负身份不是已知分配事件；未来增强身份/覆盖表
+  可区分预存和其他未解析情况。
+- `freeEventId=-1` 表示没有观察到释放（存活**或未知**，不证明泄漏）；否则必须是设备内
+  真实 ID，不能早于已知 alloc。`allocEventId=-1` 表示未知/预存，不是 event 0；
+  其他负生命周期哨兵非法。最终化的完整 ID/生命周期可指向当前片范围外。各片状态观察可
+  不同，但重复身份的地址、大小、requested size、alloc/free ID 必须一致。已解析分配
+  最终化后不得遗留临时占位 ID。
+
+若生产端已丢失身份，基础格式无法证明两个碰撞的未解析记录是不同对象；生产端必须正确跟踪。
+
+## 扩展、scope 与能力
+
+可选 metadata、去重 stack、有序 frame 使用隔离的 `pt_snap_*` 扩展表或 sidecar，
+不能向按位置读取的基础表追加列。尤其**不能给内联 v1 附加未命名隔离的原生
+`callstack` 表**：现有布局检测会正确报告 v1/v2 冲突。原生 v2 仍是独立单库布局，
+不是本兼容基础格式。这里不要求 `pt_snap_metadata` 或辅助引用表。
+
+基础校验忽略未知 `extensions` 声明/表。`DatasetValidation.text_callstacks=True`
+表示有内联文本列，不保证每个事件有栈。即使 manifest 声称 frames，
+`structured_frames=False` 仍为假：完整结构化 frame 能力要求已识别的独立扩展版本、
+有序 frame 行、合法引用及覆盖率，本 P0 不实现。文本栈不能代替这些保证。
+
+`QueryScope.validate(manifest)` 只定义 selector，不宣称支持执行：
+
+| scope | 必需 selector 与范围 |
+| --- | --- |
+| `dataset` | 无 selector；所有声明设备的完整真实 trace |
+| `device` | `device_id`；一个声明设备的完整真实 trace |
+| `slice` | `device_id`, `slice_index`；该片真实区间，边界独立 |
+| `event_range` | `device_id`、设备内闭区间 `start_event_id/end_event_id`；可跨片 |
+
+设备间没有全局事件顺序。边界 ID 不能作为范围端点。`query_execution=False`
+明确表示跨片执行留后续；scope 校验成功不使现有 CLI/API 自动接受 manifest 或目录。
+
+```python
+from pt_snap_cli.core.dataset_contract import QueryScope, validate_dataset
+
+inspection = validate_dataset("/capture/snapshot.pkl.msinsight")
+QueryScope("event_range", device_id=0, start_event_id=1, end_event_id=3).validate(
+    inspection.manifest
+)
+assert not inspection.structured_frames
+```
+
+## 来源证据与限制
+
+接口事实已从固定版本真实源码读取：
+[manifest 校验](https://github.com/Ascend/msinsight/blob/101f65b877a267ffd5f66ea3834706057ba243e5/server/src/modules/memsnapshot/service/MemSnapshotSliceService.cpp)、
+[SQLite 按位置读取](https://github.com/Ascend/msinsight/blob/101f65b877a267ffd5f66ea3834706057ba243e5/server/src/modules/memsnapshot/database/MemSnapshotDatabase.cpp)、
+[基础 schema](https://github.com/Ascend/msinsight/blob/101f65b877a267ffd5f66ea3834706057ba243e5/scripts/MemSnapDump/tools/adaptors/database/snapshot_db.py)、
+[发布/回填](https://github.com/Ascend/msinsight/blob/101f65b877a267ffd5f66ea3834706057ba243e5/scripts/MemSnapDump/tools/adaptors/snapshot2db.py)。
+这些源码包含 Huawei Mulan PSL v2 声明。本文合同、Python 校验器和合成测试是本地原创的
+接口事实实现，没有向包内复制上游实现；上游 docs 单独使用 CC BY 4.0，不能替代源码声明。
+
+complete 就绪一致性和规范路径规则刻意严于上游 parser（上游也支持 building）。
+合成合同测试/真实源函数对照不是 GUI 验收、原生导出器验收、性能测量，也不证明其他版本互通。

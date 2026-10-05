@@ -12,6 +12,7 @@
 | Splitting Snapshots | [en/splitting.md](en/splitting.md) |
 | Agent skills | [en/skills.md](en/skills.md) |
 | Database Schema | [en/database.md](en/database.md) |
+| Sharded SnapshotDB protocol (P0) | [en/sharded-snapshotdb.md](en/sharded-snapshotdb.md) |
 | Import metadata | [en/database.md](en/database.md) |
 | SnapshotAnalyzer API | [en/snapshot-analyzer-api.md](en/snapshot-analyzer-api.md) |
 | ResultMapper API | [en/result-mapper-api.md](en/result-mapper-api.md) |
@@ -28,6 +29,7 @@
 | 拆分快照 | [zh/splitting.md](zh/splitting.md) |
 | Agent skill | [zh/skills.md](zh/skills.md) |
 | 数据库格式 | [zh/database.md](zh/database.md) |
+| 分片 SnapshotDB 协议（P0） | [zh/sharded-snapshotdb.md](zh/sharded-snapshotdb.md) |
 | 导入 metadata | [zh/database.md](zh/database.md) |
 | SnapshotAnalyzer API | [zh/snapshot-analyzer-api.md](zh/snapshot-analyzer-api.md) |
 | ResultMapper API | [zh/result-mapper-api.md](zh/result-mapper-api.md) |
