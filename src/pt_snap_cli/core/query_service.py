@@ -315,7 +315,7 @@ class QueryService:
             item = device.slices[slice_index]
             low, high = item.start_event_id, item.end_event_id
         else:
-            low, high = 0, device.event_count - 1
+            low, high = device.slices[0].start_event_id, device.slices[-1].end_event_id
         event_id = validated.get("id")
         start = validated.get("min_id")
         end = validated.get("max_id")

@@ -51,6 +51,13 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 只读 overview、事件路由、`--slice` 和跨片限制见
 [完整数据集 focus 与寻址](docs/zh/sharded-snapshotdb.md#完整数据集-focus-与寻址p1)。
 
+用 `pt-snap import snapshot.pkl --events-per-slice 50000 --output-dir captures --json`
+显式生成**原生、非 msinsight 兼容**数据集 `captures/snapshot.pkl.pt-snap-native-v2/`。
+默认单库导入不变；复用校验全部片及内容/选项/语义版本。不匹配的已识别目标须
+`--force`，未知目标保留。发布/focus 失败会补偿，回滚自身失败则保留并报告恢复证据
+（force 不是单次崩溃原子 swap）。详见
+[原生分库导入](docs/zh/quickstart.md#可选导入原生分库数据集)；当前仅支持有界数据集 `event` 查询。
+
 ## 命令
 
 | 命令 | 说明 |
@@ -95,7 +102,7 @@ helper 会先路由采集，无需先安装 CLI。分析仍需要 CLI 和 Snapsh
 | 拆分快照 | [拆分快照](docs/zh/splitting.md) |
 | Agent skill | [Agent Skills](docs/zh/skills.md) |
 | 数据库格式 | [SnapshotDB Schema](docs/zh/database.md) |
-| 分片合同与内部回放（P0/P1，无 CLI 导出器） | [分片 SnapshotDB 协议](docs/zh/sharded-snapshotdb.md) |
+| 分片协议、原生导入与兼容边界 | [分片 SnapshotDB 协议](docs/zh/sharded-snapshotdb.md) |
 | Python API | [SnapshotAnalyzer API](docs/zh/snapshot-analyzer-api.md) |
 | 结果映射工具 | [ResultMapper API](docs/zh/result-mapper-api.md) |
 

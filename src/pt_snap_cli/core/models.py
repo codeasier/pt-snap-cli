@@ -17,6 +17,7 @@ CacheMissReason = Literal[
     "import_format_changed",
     "device_changed",
     "forced",
+    "dataset_identity_changed",
 ]
 MetadataStatus = Literal["available", "unavailable", "invalid"]
 SplitFormat = Literal["pickle", "json"]
@@ -134,8 +135,12 @@ class ImportOptions:
 
     Attributes:
         snapshot_file: Path to the input `.pkl` or `.pickle` snapshot.
-        output_dir: Directory where the generated `<name>.db` is written.
+        output_dir: Parent of the generated standalone DB or native dataset.
             Defaults to the snapshot file's parent directory.
+        events_per_slice: Positive real-event capacity per device shard; None
+            preserves standalone behavior. Negative boundaries do not count.
+        format: None selects single-db or pt-snap-native-v2 from capacity;
+            compatibility-v1/msinsight remain explicitly unavailable.
         device: Optional device id to focus on. When None, all available
             devices are imported.
         set_focus: When True (default), also write project focus so subsequent
@@ -147,6 +152,8 @@ class ImportOptions:
     device: int | None = None
     set_focus: bool = True
     force: bool = False
+    events_per_slice: int | None = None
+    format: str | None = None
 
 
 @dataclass(frozen=True)
@@ -182,7 +189,9 @@ class ImportResult:
     """Result of `pt-snap import`.
 
     Attributes:
-        db_path: Path to the generated SQLite database.
+        db_path: Path to the standalone SQLite database or native dataset directory.
+        dataset_path: Native dataset directory, or None for standalone imports.
+        devices/slice_count/omitted_devices: Complete native output inventory.
         device_id: Device id used during import, or None when not specified.
         focus_state: The FocusState written to project focus when
             options.set_focus is True, otherwise None.
@@ -194,6 +203,11 @@ class ImportResult:
     reused: bool
     metadata: ImportMetadata
     cache_miss_reason: CacheMissReason | None
+    dataset_path: Path | None = None
+    devices: tuple[int, ...] = ()
+    slice_count: int = 0
+    format: str = "single-db"
+    omitted_devices: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)

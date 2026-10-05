@@ -149,6 +149,18 @@ def _import_json(result: ImportResult) -> dict[str, JsonValue]:
         metadata=asdict(result.metadata),
         focus_state=focus_state,
         focus_source=result.focus_state.source if result.focus_state is not None else None,
+        **(
+            {
+                "dataset_path": str(result.dataset_path),
+                "devices": list(result.devices),
+                "slice_count": result.slice_count,
+                "format": result.format,
+                "omitted_devices": list(result.omitted_devices),
+                "rebuilt": not result.reused,
+            }
+            if result.dataset_path is not None
+            else {}
+        ),
     )
 
 
@@ -378,6 +390,16 @@ def import_snapshot(
     device: Annotated[int | None, typer.Option("--device", "-d")] = None,
     no_focus: Annotated[bool, typer.Option("--no-focus", help="Skip focus update")] = False,
     force: Annotated[bool, typer.Option("--force", help="Rebuild even when cache matches")] = False,
+    events_per_slice: Annotated[
+        int | None,
+        typer.Option(
+            "--events-per-slice", help="Real events per device shard; opt into a native dataset"
+        ),
+    ] = None,
+    output_format: Annotated[
+        str | None,
+        typer.Option("--format", help="single-db or pt-snap-native-v2 (compatibility-v1 reserved)"),
+    ] = None,
     json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Import a PyTorch memory snapshot into a SQLite database."""
@@ -389,6 +411,8 @@ def import_snapshot(
                 device=device,
                 set_focus=not no_focus,
                 force=force,
+                events_per_slice=events_per_slice,
+                format=output_format,
             ),
             json_output=json_output,
         )
@@ -396,6 +420,7 @@ def import_snapshot(
         ImportToolMissingError,
         ImportExecutionError,
         SnapshotFileInvalidError,
+        InvalidParameterError,
     ) as e:
         _error_from_exc(e)
 
@@ -405,6 +430,10 @@ def import_snapshot(
 
     action = "Reused" if result.reused else "Imported"
     typer.echo(f"{action}: {result.db_path}")
+    if result.dataset_path is not None:
+        typer.echo(
+            f"Format: {result.format}; devices: {list(result.devices)}; slices: {result.slice_count}"
+        )
     if result.cache_miss_reason is not None:
         typer.echo(f"Cache miss: {result.cache_miss_reason}")
     if result.focus_state is not None and result.focus_state.focus_file is not None:

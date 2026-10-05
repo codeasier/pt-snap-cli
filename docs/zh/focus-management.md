@@ -110,6 +110,28 @@ pt-snap config --json   # 同一组操作用机器可读 JSON 输出
 }
 ```
 
+## 完整数据集 focus 与导入补偿
+
+完整兼容 v1 数据集或已发布 `pt-snap-native-v2` 目录/`manifest.json` 可以按相同的
+优先级和设备规则 focus：
+
+```bash
+pt-snap focus captures/snapshot.pkl.pt-snap-native-v2 --device 0 --json
+pt-snap query --template-use event --slice 0 --json
+```
+
+原生布局为 `v2`，兼容布局为 `v1`；写 focus 前校验全部声明成员，不修复产物，不保存
+布局信息。原生稀疏 ID 按原始 ID 寻址，不当成位置计数。数据集 focus 只支持有界
+`event`，聚合/生命周期及跨片请求明确失败。API 会话 focus 只读，`SnapshotAnalyzer`
+不承担 import/split。
+
+导入把项目 focus 写入**当前目录**，不是输出目录；`--no-focus` 跳过。原生数据集导入 focus 失败
+（包括先修改再抛错）在普通补偿下恢复旧产物与旧 focus 原始字节及内存 config 状态，
+或者恢复原先不存在。恢复失败时，错误指明保留的 `.focus.pt-snap-*.recovery` checkpoint
+及/或数据集恢复目录。若 checkpoint 为空且 `prior focus existed: False`，它记录原先
+不存在，不是有效 focus JSON。请保留证据供人工恢复；不承诺任意 I/O/崩溃原子性或并发
+writer 锁。详见[原生导入](quickstart.md#可选导入原生分库数据集)。
+
 ## 错误处理
 
 **未设置焦点时查询：**

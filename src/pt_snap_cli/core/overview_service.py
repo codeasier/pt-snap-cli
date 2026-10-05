@@ -14,7 +14,7 @@ from pt_snap_cli.core.errors import (
 )
 from pt_snap_cli.core.focus_service import FocusService
 from pt_snap_cli.core.import_metadata import ImportMetadataService
-from pt_snap_cli.core.models import DatabaseOverview, DeviceTraceBounds, MetadataInspection
+from pt_snap_cli.core.models import DatabaseOverview, DeviceTraceBounds
 
 
 class OverviewService:
@@ -56,12 +56,16 @@ class OverviewService:
                 db_path=db_path,
                 focus_source=resolved.source,
                 devices=[
-                    DeviceTraceBounds(device.device_id, 0, device.event_count - 1)
+                    DeviceTraceBounds(
+                        device.device_id,
+                        device.slices[0].start_event_id,
+                        device.slices[-1].end_event_id,
+                    )
                     for device in sorted(
                         dataset.validation.manifest.devices, key=lambda d: d.device_id
                     )
                 ],
-                metadata=MetadataInspection(db_path, "unavailable", reason="metadata_missing"),
+                metadata=self._metadata_service.inspect(db_path),
                 dataset=dataset.to_dict(),
             )
         ctx = self._validated_context(db_path)

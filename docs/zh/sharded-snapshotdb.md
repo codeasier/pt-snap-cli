@@ -1,4 +1,4 @@
-# 分片 SnapshotDB 协议（P0，兼容 v1）
+# 分片 SnapshotDB 协议（兼容 v1 与原生 v2）
 
 中文 | [English](../en/sharded-snapshotdb.md)
 
@@ -201,8 +201,52 @@ WAL/journal/SHM sidecar（包含悬空符号链接）。即使 checkpoint 已移
 模式仍被拒绝：`mode=ro` 也可能重新创建它们。reader 不修复、不执行 checkpoint、不删除
 sidecar、不改变 journal mode；单库行为不变。这是只读检查，不是文件系统沙箱或并发生产端锁。native-v2 replay 的私有
 staging **没有已发布 manifest**，不能作为数据集；其中单个 DB 仍由已有单库入口读取。
-后续兼容 v1 生产端可直接使用同一 reader，不依赖生产端专属 metadata。本项不虚构
-native-v2 manifest 协议，不新增导出、缓存发布、迁移或跨片生命周期重建。
+后续兼容 v1 生产端可直接使用同一 reader，不依赖生产端专属 metadata。P1 reader 不创建原生 manifest；发布须采用下述显式 P2 原生协议。兼容导出与跨片
+生命周期执行仍属独立工作。特别是固定版本原始兼容生产端可能留下最终化、无 sidecar
+的 WAL header，本 reader 仍拒绝；支持该类产物的只读传输是兼容前提，不代表上游/GUI
+互通已验收，分析不会改写它们。
+
+## 已发布原生数据集（P2）
+
+这是 pt-snap **原创、独立命名和版本化**的协议，不是重标记的 P0 产物。ImportService/CLI
+将内部原生回放结果发布至 `<output-dir>/<完整源文件名>.pt-snap-native-v2/`。根目录只能
+包含 `manifest.json` 与声明的 `device_<id>` 目录；各设备目录只能有规范的
+`slice_<index:05d>.db` 成员。
+
+原生 manifest 必需字段：
+
+| 字段 | 合同 |
+| --- | --- |
+| `format` | 严格为 `pt-snap-native-v2`，与 compatibility-v1 独立分派 |
+| `schemaVersion`, `status` | 原生 manifest 版本 `1`，只允许 `complete` |
+| `sourceFile` | 非空源 basename，与 `metadata.source_name` 一致，分析不打开源文件 |
+| `identity` | 精确字段 `sourceSha256`、`requestedDevice`、`eventsPerSlice`、`outputFormat`、`manifestContractVersion`、`formatContractVersion`、`importContractVersion`、`extensionContractVersion`、`metadataSchemaVersion`、`importFormatVersion` |
+| `metadata` | 完整已有 `ImportMetadata` 对象，与每片唯一 metadata 行一致 |
+| `omittedDevices` | 不重复的未选/空/仅静态源设备位置，与所选设备不相交 |
+| `devices` | 规范十进制 key，正 `eventCount/sliceCount`，全部按序 `readySlices` 及按序 `slices` |
+| 各 slice | `index`、`startPosition/endPosition`、`startEventId/endEventId`、规范相对 `file`、`ready: true`、已关闭成员 `sha256` |
+
+所有语义合同版本初始为 `1`；原生 metadata schema 为 `1`、DB import format 为 `2`。
+`requestedDevice` 为 null（全部有事件设备）或一个非负整数；SHA256 为 64 位小写十六进制。
+CLI `metadata.importer_version` 仅提供信息，**不是**缓存失效轴。原生与后续兼容格式身份
+独立版本化，不生成原生 `cacheHash`，也不接受它替代缓存身份。
+
+位置在各设备内连续覆盖 `0..eventCount-1`，末片之前全部满容量，末片至多容量个事件。
+ID 区间为原始时间顺序闭边界，可稀疏/非零；真实计数来自位置和实际行，不是
+`max(id)+1`。负 ID 合成行单独计数。各成员须有本设备的原生 v2 trace/block 实际表、
+`dictionary`、`callstack`、`pt_snap_metadata` 与最终化 `pt_snap_block_reference` v1。
+trace 列与单库 v2 一致（`callstackId`，非内联文本），保留 OOM action 8。block 身份/
+生命周期和文本引用须最终化、跨片一致，并引用原设备真实 ID。未知扩展声明/表不会
+提升结构化 frame 能力。
+
+原生 resolver 校验全部成员哈希、实际 schema/dictionary、真实计数/范围、metadata 和
+最终化引用，保留 P1 打开前的别名/sidecar/持久 WAL 检查及有界借用 cache 所有权。
+无需源 pickle 即可 focus、metadata、overview 和单片 `event` 寻址。原生数据集 metadata
+为 available，兼容数据集仍为 unavailable。不隐含迁移、修复、跨片聚合/生命周期执行、
+msinsight 导出器、salted hash 策略或 GUI 验收；以上 P0 schema 和拒绝规则保持不变。
+
+发布、force/focus 补偿见[导入指南](quickstart.md#可选导入原生分库数据集)。完整 manifest
+只能与全部最终化成员同时可见，单个 ready 片不构成完整产物。
 
 ## 内部持续回放（P1）
 
