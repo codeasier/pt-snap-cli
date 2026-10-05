@@ -21,18 +21,23 @@ class SnapshotDbHandler:
     def __init__(
         self, db_path: str, devices: list[int], insert_cache_size: int = DEFAULT_INSERT_CACHE_SIZE
     ):
-        self._closed = False
+        self._closed = True
         self.db_path = db_path
         self.db = SnapshotDb(db_path)
+        self._closed = False
         self._device_event_cache = {}
         self._device_block_cache = {}
         self._insert_cache_size = insert_cache_size
-        self.db.create_callstack_table()
-        for device in devices:
-            self._device_block_cache[device] = []
-            self._device_event_cache[device] = []
-            self.db.create_trace_entry_table(device)
-            self.db.create_block_table(device)
+        try:
+            self.db.create_callstack_table()
+            for device in devices:
+                self._device_block_cache[device] = []
+                self._device_event_cache[device] = []
+                self.db.create_trace_entry_table(device)
+                self.db.create_block_table(device)
+        except BaseException:
+            self.close(commit=False)
+            raise
 
     def insert_event(self, event_record: dict[str, Any], device: int = 0):
         if device not in self._device_event_cache:
@@ -83,12 +88,14 @@ class SnapshotDbHandler:
     def close(self, *, commit: bool = True):
         if getattr(self, "_closed", True):
             return
-        if commit:
-            self.db.conn.commit()
-        else:
-            self.db.conn.rollback()
-        self.db.conn.close()
-        self._closed = True
+        try:
+            if commit:
+                self.db.conn.commit()
+            else:
+                self.db.conn.rollback()
+        finally:
+            self.db.conn.close()
+            self._closed = True
 
     def __del__(self):
         self.close()

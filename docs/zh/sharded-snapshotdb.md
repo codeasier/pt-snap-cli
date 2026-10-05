@@ -148,6 +148,42 @@ QueryScope("event_range", device_id=0, start_event_id=1, end_event_id=3).validat
 assert not inspection.structured_frames
 ```
 
+## 内部持续回放（P1）
+
+`core.sharded_replay_service.ShardedReplayService.stage(source, directory,
+events_per_slice=..., device=None)` 是**内部生产边界**，不是新 CLI/API 导入命令。
+它只加载一次可信 pickle，每个所选非空设备只创建一个持续模拟器，从末片向前写入
+新的、调用者所有的**私有 staging 目录**。`omitted_devices` 披露全部未选/空设备位置。
+现有 `import`、`split`、`SnapshotAnalyzer` 与单库 v1/v2 读取保持不变。
+
+返回的不可变结果标识 **native-v2** 分片，不是兼容 v1 产物：trace 使用
+`callstackId` 和片内 `callstack` 表，保留原生 OOM action 8 与 workspace 事件。
+原生真实 ID 可以稀疏或非零起点，但必须非负、唯一且按时间递增；窗口按列表位置计数，
+不是 `max(id)+1`。这些原生片**不能**通过 `validate_dataset`。兼容导出、兼容 manifest、
+缓存/发布及数据集查询属于后续独立工作。不生成 `manifest.json`、`readySlices` 或增量
+ready 通知；仅所有设备完成回填及校验后的成功返回结果可交给后续发布层。
+失败保留调用者所有的私有部分文件，不将其宣称为完整数据集。
+
+`SimulateDeviceSnapshot.replay_until(remaining_events)` 倒序回放到剩余指定数量的
+时间顺序列表事件。端点是**位置**而非 event ID；重复暂停/继续与完整 replay 共用
+hooks 和错误路径。真实事件行记录事件**之后**的状态（undo 之前）。undo 窗口首事件后，
+活跃 block 观察和负 ID `segment_alloc`/`segment_map` 行重建首事件**之前**的状态；
+边界行不计入容量或真实事件峰值。
+
+设备内 registry 跨 writer 保留原始 block 对象，不用 hook 副本或仅地址作为身份。
+遇到真实 alloc 后，每次出现都最终指向原 alloc ID；未知/预存生命周期保持稳定负身份。
+所有 writer 关闭后才逐 DB 事务批量回填并校验。`freeEventId` 始终是 `free_completed`，
+不是 `free_requested`；边界 `active_pending_free` 观察保留 state 0。同地址复用及不同
+stream 的同地址块不会合并。每个原生片加入
+`pt_snap_block_reference(blockId, stream, allocCallstack, freeCallstack)`，保留最终化的
+片外生命周期引用的文本调用栈来源。NULL 表示未观察到来源事件；空文本表示已观察事件
+没有 frames。旧有片内查询 JOIN 不自动消费这个内部表；它不是跨片查询引擎或结构化
+frame 扩展。
+
+pickle 仍可能整体加载。分库只限制**单库真实事件数**，不限制 block 行数、总 staging
+字节、registry 大小或峰值 RSS。合成回归及已审 expandable/多设备 fixture 覆盖回放
+等价和资源失败路径；不宣称真实上游 GUI 或性能验收。
+
 ## 来源证据与限制
 
 接口事实已从固定版本真实源码读取：
