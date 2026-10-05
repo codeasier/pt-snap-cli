@@ -96,8 +96,10 @@ itself fails, recovery paths are preserved and explicitly reported. Do not delet
 them before inspecting the evidence. Arbitrary I/O failures, concurrent writers
 and crashes do not have unconditional atomic restoration guarantees.
 
-Dataset focus currently supports only bounded `event` addressing; it does not
-silently run peak/lifecycle/aggregate queries over one shard. See the
+Dataset focus supports bounded `event` addressing and point-event active block/
+callstack attribution with shared cross-shard sources. Dataset-global peak/list/leak
+aggregates remain explicit errors, not one-shard approximations. See
+[point-event coverage](querying.md#dataset-point-event-attribution) and the
 [native manifest contract](sharded-snapshotdb.md#published-native-dataset-p2).
 `SnapshotAnalyzer` remains analysis-only, without import/split methods.
 
@@ -123,7 +125,8 @@ Base tables are physical inline-v1 tables; metadata has import format `1`.
 Callstack text is copied once **per event**, not once per distinct stack, so disk
 and temporary conversion space can grow substantially. Native interning remains
 unchanged. No ordered structured-frame capability is invented from formatted text.
-Only bounded `event` dataset queries are currently available.
+Bounded `event` and point-event active block/callstack dataset queries are
+available; global aggregate/report selection remains unsupported.
 
 Compatible publication is **no-replace**: external/original/user caches are never
 overwritten or deleted, even under `--force`. A complete, attested, identical

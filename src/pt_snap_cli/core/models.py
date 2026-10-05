@@ -127,6 +127,7 @@ class PeakMemoryReport:
     percent_denominator: str = "included_bytes"
     active_bytes_at_event: int | None = None
     coverage_percent: float | None = None
+    source_coverage: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)

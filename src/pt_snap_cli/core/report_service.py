@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal, cast
 
 from pt_snap_cli.core.focus_service import FocusService
-from pt_snap_cli.core.models import PeakMemoryReport
+from pt_snap_cli.core.models import PeakMemoryReport, QueryResult
 from pt_snap_cli.core.query_service import QueryService
 
 PeakMetric = Literal["active", "allocated", "reserved"]
@@ -30,6 +30,38 @@ class ReportService:
     def close(self) -> None:
         """Release connections owned by this report service; allow later reuse."""
         self._query_service.close()
+
+    def event_attribution(
+        self,
+        event_id: int,
+        db_path: Path | str | None = None,
+        device_id: int | None = None,
+        *,
+        include_static: bool = True,
+        limit: int = 20,
+        stack_bytes: int = -1,
+        start_dir: Path | None = None,
+        timeout_s: float | None = None,
+    ) -> QueryResult:
+        """Reuse core point-event attribution, also for externally selected peaks.
+
+        Dataset-global peak selection is a separate contract; this method does
+        not silently choose a local shard peak or invent an event for empty data.
+        """
+        return self._query_service.execute_query(
+            "active_memory_callstack_at_event",
+            params={
+                "event_id": event_id,
+                "include_static": include_static,
+                "min_size": 0,
+                "top_n": limit,
+                "stack_bytes": stack_bytes,
+            },
+            db_path=db_path,
+            device_id=device_id,
+            start_dir=start_dir,
+            timeout_s=timeout_s,
+        )
 
     def peak_memory_report(
         self,
@@ -81,11 +113,13 @@ class ReportService:
             device_id=device_id,
             start_dir=start_dir,
         )
-        callstack_result = self._query_service.execute_query(
-            "active_memory_callstack_at_event",
-            params=attribution_params,
-            db_path=db_path,
-            device_id=device_id,
+        callstack_result = self.event_attribution(
+            event_id,
+            db_path,
+            device_id,
+            include_static=include_static,
+            limit=limit,
+            stack_bytes=stack_bytes,
             start_dir=start_dir,
         )
 
@@ -116,4 +150,7 @@ class ReportService:
             included_bytes=included_bytes,
             active_bytes_at_event=active_bytes,
             coverage_percent=coverage,
+            source_coverage=cast(
+                dict[str, object] | None, (callstack_result.scope or {}).get("source_coverage")
+            ),
         )

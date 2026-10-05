@@ -170,7 +170,8 @@ which P0 does not implement. Text stacks cannot substitute for these guarantees.
 There is no global event order across devices. Boundary IDs cannot be range
 endpoints. P0 `DatasetValidation.query_execution=False` describes validation,
 not execution. P1 accepts complete manifests/directories through the resolver
-below; cross-slice execution remains deferred.
+below; general cross-slice aggregation remains deferred; point-event source
+resolution is described in the [querying guide](querying.md#dataset-point-event-attribution).
 
 ```python
 from pt_snap_cli.core.dataset_contract import QueryScope, validate_dataset
@@ -218,16 +219,22 @@ with SnapshotAnalyzer(Path("/capture/snapshot.pkl.msinsight"), device_id=0) as a
     print(event["scope"], page["total_is_exact"])
 ```
 
-Only the `event` template is currently supported through dataset focus: a real ID
+The `event` template supports bounded addressing through dataset focus: a real ID
 routes to its containing slice; an inclusive `min_id/max_id` range must fit one
 slice; `--slice`/`slice_index` lists that slice's real events. Negative IDs are not
 whole-dataset selectors. Output `scope` identifies the actual DB/device/slice,
 restricted real interval, dataset fingerprint and boundary exclusion. Totals and
 pagination apply to this scope, **not** to an implicitly truncated full dataset.
 Caller parameter defaults in CLI `effective_params` are additionally constrained
-by `scope`. Cross-slice ranges, unbounded multi-slice queries and aggregate or
-lifecycle templates fail explicitly; they never silently choose the first/latest
-slice. Direct single-DB v1/v2 queries retain their existing semantics.
+by `scope`. Point-event `active_blocks_at_event` and
+`active_memory_callstack_at_event` now resolve alloc/free/full stack sources in
+bounded batches before grouping/ranking, including original no-extension artifacts.
+See [point-event attribution](querying.md#dataset-point-event-attribution) for
+lifecycle identity, separate source/frame coverage, and the optional versioned
+ordered-frame reader interface. Dataset-global aggregates, peak/list/leak queries,
+cross-slice event ranges and unbounded multi-slice event queries still fail
+explicitly; they never silently choose the first/latest slice. Direct single-DB
+v1/v2 queries retain their existing semantics.
 
 `core.dataset_resolver.DatasetResolver.inspect(path)` returns an immutable
 `ResolvedDataset` (or `None` for a standalone DB). Its `paths(QueryScope(...))`
@@ -302,8 +309,9 @@ alias/sidecar/persistent-WAL checks and bounded borrowed-cache ownership. Focus,
 metadata, overview and single-slice `event` addressing work without the source
 pickle. Native metadata is available dataset-wide; external compatibility metadata
 remains unavailable unless the recognized compatible attestation below is present.
-Native mode implies no migration, repair, cross-slice aggregation/lifecycle execution,
-compatible export, salted hash or GUI acceptance. P0 schema/manifest semantics are
+Native mode implies no migration, repair, dataset-global aggregation/peak/list/leak,
+compatible export, salted hash or GUI acceptance. Point-event source resolution is
+available through the shared query path described above. P0 schema/manifest semantics are
 unchanged; the compatibility-only finalized-WAL transport is described above.
 
 Publication and force/focus compensation are described in the

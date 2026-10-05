@@ -78,6 +78,91 @@ group identity. Missing/static/preexisting groups have no captured allocation
 stack to retrieve; omit `stack_bytes` on the original query to see their full
 display labels. Results are read-only and summaries do not change the database.
 
+## Dataset point-event attribution
+
+A complete compatibility-v1 or native-v2 directory/manifest supports `event`
+addressing plus `active_blocks_at_event` and `active_memory_callstack_at_event`
+with a real `event_id`. The latter two route one device's actual event and use
+its shard's complete lifecycle observations **after** that forward event:
+`allocEventId <= E` and completed `freeEventId > E` (or `-1`). `free_requested`
+does not remove active memory. Negative boundary rows represent the instant
+before a shard's first event and are not query endpoints. Native sparse IDs are
+not renumbered: `event(id=gap)` may return no rows inside an addressed slice;
+active attribution at a nonexistent ID fails instead of inventing event 0.
+
+```bash
+pt-snap query '<dataset_dir>' --device 0 --template-use active_memory_callstack_at_event --params '{"event_id":700,"top_n":20}' --json
+pt-snap query '<dataset_dir>' --device 0 --template-use active_blocks_at_event --params '{"event_id":700,"limit":10}' --exact-total --json
+```
+
+Replace the path/device/event with actual values. Foreign alloc/free events and
+full v1 inline or v2 local-ID stacks are resolved **before** grouping/top_n, in
+batches of at most 256 distinct event IDs per owning shard. No foreign real rows
+are inserted. Original artifacts need neither metadata nor reference tables.
+Lifetimes use dataset generation/device/alloc-event or stable negative identity,
+not addresses; `state_scope=slice_observation` warns that stored `state` is not
+necessarily the pending-free state at E. Block rows expose `allocation_source`,
+`free_source`, their statuses and `lifecycle_id`. Missing dynamic sources retain
+bytes and dynamic category, separate from static/preexisting unknown history.
+`free=-1` means live **or unknown**, not a proven leak.
+
+Dataset groups always expose full `source_stack_id`/`stack_id`, `stack_kind` and
+`stack_event_id`. Default no-extension `event` rows keep their original nine
+values; source/frame row fields appear with `stack_bytes>=0` or a recognized
+ordered-frame declaration. `scope.source_coverage` is still supplied. Both dataset
+layouts use full-text canonical identity; v2 looks up the owning slice's actual
+local ID, returned as source `local_stack_id`/`slice_index` provenance, not a
+cross-shard grouping key. Covered ordered arrays use only exact raw-frame identity,
+independent of formatted text availability; `text_kind` reports that availability
+separately. Explicitly covered arrays (including empty arrays) are captured raw
+evidence. Groups prefer an available captured-text representative for retrieval. Nonempty whitespace and a captured literal `[missing callstack]`
+are not missing. Never merge by local IDs or shortened display labels. `stack_bytes`
+shortens display only; use `event(id=stack_event_id)` on the same dataset/device
+for full text. Ordered raw frames, when explicitly covered, also participate in
+identity; no text parsing reconstructs frames.
+
+`scope.source_coverage` is independent of `has_more`/`truncated`/exact row totals:
+active-query coverage describes **all filtered blocks before top_n/paging**, with
+active/dynamic bytes, resolved allocation/free counts, captured dynamic bytes,
+unknown/preexisting counts, ordered-frame coverage and degradation. For `event`,
+its coverage scope is only `returned_events`. A complete manifest/range does not
+prove complete historical sources or frames. Percentages still use included
+bytes **after dynamic top_n but before max_rows**, not the dataset active counter.
+Exact totals ignore row/rank caps, but do not change that percentage denominator.
+
+One call shares its deadline across source batches, grouping and exact totals.
+Manifest validation/hash and Context setup elapsed time are charged, but synchronous
+filesystem I/O/validation is checked at phase boundaries, not hard-preempted; no
+OS-level time guarantee is claimed. SQL uses cleared-on-exit progress handlers.
+The Context LRU remains bounded (default four) and borrowed caches remain caller-owned.
+No merged temporary database is created. `ReportService.event_attribution(E, ...)`
+reuses this same query path for a supplied event. Dataset-global peak selection,
+`report peak-memory`, cross-slice event ranges, arbitrary SQL/global list/leak/group
+merging remain explicitly unsupported until their own contracts are implemented.
+
+### Optional ordered-frame reader contract
+
+This reader-only pt-snap extension is new, not an existing original-producer
+feature. Current native/compatible writers emit **no** ordered-frame tables.
+Declare `extensions.ptSnapOrderedFrames={"version":1}` in the manifest and use
+isolated actual tables in each covered source shard:
+
+- `pt_snap_frame_coverage(eventId INTEGER PRIMARY KEY, frameCount INTEGER)`
+- `pt_snap_frame(eventId INTEGER, frameIndex INTEGER, frameJson TEXT, PRIMARY KEY(eventId,frameIndex))`
+
+Raw objects must be finite standard JSON, with nesting depth at most 128; deeper
+or nonfinite/unparseable input degrades safely, including recursion failures.
+Each covered real event needs nonnegative integer `frameCount`, exactly indices
+`0..frameCount-1`, and JSON **objects** preserving all raw typed fields. Order and
+repeated frames are retained; empty arrays require an explicit count zero row.
+Only recognized version/schema and valid per-event coverage produce `frames`
+with `frames_status=ordered`. Unknown version, missing schema/rows, invalid JSON
+or incomplete coverage degrade to `frames=null`, `frames_status=text_only`;
+formatted text is never split/reversed into raw frames. P0/overview's dataset-wide
+`structured_frames=false` remains a conservative validation capability, not a
+claim about the scoped source payload. Tree rendering and GUI acceptance are not
+provided by this extension interface.
+
 ## Query Templates
 
 Templates are organized into three categories. Use `pt-snap capabilities --json` for the full catalog (CLI version, every template contract, and bundled skills), or `pt-snap query --list` to see names and descriptions. Filter with `--category`.
