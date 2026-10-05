@@ -185,8 +185,8 @@ assert not inspection.structured_frames
 Interoperability facts were read from fixed upstream
 [manifest validation](https://github.com/Ascend/msinsight/blob/101f65b877a267ffd5f66ea3834706057ba243e5/server/src/modules/memsnapshot/service/MemSnapshotSliceService.cpp),
 [positional SQLite reading](https://github.com/Ascend/msinsight/blob/101f65b877a267ffd5f66ea3834706057ba243e5/server/src/modules/memsnapshot/database/MemSnapshotDatabase.cpp),
-[base schemas](https://github.com/Ascend/msinsight/blob/101f65b877a267ffd5f66ea3834706057ba243e5/scripts/MemSnapDump/tools/adaptors/database/snapshot_db.py),
-and [publication/backfills](https://github.com/Ascend/msinsight/blob/101f65b877a267ffd5f66ea3834706057ba243e5/scripts/MemSnapDump/tools/adaptors/snapshot2db.py).
+[base schemas](https://api.github.com/repos/Ascend/msinsight/git/blobs/1fe50a5136f85365db55f4632d58f3cf7090431e),
+and [publication/backfills](https://api.github.com/repos/Ascend/msinsight/git/blobs/95612509ef990ac6b7034919dae4938cc6acf3ad).
 Those source files carry Huawei's Mulan PSL v2 notice. This contract, Python
 validator and synthetic tests are original local implementation of interface
 facts; no upstream implementation is copied into the package. The upstream docs

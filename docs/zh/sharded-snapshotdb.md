@@ -153,8 +153,8 @@ assert not inspection.structured_frames
 接口事实已从固定版本真实源码读取：
 [manifest 校验](https://github.com/Ascend/msinsight/blob/101f65b877a267ffd5f66ea3834706057ba243e5/server/src/modules/memsnapshot/service/MemSnapshotSliceService.cpp)、
 [SQLite 按位置读取](https://github.com/Ascend/msinsight/blob/101f65b877a267ffd5f66ea3834706057ba243e5/server/src/modules/memsnapshot/database/MemSnapshotDatabase.cpp)、
-[基础 schema](https://github.com/Ascend/msinsight/blob/101f65b877a267ffd5f66ea3834706057ba243e5/scripts/MemSnapDump/tools/adaptors/database/snapshot_db.py)、
-[发布/回填](https://github.com/Ascend/msinsight/blob/101f65b877a267ffd5f66ea3834706057ba243e5/scripts/MemSnapDump/tools/adaptors/snapshot2db.py)。
+[基础 schema](https://api.github.com/repos/Ascend/msinsight/git/blobs/1fe50a5136f85365db55f4632d58f3cf7090431e)、
+[发布/回填](https://api.github.com/repos/Ascend/msinsight/git/blobs/95612509ef990ac6b7034919dae4938cc6acf3ad)。
 这些源码包含 Huawei Mulan PSL v2 声明。本文合同、Python 校验器和合成测试是本地原创的
 接口事实实现，没有向包内复制上游实现；上游 docs 单独使用 CC BY 4.0，不能替代源码声明。
 
