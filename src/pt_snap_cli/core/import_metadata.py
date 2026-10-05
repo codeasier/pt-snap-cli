@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from contextlib import closing
 from dataclasses import asdict
@@ -21,6 +22,7 @@ from pt_snap_cli.core.models import (
     ImportMetadata,
     MetadataInspection,
 )
+from pt_snap_cli.core.msinsight_export import inspect_owned_cache
 from pt_snap_cli.core.native_dataset_contract import NativeManifest
 
 METADATA_TABLE = "pt_snap_metadata"
@@ -85,7 +87,16 @@ class ImportMetadataService:
         if dataset is not None:
             if isinstance(dataset.validation.manifest, NativeManifest):
                 return MetadataInspection(path, "available", dataset.validation.manifest.metadata)
-            # Per-slice extensions are not a dataset-wide importer/source attestation.
+            # External P0 metadata remains optional. Only a recognized complete
+            # pt-snap manifest attestation can provide dataset-wide metadata.
+            with (dataset.root / "manifest.json").open(encoding="utf-8") as source:
+                raw = json.load(source)
+            if "ptSnap" in raw:
+                try:
+                    owned = inspect_owned_cache(dataset.root)
+                except (ValueError, KeyError, TypeError, OSError, sqlite3.DatabaseError):
+                    return MetadataInspection(path, "invalid", reason="metadata_invalid")
+                return MetadataInspection(path, "available", owned.metadata)
             return MetadataInspection(path, "unavailable", reason="metadata_missing")
         try:
             context = Context(path)

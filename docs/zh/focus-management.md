@@ -132,6 +132,14 @@ pt-snap query --template-use event --slice 0 --json
 不存在，不是有效 focus JSON。请保留证据供人工恢复；不承诺任意 I/O/崩溃原子性或并发
 writer 锁。详见[原生导入](quickstart.md#可选导入原生分库数据集)。
 
+显式兼容导入（`--format msinsight`）采用相同的请求 focus 补偿，但即使 force 也
+**不替换**已有兼容输出。仅整体证明完整、身份相同的 pt-snap 缓存可复用，否则换新输出。
+GUI 仍要求同一原始 pickle 与邻接缓存，pt-snap focus 只需完整产物。首个 SQLite 打开
+之前检查全部兼容成员的别名及存活/悬空 sidecar；裸校验和缓存查询对已关闭最终化成员
+使用 `mode=ro&immutable=1`，保留原版 checkpoint WAL 的字节与目录清单。这不是 live
+writer 锁，原生非 WAL 检查与单库默认不变。
+
+
 ## 错误处理
 
 **未设置焦点时查询：**

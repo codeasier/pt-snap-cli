@@ -14,7 +14,13 @@ from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import app
 from pt_snap_cli.completion import complete_device_ids
 from pt_snap_cli.core.context_cache import ContextCache
-from pt_snap_cli.core.dataset_contract import ACTION_NAMES, BLOCK_STATES, QueryScope
+from pt_snap_cli.core.dataset_contract import (
+    ACTION_NAMES,
+    BLOCK_STATES,
+    DatasetContractError,
+    QueryScope,
+    validate_dataset,
+)
 from pt_snap_cli.core.dataset_resolver import DatasetResolver
 from pt_snap_cli.core.errors import (
     DatabaseSchemaError,
@@ -359,7 +365,10 @@ def test_cli_releases_owned_context_and_sqlite_is_readonly(tmp_path, monkeypatch
 
 @pytest.mark.parametrize("suffix", ["-wal", "-journal", "-shm"])
 @pytest.mark.parametrize("dangling", [False, True])
-def test_live_sidecar_rejected_before_any_sqlite_open(tmp_path, monkeypatch, suffix, dangling):
+@pytest.mark.parametrize("bare", [False, True])
+def test_live_sidecar_rejected_before_any_sqlite_open(
+    tmp_path, monkeypatch, suffix, dangling, bare
+):
     root = make_dataset(tmp_path / "dataset")
     # The last member must be checked before even the first slice is opened.
     sidecar = root / f"device_2/slice_00002.db{suffix}"
@@ -375,8 +384,10 @@ def test_live_sidecar_rejected_before_any_sqlite_open(tmp_path, monkeypatch, suf
         raise AssertionError("SQLite opened before live sidecar rejection")
 
     monkeypatch.setattr(sqlite3, "connect", forbidden)
-    with pytest.raises(DatabaseSchemaError, match="live SQLite sidecar"):
-        DatasetResolver().inspect(root)
+    with pytest.raises(
+        DatasetContractError if bare else DatabaseSchemaError, match="live SQLite sidecar"
+    ):
+        validate_dataset(root) if bare else DatasetResolver().inspect(root)
     assert before == hashes(root)
     assert inventory == sorted(str(p.relative_to(root)) for p in root.rglob("*"))
     if dangling:
@@ -384,8 +395,8 @@ def test_live_sidecar_rejected_before_any_sqlite_open(tmp_path, monkeypatch, suf
 
 
 @pytest.mark.parametrize("manifest_path", [False, True])
-@pytest.mark.parametrize("operation", ["inspect", "focus", "api", "cli"])
-def test_checkpointed_wal_rejected_without_artifact_changes(
+@pytest.mark.parametrize("operation", ["inspect", "p0", "focus", "api", "cli"])
+def test_checkpointed_wal_read_without_artifact_changes(
     tmp_path, monkeypatch, manifest_path, operation
 ):
     root = make_dataset(tmp_path / "dataset")
@@ -409,28 +420,41 @@ def test_checkpointed_wal_rejected_without_artifact_changes(
     monkeypatch.setattr(sqlite3, "connect", connect)
     path = root / "manifest.json" if manifest_path else root
     if operation == "inspect":
-        with pytest.raises(DatabaseSchemaError):
-            DatasetResolver().inspect(path)
+        assert DatasetResolver().inspect(path).validation.real_event_count == 12
+    elif operation == "p0":
+        assert validate_dataset(root).real_event_count == 12
     elif operation == "focus":
-        with pytest.raises(DatabaseSchemaError):
-            FocusService().set_project_focus(path)
+        assert FocusService().set_project_focus(path).callstack_layout == "v1"
     elif operation == "api":
-        with SnapshotAnalyzer() as analyzer:
-            with pytest.raises(ValueError):
-                analyzer.set_focus(str(path))
-            assert analyzer.get_focus().db_path is None
+        with SnapshotAnalyzer(path) as analyzer:
+            assert analyzer.execute_query("event", {"id": 5}, device_id=2)["rows"][0]["id"] == 5
+            assert analyzer.execute_query("event", {"id": 5}, device_id=2)["rows"][0]["id"] == 5
     else:
-        result = runner.invoke(app, ["focus", str(path), "--json"])
-        assert result.exit_code == 1
-        assert json.loads(result.stderr)["error"]["code"] == "DATABASE_SCHEMA_INVALID"
+        result = runner.invoke(
+            app,
+            [
+                "query",
+                str(path),
+                "--template-use",
+                "event",
+                "--device",
+                "2",
+                "--params",
+                '{"id":5}',
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["rows"][0]["id"] == 5
     assert before == hashes(root)
     assert inventory == sorted(str(p.relative_to(root)) for p in root.rglob("*"))
-    assert opened == []
-    assert not (tmp_path / ".pt-snap/focus.json").exists()
+    assert opened and all("mode=ro&immutable=1" in str(uri) for uri in opened)
+    assert not list(root.rglob("*-wal")) and not list(root.rglob("*-shm"))
 
 
 @pytest.mark.parametrize("alias_parent", [False, True])
-def test_member_alias_rejected_before_header_read(tmp_path, monkeypatch, alias_parent):
+@pytest.mark.parametrize("bare", [False, True])
+def test_member_alias_rejected_before_header_read(tmp_path, monkeypatch, alias_parent, bare):
     source = make_dataset(tmp_path / "source", devices=(0,), slices=1)
     root = tmp_path / "dataset"
     root.mkdir()
@@ -449,8 +473,8 @@ def test_member_alias_rejected_before_header_read(tmp_path, monkeypatch, alias_p
         return original(path, *args, **kwargs)
 
     monkeypatch.setattr(Path, "open", open_path)
-    with pytest.raises(DatabaseSchemaError, match="symlink"):
-        DatasetResolver().inspect(root)
+    with pytest.raises(DatasetContractError if bare else DatabaseSchemaError, match="symlink"):
+        validate_dataset(root) if bare else DatasetResolver().inspect(root)
     monkeypatch.setattr(Path, "open", original)
     assert before == hashes(source)
 

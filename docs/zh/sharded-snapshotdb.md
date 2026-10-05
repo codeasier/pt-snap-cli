@@ -4,7 +4,7 @@
 
 ## 范围与版本
 
-本阶段冻结产物协议和共享校验模型，**不新增 CLI 导出器或跨片查询引擎**。现有
+本文定义产物协议、共享校验模型及下述**显式**兼容 CLI 导出器，不实现跨片查询引擎。
 `import` 默认仍生成一个原生 v2 DB；`split` 仍输出可回放 pickle/JSON。现有单库
 v1/v2 单库分析不变。下述 P1 reader 新增将 complete 兼容 v1 manifest 或目录作为
 focus；`complete` 门槛只约束数据集，不约束旧单库分析。
@@ -17,7 +17,7 @@ focus；`complete` 门槛只约束数据集，不约束旧单库分析。
 版本轴分别管理：
 
 - `schemaVersion=1`：本文的 manifest 和兼容基础表协议。
-- `pt_snap_metadata.import_format_version`：已有 pt-snap 导入格式，当前为 2；
+- `pt_snap_metadata.import_format_version`：pt-snap 导入格式，原生为 `2`，兼容内联为 `1`；
   **不是** manifest 版本，外部产物不要求该表。
 - 后续结构化 frame 扩展独立版本化。未知扩展不影响基础读取，也不意味着支持结构化 frames。
 
@@ -165,7 +165,8 @@ pt-snap query --template-use event --slice 1 --json
 `overview.dataset` 输出格式、manifest 版本/状态、内容指纹、真实/边界事件数、逐设备
 分片路径/范围及能力。事件范围排除负 ID 合成行（单库 overview 也如此）。支持文本调用栈，
 不保证每行有栈；结构化 frames 与跨片查询**不可用**，未知扩展的能力声明不会提升它们。
-数据集级导入 metadata 为 unavailable；逐片 metadata 不是整份数据集的来源证明。
+外部数据集级导入 metadata 为 unavailable；逐片 metadata 不足以证明整体来源。
+下述兼容导出器提供可识别的整份 `ptSnap` 证明，其完整校验后的 metadata 为 available。
 
 路径优先级仍为显式 → `PT_SNAP_DB_PATH` → 最近项目 focus → legacy global config；
 设备优先级仍为显式 → focused → 首个发现设备。CLI focus 只写选定的项目/全局 focus 文件，
@@ -195,16 +196,19 @@ selector。输出 `scope` 标识实际 DB/device/slice、受限真实区间、�
 最多四个；数据集 generation 变化在下次 lookup 使旧 Context 失效，即使 size/mtime 相同。
 analyzer 自有缓存在退出时关闭，注入缓存仍由调用者所有；校验逐片打开并关闭连接。
 
-building、缺片/矛盾片、未知基础版本、不安全路径在 focus 写入或查询前拒绝。在打开
-**任何**分片前，resolver 先检查全部成员的规范非符号链接路径、SQLite header 及
-WAL/journal/SHM sidecar（包含悬空符号链接）。即使 checkpoint 已移除 sidecar，持久 WAL
-模式仍被拒绝：`mode=ro` 也可能重新创建它们。reader 不修复、不执行 checkpoint、不删除
-sidecar、不改变 journal mode；单库行为不变。这是只读检查，不是文件系统沙箱或并发生产端锁。native-v2 replay 的私有
-staging **没有已发布 manifest**，不能作为数据集；其中单个 DB 仍由已有单库入口读取。
-后续兼容 v1 生产端可直接使用同一 reader，不依赖生产端专属 metadata。P1 reader 不创建原生 manifest；发布须采用下述显式 P2 原生协议。兼容导出与跨片
-生命周期执行仍属独立工作。特别是固定版本原始兼容生产端可能留下最终化、无 sidecar
-的 WAL header，本 reader 仍拒绝；支持该类产物的只读传输是兼容前提，不代表上游/GUI
-互通已验收，分析不会改写它们。
+building、缺片/矛盾片、未知基础版本、不安全路径在 focus 写入或查询前拒绝。
+**任何** SQLite 打开之前，裸 P0 validator 与 resolver 均先检查**全部**成员/父目录别名及
+存活/悬空 WAL、journal、SHM sidecar。最终化、已关闭的兼容 v1 成员使用
+`mode=ro&immutable=1`，缓存查询的 Context 连接也一样；接受固定原始生产端已 checkpoint、
+无 sidecar 的 WAL header，不创建 sidecar、不改变字节。immutable 只适用于已关闭最终化
+产物，**不是读取 live WAL 的捷径**，不保证并发 writer 安全。不修复、不 checkpoint、
+不改变 journal mode、不迁移、不删除。原生数据集仍拒绝持久 WAL，单库 Context 默认仍
+为不带 immutable 的 `mode=ro`。Cache 身份包含传输模式与 generation。这是只读校验，
+不是文件系统沙箱或生产端锁。
+
+native-v2 私有 staging **没有已发布 manifest**，不能作为数据集；单个 DB 仍由单库
+入口读取。已发布原生格式与兼容导出是下述独立显式协议。跨片生命周期执行仍属独立工作，
+安全读取原版 WAL 不等于 GUI 验收。
 
 ## 已发布原生数据集（P2）
 
@@ -242,8 +246,9 @@ trace 列与单库 v2 一致（`callstackId`，非内联文本），保留 OOM a
 原生 resolver 校验全部成员哈希、实际 schema/dictionary、真实计数/范围、metadata 和
 最终化引用，保留 P1 打开前的别名/sidecar/持久 WAL 检查及有界借用 cache 所有权。
 无需源 pickle 即可 focus、metadata、overview 和单片 `event` 寻址。原生数据集 metadata
-为 available，兼容数据集仍为 unavailable。不隐含迁移、修复、跨片聚合/生命周期执行、
-msinsight 导出器、salted hash 策略或 GUI 验收；以上 P0 schema 和拒绝规则保持不变。
+为 available，外部兼容数据集为 unavailable（下述可识别兼容证明除外）。原生模式不隐含
+迁移、修复、跨片聚合/生命周期执行、兼容导出、salted hash 或 GUI 验收；P0 schema/manifest
+语义不变，仅兼容最终化 WAL 的只读传输修正见上文。
 
 发布、force/focus 补偿见[导入指南](quickstart.md#可选导入原生分库数据集)。完整 manifest
 只能与全部最终化成员同时可见，单个 ready 片不构成完整产物。
@@ -283,6 +288,57 @@ frame 扩展。
 pickle 仍可能整体加载。分库只限制**单库真实事件数**，不限制 block 行数、总 staging
 字节、registry 大小或峰值 RSS。合成回归及已审 expandable/多设备 fixture 覆盖回放
 等价和资源失败路径；不宣称真实上游 GUI 或性能验收。
+
+## 显式 msinsight 兼容导出（P2）
+
+`pt-snap import snapshot.pkl --format msinsight --json`（别名
+`--format compatibility-v1`）**仅**对齐
+`Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5`。支持入口是在该目标版本
+打开**同一原始 pickle**及邻接 `<原始路径>.msinsight/`，不是 GUI 直接导入独立目录。
+`--output-dir` 为 pt-snap 选择其他父目录，搬迁本身不创建上游入口。`sourceFile` 记录
+绝对原始源路径。容量默认 `500000`，可用 `--events-per-slice` 调整；默认单库及显式
+native-v2 输出仍独立且不变。
+
+第一方转换器消费已关闭/最终化的原生暂存，物化精确位置内联 v1 **实际表**，去除
+未隔离原生 `callstack`，写入物理格式 metadata `1`。保留原始真实 ID、action、stream/
+指标、设备内稳定 block 身份、`free_completed` 和片外生命周期文本来源引用，不插入
+外片真实事件掩盖片内 JOIN 缺口。OOM/未知 action、非零/稀疏 ID、空/仅静态选择失败；
+原生保留更广合同。所有选中成员最终化、关闭、校验后才发布 complete。
+`pt_snap_block_reference` v1 是隔离文本扩展，不是有序 frames 或跨来源查询承诺；
+跨来源查询/全局聚合仍属后续独立工作。文本不能恢复原始有序 frame 数组；原版 workspace
+raw-frame 丢失与字符串 OOM action 强制转换属于已知局限，不应仿制为兼容能力。
+
+`cacheHash = SHA256(b"mem_snapshot_parser_v2" + 原始_pickle_字节)`，salt **前置**。
+独立 `ptSnap.identity` 字段为 `sourceSha256`、`requestedDevice`、`eventsPerSlice`、
+`outputFormat=compatibility-v1`、`manifestContractVersion=1`、`exportContractVersion=1`、
+`referenceContractVersion=1`、`metadataSchemaVersion=1`、`importFormatVersion=1`、完整
+`targetRevision`。`ptSnap` 另含 `metadata`、`omittedDevices` 和 `members`（规范相对路径
+→ 最终化 SHA256）。整体已校验所有权/身份要求每个成员/哈希及逐片 metadata 相同；
+不接管未知/外部缓存或无关文件。CLI 版本变化本身不使缓存失效。
+
+兼容发布 **force 也 no-replace**。已识别、身份相同的 pt-snap 缓存不加载 pickle 即复用，
+force 不绕过该规则。源路径/内容、选项/合同变化、成员损坏或 GUI 修改 DB 后须换新
+`--output-dir`，不修复、不覆盖、不删除旧产物。排他发布与 focus 补偿使用已有受检事务，
+发布/复用前再次核对源 SHA256；原生 force 替换与恢复语义不变。
+
+内联文本成本按每个事件的 UTF-8 调用栈字节求和，不按不同栈各存一份；原生去重仍可用。
+转换暂时并存两种布局，可能留下 SQLite free pages；容量不是 RSS/registry/block/磁盘
+上限。不生成可选 frame 增强。
+
+**GUI 待验收/未运行。** 固定源码 parser 在 UP_TO_DATE 前检查 complete manifest、
+非空相同 hash、每个 ready/可解析/存在成员、只读 DB/设备校验，以及 allocation cache
+存在**或可构建**。派生 allocation cache 可在不运行生产者时修改 DB，mtime 或新派生表
+不能单独证明重跑。后续 GUI 验收须保留 UP_TO_DATE/无 script 调用日志并对照曲线、block、
+跨片展示。源码检查及原版产物的生产 reader 读取不是 GUI、C++ server/编译或完整差分/
+性能验收。
+
+不可变固定 blob 证据：
+[parser 判据](https://api.github.com/repos/Ascend/msinsight/git/blobs/40046e6a92ff5af776ee55bd4cdd4586745af3c2)、
+[salt 顺序](https://api.github.com/repos/Ascend/msinsight/git/blobs/ca421c7b33f3a0050df9e7a01e666f558801bc2f)、
+[allocation cache 判据/构建](https://api.github.com/repos/Ascend/msinsight/git/blobs/3d1ecc0ebd0d8e3eb0c984eda6b750ec4ce0e4f1)。
+Ascend 源码为 Mulan PSL v2，docs 单独为 CC BY 4.0；此最小转换器是本地原创接口事实实现，
+未复制 vendor 实现，也不把 Ascend blob 自动重新许可为 MIT。已有 pt-snap 运行时 lineage
+属于独立许可证/来源历史。
 
 ## 来源证据与限制
 

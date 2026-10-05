@@ -66,6 +66,14 @@ rollback fails (force is not a single crash-atomic swap). See the
 [native import guide](docs/en/quickstart.md#optional-import-a-native-sharded-dataset).
 Only bounded dataset `event` queries are currently supported.
 
+Explicit `pt-snap import snapshot.pkl --format msinsight --json` produces
+`snapshot.pkl.msinsight/` for the fixed msinsight revision's **same original
+pickle + adjacent cache** entrance. Inline stacks cost more space than native
+interning. Existing compatible targets are never replaced, even with `--force`;
+only fully validated identical pt-snap caches are reused. GUI acceptance remains
+**pending/not run**; hash equality alone is not acceptance. See
+[compatible export and limits](docs/en/sharded-snapshotdb.md#explicit-msinsight-compatible-export-p2).
+
 ## Commands
 
 | Command | Description |

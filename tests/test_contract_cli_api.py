@@ -850,6 +850,74 @@ def test_dataset_focus_overview_query_contract(tmp_path: Path, use_manifest: boo
             analyzer.set_focus(str(path))
 
 
+def test_compatible_import_focus_metadata_query_contract(tmp_path: Path, monkeypatch) -> None:
+    from tests.core.test_msinsight_export import options as compatible_options
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("PT_SNAP_DB_PATH", raising=False)
+    request = compatible_options(tmp_path, multiple=True)
+    imported = _json_stdout(
+        runner.invoke(
+            app,
+            [
+                "import",
+                str(request.snapshot_file),
+                "--format",
+                "msinsight",
+                "--events-per-slice",
+                "2",
+                "--json",
+            ],
+        )
+    )
+    assert imported["format"] == "compatibility-v1"
+    path = imported["dataset_path"]
+    focused = _json_stdout(runner.invoke(app, ["focus", path, "--device", "1", "--json"]))
+    with SnapshotAnalyzer(path, device_id=1) as analyzer:
+        state = analyzer.get_focus()
+        assert state.available_devices == focused["available_devices"] == [0, 1]
+        assert state.callstack_layout == focused["callstack_layout"] == "v1"
+        metadata_result = runner.invoke(app, ["metadata", path, "--json"])
+        assert metadata_result.exit_code == 0, metadata_result.output
+        metadata = json.loads(metadata_result.output)
+        assert metadata == analyzer.get_database_metadata()
+        assert metadata["status"] == "available"
+        assert metadata["metadata"]["import_format_version"] == 1
+        overview_result = runner.invoke(app, ["overview", path, "--json"])
+        assert overview_result.exit_code == 0, overview_result.output
+        overview = json.loads(overview_result.output)
+        api_overview = analyzer.get_database_overview()
+        assert {key: overview[key] for key in api_overview} == api_overview
+        for params, selector in [
+            ({"id": 3}, []),
+            ({}, ["--slice", "1"]),
+            ({"min_id": 2, "max_id": 3}, []),
+        ]:
+            cli = _json_stdout(
+                runner.invoke(
+                    app,
+                    [
+                        "query",
+                        path,
+                        "--device",
+                        "1",
+                        "--template-use",
+                        "event",
+                        "--params",
+                        json.dumps(params),
+                        "--json",
+                        *selector,
+                    ],
+                )
+            )
+            api = analyzer.execute_query("event", params, slice_index=1 if selector else None)
+            assert {key: cli[key] for key in api} == api
+            assert cli["scope"]["boundary_events_included"] is False
+        assert not hasattr(analyzer, "import_snapshot")
+
+
 def test_overview_error_contract_maps_four_domain_failures(tmp_path: Path) -> None:
     missing = runner.invoke(app, ["overview", str(tmp_path / "missing.db"), "--json"])
     missing_error = json.loads(missing.stderr)["error"]

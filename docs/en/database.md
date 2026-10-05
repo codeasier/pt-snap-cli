@@ -405,4 +405,28 @@ before bounded `event` addressing; it never repairs or migrates files. Aggregate
 and lifecycle dataset queries remain unsupported. See the separate
 [native manifest protocol](sharded-snapshotdb.md#published-native-dataset-p2) and
 [transaction/recovery guide](quickstart.md#optional-import-a-native-sharded-dataset).
-P0 compatibility-v1 table order, inline callstack layout and reject rules are unchanged.
+P0 compatibility-v1 table order, inline layout and manifest semantics are unchanged.
+
+### Explicit compatible export
+
+`import --format msinsight` (alias `compatibility-v1`) publishes physical v1
+`trace_entry_<device>` tables with the ninth column `callstack TEXT`, not views,
+with the exact positional block/dictionary schema. It removes staging's unprefixed
+`callstack` table and writes `pt_snap_metadata.import_format_version=1`, retaining
+isolated `pt_snap_block_reference` text lifecycle sources. Native standalone and
+native datasets keep their interning and v2 metadata. Structured ordered frames
+are not emitted or inferred from text.
+
+Inline stack bytes scale with the sum of stack text **over every event**, not
+unique stacks; conversion temporarily holds native and inline tables and may leave
+SQLite free pages. Capacity does not bound blocks, loading RSS or total disk.
+Compatible datasets additionally carry `ptSnap.identity`, metadata, omitted devices
+and full member hashes. Recognized whole-artifact metadata is available only after
+all attestation checks; external v1 datasets still need no metadata.
+
+For finalized compatibility datasets ONLY, bare validation and cached analysis
+use `mode=ro&immutable=1` after rejecting all live/dangling sidecars and aliases
+before the first SQLite open. Closed/checkpointed original WAL bytes/inventory
+remain unchanged. This assumes no active writer; native dataset non-WAL policy and
+standalone `mode=ro` defaults are unchanged. See
+[compatible protocol and no-replace rules](sharded-snapshotdb.md#explicit-msinsight-compatible-export-p2).

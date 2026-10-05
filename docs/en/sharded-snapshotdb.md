@@ -4,8 +4,8 @@
 
 ## Scope and versions
 
-This freezes an artifact contract and shared validation models, **not a new CLI
-exporter or cross-slice query engine**. Existing `import` still defaults to one
+This defines artifact contracts, shared validators and an **explicit** compatible
+CLI exporter below, not a cross-slice query engine. Existing `import` defaults to one
 native v2 DB; `split` still produces replayable pickle/JSON. Existing single-DB
 v1/v2 single-DB analysis is unchanged. The P1 reader below additionally accepts a
 complete compatibility-v1 manifest or directory as focus. The `complete` gate
@@ -21,7 +21,8 @@ Separate version axes:
 
 - `schemaVersion=1`: manifest and compatibility base-table contract defined here.
 - `pt_snap_metadata.import_format_version`: existing pt-snap importer format,
-  currently 2; **not** the manifest version and not required for external artifacts.
+  `2` for native and `1` for compatible inline export; **not** the manifest version
+  and not required for external artifacts.
 - Future structured-frame extensions have their own version. Unknown extensions
   do not invalidate base reading or imply structured-frame support.
 
@@ -198,8 +199,9 @@ real/boundary counts, per-device slice paths/ranges and capabilities. Event boun
 exclude negative synthetic rows (also for standalone DB overview). Text stacks
 are available, but not necessarily populated; structured frames and cross-slice
 queries are **unavailable**, including when unknown extensions claim them.
-Dataset-wide import metadata is unavailable; per-slice metadata is not a source
-attestation for the entire dataset.
+External dataset-wide import metadata is unavailable; per-slice metadata alone
+is not a source attestation. The compatible exporter below supplies a recognized,
+whole-artifact `ptSnap` attestation, making its validated metadata available.
 
 Path precedence stays explicit → `PT_SNAP_DB_PATH` → nearest project focus → legacy
 global config; device precedence stays explicit → focused → first discovered.
@@ -238,21 +240,22 @@ lookup even when size/mtime are unchanged. Analyzer-owned caches close on exit;
 injected caches remain caller-owned. Validation opens/closes slices sequentially.
 
 Building, missing/inconsistent slices, unknown base versions and unsafe paths
-are rejected before focus writes or query execution. Before opening **any** slice,
-the resolver checks every member's canonical non-symlink path, SQLite header and
-WAL/journal/SHM sidecars (including dangling symlinks). Persistent WAL mode is
-rejected even after checkpointing has removed its sidecars: `mode=ro` can recreate
-them. The reader does not repair, checkpoint, delete sidecars or change journal
-mode; standalone DB behavior is unchanged. This is read-only inspection, not a
-filesystem sandbox or a concurrent producer lock. Native-v2 replay's private staging directory has **no published manifest**
-and is rejected as a dataset; its individual DBs remain readable via the existing
-single-DB entry. A future compatibility-v1 producer can use this same reader
-without producer-specific metadata. The P1 reader does not create a native manifest; publication requires the explicit
-P2 native protocol below. Compatibility export and cross-slice lifecycle execution
-remain separate work. In particular, the fixed original compatibility producer can
-leave finalized, sidecar-free WAL headers, which this reader still rejects. Transport
-support for those artifacts is a compatibility prerequisite, not passed upstream/GUI
-interoperability; analysis never rewrites them.
+are rejected before focus writes or query execution. Before **any** SQLite open,
+both the bare P0 validator and resolver check **all** member/parent aliases and
+live/dangling WAL, journal and SHM sidecars. Finalized, closed compatibility-v1
+members use `mode=ro&immutable=1`, including cached query Context connections.
+This accepts the fixed original producer's checkpointed, sidecar-free WAL headers
+without creating sidecars or changing bytes. The immutable flag assumes a closed
+finalized artifact, **not a live-WAL shortcut** or concurrent-writer guarantee.
+No repair, checkpoint, journal-mode change, migration or deletion occurs.
+Native datasets retain persistent-WAL rejection; standalone Context defaults stay
+`mode=ro` without immutable. Cache identity includes transport mode and generation.
+This is read-only validation, not a filesystem sandbox or a producer lock.
+
+Native-v2 private staging has **no published manifest**, so it is not a dataset;
+individual DBs remain readable via the single-DB entry. Published native format
+and compatible export are separate explicit protocols below. Cross-slice lifecycle
+execution remains separate work; safe original-WAL reading is not GUI acceptance.
 
 ## Published Native Dataset (P2)
 
@@ -297,10 +300,11 @@ The native resolver validates all member hashes, actual schemas/dictionaries,
 real count/ranges, metadata and finalized references, retaining the P1 pre-open
 alias/sidecar/persistent-WAL checks and bounded borrowed-cache ownership. Focus,
 metadata, overview and single-slice `event` addressing work without the source
-pickle. Native metadata is available dataset-wide; compatibility metadata remains
-unavailable. No migration, repair, cross-slice aggregation/lifecycle execution,
-msinsight exporter, salted hash policy or GUI acceptance is implied. The P0
-schema and reject policies above remain unchanged.
+pickle. Native metadata is available dataset-wide; external compatibility metadata
+remains unavailable unless the recognized compatible attestation below is present.
+Native mode implies no migration, repair, cross-slice aggregation/lifecycle execution,
+compatible export, salted hash or GUI acceptance. P0 schema/manifest semantics are
+unchanged; the compatibility-only finalized-WAL transport is described above.
 
 Publication and force/focus compensation are described in the
 [import guide](quickstart.md#optional-import-a-native-sharded-dataset). A complete
@@ -352,6 +356,72 @@ Pickle may still load entirely. Sharding bounds **real events per DB**, not bloc
 rows, total staged bytes, registry size, or peak RSS. Synthetic regressions and
 reviewed expandable/multi-device fixtures cover replay equivalence and resource
 failure paths; no live upstream GUI or performance acceptance is claimed.
+
+## Explicit msinsight-Compatible Export (P2)
+
+`pt-snap import snapshot.pkl --format msinsight --json` (alias
+`--format compatibility-v1`) targets **only**
+`Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5`. Its supported entrance is
+opening the **same original pickle** in that target with adjacent
+`<original-path>.msinsight/`, not direct standalone-directory GUI import.
+`--output-dir` selects another parent for pt-snap; relocation alone does not create
+an upstream GUI entrance. `sourceFile` is the absolute original source path.
+Capacity defaults to `500000` and can be set with `--events-per-slice`; default
+standalone import and explicit native-v2 output remain separate and unchanged.
+
+The first-party converter consumes closed/finalized native staging, materializes
+exact positional inline-v1 **tables**, removes unprefixed native `callstack`, and
+writes physical-format metadata `1`. Original real IDs, actions, stream/metrics,
+stable device-local block identities, `free_completed` and out-of-slice lifecycle
+text references are preserved. No foreign real events are inserted to hide local
+JOIN gaps. Unsupported OOM/unknown actions, nonzero/sparse IDs and empty/static-only
+selections fail; native retains its wider contract. All selected members finalize,
+close and validate before complete publication. `pt_snap_block_reference` v1 is an
+isolated text extension, not ordered frames or a claim of cross-source queries.
+Those queries and global aggregation remain separate work. Text cannot recover
+original ordered frame arrays; original workspace raw-frame loss and string-action
+OOM coercion are known upstream limitations, not compatible features to imitate.
+
+`cacheHash = SHA256(b"mem_snapshot_parser_v2" + raw_pickle_bytes)`: the salt is
+**prepended**. Independent `ptSnap.identity` fields are `sourceSha256`,
+`requestedDevice`, `eventsPerSlice`, `outputFormat=compatibility-v1`,
+`manifestContractVersion=1`, `exportContractVersion=1`, `referenceContractVersion=1`,
+`metadataSchemaVersion=1`, `importFormatVersion=1`, and full `targetRevision`.
+The `ptSnap` object also contains `metadata`, `omittedDevices`, and `members`
+(canonical relative path → finalized SHA256). Whole validated ownership/identity
+requires every member/hash and identical per-slice metadata; unknown/external
+caches and unrelated files are not adopted. CLI version alone does not invalidate.
+
+Compatible publication is **no-replace even with force**. Identical recognized
+pt-snap caches reuse without loading pickle (force does not bypass this rule).
+Changed source path/content, options/contracts, corrupted members or GUI-modified
+DBs require a new `--output-dir`; no repair, overwrite or deletion of the old
+artifact occurs. Exclusive publication and focus compensation use the existing
+checked transaction; source SHA256 is rechecked immediately before publish/reuse.
+Native force replacement and recovery semantics are untouched.
+
+Inline text costs `sum(len(callstack.encode("utf-8")) for each event)` rather than
+one copy per distinct stack. Existing native interning remains available. Conversion
+temporarily holds both layouts and can leave free SQLite pages; capacity is not an
+RSS/registry/block/disk bound. No optional frame enhancement is emitted.
+
+**GUI remains pending/not run.** Fixed-source parser checks complete manifest,
+nonempty identical hash, every ready/resolved/existing member, read-only DB/device
+validation and allocation-cache existence **or buildability** before UP_TO_DATE.
+Derived allocation caches may modify DBs without invoking the producer: mtime or
+new derived tables alone are not rerun evidence. Later GUI acceptance must retain
+UP_TO_DATE/no-script-invocation logs and compare curves, blocks and cross-slice
+presentation. Source checks and original-artifact production reads are not GUI,
+C++ server/compile or full differential/performance acceptance.
+
+Immutable fixed blob evidence:
+[parser predicates](https://api.github.com/repos/Ascend/msinsight/git/blobs/40046e6a92ff5af776ee55bd4cdd4586745af3c2),
+[salt order](https://api.github.com/repos/Ascend/msinsight/git/blobs/ca421c7b33f3a0050df9e7a01e666f558801bc2f),
+[allocation-cache predicates/build](https://api.github.com/repos/Ascend/msinsight/git/blobs/3d1ecc0ebd0d8e3eb0c984eda6b750ec4ce0e4f1).
+The Ascend source is Mulan PSL v2, docs separately CC BY 4.0. This minimal converter
+is original interface-facts code, not a copied vendor implementation or automatic
+MIT relicensing of Ascend blobs. Existing pt-snap runtime lineage is a separate
+license/provenance history.
 
 ## Evidence and limits
 

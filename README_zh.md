@@ -58,6 +58,12 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 （force 不是单次崩溃原子 swap）。详见
 [原生分库导入](docs/zh/quickstart.md#可选导入原生分库数据集)；当前仅支持有界数据集 `event` 查询。
 
+显式 `pt-snap import snapshot.pkl --format msinsight --json` 生成
+`snapshot.pkl.msinsight/`，对齐固定 msinsight 版本的**同一原始 pickle + 邻接缓存**入口。
+内联栈比原生去重占更多空间；即使 `--force` 也不替换已有兼容目标，只复用完整校验且
+身份相同的 pt-snap 缓存。GUI **待验收/未运行**，hash 相等不代表验收通过。详见
+[兼容导出及限制](docs/zh/sharded-snapshotdb.md#显式-msinsight-兼容导出p2)。
+
 ## 命令
 
 | 命令 | 说明 |

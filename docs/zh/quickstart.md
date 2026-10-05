@@ -55,8 +55,8 @@ pt-snap query --template-use event --slice 0 --json
 不指定 `--events-per-slice` 时仍生成已有单 DB；指定后生成
 `<output-dir>/<完整输入文件名>.pt-snap-native-v2/`，省略 `--output-dir` 则放在源文件旁。
 此模式可显式指定 `--format pt-snap-native-v2`；`--format single-db` 不允许容量参数。
-`--format compatibility-v1` 和 `msinsight` 是保留边界并明确拒绝：原生产物**不是**
-msinsight 兼容导出。
+原生产物**不是** msinsight 兼容导出；显式 `--format msinsight`（别名
+`compatibility-v1`）选择下述独立兼容模式。
 
 容量按**各设备**的真实时间顺序位置计数，不使用 `max(id)+1`，不计负 ID 合成边界。
 保留原始稀疏/非零 ID、OOM 和 workspace 事件。`--device` 选择一个有事件设备，默认
@@ -83,6 +83,37 @@ msinsight 兼容导出。
 数据集 focus 当前只支持有界 `event` 寻址，不会静默在一片上运行峰值/生命周期/聚合。
 详见[原生 manifest 合同](sharded-snapshotdb.md#已发布原生数据集p2)。
 `SnapshotAnalyzer` 仍只负责分析，不新增 import/split 方法。
+
+### 可选：导出 msinsight 兼容数据集
+
+```bash
+pt-snap import snapshot.pkl --format msinsight --json
+pt-snap overview snapshot.pkl.msinsight --json
+pt-snap query --template-use event --slice 0 --json
+```
+
+此**显式**模式仅对齐 `Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5`
+的原始 pickle 导入入口，不是独立目录入口。GUI 发现要求同一原始 pickle 邻接
+`<完整输入文件名>.msinsight/`；pt-snap 可在没有 pickle 时分析已搬迁完整产物。
+可选 `--events-per-slice N` 默认 `500000`；`--output-dir` 选择其他父目录，不意味着
+GUI 支持独立入口。`--device` 选择有事件设备，并披露省略设备。非零/稀疏真实 ID、
+OOM/未知 action、空/仅静态选择明确失败，不静默映射；原生模式仍保留稀疏 ID、OOM、
+workspace。可信 pickle 与完整加载的内存成本仍适用。
+
+基础表是物理内联 v1 表，metadata import format 为 `1`。调用栈文本按**每个事件**
+复制，不按不同栈只存一次，磁盘与暂存转换空间可能明显增加；原生去重不变。
+不从格式化文本虚构有序结构化 frames。数据集当前只支持有界 `event` 查询。
+
+兼容发布采用 **no-replace**：外部/原版/用户缓存即使 `--force` 也不覆盖、不删除。
+仅完整、已证明且身份相同的 pt-snap 缓存可复用（force 也复用）；否则换新
+`--output-dir`。源内容、sourceFile、选项、全部成员哈希和合同版本须独立于 salted
+`cacheHash` 匹配。GUI 修改派生缓存可能使该证明失效，但不等于重跑生产者。
+全部暂存成员关闭/最终化/校验后才排他发布并写请求的 focus；普通失败补偿旧 focus
+原始字节，回滚失败则保留恢复证据。单库/原生 force 策略不变，`SnapshotAnalyzer` 只分析。
+
+**GUI 待验收/未运行。** complete/ready、安全路径/设备表及派生 allocation cache
+存在或可构建同样重要；hash 相同不证明 GUI 复用或显示一致。详见
+[兼容协议及固定源码证据](sharded-snapshotdb.md#显式-msinsight-兼容导出p2)。
 
 ### 可选：拆分快照
 

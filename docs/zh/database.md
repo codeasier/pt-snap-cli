@@ -383,4 +383,22 @@ reader 在有界 `event` 寻址前校验完整成员哈希、最终化身份/引
 数据集聚合/生命周期查询仍不支持。详见独立
 [原生 manifest 协议](sharded-snapshotdb.md#已发布原生数据集p2)及
 [事务恢复指南](quickstart.md#可选导入原生分库数据集)。
-P0 兼容 v1 表序、内联 callstack 布局和拒绝规则不变。
+P0 兼容 v1 表序、内联布局和 manifest 语义不变。
+
+### 显式兼容导出
+
+`import --format msinsight`（别名 `compatibility-v1`）生成物理 v1
+`trace_entry_<device>` 表，第九列为 `callstack TEXT`，不是 VIEW；block/dictionary
+位置 schema 精确匹配。转换去除暂存的未隔离 `callstack` 表，写入
+`pt_snap_metadata.import_format_version=1`，保留隔离的 `pt_snap_block_reference`
+文本生命周期来源。原生单库/数据集仍使用去重和 v2 metadata，不生成或从文本推断有序 frames。
+
+内联调用栈字节按**所有事件**的文本总和增长，不按不同栈计数；转换暂时并存原生与内联表，
+可能保留 SQLite free pages。容量不限制 block、加载 RSS 或总磁盘。兼容 manifest 的
+`ptSnap.identity`、metadata、省略设备和全部成员哈希形成整体证明，完整校验后才报告
+metadata available；外部 v1 数据集仍不要求 metadata。
+
+**仅最终化兼容数据集**的裸校验与缓存分析在首个 SQLite 打开前拒绝全部存活/悬空
+sidecar 和别名后使用 `mode=ro&immutable=1`，保留已关闭/checkpoint 原版 WAL 的字节及
+目录清单。前提是无活动 writer；原生数据集非 WAL 策略与单库 `mode=ro` 默认不变。详见
+[兼容协议及 no-replace 规则](sharded-snapshotdb.md#显式-msinsight-兼容导出p2)。

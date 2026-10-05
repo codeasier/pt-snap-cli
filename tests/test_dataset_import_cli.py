@@ -64,7 +64,7 @@ def test_dataset_cli_json_generation_reuse_force_focus_and_text(tmp_path):
         ["--format", ""],
         ["--format", "pt-snap-native-v2"],
         ["--events-per-slice", "2", "--format", "single-db"],
-        ["--events-per-slice", "2", "--format", "compatibility-v1"],
+        ["--events-per-slice", "2", "--format", "compatibility-v2"],
         ["--device", "-1"],
     ],
 )

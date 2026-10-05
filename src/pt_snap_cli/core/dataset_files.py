@@ -8,7 +8,7 @@ from pathlib import Path
 from .errors import DatabaseSchemaError
 
 
-def require_readonly_member(root: Path, member: Path) -> None:
+def require_readonly_member(root: Path, member: Path, *, immutable: bool = False) -> None:
     parts = member.relative_to(root).parts
     for index in range(1, len(parts) + 1):
         if root.joinpath(*parts[:index]).is_symlink():
@@ -21,9 +21,9 @@ def require_readonly_member(root: Path, member: Path) -> None:
             raise DatabaseSchemaError(f"Dataset member has a live SQLite sidecar: {member}")
     with member.open("rb") as source:
         header = source.read(20)
-    # Retain #200's persistent-WAL rejection, including sidecar-free checkpointed
-    # WAL. Accepting fixed-upstream compatibility producers is a separate boundary.
-    if header[:16] == b"SQLite format 3\x00" and 2 in header[18:20]:
+    # Only finalized compatibility datasets use immutable transport. Native
+    # datasets retain their non-WAL contract; no writer repair/checkpoint occurs.
+    if not immutable and header[:16] == b"SQLite format 3\x00" and 2 in header[18:20]:
         raise DatabaseSchemaError(f"Dataset member uses persistent WAL mode: {member}")
 
 

@@ -61,8 +61,8 @@ Without `--events-per-slice`, import still produces the existing single DB. With
 it, the output is `<output-dir>/<full-input-filename>.pt-snap-native-v2/`, or the
 same directory beside the source if `--output-dir` is omitted. `--format
 pt-snap-native-v2` is optional in this mode; `--format single-db` forbids a capacity.
-`--format compatibility-v1` and `msinsight` are reserved and explicitly rejected:
-native output is **not** an msinsight-compatible export.
+Native output is **not** an msinsight-compatible export. Explicit `--format
+msinsight` (alias `compatibility-v1`) selects the separate compatible mode below.
 
 Capacity counts real chronological positions **per device**, not `max(id)+1` or
 negative synthetic boundaries. Original sparse/nonzero IDs, OOM and workspace
@@ -100,6 +100,45 @@ Dataset focus currently supports only bounded `event` addressing; it does not
 silently run peak/lifecycle/aggregate queries over one shard. See the
 [native manifest contract](sharded-snapshotdb.md#published-native-dataset-p2).
 `SnapshotAnalyzer` remains analysis-only, without import/split methods.
+
+### Optional: Export an msinsight-Compatible Dataset
+
+```bash
+pt-snap import snapshot.pkl --format msinsight --json
+pt-snap overview snapshot.pkl.msinsight --json
+pt-snap query --template-use event --slice 0 --json
+```
+
+This **explicit** mode targets `Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5`
+and its original-pickle import entrance, not direct directory import. Keep the
+same original pickle beside `<full-input-filename>.msinsight/` for GUI discovery;
+pt-snap itself can analyze a relocated complete artifact without pickle. Optional
+`--events-per-slice N` defaults to `500000`; `--output-dir` selects another parent,
+not an independently supported GUI entrance. `--device` selects an event-bearing
+device and omissions are reported. Nonzero/sparse real IDs, OOM/unknown actions,
+empty/static-only selections fail, without silent remapping. Native mode still
+preserves sparse IDs/OOM/workspace. Trusted pickle and full-input memory costs apply.
+
+Base tables are physical inline-v1 tables; metadata has import format `1`.
+Callstack text is copied once **per event**, not once per distinct stack, so disk
+and temporary conversion space can grow substantially. Native interning remains
+unchanged. No ordered structured-frame capability is invented from formatted text.
+Only bounded `event` dataset queries are currently available.
+
+Compatible publication is **no-replace**: external/original/user caches are never
+overwritten or deleted, even under `--force`. A complete, attested, identical
+pt-snap cache is reused (also with force); otherwise choose a new `--output-dir`.
+Source content, sourceFile, options, all member hashes and contract versions must
+match independently of salted `cacheHash`. A GUI-derived cache modification can
+invalidate this attestation, without implying producer rerun. All staged members
+close/finalize/validate before exclusive publication and requested focus; ordinary
+failure compensates exact old focus bytes, with recovery evidence if rollback fails.
+Standalone/native force policies remain unchanged. `SnapshotAnalyzer` is analysis-only.
+
+**GUI acceptance is pending/not run.** Complete/ready, safe paths/device tables,
+and derived allocation-cache availability/buildability also matter; matching hash
+alone proves neither GUI reuse nor display parity. Details and fixed source evidence:
+[compatible protocol](sharded-snapshotdb.md#explicit-msinsight-compatible-export-p2).
 
 ### Optional: Split a Snapshot
 
