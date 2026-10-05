@@ -228,3 +228,28 @@ discarded side-effect return values explicit. Database/slice adaptor consumers
 annotate the existing per-device trace-list and segment-list format assumptions.
 No serialization, validation, replay, or database layout behavior changes.
 Audited upstream source mappings and license terms remain unchanged.
+
+## 2026-10-05 — Continuous native shard replay (issue #199)
+
+Interface facts were independently read through real GitHub GETs at
+Ascend/msinsight revision `101f65b877a267ffd5f66ea3834706057ba243e5`:
+[resumable replay](https://api.github.com/repos/Ascend/msinsight/git/blobs/1956490d46ccf11309d10853ea76175d0713934e)
+and [boundary/registry interfaces](https://api.github.com/repos/Ascend/msinsight/git/blobs/95612509ef990ac6b7034919dae4938cc6acf3ad).
+The fixed tree confirms both blob identities. These sources carry Copyright (c)
+2026 Huawei Technologies Co.,Ltd. and Mulan PSL v2; the docs' CC BY 4.0 license
+is separate. No upstream implementation is copied into the package.
+
+Local original implementation changes `simulate/simulate.py` to reuse the existing
+full replay loop for position-based pauses (deliberately not an ID threshold),
+adds `tools/adaptors/sharded_replay.py` for native-v2 multi-writer staging,
+original-object lifecycle tracking, negative left-boundary rows, transactional
+batch ID/free_completed/stack-source backfill and final validation, and adds the
+shared `core/sharded_replay_service.py` producer boundary. Unknown allocations
+keep device-local negative identities without upstream compaction. All writers
+close before finalization; no incremental readiness, compatibility manifest,
+cache/publication, CLI changes, or structured-frame extension is introduced.
+`tools/adaptors/snapshot2db.py` and `database/snapshot_db.py` close connections on
+constructor/commit failure while preserving the original single-DB data contract.
+Synthetic failure/equivalence tests and bilingual docs are locally authored;
+reviewed fixtures are unchanged. Existing source mappings and MIT relicensing
+records are retained. GUI interoperability and streaming/RSS claims are not made.

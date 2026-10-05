@@ -154,14 +154,27 @@ class SimulateDeviceSnapshot:
         self.simulated_allocator.unregister_hooker(hooker_id)
 
     def replay(self) -> bool:
+        """Undo the entire remaining trace through the resumable replay path."""
+        return self.replay_until(0)
+
+    def replay_until(self, remaining_events: int) -> bool:
+        """Undo until exactly ``remaining_events`` chronological entries remain.
+
+        The endpoint is a list position, not an event ID (native IDs may be sparse).
+        Undoing positions [start, end] leaves the state immediately BEFORE start.
+        Pre hooks observe the state AFTER the event; post hooks observe BEFORE it.
+        A pre/allocator failure leaves the event pending, while a post-hook failure
+        occurs after it was consumed, exactly as for full replay.
         """
-        开始仿真回放内存事件
-        """
+        if type(remaining_events) is not int or not (
+            0 <= remaining_events <= len(self.device_snapshot.trace_entries)
+        ):
+            raise ValueError("remaining_events must be an integer within the remaining trace")
         # 倒序遍历
         total_size = len(self.device_snapshot.trace_entries)
         self._replay_logger.info(f"Replaying {total_size} entries in snapshot...")
         progress_update_point = [0.25, 0.5, 0.75]
-        while self.device_snapshot.trace_entries:
+        while len(self.device_snapshot.trace_entries) > remaining_events:
             for hooker in self.hookers.values():
                 if hooker and not hooker.pre_undo_event(
                     self.device_snapshot.trace_entries[-1], self.device_snapshot
@@ -191,5 +204,9 @@ class SimulateDeviceSnapshot:
                         "An interruption occurred during the replay of the single event post hook."
                     )
                     return False
-        self._replay_logger.info("All events have been successfully replayed.")
+        self._replay_logger.info(
+            "All events have been successfully replayed."
+            if not remaining_events
+            else f"Replay paused with {remaining_events} entries remaining."
+        )
         return True

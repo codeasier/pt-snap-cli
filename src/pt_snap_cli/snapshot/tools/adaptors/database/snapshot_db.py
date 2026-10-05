@@ -64,13 +64,18 @@ class SnapshotDb(SqliteDB):
     CALLSTACK_TABLE_NAME = "callstack"
 
     def __init__(self, path: str):
-        super().__init__(path, auto_create=True, with_dictionary_table=True)
-        # Import builds a replaceable database, so favor write throughput over crash recovery.
-        self.conn.execute("PRAGMA journal_mode = MEMORY")
-        self.conn.execute("PRAGMA synchronous = OFF")
-        self.conn.execute("PRAGMA cache_size = -65536")
-        # 清理旧版本表格
-        self._clear_old_tables()
+        try:
+            super().__init__(path, auto_create=True, with_dictionary_table=True)
+            # Import builds a replaceable database, so favor write throughput over crash recovery.
+            self.conn.execute("PRAGMA journal_mode = MEMORY")
+            self.conn.execute("PRAGMA synchronous = OFF")
+            self.conn.execute("PRAGMA cache_size = -65536")
+            # 清理旧版本表格
+            self._clear_old_tables()
+        except BaseException:
+            if hasattr(self, "conn"):
+                self.conn.close()
+            raise
 
     def create_trace_entry_table(self, device: int = 0):
         self.create_table(

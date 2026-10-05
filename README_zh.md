@@ -91,7 +91,7 @@ helper 会先路由采集，无需先安装 CLI。分析仍需要 CLI 和 Snapsh
 | 拆分快照 | [拆分快照](docs/zh/splitting.md) |
 | Agent skill | [Agent Skills](docs/zh/skills.md) |
 | 数据库格式 | [SnapshotDB Schema](docs/zh/database.md) |
-| 分片产物合同（P0，非导出器） | [分片 SnapshotDB 协议](docs/zh/sharded-snapshotdb.md) |
+| 分片合同与内部回放（P0/P1，无 CLI 导出器） | [分片 SnapshotDB 协议](docs/zh/sharded-snapshotdb.md) |
 | Python API | [SnapshotAnalyzer API](docs/zh/snapshot-analyzer-api.md) |
 | 结果映射工具 | [ResultMapper API](docs/zh/result-mapper-api.md) |
 

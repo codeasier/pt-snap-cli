@@ -180,6 +180,53 @@ QueryScope("event_range", device_id=0, start_event_id=1, end_event_id=3).validat
 assert not inspection.structured_frames
 ```
 
+## Internal continuous replay (P1)
+
+`core.sharded_replay_service.ShardedReplayService.stage(source, directory,
+events_per_slice=..., device=None)` is an **internal producer boundary**, not a
+new CLI/API import command. It loads trusted pickle once, constructs one persistent
+simulator per selected event-bearing device, and writes windows from last to first
+into a new, caller-owned **private staging directory**. `omitted_devices` discloses
+all unselected/empty device positions. Existing `import`, `split`, `SnapshotAnalyzer`
+and single-DB v1/v2 reading are unchanged.
+
+The returned immutable result identifies **native-v2** slices, not compatibility-v1
+artifacts: trace rows use `callstackId` plus a local `callstack` table and retain
+native OOM action 8 and workspace events. Sparse/nonzero-start native real IDs are
+preserved if nonnegative, unique and chronological; windows count list positions,
+not `max(id)+1`. These native slices are **not** accepted by `validate_dataset`.
+Compatibility export, a compatible manifest, cache/publication and dataset queries
+remain separate work. No `manifest.json`, `readySlices`, or incremental ready
+notification is emitted. Only a successful return after all devices finalize and
+validate may be handed to later publication. Failure retains private partial
+files for their owner; none is advertised as a complete dataset.
+
+`SimulateDeviceSnapshot.replay_until(remaining_events)` undoes until that many
+chronological list entries remain. The endpoint is a **position**, not an event ID;
+repeated pauses/resumes share the full replay hook/error path. A real event row
+records the state **after** its event (before undo). After undoing a window's first
+event, active block observations and negative-ID `segment_alloc`/`segment_map`
+rows reconstruct the state **before** that first event. Boundary rows do not count
+against capacity or real-event peaks.
+
+A device-local registry retains original block objects across writer switches,
+not copied hook payloads or an address-only key. Allocation replay resolves every
+appearance to the original alloc ID; unknown/preexisting lifetimes retain stable
+negative identities. All writers close before per-DB transactional batch backfill
+and validation. `freeEventId` stays `free_completed`, never `free_requested`;
+boundary `active_pending_free` observations remain state 0. Address reuse and
+same-address different-stream blocks remain distinct. Each native slice adds
+`pt_snap_block_reference(blockId, stream, allocCallstack, freeCallstack)` so finalized
+out-of-slice lifecycle references do not discard their text stack sources. NULL
+means no observed source event; empty text means the observed event had no frames.
+Legacy slice-local query JOINs do not automatically consume this internal table;
+this is not a cross-slice query engine or structured-frame extension.
+
+Pickle may still load entirely. Sharding bounds **real events per DB**, not block
+rows, total staged bytes, registry size, or peak RSS. Synthetic regressions and
+reviewed expandable/multi-device fixtures cover replay equivalence and resource
+failure paths; no live upstream GUI or performance acceptance is claimed.
+
 ## Evidence and limits
 
 Interoperability facts were read from fixed upstream
