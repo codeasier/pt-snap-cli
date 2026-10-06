@@ -24,7 +24,7 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 | `--category` | Filter templates by category: `basic`, `statistical`, `business` |
 | `--template-info` | Show template details (parameters, output schema, and field semantics) |
 | `-n` | Maximum displayed rows; zero or a negative value means unlimited. Separate from `--timeout`. |
-| `--exact-total` | Run a `COUNT` of the matching set. Default `total` is the returned-row count. |
+| `--exact-total` | Count the complete matching set: standalone SQL COUNT or dataset post-merge count. Default `total` is returned rows. |
 | `--timeout` | Wall-clock budget for one `query` / `QueryService` call (page query and optional `--exact-total` COUNT share it) via a SQLite progress handler. `<= 0` disables. Default: `PT_SNAP_QUERY_TIMEOUT` or unlimited. The environment variable applies to every template query, including `report peak-memory`. |
 | `--json` | Emit machine-readable JSON (execute, `--list`, and `--template-info`) |
 
@@ -77,6 +77,76 @@ Replace `123` with the returned locator. This representative event is not the
 group identity. Missing/static/preexisting groups have no captured allocation
 stack to retrieve; omit `stack_bytes` on the original query to see their full
 display labels. Results are read-only and summaries do not change the database.
+
+## Dataset-global built-in support (P3)
+
+Complete native-v2 and compatibility-v1 datasets share the following **one-device**
+query support matrix, also exposed as each catalog/template-info `dataset_support`.
+Device selection stays explicit → focused → first discovered; peaks are never summed
+across devices and there is no shared cross-device event order.
+
+| Template | Dataset semantics before the final output window |
+| --- | --- |
+| `event`, `allocation` | Filter all selected real events, globally sort with the declared ID tie-break, then offset/limit/max_rows; negative boundaries excluded |
+| `memory_peak` | Independent allocated/active/reserved maxima over real events; earliest real ID wins ties; `start_id/end_id` may cross shards |
+| `allocator_gap` | The same independently selected global events, with each gap computed from counters **at that event** |
+| `active_blocks_at_event`, `active_memory_callstack_at_event` | Route a real event to its owner and resolve full cross-shard sources before grouping/top_n (details below) |
+| `preexisting_live` | Owner-event preexisting occupancy, not a leak count |
+| `block` | Merge proved allocation-event lifetimes and stable negative tokens once, then apply filters/order/page; latest containing-shard state is an observation, not state at arbitrary E |
+| `freed_block_lifetime` | Deduplicated captured allocations with a proved `free_completed` source; event-ID distance buckets, not time |
+| `leak_detection` | Captured dynamic lifetimes still present without completion in the **terminal dataset shard**, not union of per-shard unfreed lists; survival is only a candidate, not a confirmed leak; `--slice` is rejected |
+| `callstack_analysis` | All real stack-bearing trace actions, including free/segment/workspace, merged by full canonical source identity before global thresholds/ranking; weighted `avg_size=total_size/alloc_count` |
+| Runtime overrides/custom templates/arbitrary SQL | Explicitly unsupported on datasets, even when named after a built-in; pass an explicit standalone member to use local SQL |
+
+`memory_peak` and `allocator_gap` semantics version **2** exclude negative synthetic
+rows in **standalone** SQL too. `callstack_analysis` version **2** retains the legacy
+`alloc_count` column name but does **not** mean allocation count: v1 counts all real
+non-NULL-text rows; v2 counts all real non-NULL stack references, retaining absent/NULL
+joined text as one distinct missing group. Empty text counts as its own group, separate
+from missing and captured literal labels. Both standalone layouts now group full text,
+not local v2 IDs. Datasets also accept explicitly covered ordered
+raw arrays as stack evidence; missing text does not change raw-array identity. Size
+sums include nonallocation actions and are not instantaneous live occupancy.
+
+The shared YAML output schemas declare every optional dataset-only row column;
+standalone row shapes stay unchanged. `block` and dataset `leak_detection` expose
+`lifecycle_id`, proof/source statuses, source payloads, latest observation slice/state
+scope, category and terminal survival; leak rows additionally retain `requestedSize`,
+`state` and `freeEventId`. These observations and proofs are not leak confirmation.
+Dataset statistics expose `source_stack_id`, `stack_kind`, `text_kind`,
+`stack_event_id` and `frames_status`. The representative real event prefers nonempty
+captured text when available but is not the canonical group identity and need not be
+an allocation action; otherwise it may have empty/NULL text. `text_kind` is provenance
+only and never changes raw-array identity. Retrieve actual text/arrays using `event`
+on that same dataset/device; `frames_status` is not frame reconstruction.
+
+```bash
+pt-snap query '<dataset_dir>' --device 0 --template-use memory_peak --params '{"start_id":100,"end_id":700}' --json
+pt-snap query '<dataset_dir>' --device 0 --template-use event --params '{"min_id":100,"max_id":700,"limit":20,"offset":20}' --exact-total --json
+pt-snap query '<dataset_dir>' --device 0 --template-use leak_detection -n 20 --exact-total --json
+pt-snap report peak-memory '<dataset_dir>' --device 0 --metric reserved --start-id 100 --end-id 700 --timeout 10 --json
+```
+
+Use actual bounds. Ranges may include sparse gaps; they never create an event.
+An empty real range has NULL peak values/IDs. Outside/negative/reversed range
+endpoints fail; `event(id=gap)` may return no rows, while active-at-gap fails.
+Global filters/dedup/source identity/thresholds/sort precede the final window.
+`exact_total` ignores row caps; default total is returned rows with honest exactness
+flags. Result `has_more/truncated` describes the window, not source/range completeness.
+`scope` records requested bounds, actual real-event coverage where applicable,
+involved `slice_indices`, device, fingerprint and boundary exclusion. Source coverage
+is separate. Unproved historical lifecycle identities are shard-local, explicitly
+marked, never guessed by address/local stack ID and never asserted as proved leaks.
+
+Dataset reads detach batches before foreign-owner lookups, using the borrowed bounded
+Context LRU. One diminishing deadline includes all shards, sources, grouping and exact
+totals; reports explicitly share **one** budget across their three queries. Cumulative
+fetched/output work is limited to **100000 rows / 64 MiB serialized values**, including
+repeated source reads. Exceeding either fails the entire operation, never an alleged
+complete partial result. Materialization/sort are bounded by this work ceiling, **not**
+by max_rows. This is not a process RSS limit: Python/SQLite, one batch and individual
+cells have overhead. Manifest hashing/validation remains proportional to artifact size
+and phase-checked, not hard-preempted. No temporary merge DB, repair or artifact write.
 
 ## Dataset point-event attribution
 
@@ -136,9 +206,9 @@ filesystem I/O/validation is checked at phase boundaries, not hard-preempted; no
 OS-level time guarantee is claimed. SQL uses cleared-on-exit progress handlers.
 The Context LRU remains bounded (default four) and borrowed caches remain caller-owned.
 No merged temporary database is created. `ReportService.event_attribution(E, ...)`
-reuses this same query path for a supplied event. Dataset-global peak selection,
-`report peak-memory`, cross-slice event ranges, arbitrary SQL/global list/leak/group
-merging remain explicitly unsupported until their own contracts are implemented.
+reuses this same query path for a supplied event. Dataset-global queries and reports
+follow the explicit support matrix above; arbitrary SQL/custom overrides never inherit
+those merge semantics merely by using a built-in name.
 
 ### Optional ordered-frame reader contract
 
@@ -358,7 +428,7 @@ This is useful because `reserved` may peak at a different event from `active` or
 For a higher-level summary, use the report command:
 
 ```bash
-pt-snap report peak-memory [db_path] [--device <id>] [--metric active|allocated|reserved] [--include-static|--exclude-static] [--limit <n>] [--json]
+pt-snap report peak-memory [db_path] [--device <id>] [--metric active|allocated|reserved] [--include-static|--exclude-static] [--limit <n>] [--start-id <id>] [--end-id <id>] [--timeout <seconds>] [--json]
 ```
 
 Examples:
@@ -380,7 +450,12 @@ The report command combines:
 - `allocator_gap`
 - `active_memory_callstack_at_event`
 
-and prints either a human-readable summary or JSON.
+and prints either a human-readable summary or JSON. `--start-id/--end-id` restrict
+peak selection; attribution still resolves the complete active set at that selected
+event, including earlier allocations. `--timeout` (or `PT_SNAP_QUERY_TIMEOUT`) is
+one diminishing **report-wide** deadline, not three reset per-query timeouts.
+JSON adds peak `scope`, separate attribution `source_coverage`, `timeout_s`, and
+`budget_scope="report_composition"`.
 
 The existing `callstack_groups` and `percent_of_active_blocks` values are preserved.
 JSON also exposes attribution `has_more`, `truncated`, `total_is_exact`, and
@@ -417,8 +492,10 @@ An empty trace returns no groups, zero included bytes, and unknown coverage.
 `-n` still caps `rows` and `returned`. By default `total` equals `returned`
 (this page's row count) and `total_is_exact` is true only when the page is
 the complete matching set (`has_more` is false and `offset` is 0).
-`--exact-total` runs a `COUNT` of the matching set (ignoring `limit` /
-`offset` / `top_n`) and sets `total_is_exact` to true. When a finite
+`--exact-total` counts the matching set (ignoring `limit` / `offset` / `top_n`)
+and sets `total_is_exact` to true. Standalone queries use SQL `COUNT`; dataset
+built-ins count the fully merged/deduplicated matching set before its global window,
+not capped shard-local rows. On the standalone path, when a finite
 trailing `LIMIT` is in effect, the executor fetches one extra row to set
 `has_more` without that count. A finite inner `top_n` (for example inside
 a CTE) is not a trailing `LIMIT`: when that ranked window is full,
@@ -434,7 +511,9 @@ change the row cap. A non-numeric `PT_SNAP_QUERY_TIMEOUT` is
 `INVALID_PARAMETER`, not `QUERY_FAILED`.
 
 `effective_params` is the validated parameter set after defaults and `choices`
-normalization. When `-n` is set, `limit` is the trailing SQL LIMIT after the
+normalization. Dataset `limit` reports the final global output-window cap (with the
+same min-of-positive-caps rule), not a per-shard SQL LIMIT; global filters and merges
+are already complete. On the standalone path, when `-n` is set, `limit` is the trailing SQL LIMIT after the
 same merge the executor applies: `min` of a declared template `limit` and
 `-n`, or `-n` appended when the rendered SQL has no trailing LIMIT. Inner
 caps such as `top_n` stay their own parameters; they do not rewrite

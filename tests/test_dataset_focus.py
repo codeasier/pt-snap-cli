@@ -132,7 +132,7 @@ def test_dataset_focus_readonly_and_complete_addressing(tmp_path, manifest_path)
         assert overview["dataset"]["format"] == "compatibility-v1"
         assert overview["dataset"]["structured_frames"] is False
         assert overview["dataset"]["text_callstacks"] is True
-        assert overview["dataset"]["cross_slice_queries"] is False
+        assert overview["dataset"]["cross_slice_queries"] is True
         assert overview["dataset"]["boundary_event_count"] == 6
         assert analyzer.get_database_metadata()["status"] == "unavailable"
         for device in (0, 2):
@@ -179,8 +179,6 @@ def test_precedence_device_and_completion(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     "template,params,slice_index,error",
     [
-        ("event", {}, None, QueryExecutionError),
-        ("event", {"min_id": 1, "max_id": 2}, None, QueryExecutionError),
         ("event", {"id": -1}, None, InvalidParameterError),
         ("event", {"id": 6}, None, InvalidParameterError),
         ("event", {"id": 4}, 0, InvalidParameterError),
@@ -189,7 +187,6 @@ def test_precedence_device_and_completion(tmp_path, monkeypatch):
         ("event", {}, 99, InvalidParameterError),
         ("event", {}, True, InvalidParameterError),
         ("event", {"unknown": 0}, 0, TemplateRenderError),
-        ("memory_peak", {}, None, QueryExecutionError),
         ("leak_detection", {}, 0, QueryExecutionError),
         ("missing_template", {}, None, TemplateNotFoundError),
     ],

@@ -5,9 +5,11 @@
 ## Scope and versions
 
 This defines artifact contracts, shared validators and an **explicit** compatible
-CLI exporter below, not a cross-slice query engine. Existing `import` defaults to one
+CLI exporter below. The [P3 built-in query matrix](querying.md#dataset-global-built-in-support-p3)
+defines supported cross-slice execution separately. Existing `import` defaults to one
 native v2 DB; `split` still produces replayable pickle/JSON. Existing single-DB
-v1/v2 single-DB analysis is unchanged. The P1 reader below additionally accepts a
+v1/v2 analysis retains its entry points; P3 real-event peak/gap and all-action full-text
+stack-statistics semantics are explicitly versioned in the querying guide. The P1 reader below additionally accepts a
 complete compatibility-v1 manifest or directory as focus. The `complete` gate
 applies only to datasets, not to legacy single-DB analysis.
 
@@ -170,8 +172,8 @@ which P0 does not implement. Text stacks cannot substitute for these guarantees.
 There is no global event order across devices. Boundary IDs cannot be range
 endpoints. P0 `DatasetValidation.query_execution=False` describes validation,
 not execution. P1 accepts complete manifests/directories through the resolver
-below; general cross-slice aggregation remains deferred; point-event source
-resolution is described in the [querying guide](querying.md#dataset-point-event-attribution).
+below; the explicit [P3 support matrix](querying.md#dataset-global-built-in-support-p3)
+and [point-event sources](querying.md#dataset-point-event-attribution) define execution.
 
 ```python
 from pt_snap_cli.core.dataset_contract import QueryScope, validate_dataset
@@ -198,8 +200,9 @@ pt-snap query --template-use event --slice 1 --json
 `overview.dataset` reports format, manifest version/status, content fingerprint,
 real/boundary counts, per-device slice paths/ranges and capabilities. Event bounds
 exclude negative synthetic rows (also for standalone DB overview). Text stacks
-are available, but not necessarily populated; structured frames and cross-slice
-queries are **unavailable**, including when unknown extensions claim them.
+are available, but not necessarily populated; P0 structured-frame validation remains
+**unavailable** despite unknown extension claims. Cross-slice built-ins follow the P3
+matrix; recognized ordered-frame query coverage is separate from P0 validation.
 External dataset-wide import metadata is unavailable; per-slice metadata alone
 is not a source attestation. The compatible exporter below supplies a recognized,
 whole-artifact `ptSnap` attestation, making its validated metadata available.
@@ -220,8 +223,8 @@ with SnapshotAnalyzer(Path("/capture/snapshot.pkl.msinsight"), device_id=0) as a
 ```
 
 The `event` template supports bounded addressing through dataset focus: a real ID
-routes to its containing slice; an inclusive `min_id/max_id` range must fit one
-slice; `--slice`/`slice_index` lists that slice's real events. Negative IDs are not
+routes to its containing slice; inclusive `min_id/max_id` ranges may cross shards
+with global filtering/sorting/paging; `--slice`/`slice_index` restricts real events. Negative IDs are not
 whole-dataset selectors. Output `scope` identifies the actual DB/device/slice,
 restricted real interval, dataset fingerprint and boundary exclusion. Totals and
 pagination apply to this scope, **not** to an implicitly truncated full dataset.
@@ -231,10 +234,10 @@ by `scope`. Point-event `active_blocks_at_event` and
 bounded batches before grouping/ranking, including original no-extension artifacts.
 See [point-event attribution](querying.md#dataset-point-event-attribution) for
 lifecycle identity, separate source/frame coverage, and the optional versioned
-ordered-frame reader interface. Dataset-global aggregates, peak/list/leak queries,
-cross-slice event ranges and unbounded multi-slice event queries still fail
-explicitly; they never silently choose the first/latest slice. Direct single-DB
-v1/v2 queries retain their existing semantics.
+ordered-frame reader interface. Dataset-global built-ins use the explicit P3 matrix
+and cumulative work ceilings; arbitrary SQL/custom overrides fail explicitly, never
+silently choosing the first/latest slice. Single-DB real-event peak/gap and all-action
+full-text stack-statistics versions are documented with the same contracts.
 
 `core.dataset_resolver.DatasetResolver.inspect(path)` returns an immutable
 `ResolvedDataset` (or `None` for a standalone DB). Its `paths(QueryScope(...))`
@@ -262,7 +265,7 @@ This is read-only validation, not a filesystem sandbox or a producer lock.
 Native-v2 private staging has **no published manifest**, so it is not a dataset;
 individual DBs remain readable via the single-DB entry. Published native format
 and compatible export are separate explicit protocols below. Cross-slice lifecycle
-execution remains separate work; safe original-WAL reading is not GUI acceptance.
+execution follows the P3 matrix; safe original-WAL reading is not GUI acceptance.
 
 ## Published Native Dataset (P2)
 
@@ -309,8 +312,8 @@ alias/sidecar/persistent-WAL checks and bounded borrowed-cache ownership. Focus,
 metadata, overview and single-slice `event` addressing work without the source
 pickle. Native metadata is available dataset-wide; external compatibility metadata
 remains unavailable unless the recognized compatible attestation below is present.
-Native mode implies no migration, repair, dataset-global aggregation/peak/list/leak,
-compatible export, salted hash or GUI acceptance. Point-event source resolution is
+Native mode implies no migration, repair, compatible export, salted hash or GUI
+acceptance. Dataset-global built-ins follow the P3 query matrix. Point-event source resolution is
 available through the shared query path described above. P0 schema/manifest semantics are
 unchanged; the compatibility-only finalized-WAL transport is described above.
 
@@ -386,7 +389,7 @@ JOIN gaps. Unsupported OOM/unknown actions, nonzero/sparse IDs and empty/static-
 selections fail; native retains its wider contract. All selected members finalize,
 close and validate before complete publication. `pt_snap_block_reference` v1 is an
 isolated text extension, not ordered frames or a claim of cross-source queries.
-Those queries and global aggregation remain separate work. Text cannot recover
+Those queries and global aggregation follow the P3 query matrix. Text cannot recover
 original ordered frame arrays; original workspace raw-frame loss and string-action
 OOM coercion are known upstream limitations, not compatible features to imitate.
 

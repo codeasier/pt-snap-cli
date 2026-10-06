@@ -66,9 +66,11 @@ rollback fails (force is not a single crash-atomic swap). See the
 [native import guide](docs/en/quickstart.md#optional-import-a-native-sharded-dataset).
 Dataset `event` addressing and point-event `active_blocks_at_event` /
 `active_memory_callstack_at_event` share batched cross-shard alloc/free sources,
-including original artifacts without extensions. Dataset-global peak/list/leak
-queries and `report peak-memory` remain explicitly unsupported. See
-[dataset attribution and coverage](docs/en/querying.md#dataset-point-event-attribution).
+including original artifacts without extensions. Built-in global peaks, event pages,
+canonical stack statistics, deduplicated lifecycles, terminal leak candidates and
+`report peak-memory` share bounded core semantics; custom SQL/overrides remain unsupported
+on datasets. See the [global support matrix](docs/en/querying.md#dataset-global-built-in-support-p3)
+and [dataset attribution and coverage](docs/en/querying.md#dataset-point-event-attribution).
 
 Explicit `pt-snap import snapshot.pkl --format msinsight --json` produces
 `snapshot.pkl.msinsight/` for the fixed msinsight revision's **same original

@@ -24,7 +24,7 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 | `--category` | 按分类过滤模板：`basic`、`statistical`、`business` |
 | `--template-info` | 显示模板详情（参数、输出 schema 和字段语义） |
 | `-n` | 最大显示行数；零或负数表示不限制。与 `--timeout` 相互独立。 |
-| `--exact-total` | 对匹配集合做 `COUNT`。默认 `total` 等于已返回行数。 |
+| `--exact-total` | 计数完整匹配集合：单库 SQL COUNT 或数据集合并后的总数。默认 `total` 为返回行数。 |
 | `--timeout` | 一次 `query` / `QueryService` 调用的墙钟预算（页面查询与可选 `--exact-total` COUNT 共用），经 SQLite progress handler 生效。`<= 0` 表示关闭。默认：`PT_SNAP_QUERY_TIMEOUT` 或不限制。该环境变量作用于所有模板查询，包括 `report peak-memory`。 |
 | `--json` | 输出机器可读 JSON（执行、`--list` 与 `--template-info`） |
 
@@ -71,6 +71,63 @@ pt-snap query '<db_path>' --device 0 --template-use event --params '{"id":123}' 
 分组没有可取回的采集分配栈；在原查询中省略 `stack_bytes` 可查看完整显示标签。
 查询保持只读，摘要不会改动数据库。
 
+## 数据集全局内建支持（P3）
+
+完整 native-v2 与 compatibility-v1 数据集共用以下**单设备**支持矩阵；catalog 与
+模板详情的 `dataset_support` 同步返回。设备优先级仍为显式 → focused → 首个发现；
+不累加跨设备峰值，设备间没有共同全局事件顺序。
+
+| 模板 | 最终输出窗口之前的数据集语义 |
+| --- | --- |
+| `event`, `allocation` | 筛选选定范围全部真实事件，按声明的 ID tie-break 全局排序，最后 offset/limit/max_rows；排除负边界 |
+| `memory_peak` | allocated/active/reserved 独立真实峰值；同值选最早真实 ID；`start_id/end_id` 可跨片 |
+| `allocator_gap` | 使用同样独立选择的全局事件，每个 gap 由**该事件**计数器计算 |
+| `active_blocks_at_event`, `active_memory_callstack_at_event` | 路由实际事件到所有者片，分组/top_n 前解析完整跨片来源（见下文） |
+| `preexisting_live` | 所有者事件的 preexisting 占用，不是泄漏数 |
+| `block` | 已证明的分配事件生命周期及稳定负 token 去重后筛选/排序/分页；最新出现片 state 是观察，不是任意 E 的状态 |
+| `freed_block_lifetime` | 已采集分配与已证明 `free_completed` 来源的去重生命周期；event-ID 距离桶，不是时间 |
+| `leak_detection` | **数据集终片**中仍存在且无完成释放的已采集动态生命周期，不拼接逐片未释放列表；存活仅为候选，不证明泄漏；拒绝 `--slice` |
+| `callstack_analysis` | 全部带栈真实 trace action（含 free/segment/workspace），完整 canonical 来源身份合并后再做全局阈值/排名；加权 `avg_size=total_size/alloc_count` |
+| runtime override/自定义模板/任意 SQL | 数据集明确不支持，即使命名为内建模板；需显式传单库 member 使用局部 SQL |
+
+`memory_peak` 与 `allocator_gap` 语义版本 **2** 在**单库** SQL 中也排除负合成行。
+`callstack_analysis` 版本 **2** 保留旧 `alloc_count` 字段名，但**不是分配次数**：
+v1 统计非 NULL 文本的全部真实行；v2 统计非 NULL 栈引用的全部真实行，缺失/NULL
+joined 文本保留为独立 missing 组。空文本单独计数组，与 missing 及真实字面量标签分开；
+两种单库布局都按完整文本分组而非局部 v2 ID。数据集还接受明确覆盖的有序原始数组
+作为栈证据；缺失文本不改变原始数组
+身份。size 总和含非分配 action，不是瞬时活跃占用。
+
+共享 YAML 输出 schema 声明全部可选的仅数据集行字段；单库行形状不变。`block` 与
+数据集 `leak_detection` 提供 `lifecycle_id`、身份/来源证明状态、来源载荷、最新观察片/
+state scope、category 与终片存活；leak 行另保留 `requestedSize`、`state`、`freeEventId`。
+这些观察与证明不等于确认泄漏。数据集统计提供 `source_stack_id`、`stack_kind`、
+`text_kind`、`stack_event_id`、`frames_status`。真实代表事件优先选可用的非空采集文本，
+但不是 canonical 分组身份，也不一定是 allocation action；无采集文本时可指向空/NULL
+文本。`text_kind` 仅为 provenance，不改变原始数组身份。在同一数据集/设备用 `event`
+取回真实文本/数组；`frames_status` 不表示从文本重建 frame。
+
+```bash
+pt-snap query '<dataset_dir>' --device 0 --template-use memory_peak --params '{"start_id":100,"end_id":700}' --json
+pt-snap query '<dataset_dir>' --device 0 --template-use event --params '{"min_id":100,"max_id":700,"limit":20,"offset":20}' --exact-total --json
+pt-snap query '<dataset_dir>' --device 0 --template-use leak_detection -n 20 --exact-total --json
+pt-snap report peak-memory '<dataset_dir>' --device 0 --metric reserved --start-id 100 --end-id 700 --timeout 10 --json
+```
+
+请使用实际范围。区间可包含稀疏缺口，不虚构事件；无真实事件的范围返回 NULL 峰值/ID。
+越界/负/反向端点失败；`event(id=gap)` 可为空，active-at-gap 失败。全局筛选、去重、来源
+身份、阈值、排序都在最终窗口之前。`exact_total` 忽略行数上限；默认 total 为返回行数，
+exactness 标记诚实。`has_more/truncated` 描述窗口，不表示来源/范围完整性。`scope` 返回
+请求区间、适用时实际真实事件覆盖、涉及 `slice_indices`、设备、指纹及边界排除；来源覆盖
+独立。未证明历史身份按片局部单独表达，不按地址/局部栈 ID 猜合并，不断言为已证明泄漏。
+
+数据集读取先分离批次再查外片来源，使用借用的有界 Context LRU。所有片、来源、分组、
+精确总数共用递减 deadline；报告三条查询明确共用**一个**预算。累计取回/输出工作上限为
+**100000 行 / 64 MiB 序列化值**，含重复来源读取；超限整体失败，不返回冒充完整的部分
+结论。物化/排序由工作上限约束，**不由 max_rows 约束**；不是进程 RSS 上限，Python/
+SQLite、一个批次及单个 cell 有额外开销。manifest hash/校验仍与产物大小成正比且仅在
+阶段边界检查，不硬抢占。不生成合并临时 DB、不修复或写产物。
+
 ## 数据集定点事件归因
 
 完整兼容 v1 或原生 v2 目录/manifest 支持 `event` 寻址，以及接受真实 `event_id` 的
@@ -116,8 +173,8 @@ max_rows 之前**所含字节，不是数据集 active 计数器。精确总数�
 设置耗时计入预算，但同步文件 I/O/校验只在阶段边界检查，不硬抢占，不保证 OS 级
 时间上限。SQL progress handler 退出即清除。Context LRU 有界（默认四个），借用
 cache 仍由调用者所有。不生成合并临时数据库。`ReportService.event_attribution(E, ...)`
-对给定事件复用同一路径。数据集全局峰值选择、`report peak-memory`、跨片事件范围、
-任意 SQL/全局 list/leak/group 合并仍明确不支持，等待各自合同实现。
+对给定事件复用同一路径。数据集全局查询及报告遵循上文明确支持矩阵；任意 SQL/
+自定义 override 不会因使用内建名字就继承全局合并语义。
 
 ### 可选有序 frame reader 合同
 
@@ -316,7 +373,7 @@ pt-snap query --template-use allocator_gap
 如果需要更高层的摘要，可以使用：
 
 ```bash
-pt-snap report peak-memory [db_path] [--device <id>] [--metric active|allocated|reserved] [--include-static|--exclude-static] [--limit <n>] [--json]
+pt-snap report peak-memory [db_path] [--device <id>] [--metric active|allocated|reserved] [--include-static|--exclude-static] [--limit <n>] [--start-id <id>] [--end-id <id>] [--timeout <seconds>] [--json]
 ```
 
 示例：
@@ -338,7 +395,10 @@ pt-snap report peak-memory /path/to/snapshot.db --json
 - `allocator_gap`
 - `active_memory_callstack_at_event`
 
-并输出人类可读摘要或 JSON。
+并输出人类可读摘要或 JSON。`--start-id/--end-id` 限制峰值选择；归因仍解析所选事件
+完整活跃集合，包含更早分配。`--timeout`（或 `PT_SNAP_QUERY_TIMEOUT`）是递减的
+**报告整体** deadline，不是重置三次的逐查询超时。JSON 新增峰值 `scope`、独立归因
+`source_coverage`、`timeout_s` 与 `budget_scope="report_composition"`。
 
 原有 `callstack_groups` 和 `percent_of_active_blocks` 数值保持不变。JSON 还会
 返回归因的 `has_more`、`truncated`、`total_is_exact` 和 `effective_params`
@@ -371,8 +431,9 @@ pt-snap report peak-memory /path/to/snapshot.db --json
 
 `-n` 仍然限制 `rows` 与 `returned`。默认 `total` 等于 `returned`（本页行数）；
 仅当本页就是完整匹配集合（`has_more` 为 false 且 `offset` 为 0）时
-`total_is_exact` 为 true。`--exact-total` 会对匹配集合做 `COUNT`（忽略
-`limit` / `offset` / `top_n`）并把 `total_is_exact` 设为 true。存在有限
+`total_is_exact` 为 true。`--exact-total` 计数匹配集合（忽略 `limit` / `offset` /
+`top_n`）并设置 exactness；单库使用 SQL `COUNT`，数据集内建查询计数完整合并/去重后、
+全局窗口前的匹配集合，不计数已截断的局部片行。单库路径存在有限
 尾部 `LIMIT` 时，执行器会多取一行来设置 `has_more`，不必先做计数。CTE
 内部的有限 `top_n` 不是尾部 `LIMIT`：排名窗口已满时会置 `has_more` /
 `truncated`，避免把默认页报成完整集合；精确 `COUNT` 若等于 `returned`
@@ -383,8 +444,9 @@ QueryService 调用的共享预算（页面查询与可选 COUNT 共用），作
 模板查询（含 `report peak-memory`），不改变行数上限。非数字的
 `PT_SNAP_QUERY_TIMEOUT` 归为 `INVALID_PARAMETER`，不是 `QUERY_FAILED`。
 
-`effective_params` 是应用默认值并按 `choices` 规范化后的参数。带 `-n` 时，
-`limit` 是与执行器相同的**尾部** SQL `LIMIT`：已声明的模板 `limit` 与 `-n`
+`effective_params` 是应用默认值并按 `choices` 规范化后的参数。数据集 `limit` 表示
+最终全局输出窗口上限（相同的正上限取小规则），不是逐片 SQL LIMIT；筛选/合并已经完成。
+单库路径带 `-n` 时，`limit` 是与执行器相同的**尾部** SQL `LIMIT`：已声明的模板 `limit` 与 `-n`
 取较小值；渲染后的 SQL 没有尾部 `LIMIT` 时追加 `-n`。CTE 内部的 `top_n`
 仍是独立参数，不会改写 `limit`。
 `--template-info --json` 包含 `semantics_version`、`interpretation_limits`

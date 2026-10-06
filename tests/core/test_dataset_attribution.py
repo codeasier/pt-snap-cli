@@ -13,7 +13,7 @@ from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.core.context_cache import ContextCache
 from pt_snap_cli.core.dataset_resolver import DatasetResolver
 from pt_snap_cli.core.dataset_sources import SOURCE_BATCH_SIZE, DatasetSourceResolver, QueryBudget
-from pt_snap_cli.core.errors import InvalidParameterError, QueryExecutionError, QueryTimeoutError
+from pt_snap_cli.core.errors import InvalidParameterError, QueryTimeoutError
 from pt_snap_cli.core.import_service import ImportService
 from pt_snap_cli.core.query_service import QueryService
 from pt_snap_cli.core.report_service import ReportService
@@ -692,9 +692,8 @@ def test_report_uses_same_point_event_core_and_global_aggregates_stay_explicit(t
                 "block",
                 "callstack_analysis",
             ):
-                with pytest.raises(QueryExecutionError, match="dataset-global"):
-                    analyzer.execute_query(template)
-        with pytest.raises(QueryExecutionError, match="dataset-global"):
-            report.peak_memory_report(root)
+                assert analyzer.execute_query(template)["scope"]["range_complete"]
+        peak = report.peak_memory_report(root)
+        assert peak.event_id is not None and peak.source_coverage["allocation_source_complete"]
     finally:
         report.close()

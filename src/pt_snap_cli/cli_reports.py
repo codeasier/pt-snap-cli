@@ -29,6 +29,7 @@ from pt_snap_cli.core import (
     FocusNotConfiguredError,
     FocusService,
     InvalidDeviceError,
+    InvalidParameterError,
     QueryExecutionError,
     ReportService,
     TemplateNotFoundError,
@@ -71,6 +72,16 @@ def report_peak_memory(
             help="Opt-in UTF-8 byte budget per callstack (0: identity only; negative: full text). Not a response byte cap or token budget.",
         ),
     ] = -1,
+    start_id: Annotated[
+        int | None, typer.Option("--start-id", help="First real event ID in peak range")
+    ] = None,
+    end_id: Annotated[
+        int | None, typer.Option("--end-id", help="Last real event ID in peak range")
+    ] = None,
+    timeout: Annotated[
+        float | None,
+        typer.Option("--timeout", help="One report-wide deadline in seconds; <=0 disables"),
+    ] = None,
     json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Generate a peak memory attribution report."""
@@ -84,6 +95,9 @@ def report_peak_memory(
             include_static=include_static,
             limit=limit,
             stack_bytes=stack_bytes,
+            start_id=start_id,
+            end_id=end_id,
+            timeout_s=timeout,
         )
     except ValueError as e:
         _error(str(e), code=INVALID_PARAMETER, hint="Use --metric active, allocated, or reserved.")
@@ -120,6 +134,7 @@ def report_peak_memory(
     except (
         TemplateNotFoundError,
         TemplateRenderError,
+        InvalidParameterError,
         QueryExecutionError,
         DatabaseSchemaError,
     ) as e:

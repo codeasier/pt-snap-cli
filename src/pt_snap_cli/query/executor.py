@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import time
-from collections.abc import Generator, Mapping
+from collections.abc import Callable, Generator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -326,6 +326,8 @@ class QueryExecutor:
         sql: str,
         params: list[Any] | None = None,
         timeout_s: float | None = None,
+        *,
+        consume: Callable[[list[dict[str, Any]]], None] | None = None,
     ) -> list[dict[str, Any]]:
         """Execute raw SQL query.
 
@@ -345,12 +347,26 @@ class QueryExecutor:
             with self._context.connect() as conn:
                 with _sqlite_timeout(conn, timeout_s):
                     cursor = conn.cursor()
-                    if params:
-                        cursor.execute(sql, params)
-                    else:
-                        cursor.execute(sql)
-                    columns = [desc[0] for desc in cursor.description]
-                    return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+                    try:
+                        if params:
+                            cursor.execute(sql, params)
+                        else:
+                            cursor.execute(sql)
+                        columns = [desc[0] for desc in cursor.description]
+                        if consume is None:
+                            # Preserve standalone behavior and its established
+                            # cursor contract. Dataset reads explicitly opt in.
+                            return [
+                                dict(zip(columns, row, strict=True)) for row in cursor.fetchall()
+                            ]
+                        result = []
+                        while batch := cursor.fetchmany(256):
+                            rows = [dict(zip(columns, row, strict=True)) for row in batch]
+                            consume(rows)
+                            result.extend(rows)
+                        return result
+                    finally:
+                        cursor.close()
         except sqlite3.OperationalError as e:
             if timeout_s is not None and timeout_s > 0 and _is_sqlite_interrupt(e):
                 raise self._timeout_error(timeout_s) from e
@@ -569,6 +585,10 @@ class QueryExecutor:
         if config_name not in self._configs:
             self._configs[config_name] = QueryConfig()
         self._configs[config_name].queries[template.name] = template
+
+    def has_runtime_template(self, name: str) -> bool:
+        """A local override cannot inherit a packaged dataset merge contract."""
+        return any(name in config.queries for config in self._configs.values())
 
     def list_templates(self) -> list[str]:
         """List all available template names.

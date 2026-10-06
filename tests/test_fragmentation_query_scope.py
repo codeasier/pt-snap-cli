@@ -126,8 +126,13 @@ def test_explicit_full_trace_comparison_uses_its_own_peak(scope_db):
     assert sum(row["size_bytes"] for row in report["callstack_groups"]) == peak["peak_active"]
 
 
-def test_full_trace_synthetic_peak_requires_stopping_comparison(scope_db):
+def test_full_trace_real_peak_excludes_synthetic_boundary_and_drives_report(scope_db):
     section = SKILL_PATH.read_text().split("#### Separate full-trace comparison", 1)[1]
-    peak = run_skill_command(skill_commands(section)[0], scope_db)["rows"][0]
-    assert peak["peak_active_event_id"] == -2
-    assert peak["peak_active"] == 1000
+    commands = skill_commands(section.split("### 6.", 1)[0])
+    peak = run_skill_command(commands[0], scope_db)["rows"][0]
+    assert peak["peak_active_event_id"] == 25
+    assert peak["peak_active"] == 90  # never the synthetic id=-2/value=1000
+    report = run_skill_command(commands[1], scope_db)
+    assert report["event_id"] == 25
+    assert report["active_bytes_at_event"] == 90
+    assert report["included_bytes"] == 90 and report["coverage_percent"] == 100

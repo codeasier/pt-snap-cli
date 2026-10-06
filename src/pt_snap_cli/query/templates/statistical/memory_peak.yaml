@@ -4,8 +4,9 @@ queries:
     description: Get peak memory metrics from trace events with corresponding event IDs
     devices:
       - all
-    semantics_version: 1
+    semantics_version: 2
     interpretation_limits:
+      - "Only real trace events (id >= 0) participate in standalone databases and datasets; synthetic boundary occupancy cannot be a peak."
       - "Each peak is the maximum of that counter in the filtered event range; ties resolve to the earliest event ID."
       - "Peaks of allocated, active, and reserved may occur at different events; do not subtract them as if they were simultaneous."
       - "Event IDs are ordering markers, not elapsed time."
@@ -30,7 +31,7 @@ queries:
       WITH filtered AS (
         SELECT id, allocated, active, reserved
         FROM {{ device_trace_table }}
-        WHERE 1=1
+        WHERE id >= 0
           {% if start_id is not none %}AND id >= {{ start_id|int }}{% endif %}
           {% if end_id is not none %}AND id <= {{ end_id|int }}{% endif %}
       ), peaks AS (

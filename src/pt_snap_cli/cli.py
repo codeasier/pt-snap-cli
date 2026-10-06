@@ -665,6 +665,7 @@ def query_database(
         typer.echo(f"Description: {info.description}")
         typer.echo(f"Category: {info.category}")
         typer.echo(f"Devices: {info.devices}")
+        typer.echo(f"Dataset Support: {json.dumps(info.dataset_support, sort_keys=True)}")
         typer.echo(
             "Semantics Version: "
             f"{info.semantics_version if info.semantics_version is not None else 'none'}"

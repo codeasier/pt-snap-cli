@@ -94,6 +94,7 @@ class TemplateInfo:
     output_schema: list[dict[str, object]] | None
     semantics_version: int | None = None
     interpretation_limits: list[str] = field(default_factory=list)
+    dataset_support: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -128,6 +129,9 @@ class PeakMemoryReport:
     active_bytes_at_event: int | None = None
     coverage_percent: float | None = None
     source_coverage: dict[str, object] | None = None
+    scope: dict[str, object] | None = None
+    timeout_s: float | None = None
+    budget_scope: str = "report_composition"
 
 
 @dataclass(frozen=True)

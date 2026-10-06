@@ -11,8 +11,10 @@ from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionErr
 from pt_snap_cli.core.context_cache import ContextCache
 from pt_snap_cli.core.dataset_attribution import event_attribution, summarize_dataset_stacks
 from pt_snap_cli.core.dataset_contract import QueryScope
-from pt_snap_cli.core.dataset_resolver import DatasetResolver, ResolvedDataset
+from pt_snap_cli.core.dataset_global import global_query
+from pt_snap_cli.core.dataset_resolver import DatasetResolver
 from pt_snap_cli.core.dataset_sources import DatasetSourceResolver, QueryBudget
+from pt_snap_cli.core.dataset_support import dataset_support
 from pt_snap_cli.core.errors import (
     DatabaseMissingError,
     DatabaseSchemaError,
@@ -36,6 +38,7 @@ from pt_snap_cli.query.registry import (
     discover_categories,
     get_query,
     get_template_info,
+    is_packaged_query,
     list_by_category_with_details,
     list_queries_with_details,
 )
@@ -160,6 +163,11 @@ class QueryService:
                 for param_name, param_details in info["parameters"].items()
             },
             output_schema=copy.deepcopy(info["output_schema"]),
+            dataset_support=dataset_support(
+                name,
+                is_packaged_query(name)
+                and not (self._executor is not None and self._executor.has_runtime_template(name)),
+            ),
             semantics_version=info.get("semantics_version"),
             interpretation_limits=(
                 [str(item) for item in info["interpretation_limits"]]
@@ -193,6 +201,7 @@ class QueryService:
             "output_schema": info.output_schema,
             "semantics_version": info.semantics_version,
             "interpretation_limits": list(info.interpretation_limits),
+            "dataset_support": dict(info.dataset_support),
         }
 
     def execute_query(
@@ -207,10 +216,15 @@ class QueryService:
         exact_total: bool = False,
         timeout_s: float | None = None,
         slice_index: int | None = None,
+        _budget: QueryBudget | None = None,
     ) -> QueryResult:
-        timeout_s = resolve_query_timeout(timeout_s)
-        started = time.monotonic()
-        budget = QueryBudget(timeout_s, started)
+        budget = (
+            _budget
+            if _budget is not None
+            else QueryBudget(resolve_query_timeout(timeout_s), time.monotonic())
+        )
+        timeout_s, started = budget.timeout_s, budget.started
+        budget.remaining()
         resolved = self._focus_service.resolve_focus(
             explicit_db_path=db_path,
             explicit_device_id=device_id,
@@ -229,37 +243,46 @@ class QueryService:
             sources = DatasetSourceResolver(
                 dataset, selected.device_id, self._context_cache, budget
             )
-            if template in ("active_blocks_at_event", "active_memory_callstack_at_event"):
-                template_obj = get_query(template)
-                if template_obj is None:
-                    raise TemplateNotFoundError(f"Template '{template}' not found")
-                try:
-                    validated = template_obj.validate_params(query_params)
-                except (TypeError, ValueError) as exc:
-                    raise TemplateRenderError(str(exc)) from exc
-                if slice_index is not None:
-                    dataset.paths(QueryScope("slice", selected.device_id, slice_index))
-                result = event_attribution(
-                    sources,
-                    template,
-                    validated,
-                    max_rows,
-                    exact_total,
-                    slice_index,
-                    template_obj.semantics_version,
+            template_obj = get_query(template)
+            if template_obj is None:
+                raise TemplateNotFoundError(f"Template '{template}' not found")
+            support = dataset_support(template, is_packaged_query(template))
+            overridden = self._executor is not None and self._executor.has_runtime_template(
+                template
+            )
+            if not support["supported"] or overridden:
+                raise QueryExecutionError(
+                    "Unsupported dataset-global template/custom SQL or runtime override; "
+                    "select an explicit standalone member. A built-in name is not a merge contract."
                 )
-                stack_bytes = validated.get("stack_bytes")
-                if isinstance(stack_bytes, int) and stack_bytes >= 0:
-                    summarize_dataset_stacks(result.rows, stack_bytes)
-                budget.remaining()
-                return result
-            member, query_params, scope = self._dataset_query(
-                dataset, selected.device_id, template, query_params, slice_index
+            for name in ("id", "min_id", "max_id", "start_id", "end_id", "event_id"):
+                if isinstance(query_params.get(name), bool):
+                    raise InvalidParameterError("Event/block endpoints must not be booleans.")
+            try:
+                validated = template_obj.validate_params(query_params)
+            except (TypeError, ValueError) as exc:
+                raise TemplateRenderError(str(exc)) from exc
+            if slice_index is not None:
+                dataset.paths(QueryScope("slice", selected.device_id, slice_index))
+            implementation = (
+                event_attribution
+                if template in ("active_blocks_at_event", "active_memory_callstack_at_event")
+                else global_query
             )
-            ctx = self._validated_context(
-                member, generation=dataset.fingerprint, immutable=dataset.callstack_layout == "v1"
+            result = implementation(
+                sources,
+                template,
+                validated,
+                max_rows,
+                exact_total,
+                slice_index,
+                template_obj.semantics_version,
             )
-            target_device = selected.device_id
+            stack_bytes = validated.get("stack_bytes")
+            if isinstance(stack_bytes, int) and stack_bytes >= 0:
+                summarize_dataset_stacks(result.rows, stack_bytes)
+            budget.remaining()
+            return result
         else:
             if slice_index is not None:
                 raise InvalidParameterError("slice_index requires a manifest dataset.")
@@ -304,40 +327,6 @@ class QueryService:
                 raise TemplateNotFoundError(f"Template '{template}' not found") from exc
             raise QueryExecutionError(str(exc)) from exc
 
-        if sources is not None and scope is not None:
-            event_sources = sources.events(row["id"] for row in rows)
-            # Preserve the original default nine-column event payload. Explicit
-            # stack summaries or a recognized frame reader add source details.
-            event_template = get_query(template)
-            detail_budget = (
-                event_template.validate_params(query_params).get("stack_bytes", -1)
-                if event_template
-                else -1
-            )
-            detailed_rows = (
-                rows if sources.dataset.ordered_frames_version == 1 or detail_budget >= 0 else []
-            )
-            for row in detailed_rows:
-                source = event_sources[row["id"]]
-                row.update(
-                    {
-                        "source_stack_id": source.stack_id,
-                        "stack_id": source.stack_id,
-                        "stack_kind": source.stack_kind,
-                        "text_kind": source.text_kind,
-                        "stack_event_id": row["id"] if source.stack_kind == "captured" else None,
-                        "frames": source.frames,
-                        "frames_status": source.frames_status,
-                    }
-                )
-            scope["source_coverage"] = {
-                "range_complete": True,
-                "event_position": "after",
-                "coverage_scope": "returned_events",
-                "events_resolved": len(event_sources),
-                "ordered_frame_events": sum(s.frames is not None for s in event_sources.values()),
-                "source_queries": sources.query_count,
-            }
         template_obj = get_query(template)
         if template_obj is not None and "stack_bytes" in template_obj.parameters:
             stack_bytes = template_obj.validate_params(query_params)["stack_bytes"]
@@ -359,85 +348,6 @@ class QueryService:
             total_is_exact=total_is_exact,
             timeout_s=timeout_s,
             scope=scope,
-        )
-
-    def _dataset_query(
-        self,
-        dataset: ResolvedDataset,
-        device_id: int,
-        template: str,
-        params: dict[str, Any],
-        slice_index: int | None,
-    ) -> tuple[Path, dict[str, Any], dict[str, object]]:
-        template_obj = get_query(template)
-        if template_obj is None:
-            raise TemplateNotFoundError(f"Template '{template}' not found")
-        if template != "event":
-            raise QueryExecutionError(
-                "Dataset queries support event addressing and point-event active attribution; "
-                "dataset-global cross-slice aggregation/list/peak/leak queries are not supported."
-            )
-        try:
-            validated = template_obj.validate_params(params)
-        except (TypeError, ValueError) as exc:
-            raise TemplateRenderError(str(exc)) from exc
-        device = dataset.device(device_id)
-        if slice_index is not None:
-            paths = dataset.paths(QueryScope("slice", device_id, slice_index))
-            item = device.slices[slice_index]
-            low, high = item.start_event_id, item.end_event_id
-        else:
-            low, high = device.slices[0].start_event_id, device.slices[-1].end_event_id
-        event_id = validated.get("id")
-        start = validated.get("min_id")
-        end = validated.get("max_id")
-        if event_id is not None:
-            if (
-                not isinstance(event_id, int)
-                or isinstance(event_id, bool)
-                or not low <= event_id <= high
-            ):
-                raise InvalidParameterError("Event ID must be a real ID within the selected scope.")
-            low = high = event_id
-        else:
-            for value in (start, end):
-                if value is not None and (
-                    not isinstance(value, int)
-                    or isinstance(value, bool)
-                    or not low <= value <= high
-                ):
-                    raise InvalidParameterError(
-                        "Event range must lie within the selected real scope."
-                    )
-            low = start if isinstance(start, int) else low
-            high = end if isinstance(end, int) else high
-        paths = dataset.paths(
-            QueryScope("event_range", device_id, start_event_id=low, end_event_id=high)
-        )
-        if len(paths) != 1:
-            raise QueryExecutionError(
-                "Event range spans slices; cross-slice execution is not supported. "
-                "Select a real id, a single-slice range, or --slice."
-            )
-        item = next(item for item in device.slices if dataset.root / item.file == paths[0])
-        return (
-            paths[0],
-            {
-                **params,
-                "min_id": max(low, start) if isinstance(start, int) else low,
-                "max_id": min(high, end) if isinstance(end, int) else high,
-            },
-            {
-                "kind": "event_range",
-                "device_id": device_id,
-                "slice_index": item.index,
-                "first_event_id": low,
-                "last_event_id": high,
-                "db_path": str(paths[0]),
-                "dataset_path": str(dataset.root),
-                "fingerprint": dataset.fingerprint,
-                "boundary_events_included": False,
-            },
         )
 
     def _get_executor(self, ctx: Context) -> QueryExecutor:

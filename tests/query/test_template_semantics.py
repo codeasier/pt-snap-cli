@@ -61,7 +61,7 @@ def test_annotated_templates_share_a_json_serializable_contract() -> None:
         template = get_query(name)
         assert template is not None
         assert template.semantics_version == (
-            2 if name == "active_memory_callstack_at_event" else 1
+            2 if name in ("active_memory_callstack_at_event", "memory_peak", "allocator_gap") else 1
         )
         assert template.interpretation_limits
         info = get_template_info(name)

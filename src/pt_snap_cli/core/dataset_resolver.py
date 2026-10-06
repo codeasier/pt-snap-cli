@@ -23,6 +23,7 @@ from pt_snap_cli.core.dataset_contract import (
 )
 from pt_snap_cli.core.dataset_files import hash_file as _hash_file
 from pt_snap_cli.core.dataset_files import require_readonly_member as _require_readonly_member
+from pt_snap_cli.core.dataset_support import DATASET_SUPPORT
 from pt_snap_cli.core.errors import DatabaseSchemaError, InvalidDeviceError, InvalidParameterError
 from pt_snap_cli.core.native_dataset_contract import (
     NATIVE_FORMAT,
@@ -91,12 +92,8 @@ class ResolvedDataset:
             "boundary_event_count": self.validation.boundary_event_count,
             "text_callstacks": True,
             "structured_frames": False,
-            "cross_slice_queries": False,
-            "supported_queries": [
-                "event: real ID, single-slice range, or explicit slice",
-                "active_blocks_at_event: real point-event with batched alloc/free sources",
-                "active_memory_callstack_at_event: real point-event attribution before top_n",
-            ],
+            "cross_slice_queries": True,
+            "supported_queries": dict(DATASET_SUPPORT),
             "cross_slice_sources": True,
             "ordered_frames_reader_version": 1,
             "structured_frames_scope": "validation_only; query source coverage is separate",

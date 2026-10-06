@@ -83,6 +83,47 @@ def test_stack_summary_cli_api_and_catalog_contract(contract_db: Path, template:
         assert entry["parameters"] == info["parameters"]
 
 
+@pytest.mark.parametrize(
+    "template,params",
+    [
+        ("memory_peak", {}),
+        ("allocator_gap", {"start_id": 1, "end_id": 4}),
+        ("event", {"min_id": 1, "max_id": 4, "limit": 2, "offset": 1}),
+        ("allocation", {"min_id": 1, "max_id": 4, "order_by": "active"}),
+        ("callstack_analysis", {"min_count": 1, "limit": 1}),
+        ("block", {}),
+        ("leak_detection", {}),
+    ],
+)
+def test_dataset_global_cli_api_scope_catalog_and_total_contract(tmp_path, template, params):
+    root = make_dataset(tmp_path / "global-contract", devices=(0,))
+    with SnapshotAnalyzer(root) as analyzer:
+        api = analyzer.execute_query(template, params, exact_total=True)
+        cli = runner.invoke(
+            app,
+            [
+                "query",
+                str(root),
+                "--template-use",
+                template,
+                "--params",
+                json.dumps(params),
+                "--exact-total",
+                "--json",
+            ],
+        )
+        assert cli.exit_code == 0, cli.output
+        payload = json.loads(cli.stdout)
+        for key in api:
+            assert payload[key] == api[key]
+        info = analyzer.get_template_info(template)
+        assert info["dataset_support"]["supported"]
+        catalog = runner.invoke(app, ["capabilities", "--json"])
+        entry = next(c for c in json.loads(catalog.stdout)["templates"] if c["name"] == template)
+        assert entry["dataset_support"] == info["dataset_support"]
+        assert api["scope"]["boundary_events_included"] is False
+
+
 def create_contract_db(db_path: Path) -> Path:
     """Create a tiny snapshot database shared by CLI and API contract paths."""
     conn = sqlite3.connect(str(db_path))
@@ -237,6 +278,8 @@ def _normalize_cli_template_info(output: str) -> dict[str, object]:
             info["category"] = stripped.removeprefix("Category: ")
         elif stripped.startswith("Devices: "):
             info["devices"] = stripped.removeprefix("Devices: ")
+        elif stripped.startswith("Dataset Support: "):
+            info["dataset_support"] = json.loads(stripped.removeprefix("Dataset Support: "))
         elif stripped.startswith("Semantics Version: "):
             text = stripped.removeprefix("Semantics Version: ")
             info["semantics_version"] = None if text == "none" else int(text)
@@ -412,7 +455,7 @@ def test_template_semantics_contract_matches_cli_and_api(contract_db: Path) -> N
         assert cli_info == api_info
         json.dumps(api_info)
         assert api_info["semantics_version"] == (
-            2 if name == "active_memory_callstack_at_event" else 1
+            2 if name in ("active_memory_callstack_at_event", "memory_peak", "allocator_gap") else 1
         )
         assert api_info["interpretation_limits"]
 
@@ -834,11 +877,13 @@ def test_dataset_focus_overview_query_contract(tmp_path: Path, use_manifest: boo
         )
         assert error.exit_code == 1
         assert json.loads(error.stderr)["error"]["code"] == "INVALID_PARAMETER"
-        failure = runner.invoke(
+        global_peak = runner.invoke(
             app, ["query", str(path), "--template-use", "memory_peak", "--json"]
         )
-        assert failure.exit_code == 1
-        assert "cross-slice" in json.loads(failure.stderr)["error"]["message"]
+        assert global_peak.exit_code == 0, global_peak.output
+        peak_payload = json.loads(global_peak.stdout)
+        assert peak_payload["scope"]["slice_indices"] == [0, 1, 2]
+        assert peak_payload["rows"][0]["peak_active"] == 8  # never synthetic 999
         manifest = root / "manifest.json"
         data = json.loads(manifest.read_text())
         data["status"] = "building"
