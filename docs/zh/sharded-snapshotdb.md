@@ -348,6 +348,12 @@ Ascend 源码为 Mulan PSL v2，docs 单独为 CC BY 4.0；此最小转换器是
 未复制 vendor 实现，也不把 Ascend blob 自动重新许可为 MIT。已有 pt-snap 运行时 lineage
 属于独立许可证/来源历史。
 
+## 可重复验收与实测限制
+
+[验收与有界性能](interop-acceptance.md) 提供确定性 CI、hash-first 的已有原版消费者/
+正向物理对照、同源三模式本地基线及明确待验收 GUI 清单。证据层彼此独立；负 token
+仅在数据集内标识对象，不承诺跨生产端对象身份，也不允许重写真实 ID。
+
 ## 来源证据与限制
 
 接口事实已从固定版本真实源码读取：

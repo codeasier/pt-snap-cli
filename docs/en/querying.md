@@ -4,6 +4,14 @@
 
 Run memory analysis queries against your snapshot database.
 
+Use the catalog's SAME YAML `dataset_support`/declared row fields and an explicit
+validated target/device/scope. [Offline acceptance and measured query latency](interop-acceptance.md)
+separate source/range/frame coverage from `has_more`/`truncated`, explain text-only
+downgrades and all-action stack statistics, and retain included-byte denominators.
+Bounded `report peak-memory --start-id ... --end-id ...` uses the SAME selected
+metric event for gap/active attribution/coverage; custom SQL/overrides remain
+unsupported for whole datasets. Measurements are not speed assertions.
+
 ## The Query Command
 
 ```bash
@@ -16,7 +24,7 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 
 | Flag | Description |
 |------|-------------|
-| `db_path` | SQLite database file path (optional if focus is configured) |
+| `db_path` | Standalone SQLite file or COMPLETE validated dataset directory/manifest (optional if focus is configured) |
 | `--template-use` | Query template name (required unless using `--list` or `--template-info`) |
 | `--params` | Query parameters in JSON format |
 | `--device` | Device ID |

@@ -11,6 +11,10 @@ SnapshotDB 是内存快照数据的 SQLite 数据库存储格式，用于持久�
 
 **数据库示例文件**: `snapshot.pkl.db`
 
+分析目标包括单库与显式选择的完整已校验原生/兼容数据集；关闭的 compatibility-v1
+使用 immutable 只读传输，原生及单库策略仍独立。[验收、metadata/frame限制与测量](interop-acceptance.md)
+区分 schema、来源/生命周期差分与待验收 GUI。
+
 ## 生成 SnapshotDB
 
 如果输入是 PyTorch 原始 `.pkl` 内存快照，可以直接导入：

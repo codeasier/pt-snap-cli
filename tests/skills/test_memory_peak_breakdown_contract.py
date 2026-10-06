@@ -145,8 +145,13 @@ def test_range_fallback_and_peak_event_semantics_are_explicit() -> None:
     skill = _skill()
     normalized = _normalized_skill()
 
-    assert "`pt-snap report peak-memory` is full-trace only" in skill
-    assert "Do not use `report peak-memory` for a bounded range" in skill
+    assert "without range bounds selects the full real trace" in normalized
+    assert "supports `--start-id` / `--end-id`" in normalized
+    assert "never substitute an unbounded report or another event" in normalized
+    report_help = CliRunner().invoke(app, ["report", "peak-memory", "--help"])
+    assert report_help.exit_code == 0
+    help_text = re.sub(r"\x1b\[[0-9;]*m", "", report_help.output)
+    assert "--start-id" in help_text and "--end-id" in help_text
     assert "--template-use memory_peak --params" in skill
     assert "--template-use allocator_gap --params" in skill
     assert '"start_id": <START_ID>, "end_id": <END_ID>' in skill

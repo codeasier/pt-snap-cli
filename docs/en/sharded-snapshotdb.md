@@ -434,6 +434,14 @@ is original interface-facts code, not a copied vendor implementation or automati
 MIT relicensing of Ascend blobs. Existing pt-snap runtime lineage is a separate
 license/provenance history.
 
+## Reproducible acceptance and measured limits
+
+[Acceptance and bounded performance](interop-acceptance.md) provides deterministic
+CI, an optional hash-first existing-original consumer/physical-forward comparison,
+the same-source three-mode local baseline and an explicitly pending GUI checklist.
+These evidence layers stay separate; a raw negative token is only dataset-local,
+never a cross-producer object-identity promise or permission to rewrite real IDs.
+
 ## Evidence and limits
 
 Interoperability facts were read from fixed upstream
