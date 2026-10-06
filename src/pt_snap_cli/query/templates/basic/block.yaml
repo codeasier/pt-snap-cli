@@ -120,3 +120,60 @@ queries:
         type: int
       - column: freeEventId
         type: int
+      - column: lifecycle_id
+        type: str
+        units: text
+        metric_semantics: identifier
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: generation/device/proved allocation-event or stable negative lifetime token; unproved histories use a separate shard-local identity. Never address or local stack identity."]
+      - column: identity_status
+        type: str
+        units: text
+        metric_semantics: classification
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: proved_allocation_event, stable_negative_token, or unproved_shard_local. Unknown histories are not guessed into a global lifetime."]
+      - column: allocation_source
+        type: object
+        metric_semantics: identifier
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: resolved alloc-action event, owning slice/local stack provenance, canonical full source identity and optionally covered ordered raw frames; NULL for preexisting or missing proof."]
+      - column: allocation_source_status
+        type: str
+        units: text
+        metric_semantics: classification
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: resolved, unknown_preexisting, or missing. Missing proof does not discard dynamic bytes or invent an allocation event."]
+      - column: free_source
+        type: object
+        metric_semantics: identifier
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: proved free_completed event with owning-source provenance, never free_requested; NULL for live/unknown or missing completion proof."]
+      - column: free_source_status
+        type: str
+        units: text
+        metric_semantics: classification
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: resolved, live_or_unknown, or missing. No recorded completion alone does not prove a leak."]
+      - column: observation_slice_index
+        type: int
+        metric_semantics: identifier
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: latest selected shard containing this lifetime observation, not necessarily the terminal dataset shard."]
+      - column: state_scope
+        type: str
+        units: text
+        metric_semantics: classification
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: latest_slice_observation. Stored state is not reconstructed at an arbitrary event or at dataset end when the lifetime is absent from the terminal shard."]
+      - column: terminal_survivor
+        type: bool
+        units: flag
+        metric_semantics: classification
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: present in the terminal dataset shard with active/pending-free state and no recorded completion. Survival is not a confirmed leak or proof of allocation history."]
+      - column: category
+        type: str
+        units: text
+        metric_semantics: classification
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: dynamic, static, or preexisting according to captured lifecycle IDs. Identity/source proof and terminal survival are separate fields."]

@@ -10,7 +10,7 @@ from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.core.context_cache import ContextCache
 from pt_snap_cli.core.dataset_contract import DatasetContractError, QueryScope, parse_manifest
 from pt_snap_cli.core.dataset_resolver import DatasetResolver, _hash_file
-from pt_snap_cli.core.errors import DatabaseSchemaError, InvalidParameterError, QueryExecutionError
+from pt_snap_cli.core.errors import DatabaseSchemaError, InvalidParameterError
 from pt_snap_cli.core.import_service import ImportService
 from pt_snap_cli.core.native_dataset_contract import parse_native_manifest
 from tests.core.test_dataset_import import hashes, source_options
@@ -56,8 +56,11 @@ def test_native_sparse_ids_positions_device_scope_borrowed_cache_and_readonly(tm
                     assert result["scope"]["slice_index"] == position // 2
                     assert len(cache) <= 2
             assert len(analyzer.execute_query("event", {}, device_id=1, slice_index=0)["rows"]) == 2
-            with pytest.raises(QueryExecutionError, match="cross-slice"):
-                analyzer.execute_query("memory_peak")
+            peak = analyzer.execute_query("memory_peak")
+            assert peak["scope"]["slice_indices"] == [0, 1, 2, 3, 4]
+            assert peak["scope"]["boundary_events_included"] is False
+            assert peak["rows"][0]["peak_active_event_id"] in range(7, 88, 10)
+            assert len(cache) <= 2
             with pytest.raises(InvalidParameterError):
                 analyzer.execute_query("event", {"id": -1})
             held = cache.get(root / "device_1/slice_00000.db")

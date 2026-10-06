@@ -4,9 +4,10 @@
 
 ## 范围与版本
 
-本文定义产物协议、共享校验模型及下述**显式**兼容 CLI 导出器，不实现跨片查询引擎。
+本文定义产物协议、共享校验模型及下述**显式**兼容 CLI 导出器；跨片执行由
+[P3 内建支持矩阵](querying.md#数据集全局内建支持p3) 单独定义。
 `import` 默认仍生成一个原生 v2 DB；`split` 仍输出可回放 pickle/JSON。现有单库
-v1/v2 单库分析不变。下述 P1 reader 新增将 complete 兼容 v1 manifest 或目录作为
+v1/v2 分析入口保留；P3 真实事件 peak/gap 与全部 action 完整文本栈统计语义在查询指南明确版本化。下述 P1 reader 新增将 complete 兼容 v1 manifest 或目录作为
 focus；`complete` 门槛只约束数据集，不约束旧单库分析。
 
 `pt_snap_cli.core.dataset_contract` 提供 `parse_manifest`、`validate_event_ids`、
@@ -138,8 +139,8 @@ dictionary 的十进制整数 key 以文本存储，使用真实带设备后缀�
 
 设备间没有全局事件顺序。边界 ID 不能作为范围端点。P0 的
 `DatasetValidation.query_execution=False` 描述校验而非执行。下述 P1 resolver
-使 CLI/API 接受完整 manifest/目录；通用跨片聚合仍留后续，定点来源解析见
-[查询指南](querying.md#数据集定点事件归因)。
+使 CLI/API 接受完整 manifest/目录；执行能力见 [P3 支持矩阵](querying.md#数据集全局内建支持p3)
+及[定点来源](querying.md#数据集定点事件归因)。
 
 ```python
 from pt_snap_cli.core.dataset_contract import QueryScope, validate_dataset
@@ -165,7 +166,8 @@ pt-snap query --template-use event --slice 1 --json
 
 `overview.dataset` 输出格式、manifest 版本/状态、内容指纹、真实/边界事件数、逐设备
 分片路径/范围及能力。事件范围排除负 ID 合成行（单库 overview 也如此）。支持文本调用栈，
-不保证每行有栈；结构化 frames 与跨片查询**不可用**，未知扩展的能力声明不会提升它们。
+不保证每行有栈；P0 结构化 frame 校验仍**不可用**，未知声明不会提升。跨片内建查询
+遵循 P3 矩阵；已识别有序 frame 的查询覆盖与 P0 校验能力独立。
 外部数据集级导入 metadata 为 unavailable；逐片 metadata 不足以证明整体来源。
 下述兼容导出器提供可识别的整份 `ptSnap` 证明，其完整校验后的 metadata 为 available。
 
@@ -184,15 +186,15 @@ with SnapshotAnalyzer(Path("/capture/snapshot.pkl.msinsight"), device_id=0) as a
 ```
 
 数据集 focus 的 `event` 模板支持有界寻址：真实 ID 路由至所在片，闭区间 `min_id/max_id`
-必须落在一个片内，`--slice`/`slice_index` 列出该片真实事件。负 ID 不能作为整份数据集
+可跨片并全局筛选/排序/分页，`--slice`/`slice_index` 限制为该片真实事件。负 ID 不能作为整份数据集
 selector。输出 `scope` 标识实际 DB/device/slice、受限真实区间、数据集指纹和边界排除。
 总数和分页针对该 scope，**不是**隐式截断的整份数据集。CLI `effective_params` 的调用者
 参数默认值另受 `scope` 约束。定点 `active_blocks_at_event` 和
 `active_memory_callstack_at_event` 现于分组/排名前批量解析 alloc/free/完整栈来源，
 原版无扩展产物也适用。生命周期身份、独立来源/frame 覆盖及版本化有序 frame reader
-接口详见[定点归因](querying.md#数据集定点事件归因)。数据集全局聚合/peak/list/leak、
-跨片事件区间及无界多片 event 查询仍明确失败，不静默选首片/最新片。直接单库 v1/v2
-查询保留现有语义。
+接口详见[定点归因](querying.md#数据集定点事件归因)。数据集全局内建查询遵循 P3 矩阵
+及累计工作上限；任意 SQL/自定义 override 明确失败，不静默选首片/最新片。单库真实
+事件 peak/gap 与全部 action 完整文本栈统计版本在相同合同中明确说明。
 
 `core.dataset_resolver.DatasetResolver.inspect(path)` 返回不可变 `ResolvedDataset`
 （单库返回 `None`）；其 `paths(QueryScope(...))` 可寻址跨片范围的全部文件，但不执行查询。
@@ -212,7 +214,7 @@ building、缺片/矛盾片、未知基础版本、不安全路径在 focus 写�
 不是文件系统沙箱或生产端锁。
 
 native-v2 私有 staging **没有已发布 manifest**，不能作为数据集；单个 DB 仍由单库
-入口读取。已发布原生格式与兼容导出是下述独立显式协议。跨片生命周期执行仍属独立工作，
+入口读取。已发布原生格式与兼容导出是下述独立显式协议。跨片生命周期执行遵循 P3 矩阵，
 安全读取原版 WAL 不等于 GUI 验收。
 
 ## 已发布原生数据集（P2）
@@ -252,7 +254,7 @@ trace 列与单库 v2 一致（`callstackId`，非内联文本），保留 OOM a
 最终化引用，保留 P1 打开前的别名/sidecar/持久 WAL 检查及有界借用 cache 所有权。
 无需源 pickle 即可 focus、metadata、overview 和单片 `event` 寻址。原生数据集 metadata
 为 available，外部兼容数据集为 unavailable（下述可识别兼容证明除外）。原生模式不隐含
-迁移、修复、数据集全局聚合/peak/list/leak、兼容导出、salted hash 或 GUI 验收；定点
+迁移、修复、兼容导出、salted hash 或 GUI 验收；数据集全局内建查询遵循 P3 矩阵。定点
 来源解析通过上述共享查询路径可用。P0 schema/manifest
 语义不变，仅兼容最终化 WAL 的只读传输修正见上文。
 
@@ -311,7 +313,7 @@ native-v2 输出仍独立且不变。
 外片真实事件掩盖片内 JOIN 缺口。OOM/未知 action、非零/稀疏 ID、空/仅静态选择失败；
 原生保留更广合同。所有选中成员最终化、关闭、校验后才发布 complete。
 `pt_snap_block_reference` v1 是隔离文本扩展，不是有序 frames 或跨来源查询承诺；
-跨来源查询/全局聚合仍属后续独立工作。文本不能恢复原始有序 frame 数组；原版 workspace
+跨来源查询/全局聚合遵循 P3 查询矩阵。文本不能恢复原始有序 frame 数组；原版 workspace
 raw-frame 丢失与字符串 OOM action 强制转换属于已知局限，不应仿制为兼容能力。
 
 `cacheHash = SHA256(b"mem_snapshot_parser_v2" + 原始_pickle_字节)`，salt **前置**。

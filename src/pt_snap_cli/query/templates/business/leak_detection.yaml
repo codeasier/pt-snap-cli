@@ -51,3 +51,78 @@ queries:
         interpretation_limits:
           - "Points to the captured allocation event. This template keeps only allocEventId >= 0, so the uncaptured sentinel -1 is excluded."
           - "Event IDs are ordering markers, not timestamps."
+      - column: requestedSize
+        type: int
+        units: bytes
+        metric_semantics: instantaneous_occupancy
+        scope: dynamic
+        interpretation_limits: ["Dataset only, optional: user-requested bytes of the terminal candidate's observed block, distinct from its rounded size."]
+      - column: state
+        type: int
+        metric_semantics: classification
+        scope: dynamic
+        interpretation_limits: ["Dataset only, optional: terminal-shard observation, active_allocated=1 or active_pending_free=0 for these candidates; not a confirmed leak classification."]
+      - column: freeEventId
+        type: int
+        units: event_id
+        metric_semantics: ordering_marker
+        scope: captured_range
+        sentinel: -1
+        interpretation_limits: ["Dataset only, optional: recorded completion ID; these terminal candidates have no recorded free_completed event. -1 is live or unknown, not proof of a leak."]
+      - column: lifecycle_id
+        type: str
+        units: text
+        metric_semantics: identifier
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: generation/device/proved allocation-event identity, deduplicated before the final window; never address or local stack identity."]
+      - column: identity_status
+        type: str
+        units: text
+        metric_semantics: classification
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: proved_allocation_event for these candidates. Static, preexisting and unproved shard-local histories are excluded."]
+      - column: allocation_source
+        type: object
+        metric_semantics: identifier
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: resolved alloc-action event, owning slice/local stack provenance, canonical full source identity and optionally covered ordered raw frames."]
+      - column: allocation_source_status
+        type: str
+        units: text
+        metric_semantics: classification
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: resolved for these captured dynamic candidates; missing or preexisting allocation proof is not asserted as a leak candidate."]
+      - column: free_source
+        type: object
+        metric_semantics: identifier
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: completion-source payload; NULL for these candidates without a recorded free_completed event. A free_requested action is not a completed free."]
+      - column: free_source_status
+        type: str
+        units: text
+        metric_semantics: classification
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: live_or_unknown for these candidates; absence of completion is not a confirmed leak."]
+      - column: observation_slice_index
+        type: int
+        metric_semantics: identifier
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: terminal dataset shard containing the candidate observation; earlier-shard locally unfreed observations are not unioned into this result."]
+      - column: state_scope
+        type: str
+        units: text
+        metric_semantics: classification
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: latest_slice_observation, which is the terminal shard for these candidates. State is an observation, not a diagnosis of leaking."]
+      - column: terminal_survivor
+        type: bool
+        units: flag
+        metric_semantics: classification
+        scope: captured_range
+        interpretation_limits: ["Dataset only, optional: true for these present, active/pending-free terminal lifetimes without recorded completion; survival is not a confirmed leak."]
+      - column: category
+        type: str
+        units: text
+        metric_semantics: classification
+        scope: dynamic
+        interpretation_limits: ["Dataset only, optional: dynamic for these candidates; static/preexisting categories are excluded independently of output caps."]

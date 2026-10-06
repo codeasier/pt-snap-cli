@@ -368,16 +368,17 @@ def test_v1_callstack_analysis_pagination_and_total(v1_db: Path) -> None:
     assert [row["callstack"] for row in result.rows] == ["after.py:40", "free.py:30"]
 
 
-def test_v2_callstack_analysis_keeps_id_aggregation(v2_db: Path) -> None:
+def test_v2_callstack_analysis_v2_groups_full_text_and_real_actions(v2_db: Path) -> None:
     context = Context(v2_db)
     sql = QueryExecutor(context).render(
         get_query("callstack_analysis"),
         {"min_count": 1, "min_size": 0, "limit": -1},
         device_id=0,
     )
-    normalized = sql.replace("GROUP BY callstackId", "")
-    assert "GROUP BY callstackId" in sql
-    assert "GROUP BY callstack" not in normalized
+    assert "GROUP BY c.callstack" in sql
+    assert "t.id >= 0" in sql
+    assert "GROUP BY callstackId" not in sql
+    assert get_query("callstack_analysis").semantics_version == 2
     context.close()
 
 

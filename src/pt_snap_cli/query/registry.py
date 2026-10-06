@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import warnings
 from collections.abc import Callable
 from pathlib import Path
@@ -331,9 +332,29 @@ def _load_yaml_templates(template_dir: Path | str | None = None) -> None:
             warnings.warn(f"Failed to load query template from {yaml_file}: {e}", stacklevel=2)
 
 
+_packaged: dict[str, tuple[QueryTemplate, QueryTemplate]] = {}
+
+
+def is_packaged_query(name: str) -> bool:
+    """Only unchanged, actually loaded packaged objects have global semantics.
+
+    A runtime override, even with a built-in name or identical SQL, is custom.
+    Retain a deep copy too, since QueryTemplate is mutable.
+    """
+    current = get_query(name)
+    original = _packaged.get(name)
+    return original is not None and current is original[0] and current == original[1]
+
+
 def _load_all_templates() -> None:
-    """Load all templates from YAML files."""
+    """Load all templates from YAML files and record their actual identities."""
     _load_yaml_templates()
+    _packaged.clear()
+    _packaged.update(
+        (name, (template, copy.deepcopy(template)))
+        for name in list_queries()
+        if (template := get_query(name)) is not None
+    )
 
 
 try:

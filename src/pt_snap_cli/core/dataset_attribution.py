@@ -152,7 +152,7 @@ def event_attribution(
         selected = selected[:max_rows]
     if exact_total:
         has_more = len(all_rows) > len(selected) + offset
-    sources.budget.remaining()
+    sources.budget.consume(selected)
     return QueryResult(
         total=len(all_rows) if exact_total else len(selected),
         returned=len(selected),

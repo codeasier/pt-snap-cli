@@ -230,7 +230,8 @@ class TestListByCategory:
         info = get_template_info("block")
         assert info is not None
 
-        assert [column["column"] for column in info["output_schema"]] == [
+        columns = info["output_schema"]
+        assert [column["column"] for column in columns[:7]] == [
             "id",
             "address",
             "size",
@@ -239,6 +240,22 @@ class TestListByCategory:
             "allocEventId",
             "freeEventId",
         ]
+        assert [column["column"] for column in columns[7:]] == [
+            "lifecycle_id",
+            "identity_status",
+            "allocation_source",
+            "allocation_source_status",
+            "free_source",
+            "free_source_status",
+            "observation_slice_index",
+            "state_scope",
+            "terminal_survivor",
+            "category",
+        ]
+        assert all(
+            "Dataset only, optional" in " ".join(column["interpretation_limits"])
+            for column in columns[7:]
+        )
 
     def test_packaged_sql_fragment_parameters_declare_choices(self):
         """Regression for issue #120.

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Literal, cast
 
+from pt_snap_cli.core.dataset_sources import QueryBudget
 from pt_snap_cli.core.focus_service import FocusService
 from pt_snap_cli.core.models import PeakMemoryReport, QueryResult
-from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.core.query_service import QueryService, resolve_query_timeout
 
 PeakMetric = Literal["active", "allocated", "reserved"]
 
@@ -42,6 +44,7 @@ class ReportService:
         stack_bytes: int = -1,
         start_dir: Path | None = None,
         timeout_s: float | None = None,
+        _budget: QueryBudget | None = None,
     ) -> QueryResult:
         """Reuse core point-event attribution, also for externally selected peaks.
 
@@ -61,6 +64,7 @@ class ReportService:
             device_id=device_id,
             start_dir=start_dir,
             timeout_s=timeout_s,
+            _budget=_budget,
         )
 
     def peak_memory_report(
@@ -72,14 +76,22 @@ class ReportService:
         limit: int = 20,
         start_dir: Path | None = None,
         stack_bytes: int = -1,
+        *,
+        start_id: int | None = None,
+        end_id: int | None = None,
+        timeout_s: float | None = None,
     ) -> PeakMemoryReport:
         if metric not in _EVENT_ID_BY_METRIC:
             raise ValueError(
                 f"Invalid metric '{metric}'. Must be one of: active, allocated, reserved"
             )
 
+        budget = QueryBudget(resolve_query_timeout(timeout_s), time.monotonic())
+        range_params = {"start_id": start_id, "end_id": end_id}
         peak_result = self._query_service.execute_query(
             "memory_peak",
+            params=range_params,
+            _budget=budget,
             db_path=db_path,
             device_id=device_id,
             start_dir=start_dir,
@@ -105,10 +117,14 @@ class ReportService:
                 callstack_groups=[],
                 total_is_exact=True,
                 effective_params=attribution_params,
+                scope=peak_result.scope,
+                timeout_s=budget.timeout_s,
             )
 
         gap_result = self._query_service.execute_query(
             "allocator_gap",
+            params=range_params,
+            _budget=budget,
             db_path=db_path,
             device_id=device_id,
             start_dir=start_dir,
@@ -121,6 +137,7 @@ class ReportService:
             limit=limit,
             stack_bytes=stack_bytes,
             start_dir=start_dir,
+            _budget=budget,
         )
 
         gap = gap_result.rows[0] if gap_result.rows else None
@@ -150,6 +167,8 @@ class ReportService:
             included_bytes=included_bytes,
             active_bytes_at_event=active_bytes,
             coverage_percent=coverage,
+            scope=peak_result.scope,
+            timeout_s=budget.timeout_s,
             source_coverage=cast(
                 dict[str, object] | None, (callstack_result.scope or {}).get("source_coverage")
             ),

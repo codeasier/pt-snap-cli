@@ -60,10 +60,32 @@ def _bounded_depth(value: object) -> bool:
     return True
 
 
-@dataclass(frozen=True)
+@dataclass
 class QueryBudget:
     timeout_s: float | None
     started: float
+    max_work_rows: int = 100_000
+    max_work_bytes: int = 64 * 1024 * 1024
+    work_rows: int = 0
+    work_bytes: int = 0
+
+    def consume(self, rows: list[dict[str, object]]) -> None:
+        """Bound cumulative fetched rows/serialized values, not merely output.
+
+        Includes repeated source reads. Exceeding either ceiling fails the whole
+        operation, never returning a silently partial global conclusion. This is
+        not an RSS ceiling: SQLite and one fetched batch have their own overhead.
+        """
+        self.remaining()
+        self.work_rows += len(rows)
+        self.work_bytes += sum(
+            len(json.dumps(row, ensure_ascii=True, default=str).encode("utf-8")) for row in rows
+        )
+        if self.work_rows > self.max_work_rows or self.work_bytes > self.max_work_bytes:
+            raise QueryExecutionError(
+                "Dataset query work budget exceeded (100000 fetched rows / 64 MiB serialized "
+                "values by default); no partial global result. Narrow the scope or select a member."
+            )
 
     def remaining(self) -> float | None:
         if self.timeout_s is None:
@@ -142,6 +164,17 @@ class DatasetSourceResolver:
             )
         return item
 
+    def _consume(self, rows: list[dict[str, object]]) -> None:
+        # The executor intentionally knows only its own errors. Translate the
+        # core callback's timeout before its generic exception boundary, so
+        # cancellation keeps the domain kind and CLI QUERY_TIMEOUT code.
+        try:
+            self.budget.consume(rows)
+        except QueryTimeoutError as exc:
+            raise ExecutorTimeout(str(exc)) from exc
+        except QueryExecutionError as exc:
+            raise ExecutorError(str(exc)) from exc
+
     def read(
         self, path: Path, sql: str, values: list[object] | None = None
     ) -> list[dict[str, object]]:
@@ -156,7 +189,9 @@ class DatasetSourceResolver:
                 immutable=self.dataset.callstack_layout == "v1",
             )
             self.query_count += 1
-            return QueryExecutor(context).execute(sql, values, timeout_s=self.budget.remaining())
+            return QueryExecutor(context).execute(
+                sql, values, timeout_s=self.budget.remaining(), consume=self._consume
+            )
         except ExecutorTimeout as exc:
             raise QueryTimeoutError(
                 f"Query timed out after {self.budget.timeout_s} seconds"
