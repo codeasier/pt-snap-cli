@@ -69,6 +69,10 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 身份相同的 pt-snap 缓存。GUI **待验收/未运行**，hash 相等不代表验收通过。详见
 [兼容导出及限制](docs/zh/sharded-snapshotdb.md#显式-msinsight-兼容导出p2)。
 
+[离线双向验收与有界性能](docs/zh/interop-acceptance.md) 提供固定版本两条链路、
+确定性独立参考工具、真实三模式测量及明确**待验收/not-run 的 GUI 清单**。
+诊断 skills 接受显式选择的完整已校验数据集，不接受任意目录。
+
 ## 命令
 
 | 命令 | 说明 |

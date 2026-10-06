@@ -6,6 +6,11 @@
 该 focus，不同项目目录则可以选择不同数据库和设备。同一项目内的终端或 Agent 需要
 相互隔离时，应使用 session 覆盖。
 
+目标也可为显式选择的 complete 已校验 compatibility-v1 / pt-snap-native-v2 目录或
+`manifest.json`，不能是任意目录/ready单片。明确选择设备，用 `overview.dataset` 记录
+format/fingerprint/真实区间。有效原版无扩展 metadata 为 `unavailable` / `metadata_missing`
+（未知来源），不是绕过校验。只读诊断 skills 不持久化 focus；见[隔离验收项目](interop-acceptance.md)。
+
 ## 解析优先级
 
 焦点按以下顺序解析：

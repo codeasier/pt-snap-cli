@@ -4,6 +4,10 @@
 
 几分钟内即可上手 `pt-snap-cli`。
 
+显式原生/兼容导入验收、相同已审 fixture 三模式性能及待验收 GUI 清单见
+[双向互操作验收](interop-acceptance.md)。默认导入仍是单库，`--events-per-slice`
+选择原生，`--format msinsight` 选择 compatibility-v1；可信导入同意与只读诊断分开。
+
 ## 安装
 
 ```bash

@@ -50,11 +50,11 @@ If the user did not provide a database or device, inspect the current state:
 pt-snap focus
 ```
 
-Use the displayed database and focused device only when both are present, the database file exists, and the user has not requested another target. If the database or device remains ambiguous, ask the user to select it before analysis.
+Use the displayed database and focused device only when both are present, the selected target exists and passes the overview validation below, and the user has not requested another target. If the database or device remains ambiguous, ask the user to select it before analysis.
 
 Do not run `pt-snap focus <database_path>` or otherwise persist focus from this skill. Pass the database and device explicitly to every diagnostic query.
 
-This skill accepts SnapshotDB files only. Do not run `pt-snap import` or deserialize a pickle snapshot. If the user has only a pickle file, stop and explain that importing requires a separate, explicit trusted-input decision because pickle loading is not a sandbox.
+This skill accepts standalone SnapshotDB files or an explicitly selected complete validated dataset directory or `manifest.json` only. Do not run `pt-snap import` or deserialize a pickle snapshot. If the user has only a pickle file, stop and explain that importing requires a separate, explicit trusted-input decision because pickle loading is not a sandbox.
 
 #### Missing focus target with sibling candidates
 
@@ -99,6 +99,48 @@ and overview. Metadata alone does not replace overview; never reuse the missing
 target's overview or device.
 
 Confirm these templates exist in the capabilities catalog before diagnosis: `memory_peak`, `allocator_gap`, `event`, `block`, `leak_detection`, `active_memory_callstack_at_event`, `active_blocks_at_event`, `preexisting_live`, `freed_block_lifetime`. If the catalog or overview fails, stop and report the exact failure. Do not silently substitute raw SQL for a missing core template.
+
+## Validated complete dataset scope
+
+Accept only the user's explicit standalone file or complete validated
+compatibility-v1 / pt-snap-native-v2 dataset directory or `manifest.json`.
+Existence alone is not validation. Never infer arbitrary or sibling directories,
+auto-select a device, import pickle, or persist focus. Keep the same explicit
+target/device pair in every command and record full-device versus selected range.
+For a dataset, validate `overview.dataset.status`, `format`, `manifest_path`,
+`fingerprint`, real bounds and selected device. Reuse requires the same fingerprint.
+Read `overview.import_metadata`: a valid external original artifact may report
+`unavailable` / `metadata_missing`; record unknown provenance. This is not permission
+to allow invalid metadata, incomplete validation, or any other unknown reason.
+
+Check every chosen catalog entry's `dataset_support.supported`. All eleven built-ins
+have declared dataset semantics; arbitrary SQL and custom built-in-name overrides
+are unsupported. Never concatenate shard-local top-N or sum different device peaks.
+Use `lifecycle_id` within the same fingerprint/device plus original `allocEventId`,
+`allocation_source` and `free_source`; completed frees have action 6, not pending
+free_requested. Address and shard-local stack IDs are not lifecycle identity.
+Stored `state_scope` is an observation, not reconstructed state at arbitrary E.
+Dataset `stack_id` / `source_stack_id` uses full canonical text or covered ordered
+raw frames; `local_stack_id`, source event/slice and `text_kind` are provenance.
+Never merge shortened labels. Keep captured literal missing-label text separate
+from missing references. `callstack_analysis` semantics_version=2 counts ALL real
+stack-bearing actions in legacy `alloc_count`, not allocation-only; `total_size`
+is activity, not live bytes, and non-NULL empty text activity remains its own group.
+
+Check `scope.range_complete` for ranges and
+`scope.source_coverage.range_complete` for point queries; source/frame coverage is
+separate from `has_more`, `truncated`, and exact totals. Retain
+`allocation_source_complete` and `ordered_frames_complete`. Only recognized
+ptSnapOrderedFrames version 1 with actual schema and per-event coverage supplies
+ordered frames (including duplicates); missing/unknown/uncovered means text-only.
+Never reconstruct frames or claim hierarchical evidence from text alone.
+One query/report shares diminishing time and cumulative 100000 fetched/output rows
+and 64 MiB serialized-value budgets, NOT an RSS ceiling. Budget failure returns no
+partial global proof; narrow scope or ask for an explicit member, never raw SQL.
+Percentages use included group bytes (standalone SQL or dataset post-merge) after filtering/top-N and before the caller's
+row cap, not the whole active counter; report coverage uses active at the SAME
+selected metric event. Leak candidates require terminal full-device dataset scope,
+not an arbitrary `--slice`; end-live survival is not a confirmed leak.
 
 ## Optional compact stack evidence
 
@@ -189,7 +231,7 @@ Use the final event ID from Step 1:
 pt-snap query '<db_path>' --device <device_id> --template-use active_memory_callstack_at_event --params '{"event_id":<final_event_id>,"include_static":true,"min_size":0,"top_n":20}'
 ```
 
-This template has no `offset`, and `-n` cannot raise the CTE `top_n` cap. If
+This template has no `offset`, and `-n` cannot raise the template `top_n` cap. If
 `has_more` or `truncated` is true, increase `top_n` instead of concluding from
 the first ranked page.
 

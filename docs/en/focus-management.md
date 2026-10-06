@@ -7,6 +7,13 @@
 select different databases and devices. Use a session override when terminals or
 agents in the same project must remain isolated.
 
+A target may also be an explicitly selected COMPLETE validated compatibility-v1
+or pt-snap-native-v2 directory or `manifest.json`, not an arbitrary folder/ready
+slice. Select the device explicitly; `overview.dataset` supplies format/fingerprint
+and real bounds. Valid original no-extension metadata is `unavailable` /
+`metadata_missing` (unknown provenance), not a validation bypass. Read-only
+skills do not persist focus. See [acceptance and isolated test focus](interop-acceptance.md).
+
 ## Resolution Priority
 
 Focus is resolved in this order:

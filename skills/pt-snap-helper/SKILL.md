@@ -181,6 +181,35 @@ Missing-focus recovery below is the explicit metadata-first exception: after
 user confirmation, inspect metadata first, then obtain/reuse capabilities and
 overview and apply these same checks. Metadata alone does not replace overview.
 
+### Complete dataset handoff
+
+Accept only an explicit standalone DB or complete validated compatibility-v1 /
+pt-snap-native-v2 dataset directory or `manifest.json`, not arbitrary or sibling
+directories. Existence is not validation. Preserve the chosen target/device/scope
+without import or persisted focus. Validate `overview.dataset.status`, `format`,
+`manifest_path`, `fingerprint`, real bounds and device; reuse requires unchanged
+fingerprint. Valid external original artifacts can report `unavailable` /
+`metadata_missing` with unknown provenance; invalid metadata, incomplete validation
+and every other unknown reason still stop.
+
+Tell the diagnostic skill to check each `dataset_support.supported` catalog entry;
+all eleven built-ins have declared semantics, custom SQL/overrides do not. Keep
+source/range coverage separate from `has_more`, `truncated` and exact totals;
+point queries use `scope.source_coverage.range_complete`, range queries use
+`scope.range_complete`. Pass `allocation_source_complete` / `ordered_frames_complete`
+when available, not an inferred complete claim. Use `lifecycle_id` within unchanged
+fingerprint/device with `allocation_source` / `free_source` and original alloc/free
+IDs, never address/local stack ID.
+`stack_id` / `source_stack_id` is canonical text/raw-frame identity; local IDs,
+source event/slice and `text_kind` are provenance. Recognized ptSnapOrderedFrames
+version 1 requires actual schema/per-event coverage; otherwise downgrade to
+text-only, never reconstruct frames. `callstack_analysis` legacy `alloc_count`
+means ALL real stack-bearing actions, not allocation-only, and size activity is
+not live bytes. Preserve included-byte denominators and SAME selected-metric-event
+report gap/coverage; one query/report cumulative 100000 fetched/output rows /64 MiB
+serialized values is NOT an RSS ceiling. Budget failure is no partial global proof.
+This helper still only hands off; it does not execute analysis queries.
+
 ## Routing matrix
 
 Choose one next skill. If the goal is still ambiguous after this table, ask
@@ -212,8 +241,11 @@ only has those, stop and ask for a `.db` or a trusted pickle.
 
 ### Existing SnapshotDB
 
-A SnapshotDB is a pt-snap SQLite database (typically `.db`) with a
-`dictionary` table. When the user already has one:
+A standalone SnapshotDB is a SQLite database (typically `.db`) with a
+`dictionary` table. An explicitly selected complete validated compatibility-v1 or
+pt-snap-native-v2 dataset directory or `manifest.json` is also an analysis target.
+Arbitrary directories and single ready shards are not complete datasets.
+When the user already has one:
 
 1. Confirm the goal is leak, peak, or fragmentation.
 2. Tell the next skill to start with `pt-snap capabilities --json` and

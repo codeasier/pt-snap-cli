@@ -4,6 +4,12 @@
 
 Get up and running with `pt-snap-cli` in a few minutes.
 
+For explicit native/compatible import acceptance, the SAME reviewed-fixture
+three-mode baseline and the pending GUI checklist, see
+[interoperability acceptance](interop-acceptance.md). Default import remains one
+standalone DB; `--events-per-slice` opts into native, `--format msinsight` into
+compatibility-v1. Trusted import consent is separate from read-only diagnosis.
+
 ## Installation
 
 ```bash

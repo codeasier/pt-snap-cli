@@ -80,6 +80,11 @@ only fully validated identical pt-snap caches are reused. GUI acceptance remains
 **pending/not run**; hash equality alone is not acceptance. See
 [compatible export and limits](docs/en/sharded-snapshotdb.md#explicit-msinsight-compatible-export-p2).
 
+See [offline interoperability acceptance and bounded performance](docs/en/interop-acceptance.md)
+for the two fixed-version chains, deterministic reference tools, honest three-mode
+measurements and the explicitly **pending/not-run GUI checklist**. Diagnostic skills
+accept explicitly selected complete validated datasets, not arbitrary directories.
+
 ## Commands
 
 | Command | Description |

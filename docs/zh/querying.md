@@ -4,6 +4,12 @@
 
 对快照数据库执行内存分析查询。
 
+按同一 YAML catalog 的 `dataset_support`/声明字段选择显式有效 target/device/scope。
+[离线验收与实测查询延迟](interop-acceptance.md) 区分来源/区间/frame覆盖与 `has_more/truncated`，
+说明 text-only降级、全部action栈统计并保持included-byte分母。有界
+`report peak-memory --start-id ... --end-id ...` 的 gap/active归因/coverage 使用同一 selected
+metric event；整份数据集仍不支持自定义SQL/override。测量不是速度断言。
+
 ## Query 命令
 
 ```bash
@@ -16,7 +22,7 @@ pt-snap query [DB_PATH] [--template-use <template_name>] [--params <json>] \
 
 | 参数 | 说明 |
 |------|------|
-| `db_path` | SQLite 数据库文件路径（已配置 focus 时可选） |
+| `db_path` | 单库 SQLite 文件或完整已校验数据集目录/manifest（已配置 focus 时可选） |
 | `--template-use` | 查询模板名称（除非使用 `--list` 或 `--template-info`，否则必需） |
 | `--params` | JSON 格式的查询参数 |
 | `--device` | 设备 ID |

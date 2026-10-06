@@ -14,7 +14,11 @@ SnapshotDB is the SQLite database format for persisting PyTorch memory profiling
 
 ## Producing a snapshot DB
 
-`pt-snap` analyzes SQLite SnapshotDB files. If you start with a raw PyTorch memory snapshot pickle, import the snapshot with the built-in backend:
+`pt-snap` analyzes standalone SQLite SnapshotDB files and explicitly selected
+complete validated native/compatible datasets. Closed compatibility-v1 uses
+immutable read-only transport; native and standalone policies remain distinct.
+[Acceptance, metadata/frame limits and measurements](interop-acceptance.md)
+separate schema, source/lifecycle differential and pending GUI evidence. If you start with a raw PyTorch memory snapshot pickle, import the snapshot with the built-in backend:
 
 > **Security warning:** Import trusted pickle files only. Pickle deserialization
 > can execute arbitrary code. The loader rejects non-`builtins` global objects,

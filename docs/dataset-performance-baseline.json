@@ -1,0 +1,1487 @@
+{
+  "status": "passed",
+  "source_head": "a0f9738fedaa31b7c3929f5884c48df74616a75a",
+  "benchmark_script_sha256": "100a04614c174b87a7365e298c0d85323be7ee3f4986a56f95ef0ddc5ec1c6f1",
+  "cold_definition": "fresh output/process, no warmup; OS page cache NOT cleared",
+  "reuse_definition": "fresh process reusing only this run's recognized owned artifact, force=False",
+  "original_producer": "not-run; preexisting single cold wall is not comparable RSS/phase evidence",
+  "GUI": "pending/not-run",
+  "limits": [
+    "Pickle loads in full memory; sharding is not streaming",
+    "Shards repeat long-lived blocks; compatible format repeats inline stack text",
+    "No unstable elapsed-time assertion or performance benefit promise",
+    "Query latency includes validation/member hashing and repeated scans; only one local observation"
+  ],
+  "schema_version": 1,
+  "evidence_scope": "one bounded local same-condition pt-snap observation per mode/phase; no speed assertions or comparative original-producer result",
+  "source_fixture": {
+    "name": "snapshot_expandable.pkl",
+    "bytes": 581140,
+    "sha256": "3afc9d1c5ef4ca4b417e58c0830e9eb8a913eb9459f4088b8c66c22325c68c40"
+  },
+  "command_shape": [
+    "python",
+    "benchmarks/dataset_import_baseline.py",
+    "--source",
+    "tests/fixtures/snapshots/snapshot_expandable.pkl",
+    "--sha256",
+    "3afc9d1c5ef4ca4b417e58c0830e9eb8a913eb9459f4088b8c66c22325c68c40",
+    "--device",
+    "0",
+    "--capacity",
+    "2000",
+    "--output",
+    "<NEW-exclusive-output>",
+    "--trusted-pickle"
+  ],
+  "command_scope": "reproducible shape, not a claim that placeholder paths were executed; exact actual commands/cwd/env/exits/logs retained in local performance.json and durable issue ledger",
+  "records": [
+    {
+      "mode": "single-db",
+      "phase": "cold",
+      "status": "passed",
+      "import_wall_seconds": 0.05691691697575152,
+      "isolated_import_process_peak_rss_raw": 48152576,
+      "isolated_import_process_peak_rss_kib": 47024.0,
+      "isolated_import_process_peak_rss_mib": 45.921875,
+      "rss_scope": "RUSAGE_SELF fresh child high-water through import, before queries; includes interpreter/imports",
+      "phase_timings": {
+        "load_representation": {
+          "seconds": 0.002031833049841225,
+          "calls": 1
+        },
+        "standalone_replay_with_sqlite_hooks": {
+          "seconds": 0.029698416008614004,
+          "calls": 1
+        }
+      },
+      "phase_timing_scope": "named wrapped functions, inclusive; sharded replay includes SQLite writes/backfills, NOT parser-only",
+      "phase_rss": {
+        "status": "unavailable",
+        "reason": "No per-phase sampler/isolation; cumulative high-waters cannot be subtracted into load/replay peaks"
+      },
+      "other_phase_timings": {
+        "status": "unavailable",
+        "reason": "validation/hash/metadata/publication remainder not separately instrumented"
+      },
+      "reused": false,
+      "device": 0,
+      "capacity": null,
+      "total_disk_bytes": 1601536,
+      "individual_files_bytes": {
+        "snapshot_expandable.pkl.db": 1601536
+      },
+      "individual_shard_bytes": {
+        "snapshot_expandable.pkl.db": 1601536
+      },
+      "raw_block_rows": 3219,
+      "unique_block_invariants": 3219,
+      "repeated_block_rows": 0,
+      "repeated_block_cost": {
+        "repeated_base_integer_cells": 0,
+        "physical_disk_attribution": "unavailable: shared SQLite pages/indexes cannot be apportioned to duplicated rows by file-size subtraction"
+      },
+      "errors": [],
+      "python_version": "3.13.11 | packaged by Anaconda, Inc. | (main, Dec 10 2025, 21:21:08) [Clang 20.1.8 ]",
+      "platform": "macOS-26.0.1-arm64-arm-64bit-Mach-O",
+      "exit": 0,
+      "queries": {
+        "active_blocks_at_event": {
+          "seconds": 0.0037044170312583447,
+          "returned": 645,
+          "total": 645,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_active_set_cross_slice_sources",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "active_memory_callstack_at_event": {
+          "seconds": 0.00290229101665318,
+          "returned": 4,
+          "total": 4,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_global_source_groups_before_top_n",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "allocation": {
+          "seconds": 0.005575167015194893,
+          "returned": 8094,
+          "total": 8094,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "real_events_global_filter_sort_page",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "allocator_gap": {
+          "seconds": 0.0037931660190224648,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "global_peaks_same_event_counters",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "block": {
+          "seconds": 0.004353124997578561,
+          "returned": 3219,
+          "total": 3219,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "proved_lifecycles_dedup_latest_observation",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "callstack_analysis": {
+          "seconds": 0.018826082930900156,
+          "returned": 60,
+          "total": 60,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "all_real_stack_bearing_actions_global_identity_weighted_stats",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "event": {
+          "seconds": 0.001940542017109692,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "real_events_global_filter_sort_page",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "freed_block_lifetime": {
+          "seconds": 0.001361750066280365,
+          "returned": 2,
+          "total": 2,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "proved_completed_lifecycles_once",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "leak_detection": {
+          "seconds": 0.001192792085930705,
+          "returned": 325,
+          "total": 325,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "terminal_dataset_dynamic_survivors_not_confirmed_leaks",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "memory_peak": {
+          "seconds": 0.0010200829710811377,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "independent_real_counter_peaks_earliest_id",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "preexisting_live": {
+          "seconds": 0.0003534170100465417,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_preexisting_occupancy",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        }
+      }
+    },
+    {
+      "mode": "single-db",
+      "phase": "reuse",
+      "status": "passed",
+      "import_wall_seconds": 0.0008004589471966028,
+      "isolated_import_process_peak_rss_raw": 34799616,
+      "isolated_import_process_peak_rss_kib": 33984.0,
+      "isolated_import_process_peak_rss_mib": 33.1875,
+      "rss_scope": "RUSAGE_SELF fresh child high-water through import, before queries; includes interpreter/imports",
+      "phase_timings": {},
+      "phase_timing_scope": "named wrapped functions, inclusive; sharded replay includes SQLite writes/backfills, NOT parser-only",
+      "phase_rss": {
+        "status": "unavailable",
+        "reason": "No per-phase sampler/isolation; cumulative high-waters cannot be subtracted into load/replay peaks"
+      },
+      "other_phase_timings": {
+        "status": "unavailable",
+        "reason": "validation/hash/metadata/publication remainder not separately instrumented"
+      },
+      "reused": true,
+      "device": 0,
+      "capacity": null,
+      "total_disk_bytes": 1601536,
+      "individual_files_bytes": {
+        "snapshot_expandable.pkl.db": 1601536
+      },
+      "individual_shard_bytes": {
+        "snapshot_expandable.pkl.db": 1601536
+      },
+      "raw_block_rows": 3219,
+      "unique_block_invariants": 3219,
+      "repeated_block_rows": 0,
+      "repeated_block_cost": {
+        "repeated_base_integer_cells": 0,
+        "physical_disk_attribution": "unavailable: shared SQLite pages/indexes cannot be apportioned to duplicated rows by file-size subtraction"
+      },
+      "errors": [],
+      "python_version": "3.13.11 | packaged by Anaconda, Inc. | (main, Dec 10 2025, 21:21:08) [Clang 20.1.8 ]",
+      "platform": "macOS-26.0.1-arm64-arm-64bit-Mach-O",
+      "exit": 0,
+      "queries": {
+        "active_blocks_at_event": {
+          "seconds": 0.0036053750663995743,
+          "returned": 645,
+          "total": 645,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_active_set_cross_slice_sources",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "active_memory_callstack_at_event": {
+          "seconds": 0.002839708002284169,
+          "returned": 4,
+          "total": 4,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_global_source_groups_before_top_n",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "allocation": {
+          "seconds": 0.005784249980933964,
+          "returned": 8094,
+          "total": 8094,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "real_events_global_filter_sort_page",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "allocator_gap": {
+          "seconds": 0.0036612499970942736,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "global_peaks_same_event_counters",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "block": {
+          "seconds": 0.004391541937366128,
+          "returned": 3219,
+          "total": 3219,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "proved_lifecycles_dedup_latest_observation",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "callstack_analysis": {
+          "seconds": 0.018302790937013924,
+          "returned": 60,
+          "total": 60,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "all_real_stack_bearing_actions_global_identity_weighted_stats",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "event": {
+          "seconds": 0.0019014590652659535,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "real_events_global_filter_sort_page",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "freed_block_lifetime": {
+          "seconds": 0.0013899169862270355,
+          "returned": 2,
+          "total": 2,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "proved_completed_lifecycles_once",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "leak_detection": {
+          "seconds": 0.0012190000852569938,
+          "returned": 325,
+          "total": 325,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "terminal_dataset_dynamic_survivors_not_confirmed_leaks",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "memory_peak": {
+          "seconds": 0.0010333340615034103,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "independent_real_counter_peaks_earliest_id",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "preexisting_live": {
+          "seconds": 0.0003636250039562583,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_preexisting_occupancy",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        }
+      }
+    },
+    {
+      "mode": "pt-snap-native-v2",
+      "phase": "cold",
+      "status": "passed",
+      "import_wall_seconds": 0.15482937498018146,
+      "isolated_import_process_peak_rss_raw": 61325312,
+      "isolated_import_process_peak_rss_kib": 59888.0,
+      "isolated_import_process_peak_rss_mib": 58.484375,
+      "rss_scope": "RUSAGE_SELF fresh child high-water through import, before queries; includes interpreter/imports",
+      "phase_timings": {
+        "load_representation": {
+          "seconds": 0.0019707499304786325,
+          "calls": 1
+        },
+        "sharded_replay_with_sqlite_and_backfill": {
+          "seconds": 0.11052991601172835,
+          "calls": 1
+        }
+      },
+      "phase_timing_scope": "named wrapped functions, inclusive; sharded replay includes SQLite writes/backfills, NOT parser-only",
+      "phase_rss": {
+        "status": "unavailable",
+        "reason": "No per-phase sampler/isolation; cumulative high-waters cannot be subtracted into load/replay peaks"
+      },
+      "other_phase_timings": {
+        "status": "unavailable",
+        "reason": "validation/hash/metadata/publication remainder not separately instrumented"
+      },
+      "reused": false,
+      "device": 0,
+      "capacity": 2000,
+      "total_disk_bytes": 9923330,
+      "individual_files_bytes": {
+        "snapshot_expandable.pkl.pt-snap-native-v2/manifest.json": 2818,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00004.db": 442368,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00000.db": 1875968,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00001.db": 2605056,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00002.db": 2772992,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00003.db": 2224128
+      },
+      "individual_shard_bytes": {
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00000.db": 1875968,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00001.db": 2605056,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00002.db": 2772992,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00003.db": 2224128,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00004.db": 442368
+      },
+      "raw_block_rows": 6412,
+      "unique_block_invariants": 3219,
+      "repeated_block_rows": 3193,
+      "repeated_block_cost": {
+        "repeated_base_integer_cells": 22351,
+        "physical_disk_attribution": "unavailable: shared SQLite pages/indexes cannot be apportioned to duplicated rows by file-size subtraction"
+      },
+      "errors": [],
+      "python_version": "3.13.11 | packaged by Anaconda, Inc. | (main, Dec 10 2025, 21:21:08) [Clang 20.1.8 ]",
+      "platform": "macOS-26.0.1-arm64-arm-64bit-Mach-O",
+      "exit": 0,
+      "queries": {
+        "active_blocks_at_event": {
+          "seconds": 0.04044750006869435,
+          "returned": 645,
+          "total": 645,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_active_set_cross_slice_sources",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "active_memory_callstack_at_event": {
+          "seconds": 0.0398883749730885,
+          "returned": 4,
+          "total": 4,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_global_source_groups_before_top_n",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "allocation": {
+          "seconds": 0.06903308292385191,
+          "returned": 8092,
+          "total": 8092,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "real_events_global_filter_sort_page",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "allocator_gap": {
+          "seconds": 0.057917125057429075,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "global_peaks_same_event_counters",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "block": {
+          "seconds": 0.1301991669461131,
+          "returned": 3219,
+          "total": 3219,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "proved_lifecycles_dedup_latest_observation",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "callstack_analysis": {
+          "seconds": 0.10538816708140075,
+          "returned": 60,
+          "total": 60,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "all_real_stack_bearing_actions_global_identity_weighted_stats",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "event": {
+          "seconds": 0.034352708025835454,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "real_events_global_filter_sort_page",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "freed_block_lifetime": {
+          "seconds": 0.11085683398414403,
+          "returned": 2,
+          "total": 2,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "proved_completed_lifecycles_once",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "leak_detection": {
+          "seconds": 0.10605162498541176,
+          "returned": 325,
+          "total": 325,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "terminal_dataset_dynamic_survivors_not_confirmed_leaks",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "memory_peak": {
+          "seconds": 0.05739520804490894,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "independent_real_counter_peaks_earliest_id",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "preexisting_live": {
+          "seconds": 0.03284445800818503,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_preexisting_occupancy",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        }
+      }
+    },
+    {
+      "mode": "pt-snap-native-v2",
+      "phase": "reuse",
+      "status": "passed",
+      "import_wall_seconds": 0.03841129201464355,
+      "isolated_import_process_peak_rss_raw": 46514176,
+      "isolated_import_process_peak_rss_kib": 45424.0,
+      "isolated_import_process_peak_rss_mib": 44.359375,
+      "rss_scope": "RUSAGE_SELF fresh child high-water through import, before queries; includes interpreter/imports",
+      "phase_timings": {},
+      "phase_timing_scope": "named wrapped functions, inclusive; sharded replay includes SQLite writes/backfills, NOT parser-only",
+      "phase_rss": {
+        "status": "unavailable",
+        "reason": "No per-phase sampler/isolation; cumulative high-waters cannot be subtracted into load/replay peaks"
+      },
+      "other_phase_timings": {
+        "status": "unavailable",
+        "reason": "validation/hash/metadata/publication remainder not separately instrumented"
+      },
+      "reused": true,
+      "device": 0,
+      "capacity": 2000,
+      "total_disk_bytes": 9923330,
+      "individual_files_bytes": {
+        "snapshot_expandable.pkl.pt-snap-native-v2/manifest.json": 2818,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00004.db": 442368,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00000.db": 1875968,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00001.db": 2605056,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00002.db": 2772992,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00003.db": 2224128
+      },
+      "individual_shard_bytes": {
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00000.db": 1875968,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00001.db": 2605056,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00002.db": 2772992,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00003.db": 2224128,
+        "snapshot_expandable.pkl.pt-snap-native-v2/device_0/slice_00004.db": 442368
+      },
+      "raw_block_rows": 6412,
+      "unique_block_invariants": 3219,
+      "repeated_block_rows": 3193,
+      "repeated_block_cost": {
+        "repeated_base_integer_cells": 22351,
+        "physical_disk_attribution": "unavailable: shared SQLite pages/indexes cannot be apportioned to duplicated rows by file-size subtraction"
+      },
+      "errors": [],
+      "python_version": "3.13.11 | packaged by Anaconda, Inc. | (main, Dec 10 2025, 21:21:08) [Clang 20.1.8 ]",
+      "platform": "macOS-26.0.1-arm64-arm-64bit-Mach-O",
+      "exit": 0,
+      "queries": {
+        "active_blocks_at_event": {
+          "seconds": 0.04047504207119346,
+          "returned": 645,
+          "total": 645,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_active_set_cross_slice_sources",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "active_memory_callstack_at_event": {
+          "seconds": 0.03824825002811849,
+          "returned": 4,
+          "total": 4,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_global_source_groups_before_top_n",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "allocation": {
+          "seconds": 0.0668305829167366,
+          "returned": 8092,
+          "total": 8092,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "real_events_global_filter_sort_page",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "allocator_gap": {
+          "seconds": 0.057496541063301265,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "global_peaks_same_event_counters",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "block": {
+          "seconds": 0.1289245419902727,
+          "returned": 3219,
+          "total": 3219,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "proved_lifecycles_dedup_latest_observation",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "callstack_analysis": {
+          "seconds": 0.10561483399942517,
+          "returned": 60,
+          "total": 60,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "all_real_stack_bearing_actions_global_identity_weighted_stats",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "event": {
+          "seconds": 0.03427075000945479,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "real_events_global_filter_sort_page",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "freed_block_lifetime": {
+          "seconds": 0.10654170799534768,
+          "returned": 2,
+          "total": 2,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "proved_completed_lifecycles_once",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "leak_detection": {
+          "seconds": 0.1085347079206258,
+          "returned": 325,
+          "total": 325,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "terminal_dataset_dynamic_survivors_not_confirmed_leaks",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "memory_peak": {
+          "seconds": 0.06262266705743968,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "independent_real_counter_peaks_earliest_id",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "preexisting_live": {
+          "seconds": 0.03428791603073478,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_preexisting_occupancy",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        }
+      }
+    },
+    {
+      "mode": "compatibility-v1",
+      "phase": "cold",
+      "status": "passed",
+      "import_wall_seconds": 0.19199895800556988,
+      "isolated_import_process_peak_rss_raw": 55672832,
+      "isolated_import_process_peak_rss_kib": 54368.0,
+      "isolated_import_process_peak_rss_mib": 53.09375,
+      "rss_scope": "RUSAGE_SELF fresh child high-water through import, before queries; includes interpreter/imports",
+      "phase_timings": {
+        "load_representation": {
+          "seconds": 0.0020353749860078096,
+          "calls": 1
+        },
+        "sharded_replay_with_sqlite_and_backfill": {
+          "seconds": 0.11026433296501637,
+          "calls": 1
+        },
+        "compatible_conversion": {
+          "seconds": 0.020934332977049053,
+          "calls": 1
+        }
+      },
+      "phase_timing_scope": "named wrapped functions, inclusive; sharded replay includes SQLite writes/backfills, NOT parser-only",
+      "phase_rss": {
+        "status": "unavailable",
+        "reason": "No per-phase sampler/isolation; cumulative high-waters cannot be subtracted into load/replay peaks"
+      },
+      "other_phase_timings": {
+        "status": "unavailable",
+        "reason": "validation/hash/metadata/publication remainder not separately instrumented"
+      },
+      "reused": false,
+      "device": 0,
+      "capacity": 2000,
+      "total_disk_bytes": 15481668,
+      "individual_files_bytes": {
+        "snapshot_expandable.pkl.msinsight/manifest.json": 2884,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00004.db": 503808,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00000.db": 3096576,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00001.db": 4337664,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00002.db": 4493312,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00003.db": 3047424
+      },
+      "individual_shard_bytes": {
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00000.db": 3096576,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00001.db": 4337664,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00002.db": 4493312,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00003.db": 3047424,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00004.db": 503808
+      },
+      "raw_block_rows": 6412,
+      "unique_block_invariants": 3219,
+      "repeated_block_rows": 3193,
+      "repeated_block_cost": {
+        "repeated_base_integer_cells": 22351,
+        "physical_disk_attribution": "unavailable: shared SQLite pages/indexes cannot be apportioned to duplicated rows by file-size subtraction"
+      },
+      "errors": [],
+      "python_version": "3.13.11 | packaged by Anaconda, Inc. | (main, Dec 10 2025, 21:21:08) [Clang 20.1.8 ]",
+      "platform": "macOS-26.0.1-arm64-arm-64bit-Mach-O",
+      "exit": 0,
+      "queries": {
+        "active_blocks_at_event": {
+          "seconds": 0.030705500044859946,
+          "returned": 645,
+          "total": 645,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_active_set_cross_slice_sources",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "active_memory_callstack_at_event": {
+          "seconds": 0.02841008303221315,
+          "returned": 4,
+          "total": 4,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_global_source_groups_before_top_n",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "allocation": {
+          "seconds": 0.06630966707598418,
+          "returned": 8092,
+          "total": 8092,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "real_events_global_filter_sort_page",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "allocator_gap": {
+          "seconds": 0.05707012489438057,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "global_peaks_same_event_counters",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "block": {
+          "seconds": 0.11705370806157589,
+          "returned": 3219,
+          "total": 3219,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "proved_lifecycles_dedup_latest_observation",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "callstack_analysis": {
+          "seconds": 0.10150962497573346,
+          "returned": 60,
+          "total": 60,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "all_real_stack_bearing_actions_global_identity_weighted_stats",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "event": {
+          "seconds": 0.024453416001051664,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "real_events_global_filter_sort_page",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "freed_block_lifetime": {
+          "seconds": 0.09622612502425909,
+          "returned": 2,
+          "total": 2,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "proved_completed_lifecycles_once",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "leak_detection": {
+          "seconds": 0.09670266695320606,
+          "returned": 325,
+          "total": 325,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "terminal_dataset_dynamic_survivors_not_confirmed_leaks",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "memory_peak": {
+          "seconds": 0.056008042069152,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "independent_real_counter_peaks_earliest_id",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "preexisting_live": {
+          "seconds": 0.024689708021469414,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_preexisting_occupancy",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        }
+      }
+    },
+    {
+      "mode": "compatibility-v1",
+      "phase": "reuse",
+      "status": "passed",
+      "import_wall_seconds": 0.02520129201002419,
+      "isolated_import_process_peak_rss_raw": 39157760,
+      "isolated_import_process_peak_rss_kib": 38240.0,
+      "isolated_import_process_peak_rss_mib": 37.34375,
+      "rss_scope": "RUSAGE_SELF fresh child high-water through import, before queries; includes interpreter/imports",
+      "phase_timings": {},
+      "phase_timing_scope": "named wrapped functions, inclusive; sharded replay includes SQLite writes/backfills, NOT parser-only",
+      "phase_rss": {
+        "status": "unavailable",
+        "reason": "No per-phase sampler/isolation; cumulative high-waters cannot be subtracted into load/replay peaks"
+      },
+      "other_phase_timings": {
+        "status": "unavailable",
+        "reason": "validation/hash/metadata/publication remainder not separately instrumented"
+      },
+      "reused": true,
+      "device": 0,
+      "capacity": 2000,
+      "total_disk_bytes": 15481668,
+      "individual_files_bytes": {
+        "snapshot_expandable.pkl.msinsight/manifest.json": 2884,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00004.db": 503808,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00000.db": 3096576,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00001.db": 4337664,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00002.db": 4493312,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00003.db": 3047424
+      },
+      "individual_shard_bytes": {
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00000.db": 3096576,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00001.db": 4337664,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00002.db": 4493312,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00003.db": 3047424,
+        "snapshot_expandable.pkl.msinsight/device_0/slice_00004.db": 503808
+      },
+      "raw_block_rows": 6412,
+      "unique_block_invariants": 3219,
+      "repeated_block_rows": 3193,
+      "repeated_block_cost": {
+        "repeated_base_integer_cells": 22351,
+        "physical_disk_attribution": "unavailable: shared SQLite pages/indexes cannot be apportioned to duplicated rows by file-size subtraction"
+      },
+      "errors": [],
+      "python_version": "3.13.11 | packaged by Anaconda, Inc. | (main, Dec 10 2025, 21:21:08) [Clang 20.1.8 ]",
+      "platform": "macOS-26.0.1-arm64-arm-64bit-Mach-O",
+      "exit": 0,
+      "queries": {
+        "active_blocks_at_event": {
+          "seconds": 0.030865582986734807,
+          "returned": 645,
+          "total": 645,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_active_set_cross_slice_sources",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "active_memory_callstack_at_event": {
+          "seconds": 0.028811125084757805,
+          "returned": 4,
+          "total": 4,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_global_source_groups_before_top_n",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "allocation": {
+          "seconds": 0.0677059170557186,
+          "returned": 8092,
+          "total": 8092,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "real_events_global_filter_sort_page",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "allocator_gap": {
+          "seconds": 0.05702104198280722,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "global_peaks_same_event_counters",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "block": {
+          "seconds": 0.11802491697017103,
+          "returned": 3219,
+          "total": 3219,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "proved_lifecycles_dedup_latest_observation",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "callstack_analysis": {
+          "seconds": 0.10324912506621331,
+          "returned": 60,
+          "total": 60,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "all_real_stack_bearing_actions_global_identity_weighted_stats",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "event": {
+          "seconds": 0.024870292050763965,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "real_events_global_filter_sort_page",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "freed_block_lifetime": {
+          "seconds": 0.09511883289087564,
+          "returned": 2,
+          "total": 2,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "proved_completed_lifecycles_once",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "leak_detection": {
+          "seconds": 0.09666458296123892,
+          "returned": 325,
+          "total": 325,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "terminal_dataset_dynamic_survivors_not_confirmed_leaks",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "memory_peak": {
+          "seconds": 0.05659191601444036,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "independent_real_counter_peaks_earliest_id",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        },
+        "preexisting_live": {
+          "seconds": 0.02441979106515646,
+          "returned": 1,
+          "total": 1,
+          "has_more": false,
+          "truncated": false,
+          "status": "passed",
+          "dataset_support": {
+            "supported": true,
+            "semantics": "owner_event_preexisting_occupancy",
+            "device_scope": "one_selected_device; never sum device peaks",
+            "custom_sql": "unsupported; select an explicit standalone member",
+            "work_limit_rows": 100000,
+            "work_limit_bytes": 67108864,
+            "budget_scope": "one_query_or_explicit_report_composition"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -11,7 +11,8 @@ Explain what memory was live at selected active, allocated, or reserved high-wat
 events. This is a point-in-time SnapshotDB analysis, not an end-of-trace leak
 diagnosis. It must not claim a fragmentation or OOM root cause.
 
-Use only an existing pt-snap SnapshotDB (`.db`). Never open, import, inspect, or
+Use only an existing standalone SnapshotDB (`.db`) or an explicitly selected,
+complete validated dataset directory or `manifest.json`. Never open, import, inspect, or
 deserialize pickle (`.pkl` or `.pickle`) input.
 
 ## Required Inputs
@@ -169,6 +170,45 @@ Stop and report the exact failure if it fails or the options used below are
 absent. A complete successful help result from the same CLI/Python environment
 and version may be reused.
 
+## Validated complete dataset scope
+
+Accept only an explicit standalone file or complete validated compatibility-v1 /
+pt-snap-native-v2 dataset directory or `manifest.json`, never arbitrary or sibling
+directories. Existence alone is not validation. Keep explicit target/device/scope;
+do not auto-select devices, import pickle or persist focus. Validate
+`overview.dataset.status`, `format`, `manifest_path`, `fingerprint`, real bounds
+and device. Reuse requires unchanged fingerprint and import provenance.
+Valid original no-extension artifacts may have `unavailable` / `metadata_missing`;
+record unknown provenance, but stop on invalid metadata, incomplete validation or
+any other unknown reason. Require each catalog entry's `dataset_support.supported`.
+All eleven built-ins declare dataset semantics; custom SQL and built-in-name
+overrides are unsupported. Never concatenate local top-N or sum device peaks.
+
+Use declared `lifecycle_id`, `allocation_source` and `free_source` plus original
+alloc/free IDs within the same fingerprint/device; completed free is action 6,
+not pending free_requested. Address or local stack ID is not lifecycle identity.
+`state_scope` is a stored observation, not state reconstructed at arbitrary E.
+Dataset `stack_id` / `source_stack_id` groups canonical full text or covered ordered
+raw frames; `local_stack_id`, event/slice and `text_kind` are provenance. Do not
+merge shortened text or captured literal missing-label strings with missing links.
+`callstack_analysis` semantics_version=2 legacy `alloc_count` counts ALL real
+stack-bearing actions, not allocation-only; `total_size` is activity, not live
+bytes. Non-NULL empty text activity remains separate from a missing reference.
+
+Read `scope.range_complete` for ranges and
+`scope.source_coverage.range_complete` for point queries. Source/frame coverage,
+`allocation_source_complete`, and `ordered_frames_complete` are separate from
+`has_more`, `truncated` and exact totals. Only recognized ptSnapOrderedFrames
+version 1 with real schema and per-event coverage supplies ordered frames,
+retaining order/duplicates; missing/unknown/uncovered means text-only. Never
+reconstruct frames or claim hierarchical evidence from formatted text.
+One query/report shares diminishing time and cumulative 100000 fetched/output rows
+and 64 MiB serialized values, NOT an RSS ceiling. Failure gives no partial global
+proof; narrow scope or ask for an explicit member, never substitute raw SQL.
+Percentages use included group bytes (standalone SQL or dataset post-merge) after filtering/top-N, before the caller row cap,
+not the whole active counter. Report gap/coverage uses active at the SAME selected
+metric event, not an independently occurring active peak.
+
 ## Optional compact stack evidence
 
 When long stacks dominate output bytes, first confirm `stack_bytes` in the
@@ -191,7 +231,9 @@ attribution once for multiple metrics; retain each metric's counters and gaps.
 
 ## Full-Trace Workflow
 
-`pt-snap report peak-memory` is full-trace only. Run it once for each metric so
+`pt-snap report peak-memory` without range bounds selects the full real trace.
+It also supports `--start-id` / `--end-id`; never mix bounded and unbounded results.
+Run the unbounded report once for each metric so
 each metric is attributed at its own peak event:
 
 ```bash
@@ -252,9 +294,12 @@ equals `returned` unless `--exact-total` is set.
 
 ## Event-Range Workflow
 
-Do not use `report peak-memory` for a bounded range because the report accepts
-no `start_id` or `end_id` and is full-trace only. Run the range-capable templates
-with the same inclusive bounds instead:
+The report supports `--start-id` / `--end-id` with the same inclusive real-ID
+bounds on standalone files and complete datasets. This workflow keeps the
+range-capable templates followed by explicit-event attribution below, preserving
+its empty/NULL/range guards. An optional bounded report must use the SAME validated
+bounds and selected metric; never substitute an unbounded report or another event.
+Run the templates with the same inclusive bounds:
 
 ```bash
 pt-snap query "<DB>" --device <DEVICE> --template-use memory_peak --params '{"start_id": <START_ID>, "end_id": <END_ID>}'
@@ -275,7 +320,7 @@ pt-snap query "<DB>" --device <DEVICE> --template-use active_blocks_at_event --p
 ```
 
 `active_memory_callstack_at_event` has no `offset`, and `-n` cannot raise the
-CTE `top_n` cap. Check `has_more`, `truncated`, and `total_is_exact` after every
+template `top_n` cap. Check `has_more`, `truncated`, and `total_is_exact` after every
 query. If completeness is unconfirmed, first ensure `-n` is at least `top_n + 2`
 with static inclusion, then increase `top_n` and recompute `<GROUP_ROWS>` when
 full dynamic coverage is needed. A full ranking window sets `has_more=true`

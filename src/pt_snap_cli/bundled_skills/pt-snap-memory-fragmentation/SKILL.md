@@ -26,8 +26,9 @@ derived from this workflow.
 Optional inputs:
 
 - An event range to investigate, expressed as the `<range_start>` and
-  `<range_end>` event IDs. Use `0` as `<range_start>` unless a validated
-  explicit lower bound applies. Omit every upper-bound parameter while the
+  `<range_end>` event IDs. Use the validated selected device's `first_event_id`
+  as `<range_start>` (zero only if its actual first real ID is zero). Native IDs
+  can be sparse/nonzero; never remap them. Omit every upper-bound parameter while the
   scope has no validated upper bound.
 - A positive page size for timeline and event pagination; default `1000`.
 - Selected peak or pressure event IDs for active-block attribution.
@@ -64,7 +65,8 @@ to select it and stop until it is explicit. Do not run `pt-snap focus <database_
 otherwise persist or modify focus. After resolving the scope, pass both the
 database and device explicitly to every diagnostic query and report command.
 
-This skill accepts SnapshotDB files only. Do not run `pt-snap import`, open a
+This skill accepts standalone SnapshotDB files or an explicitly selected complete
+validated dataset directory or `manifest.json` only. Do not run `pt-snap import`, open a
 pickle, or deserialize a pickle. If only a pickle is available, stop and explain
 that conversion requires a separate trusted-input decision because pickle
 loading is not a sandbox.
@@ -150,6 +152,45 @@ Capabilities does not describe report command options, so keep this help check.
 Stop the report phase and report the exact failure if it fails or the options
 used below are absent. A complete successful help result from the same
 CLI/Python environment and version may be reused.
+
+## Validated complete dataset scope
+
+Accept only an explicit standalone file or complete validated compatibility-v1 /
+pt-snap-native-v2 dataset directory or `manifest.json`, never arbitrary or sibling
+directories. Existence alone is not validation. Preserve explicit target/device
+and full-device or selected-range scope; never auto-select devices, import pickle
+or persist focus. Validate `overview.dataset.status`, `format`, `manifest_path`,
+`fingerprint`, real bounds and device; reuse requires unchanged fingerprint.
+A valid original no-extension artifact may have `unavailable` / `metadata_missing`:
+record unknown provenance. Invalid metadata, incomplete validation and any other
+unknown reason still stop. Require each catalog entry's `dataset_support.supported`.
+All eleven built-ins declare dataset semantics; custom SQL and built-in-name
+overrides are unsupported. Never concatenate local top-N or sum device peaks.
+
+Use declared `lifecycle_id`, original alloc/free IDs, `allocation_source` and
+`free_source` within the same fingerprint/device; completed free is action 6,
+not pending free_requested. Address and local stack ID are not lifecycle identity.
+`state_scope` is a stored observation, not reconstructed state at arbitrary E.
+Dataset `stack_id` / `source_stack_id` groups full canonical text or covered ordered
+raw frames; `local_stack_id`, source event/slice and `text_kind` are provenance.
+Never merge shortened labels or captured literal missing-label text with missing
+links. `callstack_analysis` semantics_version=2 legacy `alloc_count` counts ALL
+real stack-bearing actions, not allocation-only; `total_size` is activity, not
+live bytes. Non-NULL empty text activity remains separate from missing references.
+
+Read `scope.range_complete` for ranges and
+`scope.source_coverage.range_complete` for point queries. Source/frame coverage,
+`allocation_source_complete` and `ordered_frames_complete` are separate from
+`has_more`, `truncated` and exact totals. Only recognized ptSnapOrderedFrames
+version 1 with real schema and per-event coverage supplies ordered frames,
+retaining order/duplicates; missing/unknown/uncovered means text-only. Never
+reconstruct frames or claim hierarchical evidence from text alone.
+One query/report shares diminishing time and cumulative 100000 fetched/output rows
+and 64 MiB serialized values, NOT an RSS ceiling. Failure gives no partial global
+proof; narrow scope or ask for an explicit member, never substitute raw SQL.
+Percentages use included group bytes (standalone SQL or dataset post-merge) after filtering/top-N and before caller row caps,
+not the whole active counter. Report gap/coverage uses active at the SAME selected
+metric event. This does not establish fragmentation topology or an OOM root cause.
 
 ## Optional compact stack evidence
 
@@ -327,8 +368,10 @@ pt-snap query "<db_path>" --device <device_id> --template-use active_memory_call
 The range selects the attribution event, not the allocation dates of live blocks.
 Keep blocks allocated before `<range_start>` that are still live at that event;
 do not add an allocation-window filter. Record the actual attribution event ID
-alongside the range peak and verify they match. Do not use `report peak-memory`
-for this branch: it selects its own unfiltered full-trace peak.
+alongside the range peak and verify they match. Keep the explicit-event query
+workflow in this branch. An unbounded `report peak-memory` selects an unfiltered
+full-trace peak; the report also supports `--start-id` / `--end-id`, but a bounded
+report must use the SAME verified bounds and event, never substitute another peak.
 
 #### Separate full-trace comparison (only when explicitly requested)
 
