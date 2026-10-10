@@ -200,7 +200,9 @@ selector。输出 `scope` 标识实际 DB/device/slice、受限真实区间、�
 （单库返回 `None`）；其 `paths(QueryScope(...))` 可寻址跨片范围的全部文件，但不执行查询。
 默认**每次独立 inspect 都完整校验**最终化合同，并对 manifest/成员取内容哈希。文件元数据
 本身不是内容完整性证明：未知或低精度文件系统可能在写入后仍返回相同 `ctime_ns`。
-已固定 generation 的报告操作默认也重新哈希内容，但不重复逐行校验。
+每次查询（包括多步报告中的每个查询步骤）都会再次调用 `inspect`。报告目前不会跨步骤
+固定同一个 `ResolvedDataset`，也不会调用 `ResolvedDataset.require_unchanged()`；
+没有额外的报告级内容哈希守卫。
 
 `PT_SNAP_DATASET_CACHE=immutable` 显式启用最多 16 个已校验 generation 的进程级 LRU，
 不保留连接。仅在你控制最终化、不可变发布，且信任文件系统内核 change-time 语义时启用。
@@ -208,11 +210,12 @@ selector。输出 `scope` 标识实际 DB/device/slice、受限真实区间、�
 不得启用**。这是调用方责任合同，不代表工具已检测文件系统能力。不设置该变量即保留强校验，
 未知取值也使用强校验；Windows 或没有可用 POSIX change token 的平台始终使用强校验。
 
-显式启用后，新建 resolver/service 可复用已校验结果。每次命中及报告 generation 检查仍验证
+显式启用后，新建 resolver/service 可复用已校验结果。每次 inspect 缓存命中仍验证
 规范路径、sidecar、原生成员集合，以及文件的设备号、inode、size、mtime、**ctime**、mode
 和硬链接数。这些保守检查可检测常规替换及恢复 mtime 的原地修改，但不能代替不可变文件
 合同。固定分片数时，显式启用后的命中不扫描行、不做整文件哈希，工作量为 O(分片数)，
-不随 event/block 数增长。默认 inspect 及未命中仍与内容规模成正比。显式 `validate_dataset`
+不随 event/block 数增长。报告中的查询步骤也适用这种仅检查元数据的复用；命中时不会
+重新哈希内容。默认 inspect 及未命中仍与内容规模成正比。显式 `validate_dataset`
 / `validate_native_dataset` 始终完整校验。原生准入保留校验前后两遍哈希，fingerprint 直接
 复用已验证摘要，不再做第三遍成员哈希。
 

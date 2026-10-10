@@ -245,8 +245,10 @@ addresses all matching files even for a cross-slice range, but does not execute 
 By default **every independent inspection** fully validates the finalized contract
 and hashes the manifest/members. File metadata alone is not content-integrity proof:
 unknown or coarse filesystems may expose unchanged `ctime_ns` after a write.
-Pinned report-operation guards also rehash content by default, without repeating
-row validation.
+Each query, including each query step within a multi-step report, calls `inspect`
+again. Reports do not currently pin one `ResolvedDataset` across their steps or
+invoke `ResolvedDataset.require_unchanged()`; there is no additional report-level
+content-hash guard.
 
 `PT_SNAP_DATASET_CACHE=immutable` explicitly opts into a process-wide LRU of at most
 16 validated generations, without open connections. Set it only when you control
@@ -258,13 +260,14 @@ the tool. Unset it to retain strong validation; unknown values also use strong m
 Windows and platforms without a usable POSIX change token remain in strong mode.
 
 With that explicit opt-in, new resolver/service instances can reuse validated
-results. Every hit and pinned-operation guard still rechecks canonical paths,
+results. Every cache hit during inspection still rechecks canonical paths,
 sidecars, native membership and each file's device, inode, size, mtime, **ctime**,
 mode and link count. These conservative checks catch ordinary replacements and
 in-place edits with restored mtime, but do not replace the immutable-file contract.
 For a fixed shard count, an opted-in hit performs no row scans or whole-file hashes:
-work is O(shards), independent of event/block counts. Default inspections and cache
-misses remain proportional to content. Explicit `validate_dataset` /
+work is O(shards), independent of event/block counts. This metadata-only reuse also
+applies to report query steps; a cache hit does not rehash content. Default inspections
+and cache misses remain proportional to content. Explicit `validate_dataset` /
 `validate_native_dataset` calls always validate fully. Native admission verifies
 hashes before and after validation and reuses the verified hashes for its fingerprint,
 avoiding a third member-hash pass.
