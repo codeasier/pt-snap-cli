@@ -22,7 +22,7 @@ from typer.testing import CliRunner
 
 from pt_snap_cli.api import FocusState, SnapshotAnalyzer
 from pt_snap_cli.cli import app
-from pt_snap_cli.core import InvalidDeviceError, TemplateRenderError
+from pt_snap_cli.core import InvalidDeviceError, QueryExecutionError, TemplateRenderError
 from pt_snap_cli.core.json_codec import JSON_SCHEMA_VERSION
 from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.registry import QueryRegistry, register_query
@@ -31,6 +31,25 @@ from tests.test_dataset_focus import make_dataset
 runner = CliRunner()
 
 pytestmark = pytest.mark.usefixtures("owned_service_instances")
+
+
+@pytest.mark.parametrize("template", ["event", "block"])
+@pytest.mark.parametrize("params", [{"min_size": 2**63}, {"offset": 2**63, "limit": 1}])
+def test_dataset_int64_overflow_cli_api_domain_error(tmp_path, template, params):
+    if template == "event" and "min_size" in params:
+        params = {"min_allocated": params["min_size"]}
+    root = make_dataset(tmp_path / "int64-overflow", devices=(0,))
+    with SnapshotAnalyzer(root) as analyzer:
+        with pytest.raises(QueryExecutionError):
+            analyzer.execute_query(template, params)
+    result = runner.invoke(
+        app,
+        ["query", str(root), "--template-use", template, "--params", json.dumps(params), "--json"],
+    )
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert json.loads(result.stderr)["error"]["code"] == "QUERY_FAILED"
+    assert "Traceback" not in result.stderr
 
 
 @pytest.mark.parametrize("template", ["event", "active_memory_callstack_at_event"])
