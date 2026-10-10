@@ -8,6 +8,7 @@
 | Importing snapshots | [en/quickstart.md](en/quickstart.md) |
 | Focus Management | [en/focus-management.md](en/focus-management.md) |
 | Querying | [en/querying.md](en/querying.md) |
+| Dataset correctness and default-scale acceptance | [en/dataset-acceptance.md](en/dataset-acceptance.md) |
 | Reports | [en/querying.md](en/querying.md) |
 | Splitting Snapshots | [en/splitting.md](en/splitting.md) |
 | Agent skills | [en/skills.md](en/skills.md) |
@@ -26,6 +27,7 @@
 | 导入快照 | [zh/quickstart.md](zh/quickstart.md) |
 | Focus 管理 | [zh/focus-management.md](zh/focus-management.md) |
 | 运行查询 | [zh/querying.md](zh/querying.md) |
+| 数据集正确性与默认规模验收 | [zh/dataset-acceptance.md](zh/dataset-acceptance.md) |
 | 分析报告 | [zh/querying.md](zh/querying.md) |
 | 拆分快照 | [zh/splitting.md](zh/splitting.md) |
 | Agent skill | [zh/skills.md](zh/skills.md) |

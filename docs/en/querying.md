@@ -161,6 +161,13 @@ only when the caller guarantees immutable finalized files and reliable filesyste
 change times; see [dataset validation and cache contracts](sharded-snapshotdb.md).
 No temporary merge DB, repair or artifact write.
 
+The compatible exporter defaults to **500000 real events per device shard**.
+That storage capacity is separate from the **100000-row / 64-MiB query work
+budget**: even one default-sized shard can exceed it when a result is materialized
+without a sufficient filter or page. Use supported aggregates, bounded pages or
+narrower event ranges; a small requested output does not waive source-work limits.
+See [default-scale acceptance and evidence limits](dataset-acceptance.md).
+
 Global peak queries fetch scalar range evidence and at most three counter rows per
 shard. Event/allocation pages apply SQL filters and ordering per shard, merge at most
 `offset + limit` candidates per shard, and count matches separately. Range evidence

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import sqlite3
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from typing import cast
 
 from pt_snap_cli.core.dataset_sources import DatasetSourceResolver, EventSource
+from pt_snap_cli.core.errors import QueryExecutionError
 from pt_snap_cli.core.models import QueryResult
 from pt_snap_cli.core.stack_summary import summarize_stacks
 
@@ -139,12 +143,16 @@ def event_attribution(
         )
         selected.sort(key=_rank)
         denominator = sum(cast(int, row["size_bytes"]) for row in selected)
-        for row in selected:
-            row["percent_of_active_blocks"] = (
-                round(cast(int, row["size_bytes"]) * 100.0 / denominator, 4)
-                if denominator
-                else None
-            )
+        # Use the same SQLite arithmetic/ROUND implementation as standalone SQL.
+        # A Decimal conversion of a binary float changes some near-half values.
+        # This connection evaluates scalars only: no source reads or merge tables.
+        with _rounding_cursor(sources) as cursor:
+            for row in selected:
+                sources.budget.remaining()
+                row["percent_of_active_blocks"] = cursor.execute(
+                    "SELECT ROUND(? * 100.0 / NULLIF(?, 0), 4)",
+                    (row["size_bytes"], denominator),
+                ).fetchone()[0]
         offset = 0
     has_more = len(selected) < len(all_rows) - offset or rank_full
     if max_rows is not None and max_rows > 0:
@@ -243,9 +251,16 @@ def _groups(
                     cast(int, group["stack_event_id"]), cast(int, source.event["id"])
                 )
     rows = list(grouped.values())
-    for row in rows:
-        row["size_gib"] = round(cast(int, row["size_bytes"]) / 1073741824.0, 6)
-        row["requested_gib"] = round(cast(int, row["requested_bytes"]) / 1073741824.0, 6)
+    # Reuse one scalar-only engine for this pass and close it on timeout as well
+    # as success. Derived values do not add source IO; final output is still
+    # charged by event_attribution's existing consume(selected) boundary.
+    with _rounding_cursor(sources) as cursor:
+        for row in rows:
+            sources.budget.remaining()
+            row["size_gib"], row["requested_gib"] = cursor.execute(
+                "SELECT ROUND(? / 1073741824.0, 6), ROUND(? / 1073741824.0, 6)",
+                (row["size_bytes"], row["requested_bytes"]),
+            ).fetchone()
     rows.sort(key=_rank)
     return rows
 
@@ -261,3 +276,17 @@ def summarize_dataset_stacks(rows: list[dict[str, object]], budget: int) -> None
     for row, (identity, kind) in zip(rows, identities, strict=True):
         row["stack_id"] = identity
         row["stack_kind"] = kind
+
+
+@contextmanager
+def _rounding_cursor(sources: DatasetSourceResolver) -> Iterator[sqlite3.Cursor]:
+    """Keep scalar arithmetic failures on the same domain boundary as shard SQL."""
+    try:
+        with (
+            closing(sqlite3.connect(":memory:")) as connection,
+            closing(connection.cursor()) as cursor,
+        ):
+            yield cursor
+    except (sqlite3.Error, OverflowError) as exc:
+        sources.budget.remaining()  # Preserve a deadline that expired during SQLite work.
+        raise QueryExecutionError(str(exc)) from exc

@@ -50,7 +50,15 @@ def case(tmp_path, devices=(0, 2)):
                 closing(sqlite3.connect(root / f"device_{device}/slice_{index:05d}.db")) as conn,
                 conn,
             ):
-                conn.executemany(f"INSERT INTO block_{device} VALUES (?,?,?,?,?,?,?)", blocks)
+                # Carry-in and new allocations only. Future allocations and completed
+                # lifetimes from earlier windows are not member observations.
+                lo, hi = index * 2, index * 2 + 1
+                members = [
+                    (*b[:4], 0 if b[0] == 0 and lo > 2 else 1, *b[5:])
+                    for b in blocks
+                    if (b[5] == -1 or b[5] <= hi) and (b[6] == -1 or b[6] >= lo)
+                ]
+                conn.executemany(f"INSERT INTO block_{device} VALUES (?,?,?,?,?,?,?)", members)
                 for event in range(index * 2, index * 2 + 2):
                     text = {
                         0: "shared:" + "长" * 100,
@@ -104,10 +112,12 @@ def standalone(root, tmp_path, device=0):
                         "INSERT INTO dictionary VALUES (?,?,?,?)",
                         conn.execute("SELECT * FROM dictionary").fetchall(),
                     )
-                    out.executemany(
-                        f"INSERT INTO block_{device} VALUES (?,?,?,?,?,?,?)",
-                        conn.execute(f"SELECT * FROM block_{device}").fetchall(),
-                    )
+                # Use the same latest-containing observation contract as global
+                # block queries; never take only the first shard's block table.
+                out.executemany(
+                    f"INSERT OR REPLACE INTO block_{device} VALUES (?,?,?,?,?,?,?)",
+                    conn.execute(f"SELECT * FROM block_{device}").fetchall(),
+                )
     return target
 
 

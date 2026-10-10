@@ -45,7 +45,7 @@ def test_all_eleven_contracts_against_independent_physical_reference(tmp_path, d
     result = compare_artifact(root, device, tmp_path / "reference.db")
     assert set(result["templates"]) == set(DATASET_SUPPORT)
     assert result["real_events"] == 16 and result["canonical_lifecycles"] == 10
-    assert result["raw_block_rows"] == 80 and result["repeated_block_rows"] == 70
+    assert result["raw_block_rows"] == 61 and result["repeated_block_rows"] == 51
     assert result["GUI"] == "human-deferred/pending/not-run"
     assert result["original_producer"] == "not-run by this runner"
 
@@ -73,8 +73,10 @@ def test_reference_is_exclusive_and_ambiguous_address_is_not_identity(tmp_path):
     assert reference.read_bytes() == b"do not replace"
     oracle = physical_oracle(root, 0)
     assert len([b for b in oracle["blocks"].values() if b["address"] == 100]) == 2
-    with closing(sqlite3.connect(root / "device_0/slice_00007.db")) as conn, conn:
-        conn.execute("UPDATE block_0 SET size=size+1 WHERE id=0")
+    # Lifecycle 0 completes at event 10: its last real observation is slice 5.
+    with closing(sqlite3.connect(root / "device_0/slice_00005.db")) as conn, conn:
+        changed = conn.execute("UPDATE block_0 SET size=size+1 WHERE id=0")
+        assert changed.rowcount == 1
     with pytest.raises(ValueError, match="Ambiguous"):
         physical_oracle(root, 0)
 

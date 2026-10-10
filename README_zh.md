@@ -129,6 +129,9 @@ pytest                           # 运行所有测试
 black --check . && ruff check .  # 检查格式和 lint
 ```
 
+常规套件可用 `pytest -m 'not slow'`。默认容量规模及非 editable 安装包导出测试见
+[数据集验收指南](docs/zh/dataset-acceptance.md)。
+
 ### 构建分发包
 
 请从目标提交的全新 checkout 或新 worktree 构建，确保没有已有的 `build/` 和
