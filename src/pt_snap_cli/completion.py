@@ -77,9 +77,9 @@ def complete_device_ids() -> list[str]:
     try:
         from pt_snap_cli.core.dataset_resolver import DatasetResolver
 
-        dataset = DatasetResolver().inspect(db_path)
-        if dataset is not None:
-            return [str(device) for device in dataset.device_ids]
+        devices = DatasetResolver().completion_device_ids(db_path)
+        if devices is not None:
+            return [str(device) for device in devices]
         uri = f"file:{db_path}?mode=ro"
         with closing(sqlite3.connect(uri, uri=True)) as conn:
             cursor = conn.cursor()

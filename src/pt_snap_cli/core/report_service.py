@@ -7,7 +7,7 @@ from typing import Literal, cast
 from pt_snap_cli.core.dataset_sources import QueryBudget
 from pt_snap_cli.core.focus_service import FocusService
 from pt_snap_cli.core.models import PeakMemoryReport, QueryResult
-from pt_snap_cli.core.query_service import QueryService, resolve_query_timeout
+from pt_snap_cli.core.query_service import QueryService, _ResolvedQuery, resolve_query_timeout
 
 PeakMetric = Literal["active", "allocated", "reserved"]
 
@@ -16,6 +16,15 @@ _EVENT_ID_BY_METRIC = {
     "allocated": "peak_allocated_event_id",
     "reserved": "peak_reserved_event_id",
 }
+
+_PEAK_FIELDS = (
+    "peak_allocated",
+    "peak_allocated_event_id",
+    "peak_active",
+    "peak_active_event_id",
+    "peak_reserved",
+    "peak_reserved_event_id",
+)
 
 _ACTIVE_COUNTER_BY_METRIC = {
     "active": "peak_active",
@@ -45,6 +54,7 @@ class ReportService:
         start_dir: Path | None = None,
         timeout_s: float | None = None,
         _budget: QueryBudget | None = None,
+        _resolved: _ResolvedQuery | None = None,
     ) -> QueryResult:
         """Reuse core point-event attribution, also for externally selected peaks.
 
@@ -65,6 +75,7 @@ class ReportService:
             start_dir=start_dir,
             timeout_s=timeout_s,
             _budget=_budget,
+            _resolved=_resolved,
         )
 
     def peak_memory_report(
@@ -87,17 +98,22 @@ class ReportService:
             )
 
         budget = QueryBudget(resolve_query_timeout(timeout_s), time.monotonic())
+        resolution = self._query_service._resolve_query(db_path, device_id, start_dir, budget)
         range_params = {"start_id": start_id, "end_id": end_id}
-        peak_result = self._query_service.execute_query(
-            "memory_peak",
+        gap_result = self._query_service.execute_query(
+            "allocator_gap",
             params=range_params,
             _budget=budget,
+            _resolved=resolution,
             db_path=db_path,
             device_id=device_id,
             start_dir=start_dir,
         )
-        peak = peak_result.rows[0] if peak_result.rows else {}
-        # memory_peak selects an INTEGER event ID (or NULL for an empty trace).
+        gap = gap_result.rows[0] if gap_result.rows else None
+        # allocator_gap selects the same independent, earliest-tie peak events.
+        # Keep the report's peak object at the historical six-field contract.
+        peak = {field: gap.get(field) for field in _PEAK_FIELDS} if gap else {}
+        # Peak event IDs remain INTEGER (or NULL for an empty trace).
         event_id = cast(int | None, peak.get(_EVENT_ID_BY_METRIC[metric]))
         attribution_params: dict[str, object] = {
             "event_id": event_id,
@@ -109,7 +125,7 @@ class ReportService:
 
         if event_id is None:
             return PeakMemoryReport(
-                device_id=peak_result.device_id,
+                device_id=gap_result.device_id,
                 metric=metric,
                 event_id=None,
                 peak=peak,
@@ -117,18 +133,10 @@ class ReportService:
                 callstack_groups=[],
                 total_is_exact=True,
                 effective_params=attribution_params,
-                scope=peak_result.scope,
+                scope=gap_result.scope,
                 timeout_s=budget.timeout_s,
             )
 
-        gap_result = self._query_service.execute_query(
-            "allocator_gap",
-            params=range_params,
-            _budget=budget,
-            db_path=db_path,
-            device_id=device_id,
-            start_dir=start_dir,
-        )
         callstack_result = self.event_attribution(
             event_id,
             db_path,
@@ -138,9 +146,8 @@ class ReportService:
             stack_bytes=stack_bytes,
             start_dir=start_dir,
             _budget=budget,
+            _resolved=resolution,
         )
-
-        gap = gap_result.rows[0] if gap_result.rows else None
         # allocator_gap supplies the active counter at this metric's event,
         # not the independently occurring active high-water value.
         active_bytes = cast(int | None, (gap or {}).get(_ACTIVE_COUNTER_BY_METRIC[metric]))
@@ -153,8 +160,9 @@ class ReportService:
             else None
         )
 
+        budget.remaining()
         return PeakMemoryReport(
-            device_id=peak_result.device_id,
+            device_id=gap_result.device_id,
             metric=metric,
             event_id=event_id,
             peak=peak,
@@ -167,7 +175,7 @@ class ReportService:
             included_bytes=included_bytes,
             active_bytes_at_event=active_bytes,
             coverage_percent=coverage,
-            scope=peak_result.scope,
+            scope=gap_result.scope,
             timeout_s=budget.timeout_s,
             source_coverage=cast(
                 dict[str, object] | None, (callstack_result.scope or {}).get("source_coverage")

@@ -143,6 +143,10 @@ pytest                           # Run all tests
 black --check . && ruff check .  # Check formatting and lint
 ```
 
+For the regular suite use `pytest -m 'not slow'`. Default-capacity scale and
+non-editable installed exporter tests are described in the
+[dataset acceptance guide](docs/en/dataset-acceptance.md).
+
 ### Building distributions
 
 Build from a fresh checkout or a new worktree at the intended commit, with no

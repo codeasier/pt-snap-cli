@@ -231,7 +231,9 @@ def test_lifecycles_terminal_survival_completed_free_reuse_and_unknown(tmp_path)
         conn.execute("UPDATE trace_entry_0 SET action=2 WHERE id=0")
     with SnapshotAnalyzer(root) as analyzer:
         result = analyzer.execute_query("block")
-        assert result["scope"]["source_coverage"]["unproved_identities"] == 8
+        assert (
+            result["scope"]["source_coverage"]["unproved_identities"] == 6
+        )  # Present through E10.
         assert not result["scope"]["source_coverage"]["allocation_source_complete"]
         assert all(r["id"] != 0 for r in analyzer.execute_query("leak_detection")["rows"])
 
