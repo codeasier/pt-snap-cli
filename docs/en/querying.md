@@ -153,10 +153,12 @@ fetched/output work is limited to **100000 rows / 64 MiB serialized values**, in
 repeated source reads. Exceeding either fails the entire operation, never an alleged
 complete partial result. Python materialization/sort are bounded by this work ceiling, **not**
 by max_rows. This is not a process RSS limit: Python/SQLite, one batch and individual
-cells have overhead. Strong manifest/member validation and hashing remain the default
-and share that deadline: hash chunks, Python row batches and SQLite progress handlers
+cells have overhead. Strong manifest/member admission remains the default; each
+inspection hashes all content, reusing prior in-process row validation only when
+content and generation match. Warm work remains O(bytes + shards), and new CLI
+processes are cold. Admission shares that deadline: hash chunks, Python row batches and SQLite progress handlers
 check cancellation. Individual filesystem calls are not OS-level hard-preempted.
-`PT_SNAP_DATASET_CACHE=immutable` explicitly opts into process-local validation reuse
+`PT_SNAP_DATASET_CACHE=immutable` explicitly opts into metadata-only validation reuse
 only when the caller guarantees immutable finalized files and reliable filesystem
 change times; see [dataset validation and cache contracts](sharded-snapshotdb.md).
 No temporary merge DB, repair or artifact write.

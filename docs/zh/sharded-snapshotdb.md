@@ -198,23 +198,35 @@ selector。输出 `scope` 标识实际 DB/device/slice、受限真实区间、�
 
 `core.dataset_resolver.DatasetResolver.inspect(path)` 返回不可变 `ResolvedDataset`
 （单库返回 `None`）；其 `paths(QueryScope(...))` 可寻址跨片范围的全部文件，但不执行查询。
-默认**每次独立 inspect 都完整校验**最终化合同，并对 manifest/成员取内容哈希。文件元数据
-本身不是内容完整性证明：未知或低精度文件系统可能在写入后仍返回相同 `ctime_ns`。
-已固定 generation 的报告操作默认也重新哈希内容，但不重复逐行校验。
+默认首次 inspect 完整校验最终化合同，并在校验前后对内容取哈希。进程级 LRU 最多保留
+16 个已校验 generation，不保留连接或逐行校验集合。后续 inspect 仍对 manifest 和
+**全部成员**取内容哈希，并在哈希前后检查规范路径、sidecar、原生成员集合和文件元数据。
+只有 generation 未变且完整 fingerprint 相同才复用结果，跳过重复 SQLite/schema/逐行
+校验。元数据或内容变化回退完整校验；失败或取消会清除对应缓存条目。
 
-`PT_SNAP_DATASET_CACHE=immutable` 显式启用最多 16 个已校验 generation 的进程级 LRU，
-不保留连接。仅在你控制最终化、不可变发布，且信任文件系统内核 change-time 语义时启用。
-**可能被原地修改的文件、live writer、未知/低精度/网络文件系统或可能回滚的文件系统快照
-不得启用**。这是调用方责任合同，不代表工具已检测文件系统能力。不设置该变量即保留强校验，
-未知取值也使用强校验；Windows 或没有可用 POSIX change token 的平台始终使用强校验。
+默认热路径仍是 **O(内容字节数 + 分片数)**，不是 O(1)，也不独立于数据规模。节省的是
+重复逐行校验 CPU 和临时内存，不是整文件读取。每个新 CLI 进程仍为冷启动；没有持久化
+或跨进程缓存。兼容 v1 冷准入在已有校验后哈希外增加一遍校验前成员哈希；原生准入仍为
+两遍，fingerprint 复用已验证摘要，不增加第三遍。已固定 generation 的报告操作默认仍
+重新哈希内容，不重复逐行校验。显式 `validate_dataset` / `validate_native_dataset`
+始终完整校验。
 
-显式启用后，新建 resolver/service 可复用已校验结果。每次命中及报告 generation 检查仍验证
-规范路径、sidecar、原生成员集合，以及文件的设备号、inode、size、mtime、**ctime**、mode
-和硬链接数。这些保守检查可检测常规替换及恢复 mtime 的原地修改，但不能代替不可变文件
-合同。固定分片数时，显式启用后的命中不扫描行、不做整文件哈希，工作量为 O(分片数)，
-不随 event/block 数增长。默认 inspect 及未命中仍与内容规模成正比。显式 `validate_dataset`
-/ `validate_native_dataset` 始终完整校验。原生准入保留校验前后两遍哈希，fingerprint 直接
-复用已验证摘要，不再做第三遍成员哈希。
+文件元数据本身不是内容完整性证明：未知或低精度文件系统可能在写入后仍返回相同
+`ctime_ns`。不设置 `PT_SNAP_DATASET_CACHE` 使用默认内容验证缓存；设为 `off` 或未知
+取值时每次完整重验且不缓存，仍执行强内容哈希。
+
+`PT_SNAP_DATASET_CACHE=immutable` 显式选择同一有界进程缓存的纯元数据复用路径。
+仅在你控制最终化、不可变发布，且信任文件系统内核 change-time 语义时启用。**可能被
+原地修改的文件、live writer、未知/低精度/网络文件系统或可能回滚的文件系统快照不得
+启用**。这是调用方责任合同，不代表工具已检测文件系统能力。Windows 或没有可用
+POSIX change token 的平台在此模式下每次完整重验。immutable 模式准入的兼容数据必须
+先通过更强的前后内容哈希准入，才能用于默认缓存命中。
+
+显式启用后，每次命中及报告 generation 检查仍验证规范路径、sidecar、原生成员集合，
+以及文件的设备号、inode、size、mtime、**ctime**、mode 和硬链接数。这些保守检查可检测
+常规替换及恢复 mtime 的原地修改，但不能代替不可变文件合同。显式启用后的命中不扫描
+行、不做整文件哈希，工作量为 O(分片数)，不随 event/block 数增长。这些检查均不提供
+并发 writer 锁或原子文件系统快照。
 
 查询共用 deadline 覆盖准入：哈希每个 1 MiB 块、Python 校验每 256 行检查一次；SQLite
 校验（含 `quick_check`）使用可中断 progress handler，并在所有退出路径清除。

@@ -29,7 +29,12 @@ from pt_snap_cli.core.dataset_contract import (
 from pt_snap_cli.core.dataset_files import hash_file as _hash_file
 from pt_snap_cli.core.dataset_files import require_readonly_member as _require_readonly_member
 from pt_snap_cli.core.dataset_support import DATASET_SUPPORT
-from pt_snap_cli.core.errors import DatabaseSchemaError, InvalidDeviceError, InvalidParameterError
+from pt_snap_cli.core.errors import (
+    DatabaseSchemaError,
+    InvalidDeviceError,
+    InvalidParameterError,
+    QueryTimeoutError,
+)
 from pt_snap_cli.core.native_dataset_contract import (
     NATIVE_FORMAT,
     NativeManifest,
@@ -147,11 +152,20 @@ class ResolvedDataset:
 
 
 # This is deliberately process-local, bounded, and contains no open connections.
-# Cross-call reuse is opt-in: unknown/coarse filesystems cannot supply a
-# trustworthy change token merely because Python exposes st_ctime_ns. The caller
-# must attest immutable publication and suitable change-time semantics explicitly.
+# Default reuse verifies all content bytes; metadata alone never proves integrity.
+# Skipping byte scans requires the explicit immutable-publication contract.
 _CACHE_LIMIT = 16
-_VALIDATED: OrderedDict[Path, tuple[_Generation, ResolvedDataset]] = OrderedDict()
+
+
+@dataclass(frozen=True)
+class _ValidatedEntry:
+    generation: _Generation
+    resolved: ResolvedDataset
+    # Only admissions bracketed by content hashes can seed default reuse.
+    content_verified: bool
+
+
+_VALIDATED: OrderedDict[Path, _ValidatedEntry] = OrderedDict()
 _CACHE_LOCK = RLock()
 
 
@@ -216,11 +230,17 @@ def _cacheable(generation: _Generation) -> bool:
 
 
 def _content_fingerprint(
-    root: Path, manifest: DatasetManifest, budget: ValidationBudget | None
+    root: Path,
+    manifest: DatasetManifest,
+    budget: ValidationBudget | None,
+    *,
+    manifest_hash: str | None = None,
 ) -> str:
     """Strong verification for pinned operations without repeating row validation."""
     digest = hashlib.sha256()
-    digest.update(_hash_file(root / "manifest.json", budget=budget).encode("ascii"))
+    digest.update(
+        (manifest_hash or _hash_file(root / "manifest.json", budget=budget)).encode("ascii")
+    )
     for device in checked_rows(manifest.devices, budget):
         for item in checked_rows(device.slices, budget):
             digest.update(item.file.encode("utf-8"))
@@ -231,7 +251,9 @@ def _content_fingerprint(
 class DatasetResolver:
     """Resolve and validate finalized datasets, reusing unchanged generations.
 
-    By default every call validates and hashes content. Explicitly setting
+    By default every call hashes content; a matching, fully validated in-process
+    result skips repeated row validation. Warm work remains O(bytes + shards),
+    and new CLI processes are cold. Explicitly setting
     PT_SNAP_DATASET_CACHE=immutable enables bounded process-local reuse under
     the caller's immutable-publication/change-time contract. Even then paths,
     members, sidecars and kernel change times are checked on every call.
@@ -241,15 +263,26 @@ class DatasetResolver:
     def inspect(
         self, path: Path | str, *, budget: ValidationBudget | None = None
     ) -> ResolvedDataset | None:
-        check_budget(budget)
-        root = _root(path)
-        if root is None:
-            return None
+        candidate = Path(path).expanduser().absolute()
+        with _CACHE_LOCK:
+            cache_key = (
+                candidate.parent
+                if candidate.name == "manifest.json" and candidate not in _VALIDATED
+                else candidate
+            )
         try:
+            check_budget(budget)
+            root = _root(path)
+            if root is None:
+                with _CACHE_LOCK:
+                    _ = _VALIDATED.pop(cache_key, None)
+                return None
+            cache_key = root
+            strong_cache = os.environ.get("PT_SNAP_DATASET_CACHE") is None
             with _CACHE_LOCK:
                 cached = _VALIDATED.get(root)
             if cached is not None:
-                previous, resolved = cached
+                previous, resolved = cached.generation, cached.resolved
                 manifest_unchanged = (
                     _stamp(root / "manifest.json") == dict(previous)["manifest.json"]
                 )
@@ -258,7 +291,18 @@ class DatasetResolver:
                     if manifest_unchanged
                     else None
                 )
-                if generation is not None and _cacheable(generation) and generation == previous:
+                reuse = False
+                if generation is not None and generation == previous:
+                    if _cacheable(generation):
+                        reuse = True
+                    elif strong_cache and cached.content_verified:
+                        fingerprint = _content_fingerprint(
+                            root, resolved.validation.manifest, budget
+                        )
+                        if _generation(root, resolved.validation.manifest, budget) != generation:
+                            raise DatabaseSchemaError("Dataset changed during inspection; retry.")
+                        reuse = fingerprint == resolved.fingerprint
+                if reuse:
                     with _CACHE_LOCK:
                         if root in _VALIDATED:
                             _VALIDATED.move_to_end(root)
@@ -266,7 +310,7 @@ class DatasetResolver:
                     check_budget(budget)
                     return result
                 with _CACHE_LOCK:
-                    _VALIDATED.pop(root, None)
+                    _ = _VALIDATED.pop(root, None)
             manifest_path = root / "manifest.json"
             manifest_stamp = _stamp(manifest_path)
             before = _hash_file(manifest_path, budget=budget)
@@ -283,6 +327,14 @@ class DatasetResolver:
             generation = _generation(root, planned, budget)
             if manifest_stamp != _stamp(manifest_path):
                 raise DatabaseSchemaError("Dataset manifest changed during inspection; retry.")
+            # Compatibility manifests contain no shard digests. Bracket row
+            # validation with byte hashes before allowing its result to be reused.
+            # Native validation already checks both ends against declared hashes.
+            compatibility_before = (
+                _content_fingerprint(root, planned, budget, manifest_hash=before)
+                if strong_cache and not isinstance(planned, NativeManifest)
+                else None
+            )
             validation = (
                 validate_native_dataset(root, planned, budget=budget)
                 if isinstance(planned, NativeManifest)
@@ -301,6 +353,9 @@ class DatasetResolver:
                         else _hash_file(root / item.file, budget=budget)
                     )
                     digest.update(content_hash.encode("ascii"))
+            fingerprint = digest.hexdigest()
+            if compatibility_before is not None and compatibility_before != fingerprint:
+                raise DatabaseSchemaError("Dataset content changed during inspection; retry.")
             if before != _hash_file(manifest_path, budget=budget):
                 raise DatabaseSchemaError("Dataset manifest changed during inspection; retry.")
             if generation != _generation(root, planned, budget):
@@ -311,21 +366,31 @@ class DatasetResolver:
             result = ResolvedDataset(
                 root,
                 validation,
-                digest.hexdigest(),
+                fingerprint,
                 version if type(version) is int else None,
                 generation,
             )
-            if _cacheable(generation):
+            if strong_cache or _cacheable(generation):
+                entry = _ValidatedEntry(
+                    generation,
+                    copy.deepcopy(result),
+                    isinstance(planned, NativeManifest) or compatibility_before is not None,
+                )
+                check_budget(budget)
                 with _CACHE_LOCK:
-                    _VALIDATED[root] = (generation, copy.deepcopy(result))
+                    _VALIDATED[root] = entry
                     _VALIDATED.move_to_end(root)
                     while len(_VALIDATED) > _CACHE_LIMIT:
-                        _VALIDATED.popitem(last=False)
+                        _ = _VALIDATED.popitem(last=False)
             return result
         except (DatasetContractError, OSError, UnicodeError, json.JSONDecodeError) as exc:
             with _CACHE_LOCK:
-                _VALIDATED.pop(root, None)
+                _ = _VALIDATED.pop(cache_key, None)
             raise DatabaseSchemaError(f"Invalid dataset: {exc}") from exc
+        except (DatabaseSchemaError, QueryTimeoutError):
+            with _CACHE_LOCK:
+                _ = _VALIDATED.pop(cache_key, None)
+            raise
 
     def completion_device_ids(self, path: Path | str) -> list[int] | None:
         """Bounded manifest-only hints, never evidence of dataset validity.

@@ -242,32 +242,46 @@ full-text stack-statistics versions are documented with the same contracts.
 `core.dataset_resolver.DatasetResolver.inspect(path)` returns an immutable
 `ResolvedDataset` (or `None` for a standalone DB). Its `paths(QueryScope(...))`
 addresses all matching files even for a cross-slice range, but does not execute it.
-By default **every independent inspection** fully validates the finalized contract
-and hashes the manifest/members. File metadata alone is not content-integrity proof:
-unknown or coarse filesystems may expose unchanged `ctime_ns` after a write.
-Pinned report-operation guards also rehash content by default, without repeating
-row validation.
+By default, the first inspection fully validates the finalized contract and hashes
+its content before/after validation. A process-wide LRU holds at most 16 validated
+generations, with no open connections or row-level validation collections. Each
+subsequent inspection still hashes the manifest and **every member** and checks
+canonical paths, sidecars, native membership and file metadata before/after hashing.
+Only an unchanged generation with the same content fingerprint reuses its validated
+result, avoiding repeated SQLite/schema/row validation. Changed metadata or content
+falls back to complete validation; failures and cancellation evict the entry.
 
-`PT_SNAP_DATASET_CACHE=immutable` explicitly opts into a process-wide LRU of at most
-16 validated generations, without open connections. Set it only when you control
-finalized, immutable publication and trust your filesystem's kernel change-time
-semantics. **Do not enable it for files that may be modified in place**, live writers,
-unknown/coarse/network filesystems, or filesystem snapshots that may be rolled back.
-This is a caller responsibility contract, not a filesystem capability detected by
-the tool. Unset it to retain strong validation; unknown values also use strong mode.
-Windows and platforms without a usable POSIX change token remain in strong mode.
+Default warm work is **O(bytes + shards)**, not O(1) or independent of dataset size.
+It saves repeated row-validation CPU and temporary memory, not full-file reads.
+Every new CLI process is cold; this is not a persistent or cross-process cache.
+Compatibility-v1 cold admission adds a pre-validation member hash to its existing
+post-validation hash; native admission retains two passes, reusing verified hashes
+for the fingerprint rather than adding a third pass. Pinned report-operation guards
+also rehash content by default, without repeating row validation. Explicit
+`validate_dataset` / `validate_native_dataset` calls always validate fully.
 
-With that explicit opt-in, new resolver/service instances can reuse validated
-results. Every hit and pinned-operation guard still rechecks canonical paths,
-sidecars, native membership and each file's device, inode, size, mtime, **ctime**,
-mode and link count. These conservative checks catch ordinary replacements and
-in-place edits with restored mtime, but do not replace the immutable-file contract.
-For a fixed shard count, an opted-in hit performs no row scans or whole-file hashes:
-work is O(shards), independent of event/block counts. Default inspections and cache
-misses remain proportional to content. Explicit `validate_dataset` /
-`validate_native_dataset` calls always validate fully. Native admission verifies
-hashes before and after validation and reuses the verified hashes for its fingerprint,
-avoiding a third member-hash pass.
+File metadata alone is not content-integrity proof: unknown or coarse filesystems
+may expose unchanged `ctime_ns` after a write. Unsetting `PT_SNAP_DATASET_CACHE`
+selects the default content-verified cache. Setting it to `off` or an unknown value
+fully revalidates on every inspection without caching; strong hashing remains active.
+
+`PT_SNAP_DATASET_CACHE=immutable` explicitly opts into metadata-only reuse in the
+same bounded process cache. Set it only when you control finalized, immutable
+publication and trust your filesystem's kernel change-time semantics. **Do not
+enable it for files that may be modified in place**, live writers, unknown/coarse/
+network filesystems, or filesystem snapshots that may be rolled back. This is a
+caller responsibility contract, not a filesystem capability detected by the tool.
+Windows and platforms without a usable POSIX change token fully revalidate in this
+mode. An immutable-mode compatibility admission cannot seed default reuse until
+it has passed the stronger content-bracketed admission.
+
+With that explicit opt-in, every hit and pinned-operation guard still rechecks
+canonical paths, sidecars, native membership and each file's device, inode, size,
+mtime, **ctime**, mode and link count. These conservative checks catch ordinary
+replacements and in-place edits with restored mtime, but do not replace the
+immutable-file contract. An opted-in hit performs no row scans or whole-file hashes:
+work is O(shards), independent of event/block counts. None of these checks provides
+a concurrent-writer lock or an atomic filesystem snapshot.
 
 The query's shared deadline reaches admission: hashing checks every 1 MiB chunk,
 Python validation loops check every 256 rows, and SQLite validation (including

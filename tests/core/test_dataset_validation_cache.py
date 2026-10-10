@@ -347,12 +347,9 @@ def test_native_lock_wait_respects_deadline(tmp_path):
     assert DatasetResolver().inspect(root) is not None
 
 
-@pytest.mark.parametrize("mode", [None, "off", "unknown"])
-def test_default_and_unknown_cache_mode_repeat_strong_validation(tmp_path, monkeypatch, mode):
-    if mode is None:
-        monkeypatch.delenv("PT_SNAP_DATASET_CACHE")
-    else:
-        monkeypatch.setenv("PT_SNAP_DATASET_CACHE", mode)
+@pytest.mark.parametrize("mode", ["off", "unknown"])
+def test_disabled_and_unknown_cache_mode_repeat_full_validation(tmp_path, monkeypatch, mode):
+    monkeypatch.setenv("PT_SNAP_DATASET_CACHE", mode)
     root = make_dataset(tmp_path / "dataset", devices=(0,), slices=1)
     calls = []
     original = dataset_resolver._hash_file
@@ -387,7 +384,7 @@ def test_disabling_cache_does_not_reuse_an_existing_entry(tmp_path, monkeypatch)
     root = make_dataset(tmp_path / "dataset", devices=(0,), slices=1)
     DatasetResolver().inspect(root)
     assert root in dataset_resolver._VALIDATED
-    monkeypatch.delenv("PT_SNAP_DATASET_CACHE")
+    monkeypatch.setenv("PT_SNAP_DATASET_CACHE", "off")
     with pytest.raises(QueryTimeoutError):
         budget = CancellableBudget()
         budget.cancelled = True
