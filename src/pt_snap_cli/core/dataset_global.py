@@ -81,9 +81,6 @@ def _traces(
     for item in items:
         trace = f'"trace_entry_{sources.device.device_id}"'
         if with_sources:
-            projection = (
-                "t.id, t.action, t.address, t.size, t.stream, t.allocated, t.active, t.reserved"
-            )
             if sources.dataset.callstack_layout == "v2":
                 sql = f"SELECT {projection}, t.callstackId, cs.callstack FROM {trace} t LEFT JOIN callstack cs ON t.callstackId=cs.id"
             else:
@@ -308,7 +305,14 @@ def _lifecycles(sources, items, scope):
 def _stacks(sources, low, high, items, params, scope):
     grouped = {}
     events = ordered = 0
-    for _item, batch in _traces(sources, low, high, items, with_sources=True):
+    for _item, batch in _traces(
+        sources,
+        low,
+        high,
+        items,
+        ("id", *METRICS, "action", "address", "size", "stream"),
+        with_sources=True,
+    ):
         refs = sources.events_from_rows(_item, batch)
         for source in refs.values():
             sources.budget.remaining()
