@@ -18,6 +18,13 @@ from typing import Literal, cast
 
 from .dataset_files import require_readonly_member
 from .errors import DatabaseSchemaError
+from .validation_budget import (
+    ValidationBudget,
+    check_budget,
+    checked_rows,
+    sqlite_timeout,
+    validation_progress,
+)
 
 MANIFEST_SCHEMA_VERSION = 1
 MSINSIGHT_REVISION = "101f65b877a267ffd5f66ea3834706057ba243e5"
@@ -118,12 +125,15 @@ class DatasetManifest:
             )
 
 
-def parse_manifest(value: object, *, require_complete: bool = True) -> DatasetManifest:
+def parse_manifest(
+    value: object, *, require_complete: bool = True, budget: ValidationBudget | None = None
+) -> DatasetManifest:
     """Validate JSON-shaped data; inspection may explicitly accept building.
 
     Unknown extension declarations are ignored, never promoted to capabilities.
     This does not check files; use validate_dataset for finalized artifacts.
     """
+    check_budget(budget)
     data = _object(value, "manifest")
     version = _integer(data.get("schemaVersion"), "schemaVersion", maximum=2**31 - 1)
     _need(
@@ -137,7 +147,7 @@ def parse_manifest(value: object, *, require_complete: bool = True) -> DatasetMa
     devices_data = _object(data.get("devices"), "devices")
     _need(bool(devices_data), "devices", "empty", "at least one event-bearing device required")
     devices: list[DeviceRecord] = []
-    for key, value in devices_data.items():
+    for key, value in checked_rows(devices_data.items(), budget):
         location = f"devices.{key}"
         _need(
             isinstance(key, str) and re.fullmatch(r"0|[1-9][0-9]*", key) is not None,
@@ -153,7 +163,9 @@ def parse_manifest(value: object, *, require_complete: bool = True) -> DatasetMa
         )
         ready = tuple(
             _integer(item, location + ".readySlices", maximum=size - 1)
-            for item in _array(device.get("readySlices"), location + ".readySlices")
+            for item in checked_rows(
+                _array(device.get("readySlices"), location + ".readySlices"), budget
+            )
         )
         _need(
             len(set(ready)) == len(ready),
@@ -170,7 +182,7 @@ def parse_manifest(value: object, *, require_complete: bool = True) -> DatasetMa
         )
         slices: list[SliceRecord] = []
         expected_start = 0
-        for index, raw in enumerate(records):
+        for index, raw in enumerate(checked_rows(records, budget)):
             loc = f"{location}.slices[{index}]"
             item = _object(raw, loc)
             number = _integer(item.get("index"), loc + ".index", maximum=2**31 - 1)
@@ -357,6 +369,7 @@ def _validate_slice(
     device: DeviceRecord,
     item: SliceRecord,
     identities: dict[tuple[int, int], tuple[object, ...]],
+    budget: ValidationBudget | None = None,
 ) -> int:
     loc = item.file
     trace, block = f"trace_entry_{device.device_id}", f"block_{device.device_id}"
@@ -415,7 +428,7 @@ def _validate_slice(
     ).fetchone()
     _need(bad is None, loc, "event_values", "invalid scalar type or negative byte metric")
     boundary_count = conn.execute(f'SELECT COUNT(*) FROM "{trace}" WHERE id<0').fetchone()[0]
-    for row in conn.execute(f'SELECT * FROM "{block}"'):
+    for row in checked_rows(conn.execute(f'SELECT * FROM "{block}"'), budget):
         block_id, address, size, requested, state, alloc, free = row
         for name, value in zip(
             ("id", "address", "size", "requestedSize", "state", "allocEventId", "freeEventId"),
@@ -455,12 +468,15 @@ def _validate_slice(
     return cast(int, boundary_count)
 
 
-def validate_dataset(directory: Path | str) -> DatasetValidation:
+def validate_dataset(
+    directory: Path | str, *, budget: ValidationBudget | None = None
+) -> DatasetValidation:
     """Read a complete compatibility-v1 dataset without migration or pickle.
 
     Checks are validation, not a filesystem sandbox or concurrent publication lock.
     Missing pt_snap_metadata/extension tables are valid external base artifacts.
     """
+    check_budget(budget)
     root = Path(directory).absolute()
     _need(
         root.resolve() == root and not root.is_symlink(),
@@ -472,11 +488,11 @@ def validate_dataset(directory: Path | str) -> DatasetValidation:
         path = _safe_file(root, "manifest.json")
         with path.open(encoding="utf-8") as source:
             data: object = json.load(source, object_pairs_hook=_unique_object)
-        manifest = parse_manifest(data)
+        manifest = parse_manifest(data, budget=budget)
         # Preflight ALL members before the first SQLite open, also for callers
         # using this bare P0 validator rather than DatasetResolver.
         for device in manifest.devices:
-            for item in device.slices:
+            for item in checked_rows(device.slices, budget):
                 member = _safe_file(root, item.file)
                 try:
                     require_readonly_member(root, member, immutable=True)
@@ -485,14 +501,21 @@ def validate_dataset(directory: Path | str) -> DatasetValidation:
         identities: dict[tuple[int, int], tuple[object, ...]] = {}
         boundaries = 0
         for device in manifest.devices:
-            for item in device.slices:
+            for item in checked_rows(device.slices, budget):
                 db_path = _safe_file(root, item.file)
                 try:
-                    with closing(
-                        sqlite3.connect(db_path.as_uri() + "?mode=ro&immutable=1", uri=True)
-                    ) as conn:
+                    with (
+                        closing(
+                            sqlite3.connect(
+                                db_path.as_uri() + "?mode=ro&immutable=1",
+                                uri=True,
+                                timeout=sqlite_timeout(budget),
+                            )
+                        ) as conn,
+                        validation_progress(conn, budget),
+                    ):
                         conn.execute("PRAGMA query_only=ON")
-                        boundaries += _validate_slice(conn, device, item, identities)
+                        boundaries += _validate_slice(conn, device, item, identities, budget)
                 except sqlite3.DatabaseError as exc:
                     raise DatasetContractError(item.file, "sqlite", str(exc)) from exc
         return DatasetValidation(
