@@ -6,6 +6,7 @@ import hashlib
 from pathlib import Path
 
 from .errors import DatabaseSchemaError
+from .validation_budget import ValidationBudget, check_budget
 
 
 def require_readonly_member(root: Path, member: Path, *, immutable: bool = False) -> None:
@@ -27,9 +28,12 @@ def require_readonly_member(root: Path, member: Path, *, immutable: bool = False
         raise DatabaseSchemaError(f"Dataset member uses persistent WAL mode: {member}")
 
 
-def hash_file(path: Path) -> str:
+def hash_file(path: Path, *, budget: ValidationBudget | None = None) -> str:
+    check_budget(budget)
     digest = hashlib.sha256()
     with path.open("rb") as source:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            check_budget(budget)
             digest.update(chunk)
+    check_budget(budget)
     return digest.hexdigest()

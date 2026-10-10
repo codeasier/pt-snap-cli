@@ -40,6 +40,13 @@ from .dataset_files import require_readonly_member as _require_readonly_member
 from .import_metadata_contract import metadata_from_mapping
 from .models import ImportMetadata
 from .sharded_replay_service import ShardedReplayResult
+from .validation_budget import (
+    ValidationBudget,
+    check_budget,
+    checked_rows,
+    sqlite_timeout,
+    validation_progress,
+)
 
 NATIVE_FORMAT = "pt-snap-native-v2"
 NATIVE_MANIFEST_VERSION = 1
@@ -84,8 +91,11 @@ def _digest(value: object, loc: str) -> str:
     return result
 
 
-def parse_native_manifest(value: object) -> NativeManifest:
+def parse_native_manifest(
+    value: object, *, budget: ValidationBudget | None = None
+) -> NativeManifest:
 
+    check_budget(budget)
     data = _object(value, "manifest")
     _need(data.get("format") == NATIVE_FORMAT, "format", "format", "unsupported native format")
     version = _integer(data.get("schemaVersion"), "schemaVersion", minimum=1)
@@ -155,11 +165,11 @@ def parse_native_manifest(value: object) -> NativeManifest:
     )
     omitted = tuple(
         _integer(v, "omittedDevices", maximum=2**31 - 1)
-        for v in _array(data.get("omittedDevices"), "omittedDevices")
+        for v in checked_rows(_array(data.get("omittedDevices"), "omittedDevices"), budget)
     )
     _need(len(set(omitted)) == len(omitted), "omittedDevices", "duplicate", "duplicate device")
     devices: list[DeviceRecord] = []
-    for key, raw in _object(data.get("devices"), "devices").items():
+    for key, raw in checked_rows(_object(data.get("devices"), "devices").items(), budget):
         loc = f"devices.{key}"
         _need(
             isinstance(key, str) and re.fullmatch(r"0|[1-9][0-9]*", key) is not None,
@@ -181,7 +191,7 @@ def parse_native_manifest(value: object) -> NativeManifest:
         )
         ready = tuple(
             _integer(v, loc + ".readySlices")
-            for v in _array(device.get("readySlices"), loc + ".readySlices")
+            for v in checked_rows(_array(device.get("readySlices"), loc + ".readySlices"), budget)
         )
         _need(
             ready == tuple(range(len(records))),
@@ -191,7 +201,7 @@ def parse_native_manifest(value: object) -> NativeManifest:
         )
         slices: list[SliceRecord] = []
         position, last_id = 0, -1
-        for index, raw_slice in enumerate(records):
+        for index, raw_slice in enumerate(checked_rows(records, budget)):
             item = _object(raw_slice, loc)
             _need(
                 type(item.get("index")) is int
@@ -257,7 +267,9 @@ def read_native_manifest(root: Path) -> NativeManifest:
         raise DatasetContractError("manifest.json", "read", str(exc)) from exc
 
 
-def require_native_members(root: Path, manifest: NativeManifest) -> None:
+def require_native_members(
+    root: Path, manifest: NativeManifest, *, budget: ValidationBudget | None = None
+) -> None:
     """Ownership recognition before any replacement: never adopt unknown files/dirs."""
     _need(
         root.resolve() == root and not root.is_symlink(),
@@ -267,7 +279,7 @@ def require_native_members(root: Path, manifest: NativeManifest) -> None:
     )
     expected = {"manifest.json", *(f"device_{d.device_id}" for d in manifest.devices)}
     _need(
-        {p.name for p in root.iterdir()} == expected,
+        {p.name for p in checked_rows(root.iterdir(), budget)} == expected,
         "dataset",
         "members",
         "unexpected/missing dataset member",
@@ -281,18 +293,22 @@ def require_native_members(root: Path, manifest: NativeManifest) -> None:
             "unsafe device directory",
         )
         _need(
-            {p.name for p in directory.iterdir()} == {Path(s.file).name for s in device.slices},
+            {p.name for p in checked_rows(directory.iterdir(), budget)}
+            == {Path(s.file).name for s in device.slices},
             str(directory),
             "members",
             "unexpected/missing shard",
         )
-        for item in device.slices:
+        for item in checked_rows(device.slices, budget):
             _safe_file(root, item.file)
 
 
-def validate_native_dataset(root: Path, manifest: NativeManifest) -> DatasetValidation:
+def validate_native_dataset(
+    root: Path, manifest: NativeManifest, *, budget: ValidationBudget | None = None
+) -> DatasetValidation:
 
-    require_native_members(root, manifest)
+    check_budget(budget)
+    require_native_members(root, manifest, budget=budget)
     expected_identity = cache_identity(
         manifest.metadata.source_sha256,
         manifest.metadata.requested_device,
@@ -306,21 +322,32 @@ def validate_native_dataset(root: Path, manifest: NativeManifest) -> DatasetVali
     )
     # Check EVERY member before the FIRST SQLite open. No WAL/sidecars/repair.
     for device in manifest.devices:
-        for raw in device.slices:
+        for raw in checked_rows(device.slices, budget):
             item = cast(NativeSlice, raw)
             path = root / item.file
             _require_readonly_member(root, path)
-            _need(_hash_file(path) == item.sha256, item.file, "hash", "member content changed")
+            _need(
+                _hash_file(path, budget=budget) == item.sha256,
+                item.file,
+                "hash",
+                "member content changed",
+            )
     boundaries = 0
     for device in manifest.devices:
         ids: set[int] = set()
         lifetimes: dict[int, tuple[object, ...]] = {}
-        references: list[tuple[int, int]] = []
-        for raw in device.slices:
+        for raw in checked_rows(device.slices, budget):
             item = cast(NativeSlice, raw)
             path = root / item.file
             try:
-                with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as conn:
+                with (
+                    closing(
+                        sqlite3.connect(
+                            path.as_uri() + "?mode=ro", uri=True, timeout=sqlite_timeout(budget)
+                        )
+                    ) as conn,
+                    validation_progress(conn, budget),
+                ):
                     conn.execute("PRAGMA query_only=ON")
                     _need(
                         conn.execute("PRAGMA quick_check").fetchall() == [("ok",)],
@@ -388,19 +415,28 @@ def validate_native_dataset(root: Path, manifest: NativeManifest) -> DatasetVali
                             "dictionary",
                             "invalid native dictionary",
                         )
-                    real = [
-                        r[0]
-                        for r in conn.execute(f'SELECT id FROM "{trace}" WHERE id>=0 ORDER BY id')
-                    ]
+                    count, low, high = conn.execute(
+                        f'SELECT COUNT(*), MIN(id), MAX(id) FROM "{trace}" WHERE id>=0'
+                    ).fetchone()
                     _need(
-                        len(real) == item.end_position - item.start_position + 1
-                        and (real[0], real[-1]) == (item.start_event_id, item.end_event_id)
-                        and not ids.intersection(real),
+                        (count, low, high)
+                        == (
+                            item.end_position - item.start_position + 1,
+                            item.start_event_id,
+                            item.end_event_id,
+                        ),
                         item.file,
                         "event_identity",
                         "real IDs/count differ from positions/ranges",
                     )
-                    ids.update(real)
+                    # Manifest intervals are disjoint; avoid a per-shard list
+                    # and intersection copy in addition to the device ID set.
+                    ids.update(
+                        r[0]
+                        for r in checked_rows(
+                            conn.execute(f'SELECT id FROM "{trace}" WHERE id>=0'), budget
+                        )
+                    )
                     numeric = " OR ".join(
                         f"typeof({name})!='integer'" for name, _ in TRACE_COLUMNS[:-1]
                     )
@@ -425,17 +461,25 @@ def validate_native_dataset(root: Path, manifest: NativeManifest) -> DatasetVali
                     boundaries += conn.execute(
                         f'SELECT COUNT(*) FROM "{trace}" WHERE id<0'
                     ).fetchone()[0]
-                    stacks = {
-                        r[0]: r[1:] for r in conn.execute("SELECT * FROM pt_snap_block_reference")
-                    }
-                    blocks = conn.execute(f'SELECT * FROM "{block}"').fetchall()
+                    mismatch = conn.execute(
+                        f'SELECT b.id FROM "{block}" b WHERE NOT EXISTS '
+                        "(SELECT 1 FROM pt_snap_block_reference r WHERE r.blockId=b.id) "
+                        "UNION ALL SELECT r.blockId FROM pt_snap_block_reference r "
+                        f'WHERE NOT EXISTS (SELECT 1 FROM "{block}" b WHERE b.id=r.blockId) '
+                        "LIMIT 1"
+                    ).fetchone()
                     _need(
-                        set(stacks) == {r[0] for r in blocks},
+                        mismatch is None,
                         item.file,
                         "extension",
                         "reference/block membership differs",
                     )
-                    for row in blocks:
+                    rows = conn.execute(
+                        f"SELECT b.*, r.stream, r.allocCallstack, r.freeCallstack "
+                        f'FROM "{block}" b JOIN pt_snap_block_reference r ON r.blockId=b.id'
+                    )
+                    for joined in checked_rows(rows, budget):
+                        row, ref = joined[:7], joined[7:]
                         bid, address, size, requested, state, alloc, free = row
                         _need(
                             all(type(v) is int for v in row)
@@ -448,7 +492,6 @@ def validate_native_dataset(root: Path, manifest: NativeManifest) -> DatasetVali
                             "block_identity",
                             "unfinalized/invalid block",
                         )
-                        ref = stacks[bid]
                         _need(
                             type(ref[0]) is int
                             and all(v is None or isinstance(v, str) for v in ref[1:]),
@@ -464,13 +507,17 @@ def validate_native_dataset(root: Path, manifest: NativeManifest) -> DatasetVali
                             "conflicting finalized identity/reference",
                         )
                         lifetimes[bid] = signature
-                        references.append((alloc, free))
             except sqlite3.DatabaseError as exc:
                 raise DatasetContractError(item.file, "sqlite", str(exc)) from exc
             try:
-                with closing(
-                    sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
-                ) as metadata_conn:
+                with (
+                    closing(
+                        sqlite3.connect(
+                            path.as_uri() + "?mode=ro", uri=True, timeout=sqlite_timeout(budget)
+                        )
+                    ) as metadata_conn,
+                    validation_progress(metadata_conn, budget),
+                ):
                     metadata_conn.row_factory = sqlite3.Row
                     _need(
                         metadata_conn.execute(
@@ -501,14 +548,18 @@ def validate_native_dataset(root: Path, manifest: NativeManifest) -> DatasetVali
                 raise DatasetContractError(item.file, "metadata", str(exc)) from exc
             _require_readonly_member(root, path)
             _need(
-                _hash_file(path) == item.sha256,
+                _hash_file(path, budget=budget) == item.sha256,
                 item.file,
                 "hash",
                 "member changed during validation",
             )
         _need(
             len(ids) == device.event_count
-            and all(v == -1 or v in ids for pair in references for v in pair),
+            and all(
+                v == -1 or v in ids
+                for lifetime in checked_rows(lifetimes.values(), budget)
+                for v in lifetime[3:5]
+            ),
             "devices",
             "event_identity",
             "count/lifetime references not in original device scope",

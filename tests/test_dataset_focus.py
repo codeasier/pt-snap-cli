@@ -482,8 +482,8 @@ def test_manifest_change_during_validation_fails(tmp_path, monkeypatch):
     root = make_dataset(tmp_path / "dataset")
     original = module.validate_dataset
 
-    def validate(path):
-        result = original(path)
+    def validate(path, **kwargs):
+        result = original(path, **kwargs)
         manifest = root / "manifest.json"
         data = json.loads(manifest.read_text())
         data["cacheHash"] = "replaced"

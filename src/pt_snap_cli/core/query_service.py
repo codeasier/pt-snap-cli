@@ -233,7 +233,7 @@ class QueryService:
         if resolved.db_path is None:
             raise FocusNotConfiguredError("No database path specified and no database configured.")
 
-        dataset = DatasetResolver().inspect(resolved.db_path)
+        dataset = DatasetResolver().inspect(resolved.db_path, budget=budget)
         budget.remaining()
         scope: dict[str, object] | None = None
         query_params = params or {}

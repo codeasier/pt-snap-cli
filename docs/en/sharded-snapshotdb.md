@@ -242,12 +242,47 @@ full-text stack-statistics versions are documented with the same contracts.
 `core.dataset_resolver.DatasetResolver.inspect(path)` returns an immutable
 `ResolvedDataset` (or `None` for a standalone DB). Its `paths(QueryScope(...))`
 addresses all matching files even for a cross-slice range, but does not execute it.
-It revalidates the finalized P0 contract on each call and hashes the manifest and
-members; no unbounded manifest/connection cache is retained. Hashing uses bounded
-chunks and is proportional to artifact size, not a performance claim. Context LRU
-size defaults to four; dataset generation changes invalidate contexts on next
-lookup even when size/mtime are unchanged. Analyzer-owned caches close on exit;
-injected caches remain caller-owned. Validation opens/closes slices sequentially.
+By default **every independent inspection** fully validates the finalized contract
+and hashes the manifest/members. File metadata alone is not content-integrity proof:
+unknown or coarse filesystems may expose unchanged `ctime_ns` after a write.
+Each query, including each query step within a multi-step report, calls `inspect`
+again. Reports do not currently pin one `ResolvedDataset` across their steps or
+invoke `ResolvedDataset.require_unchanged()`; there is no additional report-level
+content-hash guard.
+
+`PT_SNAP_DATASET_CACHE=immutable` explicitly opts into a process-wide LRU of at most
+16 validated generations, without open connections. Set it only when you control
+finalized, immutable publication and trust your filesystem's kernel change-time
+semantics. **Do not enable it for files that may be modified in place**, live writers,
+unknown/coarse/network filesystems, or filesystem snapshots that may be rolled back.
+This is a caller responsibility contract, not a filesystem capability detected by
+the tool. Unset it to retain strong validation; unknown values also use strong mode.
+Windows and platforms without a usable POSIX change token remain in strong mode.
+
+With that explicit opt-in, new resolver/service instances can reuse validated
+results. Every cache hit during inspection still rechecks canonical paths,
+sidecars, native membership and each file's device, inode, size, mtime, **ctime**,
+mode and link count. These conservative checks catch ordinary replacements and
+in-place edits with restored mtime, but do not replace the immutable-file contract.
+For a fixed shard count, an opted-in hit performs no row scans or whole-file hashes:
+work is O(shards), independent of event/block counts. This metadata-only reuse also
+applies to report query steps; a cache hit does not rehash content. Default inspections
+and cache misses remain proportional to content. Explicit `validate_dataset` /
+`validate_native_dataset` calls always validate fully. Native admission verifies
+hashes before and after validation and reuses the verified hashes for its fingerprint,
+avoiding a third member-hash pass.
+
+The query's shared deadline reaches admission: hashing checks every 1 MiB chunk,
+Python validation loops check every 256 rows, and SQLite validation (including
+`quick_check`) uses an interruptible progress handler, cleared on every exit.
+Cancellation raises `QUERY_TIMEOUT`; no partial validation is cached. Device tab
+completion reads only a size-bounded manifest (up to 1 MiB), never member SQLite
+contents or hashes. Its candidates are hints, not proof the dataset is valid.
+
+Context LRU size defaults to four; dataset content-generation changes invalidate
+contexts on next lookup even when size/mtime are unchanged. Analyzer-owned caches
+close on exit; injected caches remain caller-owned. Validation opens/closes slices
+sequentially.
 
 Building, missing/inconsistent slices, unknown base versions and unsafe paths
 are rejected before focus writes or query execution. Before **any** SQLite open,
