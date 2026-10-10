@@ -674,6 +674,72 @@ explanations; look up `semantics_version` and interpretation limits with
 rows. `SnapshotAnalyzer.execute_query()` results also include `template`
 and `semantics_version` so that lookup stays tied to the rows.
 
+## Frame Memory Breakdown
+
+After a standalone import with this version, inspect the original ordered frame array or
+decompose live memory after an event:
+
+```bash
+pt-snap query --template-use event_frames --params '{"event_id":100}' --json
+pt-snap query --template-use active_memory_frame_tree_at_event --params '{"event_id":100}' --json
+pt-snap report memory-tree --event-id 100
+pt-snap report memory-tree --event-id 100 --json
+pt-snap report memory-tree --event-id 100 --format html > memory-tree.html
+```
+
+The HTML file is self-contained: open it locally, click a frame to zoom, reset
+to show the whole tree, or search filenames/functions. Width measures live
+block bytes, not CPU time or allocation traffic. No static server is needed.
+`--device` selects the device; `--exclude-static` omits static/preexisting
+memory; `--min-size` filters individual blocks. `--event-id` is required.
+The report requests a complete tree without a ranked or row cap.
+
+| Field | Meaning |
+| --- | --- |
+| `node_id`, `parent_id` | Caller-path identity and direct parent; `root` is the total |
+| `depth`, `frame_id` | Caller-first level and structured frame identity |
+| `size_bytes`, `requested_bytes`, `block_count` | Inclusive occupancy/count for this node and descendants |
+| `self_bytes`, `self_requested_bytes`, `self_block_count` | Allocations whose recorded stack ends at this node |
+| `percent_of_total` | 0–100 byte share of root occupancy after block/category filters, before output row caps |
+
+For each node, inclusive occupancy equals self occupancy plus the inclusive
+occupancy of its direct children. Sum `self_bytes` across all nodes, or sum
+inclusive bytes at one complete cut through the tree; summing inclusive bytes
+across levels counts allocations repeatedly. An internal node can have self
+bytes when a recorded stack ends there. Recursion and identical frames under
+different callers remain separate paths.
+
+Only blocks with `allocEventId <= event_id` and a later or absent
+`freeEventId` are attributed dynamically. `freeEventId` is `free_completed`,
+so pending-free memory is still included. Static, preexisting, and missing or
+damaged stack links remain explicit synthetic leaves. This is active-block
+occupancy and does not decompose reserved bytes. Event IDs mark ordering, not
+elapsed time. `min_size` and `include_static` change the root denominator.
+If a direct query uses `-n`/`max_rows`, inspect its completeness flags: a
+truncated set of node rows is not a complete tree. Old text-only databases
+must be re-imported; the analyzer does not reconstruct frames from text.
+
+Frame-tree templates and `report memory-tree` support standalone format-3 databases
+only. Dataset roots are rejected explicitly; the analyzer never selects a shard
+implicitly. Direct native shards have no standalone frame tables: re-import the
+original snapshot as a standalone database to use these templates. Existing
+native `pt_snap_frame`/coverage readers remain unchanged. `--timeout` uses the
+shared query deadline. Text and HTML renderers reject incomplete or nonconserving
+trees. Known-empty stacks have an `empty_callstack` synthetic leaf;
+missing/corrupt stacks retain the `missing` leaf. `event_frames` returns no rows
+for missing events/stacks, known-empty stacks or invalid frame arrays.
+
+The Python API uses the same template and contracts:
+
+```python
+from pathlib import Path
+from pt_snap_cli import SnapshotAnalyzer
+
+with SnapshotAnalyzer(db_path=Path("snapshot.pkl.db"), device_id=0) as analyzer:
+    frames = analyzer.execute_query("event_frames", params={"event_id": 100})
+    tree = analyzer.execute_query("active_memory_frame_tree_at_event", params={"event_id": 100})
+```
+
 ## Template Architecture
 
 Query templates are defined in YAML format with:

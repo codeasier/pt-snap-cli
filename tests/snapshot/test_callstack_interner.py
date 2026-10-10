@@ -1,6 +1,8 @@
 import gc
 import weakref
 
+import pytest
+
 from pt_snap_cli.snapshot.base import TraceEntry
 from pt_snap_cli.snapshot.tools.adaptors.database.callstack import CallstackInterner
 
@@ -120,3 +122,92 @@ def test_eager_frame_objects_intern_to_the_same_text_as_raw_frames():
 
     assert raw_id == eager_id == 0
     assert len(interner) == 1
+
+
+def test_original_order_and_recursive_frames_survive_interning():
+    interner = CallstackInterner(structured_frames=True)
+    interner.intern(_raw_event([INNER, INNER, OUTER]))
+    interner.intern(_raw_event([dict(INNER), dict(OUTER)]))
+    assert interner.frame_records() == [{"id": 0, **INNER}, {"id": 1, **OUTER}]
+    assert interner.stack_frame_records() == [
+        {"callstackId": 0, "position": 0, "frameId": 0},
+        {"callstackId": 0, "position": 1, "frameId": 0},
+        {"callstackId": 0, "position": 2, "frameId": 1},
+        {"callstackId": 1, "position": 0, "frameId": 0},
+        {"callstackId": 1, "position": 1, "frameId": 1},
+    ]
+
+
+@pytest.mark.parametrize("structured", [False, True])
+def test_display_text_collisions_only_remain_distinct_for_structured_stacks(structured):
+    interner = CallstackInterner(structured_frames=structured)
+    first = _raw_event([{"filename": "x", "line": 1, "name": "f\ny:2 g"}])
+    second = _raw_event(
+        [
+            {"filename": "y", "line": 2, "name": "g"},
+            {"filename": "x", "line": 1, "name": "f"},
+        ]
+    )
+    assert first.get_callstack() == second.get_callstack()
+    assert (interner.intern(first) != interner.intern(second)) is structured
+    assert len(interner) == (2 if structured else 1)
+
+
+@pytest.mark.parametrize("structured", [False, True])
+def test_empty_stack_manifest_only_attests_structured_capture(structured):
+    interner = CallstackInterner(structured_frames=structured)
+    interner.intern(_raw_event([]))
+    interner.intern(_raw_event([INNER, INNER, OUTER]))
+    assert interner.stack_manifest_records() == (
+        [{"callstackId": 0, "frameCount": 0}, {"callstackId": 1, "frameCount": 3}]
+        if structured
+        else []
+    )
+    if not structured:
+        assert interner.frame_records() == interner.stack_frame_records() == []
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("line", True),
+        ("line", False),
+        ("line", 1.0),
+        ("line", "1"),
+        ("line", None),
+        ("filename", 42),
+        ("name", False),
+    ],
+)
+@pytest.mark.parametrize("eager", [False, True])
+def test_structured_fields_reject_lossy_types_without_changing_native_text(field, value, eager):
+    invalid = {**INNER, field: value}
+    event = _raw_event([INNER, invalid])
+    if eager:
+        event = TraceEntry.from_dict(event.to_dict())
+    structured = CallstackInterner(structured_frames=True)
+    with pytest.raises(ValueError, match="Structured frames require"):
+        structured.intern(event)
+    assert structured.records() == structured.frame_records() == []
+    native = CallstackInterner()
+    assert native.intern(event) == 0
+    assert native.records() == [{"id": 0, "callstack": event.get_callstack()}]
+
+
+@pytest.mark.parametrize("eager", [False, True])
+def test_structured_identity_preserves_exact_fields_without_normalizing(eager):
+    frames = [
+        {"filename": "训练:模型.py", "line": -1, "name": "内部\n分配"},
+        {"filename": "", "line": 0, "name": ""},
+        {"filename": "训练:模型.py", "line": 1, "name": "内部\n分配"},
+    ]
+    first = _raw_event(frames)
+    equal = _raw_event([dict(frame) for frame in frames])
+    if eager:
+        first = TraceEntry.from_dict(first.to_dict())
+    interner = CallstackInterner(structured_frames=True)
+    assert interner.intern(first) == interner.intern(equal) == 0
+    assert interner.frame_records() == [
+        {"id": index, **frame} for index, frame in enumerate(frames)
+    ]
+    assert interner.stack_manifest_records() == [{"callstackId": 0, "frameCount": 3}]

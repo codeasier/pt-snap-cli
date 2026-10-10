@@ -36,8 +36,57 @@ from pt_snap_cli.core import (
     TemplateRenderError,
 )
 from pt_snap_cli.core.error_codes import DATABASE_NOT_FOUND, INVALID_PARAMETER
+from pt_snap_cli.core.errors import PtSnapCoreError
+from pt_snap_cli.memory_tree_render import render_memory_tree
 
 report_app = typer.Typer(help="Generate memory analysis reports")
+
+
+@report_app.command("memory-tree")
+def report_memory_tree(
+    event_id: Annotated[
+        int, typer.Option("--event-id", help="Analyze live memory after this event")
+    ],
+    db_path: Annotated[
+        Path | None, typer.Argument(help="Path to database (optional if configured)")
+    ] = None,
+    device: Annotated[
+        int | None, typer.Option("--device", "-d", autocompletion=complete_device_ids)
+    ] = None,
+    include_static: Annotated[bool, typer.Option("--include-static/--exclude-static")] = True,
+    min_size: Annotated[int, typer.Option(help="Minimum individual block size in bytes")] = 0,
+    output_format: Annotated[
+        Literal["text", "html"],
+        typer.Option("--format", help="Text breakdown or interactive HTML flamegraph on stdout"),
+    ] = "text",
+    timeout: Annotated[
+        float | None, typer.Option("--timeout", help="Query deadline in seconds; <=0 disables")
+    ] = None,
+    json_output: Annotated[bool, _json_flag()] = False,
+) -> None:
+    """Decompose event-time active memory by ordered allocation frames."""
+    service = ReportService()
+    try:
+        if json_output and output_format != "text":
+            raise ValueError("--json cannot be combined with --format html.")
+        result = service.memory_tree_report(
+            event_id=event_id,
+            db_path=db_path,
+            device_id=device,
+            include_static=include_static,
+            min_size=min_size,
+            timeout_s=timeout,
+        )
+        if json_output:
+            typer.echo(json.dumps({"event_id": event_id, **asdict(result)}, indent=2))
+        else:
+            typer.echo(render_memory_tree(result, event_id, html=output_format == "html"))
+    except PtSnapCoreError as exc:
+        _error_from_exc(exc)
+    except ValueError as exc:
+        _error(str(exc), code=INVALID_PARAMETER)
+    finally:
+        service.close()
 
 
 @report_app.command("peak-memory")

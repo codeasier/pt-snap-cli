@@ -42,6 +42,27 @@ class ReportService:
         """Release connections owned by this report service; allow later reuse."""
         self._query_service.close()
 
+    def memory_tree_report(
+        self,
+        event_id: int,
+        db_path: Path | str | None = None,
+        device_id: int | None = None,
+        include_static: bool = True,
+        min_size: int = 0,
+        *,
+        start_dir: Path | None = None,
+        timeout_s: float | None = None,
+    ) -> QueryResult:
+        """Return frame occupancy through the shared standalone query contract."""
+        return self._query_service.execute_query(
+            "active_memory_frame_tree_at_event",
+            params={"event_id": event_id, "include_static": include_static, "min_size": min_size},
+            db_path=db_path,
+            device_id=device_id,
+            start_dir=start_dir,
+            timeout_s=timeout_s,
+        )
+
     def event_attribution(
         self,
         event_id: int,

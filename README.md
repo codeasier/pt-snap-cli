@@ -100,6 +100,7 @@ accept explicitly selected complete validated datasets, not arbitrary directorie
 | `pt-snap overview [database.db]` | Read-only device list, per-device event-id bounds, and import-metadata status |
 | `pt-snap query` | Run memory analysis queries |
 | `pt-snap report` | Generate higher-level memory analysis reports |
+| `pt-snap report memory-tree --event-id <id>` | Frame-level live-memory breakdown; `--format html` emits an interactive flamegraph |
 | `pt-snap config` | Manage global configuration |
 | `pt-snap skill` | List and install bundled agent skills |
 
@@ -108,6 +109,13 @@ accept explicitly selected complete validated datasets, not arbitrary directorie
 Peak reports expose attribution completeness and same-event active-byte coverage;
 group percentages use included bytes after filtering and ranking. See the
 [report guide](docs/en/querying.md#report-command) before interpreting a capped breakdown.
+
+Standalone imports preserve ordered structured callstack frames. Use `event_frames` to
+inspect them, or `report memory-tree --event-id 100 --format html > memory-tree.html`
+to explore event-time occupancy by caller path. See
+[frame memory breakdown](docs/en/querying.md#frame-memory-breakdown); older
+text-only databases require re-importing the original snapshot.
+`report memory-tree` also accepts `--json`.
 
 ## Agent Skills
 
