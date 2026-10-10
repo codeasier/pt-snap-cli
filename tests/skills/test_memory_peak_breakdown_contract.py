@@ -141,6 +141,20 @@ def test_full_trace_workflow_runs_all_metrics_with_static_limit_and_json() -> No
     assert "active_blocks_at_event` at the chosen metric's peak event" in skill
 
 
+def test_report_workflow_documents_reused_peak_query_and_null_semantics() -> None:
+    normalized = _normalized_skill()
+
+    assert "`allocator_gap` runs once" in normalized
+    assert "without running a separate `memory_peak` query" in normalized
+    assert (
+        "Both steps share one resolved database/device, budget, and dataset generation"
+        in normalized
+    )
+    assert "empty attribution without running the attribution query" in normalized
+    assert "empty range or an all-NULL counter" in normalized
+    assert "an empty-attribution report has `allocator_gap: null`" in normalized
+
+
 def test_range_fallback_and_peak_event_semantics_are_explicit() -> None:
     skill = _skill()
     normalized = _normalized_skill()

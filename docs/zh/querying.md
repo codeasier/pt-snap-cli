@@ -128,11 +128,14 @@ exactness 标记诚实。`has_more/truncated` 描述窗口，不表示来源/范
 独立。未证明历史身份按片局部单独表达，不按地址/局部栈 ID 猜合并，不断言为已证明泄漏。
 
 数据集读取先分离批次再查外片来源，使用借用的有界 Context LRU。所有片、来源、分组、
-精确总数共用递减 deadline；报告三条查询明确共用**一个**预算。累计取回/输出工作上限为
+精确总数共用递减 deadline；报告的峰值选择与归因明确共用**一个**预算。累计取回/输出工作上限为
 **100000 行 / 64 MiB 序列化值**，含重复来源读取；超限整体失败，不返回冒充完整的部分
 结论。Python 物化/排序由工作上限约束，**不由 max_rows 约束**；不是进程 RSS 上限，Python/
-SQLite、一个批次及单个 cell 有额外开销。manifest hash/校验仍与产物大小成正比且仅在
-阶段边界检查，不硬抢占。不生成合并临时 DB、不修复或写产物。
+SQLite、一个批次及单个 cell 有额外开销。默认仍对 manifest/成员执行完整校验和 hash，
+并共用该 deadline：hash 分块、Python 行批次及 SQLite progress handler 都检查取消。
+单个文件系统调用不提供 OS 级硬抢占。仅当调用方保证最终产物不可变且文件系统变更时间
+可靠时，才可通过 `PT_SNAP_DATASET_CACHE=immutable` 显式启用进程内校验复用；参见
+[数据集校验与缓存合同](sharded-snapshotdb.md)。不生成合并临时 DB、不修复或写产物。
 
 全局峰值查询每片只取范围汇总及最多三条计数器记录。event/allocation 在各片 SQL 中筛选、
 排序，每片最多取 `offset + limit` 个候选后全局归并，并单独统计匹配总数；实际范围证据在
@@ -191,8 +194,9 @@ max_rows 之前**所含字节，不是数据集 active 计数器。精确总数�
 不改变百分比分母。
 
 一次调用的来源批次、分组和精确总数共用 deadline。manifest 校验/hash 及 Context
-设置耗时计入预算，但同步文件 I/O/校验只在阶段边界检查，不硬抢占，不保证 OS 级
-时间上限。SQL progress handler 退出即清除。Context LRU 有界（默认四个），借用
+设置耗时计入预算。校验在 hash 分块与 Python 行批次之间检查取消，SQLite 通过退出即
+清除的 progress handler 检查取消。单个文件系统调用不硬抢占，不保证 OS 级时间上限。
+Context LRU 有界（默认四个），借用
 cache 仍由调用者所有。不生成合并临时数据库。`ReportService.event_attribution(E, ...)`
 对给定事件复用同一路径。数据集全局查询及报告遵循上文明确支持矩阵；任意 SQL/
 自定义 override 不会因使用内建名字就继承全局合并语义。
@@ -412,14 +416,18 @@ pt-snap report peak-memory /path/to/snapshot.db --json
 
 这个 report 命令会组合：
 
-- `memory_peak`
-- `allocator_gap`
+- `allocator_gap`，其结果同时提供原有的六个 `peak_*` 字段
 - `active_memory_callstack_at_event`
 
 并输出人类可读摘要或 JSON。`--start-id/--end-id` 限制峰值选择；归因仍解析所选事件
 完整活跃集合，包含更早分配。`--timeout`（或 `PT_SNAP_QUERY_TIMEOUT`）是递减的
-**报告整体** deadline，不是重置三次的逐查询超时。JSON 新增峰值 `scope`、独立归因
+**报告整体** deadline，不会在查询之间重置。JSON 新增峰值 `scope`、独立归因
 `source_coverage`、`timeout_s` 与 `budget_scope="report_composition"`。
+
+数据集报告只检查一次数据集，峰值选择与归因复用同一个已验证 fingerprint。
+若在步骤之间或执行期间检测到 manifest 或成员变化，整个报告会失败；这是版本检查，
+不是并发写入锁。所选区间只计算一次 counter 峰值。归因仍消耗同一个累计工作预算，
+因此活跃集合很大时，即使单独峰值查询成功，报告仍可能合理地超出预算。
 
 原有 `callstack_groups` 和 `percent_of_active_blocks` 数值保持不变。JSON 还会
 返回归因的 `has_more`、`truncated`、`total_is_exact` 和 `effective_params`
