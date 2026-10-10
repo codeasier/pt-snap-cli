@@ -73,15 +73,26 @@ def _traces(
     low: int,
     high: int,
     items: list[SliceRecord],
-    columns: tuple[str, ...],
+    columns: tuple[str, ...] = ("id", *METRICS),
+    *,
+    with_sources: bool = False,
 ):
-    # Each built-in supplies only the fields it actually consumes. In particular,
-    # inline stack text must not spend the byte budget of a counter-only query.
-    projection = ", ".join(f'"{column}"' for column in columns)
+    projection = ", ".join(f't."{column}"' for column in columns)
     for item in items:
+        trace = f'"trace_entry_{sources.device.device_id}"'
+        if with_sources:
+            projection = (
+                "t.id, t.action, t.address, t.size, t.stream, t.allocated, t.active, t.reserved"
+            )
+            if sources.dataset.callstack_layout == "v2":
+                sql = f"SELECT {projection}, t.callstackId, cs.callstack FROM {trace} t LEFT JOIN callstack cs ON t.callstackId=cs.id"
+            else:
+                sql = f"SELECT {projection}, t.callstack FROM {trace} t"
+        else:
+            sql = f"SELECT {projection} FROM {trace} t"
         rows = sources.read(
             sources.dataset.root / item.file,
-            f'SELECT {projection} FROM "trace_entry_{sources.device.device_id}" WHERE id>=0 AND id>=? AND id<=? ORDER BY id',
+            sql + " WHERE t.id>=0 AND t.id>=? AND t.id<=? ORDER BY t.id",
             [low, high],
         )
         yield item, rows
@@ -158,10 +169,9 @@ def _sort(rows: list[dict[str, object]], key: str, descending: bool) -> None:
 def _events(sources, low, high, items, params, template, scope):
     rows = []
     first, last, count = None, None, 0
-    columns = ("id", *METRICS)
-    if template == "event":
-        columns += ("action", "address", "size", "stream")
-    for _item, batch in _traces(sources, low, high, items, columns):
+    for _item, batch in _traces(sources, low, high, items, with_sources=template == "event"):
+        if template == "event":
+            sources.events_from_rows(_item, batch)
         for row in batch:
             sources.budget.remaining()
             event = cast(int, row["id"])
@@ -299,8 +309,8 @@ def _lifecycles(sources, items, scope):
 def _stacks(sources, low, high, items, params, scope):
     grouped = {}
     events = ordered = 0
-    for _item, batch in _traces(sources, low, high, items, ("id",)):
-        refs = sources.events(cast(int, r["id"]) for r in batch)
+    for _item, batch in _traces(sources, low, high, items, with_sources=True):
+        refs = sources.events_from_rows(_item, batch)
         for source in refs.values():
             sources.budget.remaining()
             text = source.event.get("callstack")

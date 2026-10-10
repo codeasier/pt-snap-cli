@@ -1,7 +1,7 @@
 """Read-only, batched device/event source lookup over a validated dataset.
 
 No address joins, foreign-event insertion, text-to-frame reconstruction, or retained
-source cache. The caller owns the Context LRU and the entire operation's deadline.
+cross-operation source cache. The caller owns the Context LRU and the entire operation's deadline.
 """
 
 from __future__ import annotations
@@ -140,6 +140,9 @@ class DatasetSourceResolver:
         self.budget = budget
         self.query_count = 0
         self._starts = [s.start_event_id for s in self.device.slices]
+        # Lifetime is one budgeted operation. Each retained source was charged
+        # when fetched; reusing the same object performs no further database work.
+        self._events: dict[int, EventSource] = {}
 
     @property
     def namespace(self) -> str:
@@ -203,12 +206,15 @@ class DatasetSourceResolver:
 
     def events(self, event_ids: Iterable[int]) -> dict[int, EventSource]:
         grouped: dict[int, list[int]] = defaultdict(list)
+        result: dict[int, EventSource] = {}
         for event in sorted(set(event_ids)):
             self.budget.remaining()
+            if event in self._events:
+                result[event] = self._events[event]
+                continue
             item = self.owner(event)
             if item is not None:
                 grouped[item.index].append(event)
-        result: dict[int, EventSource] = {}
         for index, ids in grouped.items():
             item = self.device.slices[index]
             path = self.dataset.root / item.file
@@ -224,32 +230,57 @@ class DatasetSourceResolver:
                 rows = self.read(
                     path, sql + f" WHERE t.id IN ({placeholders}) AND t.id>=0", list(batch)
                 )
-                for row in rows:
-                    event_id = cast(int, row["id"])
-                    text = row.get("callstack")
-                    captured = isinstance(text, str) and text != ""
-                    local_id = cast(int | None, row.pop("callstackId", None))
-                    # V2 IDs select text WITHIN the owning DB; they are provenance,
-                    # not dataset grouping keys. Global interning equivalence uses
-                    # the full captured text, never a shortened display prefix.
-                    identity = (
-                        "text:sha256:"
-                        + hashlib.sha256(
-                            (text if isinstance(text, str) else "").encode("utf-8")
-                        ).hexdigest()
-                    )
-                    result[event_id] = EventSource(
-                        row,
-                        index,
-                        (
-                            f"{self.namespace}:{identity}"
-                            if captured
-                            else f"{self.namespace}:category:missing"
-                        ),
-                        "captured" if captured else "missing",
-                        local_stack_id=local_id,
-                    )
-            self._attach_frames(path, ids, result)
+                result.update(self.events_from_rows(item, rows))
+        self.budget.remaining()
+        return result
+
+    def events_from_rows(
+        self, item: SliceRecord, rows: list[dict[str, object]]
+    ) -> dict[int, EventSource]:
+        """Resolve already charged full event rows without fetching them again.
+
+        Native rows must include joined callstack text and the local callstackId.
+        Frame reads still incur the same work budget as events() source lookup.
+        """
+        result: dict[int, EventSource] = {}
+        for original in rows:
+            self.budget.remaining()
+            event_id = cast(int, original["id"])
+            if event_id in self._events:
+                result[event_id] = self._events[event_id]
+                continue
+            if self.owner(event_id) != item:
+                raise QueryExecutionError("Source event does not belong to the selected shard.")
+            row = dict(original)
+            event_id = cast(int, row["id"])
+            text = row.get("callstack")
+            captured = isinstance(text, str) and text != ""
+            local_id = cast(int | None, row.pop("callstackId", None))
+            # V2 IDs select text WITHIN the owning DB; they are provenance,
+            # not dataset grouping keys. Global interning equivalence uses
+            # the full captured text, never a shortened display prefix.
+            identity = (
+                "text:sha256:"
+                + hashlib.sha256(
+                    (text if isinstance(text, str) else "").encode("utf-8")
+                ).hexdigest()
+            )
+            result[event_id] = EventSource(
+                row,
+                item.index,
+                (
+                    f"{self.namespace}:{identity}"
+                    if captured
+                    else f"{self.namespace}:category:missing"
+                ),
+                "captured" if captured else "missing",
+                local_stack_id=local_id,
+            )
+        fresh = {event: source for event, source in result.items() if event not in self._events}
+        if fresh:
+            self._attach_frames(self.dataset.root / item.file, list(fresh), fresh)
+        self._events.update(fresh)
+        result.update(fresh)
         self.budget.remaining()
         return result
 
