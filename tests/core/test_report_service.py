@@ -1,10 +1,12 @@
 """Tests for peak memory report service."""
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
 
+from pt_snap_cli.core.query_service import QueryService
 from pt_snap_cli.core.report_service import ReportService
 from pt_snap_cli.query.registry import QueryRegistry, _load_all_templates
 
@@ -119,6 +121,56 @@ def test_peak_memory_report_can_exclude_static(report_db: Path) -> None:
     assert "[static] allocEventId=-1, freeEventId=-1" not in {
         row["callstack"] for row in report.callstack_groups
     }
+
+
+@pytest.mark.parametrize("metric", [None, "active", "allocated", "reserved"])
+@pytest.mark.parametrize("bounded", [False, True])
+def test_null_peak_matches_memory_peak_without_attribution(
+    report_db: Path, monkeypatch, metric, bounded: bool
+) -> None:
+    selected_metric = metric or "active"
+    bounds = {"start_id": 2, "end_id": 3} if bounded else {}
+    with closing(sqlite3.connect(report_db)) as conn, conn:
+        where = " WHERE id BETWEEN 2 AND 3" if bounded else ""
+        conn.execute(f"UPDATE trace_entry_0 SET {selected_metric} = NULL{where}")
+    expected = QueryService().execute_query("memory_peak", params=bounds, db_path=report_db)
+    service = ReportService()
+    calls = []
+    execute = service._query_service.execute_query
+
+    def tracked_execute(template, *args, **kwargs):
+        calls.append(template)
+        return execute(template, *args, **kwargs)
+
+    def unexpected_attribution(*args, **kwargs):
+        pytest.fail("A NULL peak must not invent an attribution event")
+
+    monkeypatch.setattr(service._query_service, "execute_query", tracked_execute)
+    monkeypatch.setattr(service, "event_attribution", unexpected_attribution)
+    report = service.peak_memory_report(
+        report_db, **bounds, **({"metric": metric} if metric is not None else {})
+    )
+
+    assert report.peak == expected.rows[0]
+    assert report.event_id is None and report.allocator_gap is None
+    assert report.callstack_groups == [] and report.total_is_exact
+    assert report.effective_params["event_id"] is None
+    assert not report.has_more and not report.truncated
+    assert calls == ["allocator_gap"]
+
+
+@pytest.mark.parametrize("active", [None, 0])
+def test_report_preserves_null_unselected_peak_and_zero_peak(report_db: Path, active) -> None:
+    with closing(sqlite3.connect(report_db)) as conn, conn:
+        conn.execute("UPDATE trace_entry_0 SET active = ?", (active,))
+    expected = QueryService().execute_query("memory_peak", db_path=report_db)
+    metric = "reserved" if active is None else "active"
+    report = ReportService().peak_memory_report(report_db, metric=metric)
+
+    assert report.peak == expected.rows[0]
+    assert report.event_id == (3 if active is None else 1)
+    assert report.allocator_gap is not None
+    assert report.callstack_groups
 
 
 def test_peak_memory_report_rejects_invalid_metric(report_db: Path) -> None:
