@@ -1,7 +1,7 @@
 """Read-only, batched device/event source lookup over a validated dataset.
 
 No address joins, foreign-event insertion, text-to-frame reconstruction, or retained
-source cache. The caller owns the Context LRU and the entire operation's deadline.
+cross-operation source cache. The caller owns the Context LRU and the entire operation's deadline.
 """
 
 from __future__ import annotations
@@ -140,6 +140,11 @@ class DatasetSourceResolver:
         self.budget = budget
         self.query_count = 0
         self._starts = [s.start_event_id for s in self.device.slices]
+        # Lifetime is one budgeted operation. Each retained source was charged
+        # when fetched; reusing the same object performs no further database work.
+        self._events: dict[int, EventSource] = {}
+        self._frames_resolved: set[int] = set()
+        self._frame_schemas: dict[Path, bool] = {}
 
     @property
     def namespace(self) -> str:
@@ -203,12 +208,15 @@ class DatasetSourceResolver:
 
     def events(self, event_ids: Iterable[int]) -> dict[int, EventSource]:
         grouped: dict[int, list[int]] = defaultdict(list)
+        result: dict[int, EventSource] = {}
         for event in sorted(set(event_ids)):
             self.budget.remaining()
+            if type(event) is int and event in self._events:
+                result[event] = self._events[event]
+                continue
             item = self.owner(event)
             if item is not None:
                 grouped[item.index].append(event)
-        result: dict[int, EventSource] = {}
         for index, ids in grouped.items():
             item = self.device.slices[index]
             path = self.dataset.root / item.file
@@ -224,34 +232,71 @@ class DatasetSourceResolver:
                 rows = self.read(
                     path, sql + f" WHERE t.id IN ({placeholders}) AND t.id>=0", list(batch)
                 )
-                for row in rows:
-                    event_id = cast(int, row["id"])
-                    text = row.get("callstack")
-                    captured = isinstance(text, str) and text != ""
-                    local_id = cast(int | None, row.pop("callstackId", None))
-                    # V2 IDs select text WITHIN the owning DB; they are provenance,
-                    # not dataset grouping keys. Global interning equivalence uses
-                    # the full captured text, never a shortened display prefix.
-                    identity = (
-                        "text:sha256:"
-                        + hashlib.sha256(
-                            (text if isinstance(text, str) else "").encode("utf-8")
-                        ).hexdigest()
-                    )
-                    result[event_id] = EventSource(
-                        row,
-                        index,
-                        (
-                            f"{self.namespace}:{identity}"
-                            if captured
-                            else f"{self.namespace}:category:missing"
-                        ),
-                        "captured" if captured else "missing",
-                        local_stack_id=local_id,
-                    )
-            self._attach_frames(path, ids, result)
+                result.update(self.events_from_rows(item, rows, with_frames=False))
+        frame_groups: dict[int, list[int]] = defaultdict(list)
+        for event, source in result.items():
+            frame_groups[source.slice_index].append(event)
+        for index, ids in frame_groups.items():
+            self._ensure_frames(self.device.slices[index], ids)
         self.budget.remaining()
-        return result
+        return {event: self._events[event] for event in result}
+
+    def events_from_rows(
+        self, item: SliceRecord, rows: list[dict[str, object]], *, with_frames: bool = True
+    ) -> dict[int, EventSource]:
+        """Resolve already charged full event rows without fetching them again.
+
+        Native rows must include joined callstack text and the local callstackId.
+        Frame reads still incur the same work budget as events() source lookup.
+        Sources remain cached until this resolver operation ends. Serialized
+        value accounting excludes Python object overhead and is not an RSS cap.
+        """
+        result: dict[int, EventSource] = {}
+        for original in rows:
+            self.budget.remaining()
+            event_id = cast(int, original["id"])
+            if self.owner(event_id) != item:
+                raise QueryExecutionError("Source event does not belong to the selected shard.")
+            if event_id in self._events:
+                result[event_id] = self._events[event_id]
+                continue
+            row = dict(original)
+            event_id = cast(int, row["id"])
+            text = row.get("callstack")
+            captured = isinstance(text, str) and text != ""
+            local_id = cast(int | None, row.pop("callstackId", None))
+            # V2 IDs select text WITHIN the owning DB; they are provenance,
+            # not dataset grouping keys. Global interning equivalence uses
+            # the full captured text, never a shortened display prefix.
+            identity = (
+                "text:sha256:"
+                + hashlib.sha256(
+                    (text if isinstance(text, str) else "").encode("utf-8")
+                ).hexdigest()
+            )
+            result[event_id] = EventSource(
+                row,
+                item.index,
+                (
+                    f"{self.namespace}:{identity}"
+                    if captured
+                    else f"{self.namespace}:category:missing"
+                ),
+                "captured" if captured else "missing",
+                local_stack_id=local_id,
+            )
+        fresh = {event: source for event, source in result.items() if event not in self._events}
+        self._events.update(fresh)
+        if with_frames:
+            self._ensure_frames(item, list(result))
+        self.budget.remaining()
+        return {event: self._events[event] for event in result}
+
+    def _ensure_frames(self, item: SliceRecord, ids: list[int]) -> None:
+        pending = [event for event in ids if event not in self._frames_resolved]
+        if pending:
+            self._attach_frames(self.dataset.root / item.file, pending, self._events)
+            self._frames_resolved.update(pending)
 
     def _attach_frames(self, path: Path, ids: list[int], sources: dict[int, EventSource]) -> None:
         # This is a NEW, explicit read contract, not a guessed original-producer
@@ -266,14 +311,19 @@ class DatasetSourceResolver:
                 ("frameJson", "TEXT", 0),
             ],
         }
-        for table, columns in expected.items():
-            kind = self.read(path, "SELECT type FROM sqlite_master WHERE name=?", [table])
-            schema = self.read(path, f'PRAGMA table_info("{table}")')
-            if (
-                kind != [{"type": "table"}]
-                or [(r["name"], r["type"], r["pk"]) for r in schema] != columns
-            ):
-                return  # Unknown/absent schemas never imply precision.
+        if path not in self._frame_schemas:
+            self._frame_schemas[path] = True
+            for table, columns in expected.items():
+                kind = self.read(path, "SELECT type FROM sqlite_master WHERE name=?", [table])
+                schema = self.read(path, f'PRAGMA table_info("{table}")')
+                if (
+                    kind != [{"type": "table"}]
+                    or [(r["name"], r["type"], r["pk"]) for r in schema] != columns
+                ):
+                    self._frame_schemas[path] = False
+                    break  # Unknown/absent schemas never imply precision.
+        if not self._frame_schemas[path]:
+            return
         for start in range(0, len(ids), SOURCE_BATCH_SIZE):
             batch = ids[start : start + SOURCE_BATCH_SIZE]
             placeholders = ",".join("?" for _ in batch)

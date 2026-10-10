@@ -73,15 +73,23 @@ def _traces(
     low: int,
     high: int,
     items: list[SliceRecord],
-    columns: tuple[str, ...],
+    columns: tuple[str, ...] = ("id", *METRICS),
+    *,
+    with_sources: bool = False,
 ):
-    # Each built-in supplies only the fields it actually consumes. In particular,
-    # inline stack text must not spend the byte budget of a counter-only query.
-    projection = ", ".join(f'"{column}"' for column in columns)
+    projection = ", ".join(f't."{column}"' for column in columns)
     for item in items:
+        trace = f'"trace_entry_{sources.device.device_id}"'
+        if with_sources:
+            if sources.dataset.callstack_layout == "v2":
+                sql = f"SELECT {projection}, t.callstackId, cs.callstack FROM {trace} t LEFT JOIN callstack cs ON t.callstackId=cs.id"
+            else:
+                sql = f"SELECT {projection}, t.callstack FROM {trace} t"
+        else:
+            sql = f"SELECT {projection} FROM {trace} t"
         rows = sources.read(
             sources.dataset.root / item.file,
-            f'SELECT {projection} FROM "trace_entry_{sources.device.device_id}" WHERE id>=0 AND id>=? AND id<=? ORDER BY id',
+            sql + " WHERE t.id>=0 AND t.id>=? AND t.id<=? ORDER BY t.id",
             [low, high],
         )
         yield item, rows
@@ -161,7 +169,10 @@ def _events(sources, low, high, items, params, template, scope):
     columns = ("id", *METRICS)
     if template == "event":
         columns += ("action", "address", "size", "stream")
-    for _item, batch in _traces(sources, low, high, items, columns):
+    with_sources = template == "event" and params["order_by"] == "callstack"
+    for _item, batch in _traces(sources, low, high, items, columns, with_sources=with_sources):
+        if with_sources:
+            sources.events_from_rows(_item, batch, with_frames=False)
         for row in batch:
             sources.budget.remaining()
             event = cast(int, row["id"])
@@ -178,13 +189,8 @@ def _events(sources, low, high, items, params, template, scope):
         "last_event_id": last,
         "real_event_count": count,
     }
-    if template == "event":
-        # Only returned events need formatted text; resolve separately after the
-        # global window below. `order_by=callstack` requires text BEFORE sorting.
-        if params["order_by"] == "callstack":
-            refs = sources.events(cast(int, r["id"]) for r in rows)
-            for row in rows:
-                row["callstack"] = refs[cast(int, row["id"])].event.get("callstack")
+    # callstack sorting already has joined text; resolving sources here would
+    # eagerly fetch ordered frames that only the returned page needs.
     _sort(rows, params["order_by"], params["order_dir"] == "DESC")
     return rows
 
@@ -299,8 +305,15 @@ def _lifecycles(sources, items, scope):
 def _stacks(sources, low, high, items, params, scope):
     grouped = {}
     events = ordered = 0
-    for _item, batch in _traces(sources, low, high, items, ("id",)):
-        refs = sources.events(cast(int, r["id"]) for r in batch)
+    for _item, batch in _traces(
+        sources,
+        low,
+        high,
+        items,
+        ("id", *METRICS, "action", "address", "size", "stream"),
+        with_sources=True,
+    ):
+        refs = sources.events_from_rows(_item, batch)
         for source in refs.values():
             sources.budget.remaining()
             text = source.event.get("callstack")
