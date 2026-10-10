@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import sqlite3
-from contextlib import closing
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from typing import cast
 
 from pt_snap_cli.core.dataset_sources import DatasetSourceResolver, EventSource
+from pt_snap_cli.core.errors import QueryExecutionError
 from pt_snap_cli.core.models import QueryResult
 from pt_snap_cli.core.stack_summary import summarize_stacks
 
@@ -144,10 +146,7 @@ def event_attribution(
         # Use the same SQLite arithmetic/ROUND implementation as standalone SQL.
         # A Decimal conversion of a binary float changes some near-half values.
         # This connection evaluates scalars only: no source reads or merge tables.
-        with (
-            closing(sqlite3.connect(":memory:")) as connection,
-            closing(connection.cursor()) as cursor,
-        ):
+        with _rounding_cursor(sources) as cursor:
             for row in selected:
                 sources.budget.remaining()
                 row["percent_of_active_blocks"] = cursor.execute(
@@ -255,7 +254,7 @@ def _groups(
     # Reuse one scalar-only engine for this pass and close it on timeout as well
     # as success. Derived values do not add source IO; final output is still
     # charged by event_attribution's existing consume(selected) boundary.
-    with closing(sqlite3.connect(":memory:")) as connection, closing(connection.cursor()) as cursor:
+    with _rounding_cursor(sources) as cursor:
         for row in rows:
             sources.budget.remaining()
             row["size_gib"], row["requested_gib"] = cursor.execute(
@@ -277,3 +276,17 @@ def summarize_dataset_stacks(rows: list[dict[str, object]], budget: int) -> None
     for row, (identity, kind) in zip(rows, identities, strict=True):
         row["stack_id"] = identity
         row["stack_kind"] = kind
+
+
+@contextmanager
+def _rounding_cursor(sources: DatasetSourceResolver) -> Iterator[sqlite3.Cursor]:
+    """Keep scalar arithmetic failures on the same domain boundary as shard SQL."""
+    try:
+        with (
+            closing(sqlite3.connect(":memory:")) as connection,
+            closing(connection.cursor()) as cursor,
+        ):
+            yield cursor
+    except (sqlite3.Error, OverflowError) as exc:
+        sources.budget.remaining()  # Preserve a deadline that expired during SQLite work.
+        raise QueryExecutionError(str(exc)) from exc

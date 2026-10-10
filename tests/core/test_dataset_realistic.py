@@ -11,12 +11,14 @@ from contextlib import closing
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 from pt_snap_cli.api import SnapshotAnalyzer
+from pt_snap_cli.cli import app
 from pt_snap_cli.core import dataset_attribution
 from pt_snap_cli.core.dataset_contract import validate_dataset
 from pt_snap_cli.core.dataset_sources import QueryBudget
-from pt_snap_cli.core.errors import QueryTimeoutError
+from pt_snap_cli.core.errors import QueryExecutionError, QueryTimeoutError
 from pt_snap_cli.core.import_service import ImportService
 from pt_snap_cli.core.models import ImportOptions
 from pt_snap_cli.core.query_service import QueryService
@@ -181,6 +183,37 @@ def test_half_near_half_and_large_values_match_actual_sqlite_rounding(tmp_path, 
         if sizes[0] == 8 * 1024 * 1024:
             first = next(r for r in actual if r["size_bytes"] == sizes[0])
             assert first["size_gib"] == first["requested_gib"] == 0.007813
+    assert hashes(tmp_path) == before
+
+
+@pytest.mark.parametrize("same_stack", [True, False], ids=["gib", "percentages"])
+def test_rounding_int64_aggregate_overflow_is_a_domain_error(tmp_path, same_stack):
+    root, single = rounding_case(tmp_path, (1, 1))
+    for path in [single, *root.glob("device_0/*.db")]:
+        with closing(sqlite3.connect(path)) as connection, connection:
+            connection.execute("UPDATE block_0 SET size=?, requestedSize=?", (2**62, 2**62))
+            if same_stack:
+                connection.execute("UPDATE trace_entry_0 SET callstack='same'")
+    validate_dataset(root)
+    before = hashes(tmp_path)
+    for path in (root, single):
+        with SnapshotAnalyzer(path) as analyzer, pytest.raises(QueryExecutionError):
+            analyzer.execute_query("active_memory_callstack_at_event", {"event_id": 1, "top_n": -1})
+        result = CliRunner().invoke(
+            app,
+            [
+                "query",
+                str(path),
+                "--template-use",
+                "active_memory_callstack_at_event",
+                "--params",
+                '{"event_id": 1, "top_n": -1}',
+                "--json",
+            ],
+        )
+        assert result.exit_code == 1 and result.stdout == ""
+        assert json.loads(result.stderr)["error"]["code"] == "QUERY_FAILED"
+        assert "Traceback" not in result.stderr
     assert hashes(tmp_path) == before
 
 
