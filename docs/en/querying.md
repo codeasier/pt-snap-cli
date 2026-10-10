@@ -161,7 +161,8 @@ check cancellation. Individual filesystem calls are not OS-level hard-preempted.
 `PT_SNAP_DATASET_CACHE=immutable` explicitly opts into metadata-only validation reuse
 only when the caller guarantees immutable finalized files and reliable filesystem
 change times; see [dataset validation and cache contracts](sharded-snapshotdb.md).
-No temporary merge DB, repair or artifact write.
+Source artifacts are never repaired or written. A large lifecycle query may create a
+private temporary derived database as described below.
 
 The compatible exporter defaults to **500000 real events per device shard**.
 That storage capacity is separate from the **100000-row / 64-MiB query work
@@ -180,16 +181,32 @@ formatted text is not their identity. Block/leak/lifetime reductions use read-on
 attached shards for proof, conflicts and latest observations before pagination;
 the attachment limit (normally ten) counts selected observation shards plus any
 other shards owning their allocation/free references. Slice queries discover those
-proof owners before filtering or paging; exceeding the limit retains the budgeted
-source-reading path. SQLite internal scans and temporary space are not bounded by
-the fetched-row/byte budget. Summary and page (or lifetime buckets) each evaluate
-the full lifecycle CTE, sharing the same deadline. No intermediate merged database
-is created.
+proof owners before filtering or paging. Above the limit, a query-private temporary
+SQLite database retains only distinct event references and one narrow state row per
+lifecycle. Sources are attached read-only one at a time: reference ownership/actions
+are proved first, then all observations are reduced and conflicts checked before
+filters, totals or pagination. Only returned candidates hydrate complete source events.
+The small attached-set path is unchanged.
+
+The temporary directory is private (0700), its derived database is created with 0600
+permissions, and normal completion, errors and cancellation close connections and
+remove the directory. A killed process or failed filesystem cleanup can leave private
+residue; this is not secure erasure. Its main database page ceiling defaults to
+512 MiB, configurable through the internal `QueryBudget.max_scratch_db_bytes` field from
+4096 bytes to 4 GiB; zero disables this path and retains the original budgeted source
+reader. This is not a new CLI option. Exceeding the page ceiling or running out of
+storage rejects the entire operation. The ceiling does **not** bound rollback journals,
+SQLite sorting files, total temporary space or RSS. Main/source page caches request
+2 MiB each; these are cache targets, not memory guarantees. Internal SQL scans and
+temporary work are not counted as Python-fetched rows. All stages, summary/page or
+lifetime buckets and source hydration share the same diminishing deadline.
 
 A million-event dataset can therefore answer aggregates and small pages within the
 default work budget. Use `-n 5` or an explicit finite `limit` for large row-returning
 queries. Unlimited output, large offsets, many distinct stack groups, ordered-frame
-reads or the attachment-limit fallback can still exceed the budget and fail honestly.
+reads or a disabled temporary reducer can still exceed the fetched budget and fail
+honestly. Many-lifecycle reductions can independently exceed the derived-page limit
+or deadline.
 The limit counts rows fetched into Python and serialized output, not internal SQL
 scans, SQLite sorting space or total process memory.
 

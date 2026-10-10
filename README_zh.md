@@ -62,6 +62,8 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 终片泄漏候选及 `report peak-memory` 共用有界 core 语义；数据集仍不支持自定义 SQL/override。
 详见[全局支持矩阵](docs/zh/querying.md#数据集全局内建支持p3)及
 [数据集定点归因与覆盖](docs/zh/querying.md#数据集定点事件归因)。
+超过 SQLite 附加上限的生命周期查询使用私有、限制主库页数空间的临时派生数据库，源分片
+保持只读；存储限额、清理及内存边界见全局支持矩阵。
 
 显式 `pt-snap import snapshot.pkl --format msinsight --json` 生成
 `snapshot.pkl.msinsight/`，对齐固定 msinsight 版本的**同一原始 pickle + 邻接缓存**入口。

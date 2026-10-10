@@ -68,6 +68,9 @@ class QueryBudget:
     max_work_bytes: int = 64 * 1024 * 1024
     work_rows: int = 0
     work_bytes: int = 0
+    # Per-operation derived database pages, not total SQLite temp space or RSS.
+    # Zero retains the bounded in-Python fallback. Local/internal API only.
+    max_scratch_db_bytes: int = 512 * 1024 * 1024
 
     def consume(self, rows: list[dict[str, object]]) -> None:
         """Bound cumulative fetched rows/serialized values, not merely output.

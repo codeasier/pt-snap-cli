@@ -71,6 +71,9 @@ canonical stack statistics, deduplicated lifecycles, terminal leak candidates an
 `report peak-memory` share bounded core semantics; custom SQL/overrides remain unsupported
 on datasets. See the [global support matrix](docs/en/querying.md#dataset-global-built-in-support-p3)
 and [dataset attribution and coverage](docs/en/querying.md#dataset-point-event-attribution).
+Lifecycle queries exceeding SQLite's attachment limit use a private, page-limited
+temporary derived database; source shards stay read-only. See the global support
+matrix for storage limits, cleanup and memory caveats.
 
 Explicit `pt-snap import snapshot.pkl --format msinsight --json` produces
 `snapshot.pkl.msinsight/` for the fixed msinsight revision's **same original

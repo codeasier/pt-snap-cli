@@ -1,4 +1,4 @@
-"""Exact built-in global reductions, without a temporary merge database.
+"""Exact built-in global reductions, with bounded fetched work.
 
 Shard SQL reduces counters, groups, and candidate windows before Python merging.
 Fetched work is cumulatively bounded by QueryBudget, including source hydration
