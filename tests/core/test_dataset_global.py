@@ -549,3 +549,39 @@ def test_cli_api_report_global_parity_and_range_options(tmp_path):
     result = json.loads(cli.stdout)
     assert result["scope"]["requested_range"] == {"first_event_id": 4, "last_event_id": 15}
     assert result["budget_scope"] == "report_composition" and result["timeout_s"] == 10
+
+
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize("direction", ["ASC", "DESC"])
+def test_callstack_sorted_event_page_matches_standalone(tmp_path, native, direction):
+    if native:
+        request = dataclasses.replace(source_options(tmp_path, multiple=True), set_focus=False)
+        importer = ImportService()
+        root = importer.import_snapshot(request).db_path
+        single = importer.import_snapshot(
+            dataclasses.replace(request, events_per_slice=None)
+        ).db_path
+    else:
+        root = case(tmp_path)
+        single = standalone(root, tmp_path)
+    # Standalone includes synthetic negative boundary IDs; compare real events.
+    params = {
+        "min_id": 7 if native else 0,
+        "order_by": "callstack",
+        "order_dir": direction,
+        "offset": 1,
+        "limit": 3,
+    }
+    before = hashes(root)
+    with SnapshotAnalyzer(root) as dataset, SnapshotAnalyzer(single) as reference:
+        for device in ((0, 1) if native else (0,)):
+            actual = dataset.execute_query("event", params, device_id=device, exact_total=True)
+            expected = reference.execute_query("event", params, device_id=device, exact_total=True)
+            assert actual["rows"]
+            keys = list(expected["rows"][0])
+            assert projected(actual["rows"], keys) == expected["rows"]
+            assert all("callstackId" not in row for row in actual["rows"])
+            assert actual["total"] == expected["total"]
+            assert actual["has_more"] == expected["has_more"]
+            assert actual["truncated"] == expected["truncated"]
+    assert hashes(root) == before

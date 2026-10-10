@@ -129,6 +129,39 @@ def test_report_completeness_and_same_event_coverage(
         assert ("Increase --limit" in result.stdout) == partial
 
 
+@pytest.mark.parametrize("bounded", [False, True])
+@pytest.mark.parametrize("json_output", [True, False])
+def test_default_report_has_no_attribution_for_null_active_peak(
+    attribution_db: Path, bounded: bool, json_output: bool
+) -> None:
+    bounds = {"start_id": 2, "end_id": 3} if bounded else {}
+    with closing(sqlite3.connect(attribution_db)) as conn, conn:
+        where = " WHERE id BETWEEN 2 AND 3" if bounded else ""
+        conn.execute(f"UPDATE trace_entry_0 SET active = NULL{where}")
+    args = ["report", "peak-memory", str(attribution_db)]
+    if bounded:
+        args += ["--start-id", "2", "--end-id", "3"]
+    result = CliRunner().invoke(app, args + (["--json"] if json_output else []))
+    assert result.exit_code == 0, result.output
+    if json_output:
+        payload = json.loads(result.stdout)
+        with SnapshotAnalyzer(attribution_db) as analyzer:
+            peak = analyzer.execute_query("memory_peak", params=bounds)
+        assert payload["peak"] == peak["rows"][0]
+        assert payload["metric"] == "active"
+        assert payload["event_id"] is None and payload["allocator_gap"] is None
+        assert payload["callstack_groups"] == []
+        assert payload["included_bytes"] == 0
+        assert payload["active_bytes_at_event"] is None
+        assert payload["coverage_percent"] is None
+        assert payload["effective_params"]["event_id"] is None
+        assert payload["total_is_exact"] is True
+        assert payload["has_more"] is False and payload["truncated"] is False
+    else:
+        assert "Attribution: unavailable (no peak event)" in result.stdout
+        assert "No active memory callstack groups found" in result.stdout
+
+
 @pytest.mark.parametrize("state", ["empty", "null", "zero"])
 @pytest.mark.parametrize("json_output", [True, False])
 def test_report_unknown_coverage(attribution_db: Path, state: str, json_output: bool) -> None:

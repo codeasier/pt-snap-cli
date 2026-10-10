@@ -101,7 +101,7 @@ def test_actual_range_precedes_filters_and_empty_window_is_exact(tmp_path):
     }
 
 
-def run_resolved(resolved, template, params=None, budget=None):
+def run_resolved(resolved, template, params=None, budget=None, slice_index=None):
     config = get_query(template)
     with closing(ContextCache()) as cache:
         source = DatasetSourceResolver(
@@ -113,7 +113,7 @@ def run_resolved(resolved, template, params=None, budget=None):
             config.validate_params(params or {}),
             5,
             True,
-            None,
+            slice_index,
             config.semantics_version,
         )
 
@@ -131,6 +131,126 @@ def test_attachment_ceiling_fallback_preserves_lifecycle_results(tmp_path, monke
     assert {k: v for k, v in first.items() if k != "source_queries"} == {
         k: v for k, v in second.items() if k != "source_queries"
     }
+
+
+@pytest.mark.parametrize("template", ["block", "freed_block_lifetime"])
+@pytest.mark.parametrize("slice_index", [0, 3, 7])
+def test_slice_scope_pushdown_matches_fallback(tmp_path, monkeypatch, template, slice_index):
+    resolved = DatasetResolver().inspect(case(tmp_path, devices=(0,)))
+    pushed = run_resolved(resolved, template, slice_index=slice_index)
+    monkeypatch.setattr(dataset_lifecycle_sql, "_attachment_limit", lambda: 0)
+    fallback = run_resolved(resolved, template, slice_index=slice_index)
+    assert pushed.rows == fallback.rows
+    assert pushed.total == fallback.total
+    assert pushed.has_more == fallback.has_more
+    first, second = pushed.scope["source_coverage"], fallback.scope["source_coverage"]
+    assert {k: v for k, v in first.items() if k != "source_queries"} == {
+        k: v for k, v in second.items() if k != "source_queries"
+    }
+    assert pushed.scope["slice_indices"] == [slice_index]
+
+
+@pytest.mark.parametrize("attachment_limit", [0, 10])
+def test_slice_leak_scope_is_rejected_before_pushdown_or_fallback(
+    tmp_path, monkeypatch, attachment_limit
+):
+    root = make_dataset(tmp_path / "slice-leak", devices=(0,))
+    monkeypatch.setattr(dataset_lifecycle_sql, "_attachment_limit", lambda: attachment_limit)
+    with closing(QueryService()) as service:
+        with pytest.raises(QueryExecutionError, match="requires terminal dataset scope"):
+            service.execute_query("leak_detection", db_path=root, slice_index=0)
+
+
+def test_slice_attaches_only_observations_and_referenced_proof_owners(tmp_path, monkeypatch):
+    root = make_dataset(tmp_path / "many-slices", devices=(0,), slices=12)
+    with closing(sqlite3.connect(root / "device_0/slice_00011.db")) as conn, conn:
+        conn.executemany(
+            "INSERT INTO block_0 VALUES (?,?,?,?,?,?,?)",
+            [(0, 100, 8, 8, -1, 0, 2), (-1, 200, 8, 8, 1, -1, -1), (1, 300, 8, 8, 1, 1, -1)],
+        )
+    with closing(sqlite3.connect(root / "device_0/slice_00000.db")) as conn, conn:
+        conn.execute("UPDATE trace_entry_0 SET action=5 WHERE id=1")
+    with closing(sqlite3.connect(root / "device_0/slice_00001.db")) as conn, conn:
+        conn.execute("UPDATE trace_entry_0 SET action=6 WHERE id=2")
+    resolved = DatasetResolver().inspect(root)
+    attached = []
+    original = dataset_lifecycle_sql._AttachedSources.__enter__
+
+    def observed(database):
+        result = original(database)
+        attached.append(
+            [
+                row[1]
+                for row in database.connection.execute("PRAGMA database_list")
+                if row[1] != "main"
+            ]
+        )
+        return result
+
+    monkeypatch.setattr(dataset_lifecycle_sql._AttachedSources, "__enter__", observed)
+    monkeypatch.setattr(dataset_lifecycle_sql, "_attachment_limit", lambda: 3)
+    pushed = run_resolved(resolved, "block", slice_index=11)
+    assert attached == [["s0", "s1", "s11"]]
+    row = next(row for row in pushed.rows if row["id"] == 0)
+    assert row["allocation_source"]["slice_index"] == 0
+    assert row["free_source"]["slice_index"] == 1
+    monkeypatch.setattr(dataset_lifecycle_sql, "_attachment_limit", lambda: 2)
+    fallback = run_resolved(resolved, "block", slice_index=11)
+    assert attached == [["s0", "s1", "s11"]]
+    assert pushed.rows == fallback.rows
+    assert pushed.total == fallback.total == 3
+
+
+def test_empty_slice_does_not_attach_unreferenced_members(tmp_path, monkeypatch):
+    root = make_dataset(tmp_path / "empty-slice", devices=(0,), slices=12)
+    resolved = DatasetResolver().inspect(root)
+    monkeypatch.setattr(dataset_lifecycle_sql, "_attachment_limit", lambda: 1)
+    with closing(ContextCache()) as cache:
+        sources = DatasetSourceResolver(resolved, 0, cache, QueryBudget(None, time.monotonic()))
+        assert dataset_lifecycle_sql._required_slices(sources, [sources.device.slices[11]], 1) == [
+            sources.device.slices[11]
+        ]
+    assert run_resolved(resolved, "block", slice_index=11).rows == []
+
+
+@pytest.mark.parametrize("template", ["event", "block", "leak_detection"])
+@pytest.mark.parametrize("value", [-(2**63), 2**63 - 1])
+def test_int64_filter_endpoints_are_accepted(tmp_path, template, value):
+    root = case(tmp_path, devices=(0,))
+    with closing(QueryService()) as service:
+        result = service.execute_query(
+            template,
+            {"min_allocated" if template == "event" else "min_size": value},
+            db_path=root,
+            max_rows=1,
+        )
+    assert result.returned == (1 if value < 0 else 0)
+
+
+@pytest.mark.parametrize("template", ["event", "block", "leak_detection"])
+@pytest.mark.parametrize("value", [-(2**63) - 1, 2**63])
+def test_out_of_int64_filters_raise_domain_errors(tmp_path, template, value):
+    root = make_dataset(tmp_path / "overflow", devices=(0,))
+    with closing(QueryService()) as service:
+        with pytest.raises(QueryExecutionError):
+            service.execute_query(
+                template,
+                {"min_allocated" if template == "event" else "min_size": value},
+                db_path=root,
+            )
+
+
+@pytest.mark.parametrize("template", ["event", "block"])
+@pytest.mark.parametrize("offset", [2**63 - 2, 2**63 - 1, 2**63])
+def test_candidate_limit_int64_boundary(tmp_path, template, offset):
+    root = make_dataset(tmp_path / "offset", devices=(0,))
+    with closing(QueryService()) as service:
+        if offset + 1 <= 2**63 - 1:
+            result = service.execute_query(template, {"offset": offset, "limit": 1}, db_path=root)
+            assert result.rows == []
+        else:
+            with pytest.raises(QueryExecutionError):
+                service.execute_query(template, {"offset": offset, "limit": 1}, db_path=root)
 
 
 def last_observation(root, block_id):

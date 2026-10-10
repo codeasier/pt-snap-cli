@@ -110,10 +110,14 @@ class ReportService:
             start_dir=start_dir,
         )
         gap = gap_result.rows[0] if gap_result.rows else None
-        # allocator_gap selects the same independent, earliest-tie peak events.
-        # Keep the report's peak object at the historical six-field contract.
+        # allocator_gap selects the same independent, earliest-tie peak events
+        # for non-NULL counters. Preserve memory_peak's six-field contract,
+        # including NULL event IDs when a standalone counter is entirely NULL.
         peak = {field: gap.get(field) for field in _PEAK_FIELDS} if gap else {}
-        # Peak event IDs remain INTEGER (or NULL for an empty trace).
+        for peak_metric, event_field in _EVENT_ID_BY_METRIC.items():
+            if peak and peak[f"peak_{peak_metric}"] is None:
+                peak[event_field] = None
+        # No attribution event exists for an empty trace or a NULL peak.
         event_id = cast(int | None, peak.get(_EVENT_ID_BY_METRIC[metric]))
         attribution_params: dict[str, object] = {
             "event_id": event_id,

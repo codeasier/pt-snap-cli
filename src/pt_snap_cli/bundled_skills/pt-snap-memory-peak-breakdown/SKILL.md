@@ -244,19 +244,25 @@ pt-snap report peak-memory "<DB>" --device <DEVICE> --metric reserved --include-
 
 Keep the JSON in the response. The report composes these product templates:
 
-- `memory_peak` finds the active, allocated, and reserved peak values and event
-  IDs.
-- `allocator_gap` returns each metric's counters and gaps at that same metric's
-  peak event.
+- `allocator_gap` runs once to find the active, allocated, and reserved peak
+  values and event IDs, plus each metric's same-event counters and gaps. The
+  report projects its six-field `peak` section from this result, preserving
+  `memory_peak` semantics without running a separate `memory_peak` query.
 - `active_memory_callstack_at_event` groups blocks active at the report's
   selected metric event by allocation callstack.
 
-From the three results, record each metric's own peak value and event ID. Peak
-ties resolve to the earliest event ID. Record same-event counters and gaps from
+Both steps share one resolved database/device, budget, and dataset generation.
+If the selected metric has no peak value or event ID, the report returns empty
+attribution without running the attribution query; never invent an event for an
+empty range or an all-NULL counter. Other metrics can still have valid peaks.
+
+From the three metric reports, record each metric's own peak value and event ID.
+Peak ties resolve to the earliest event ID. Record same-event counters and gaps from
 `allocator_gap`; never subtract independently occurring peak values as if they
-occurred together. The repeated `peak` and `allocator_gap` sections should agree
-across all three reports; the metric-specific `event_id` and `callstack_groups`
-are the selected-event breakdown.
+occurred together. The repeated `peak` sections should agree across all three
+reports. For metrics with a valid peak, the `allocator_gap` sections also agree;
+an empty-attribution report has `allocator_gap: null`. The metric-specific
+`event_id` and `callstack_groups` are the selected-event breakdown.
 
 Read report `has_more`, `truncated`, `total_is_exact`, and `effective_params`
 before claiming a complete composition. A full dynamic `top_n` window means
