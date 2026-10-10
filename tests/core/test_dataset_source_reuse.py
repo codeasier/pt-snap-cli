@@ -200,3 +200,29 @@ def test_callstack_sort_loads_frames_only_for_returned_page(tmp_path):
     assert result.rows[0]["frames"] == [{"name": "f"}]
     # SQL pushdown may reduce trace work; only one returned frame is hydrated.
     assert budget.work_rows <= 610
+
+
+@pytest.mark.parametrize("invalid", [True, 1.0])
+def test_cached_event_lookup_preserves_exact_integer_validation(tmp_path, invalid):
+    root = dataset(tmp_path, 4)
+    resolved = DatasetResolver().inspect(root)
+    with closing(ContextCache()) as cache:
+        sources = DatasetSourceResolver(resolved, 0, cache, QueryBudget(None, time.monotonic()))
+        assert sources.events([invalid]) == {}
+        expected = sources.events([1])
+        reads = sources.query_count
+        assert sources.events([invalid]) == {}
+        assert sources.events([1]) == expected
+        assert sources.query_count == reads
+
+
+@pytest.mark.parametrize("warm_cache", [False, True])
+def test_preloaded_rows_reject_wrong_shard_even_when_cached(tmp_path, warm_cache):
+    root = make_dataset(tmp_path / "dataset", devices=(0,), slices=2)
+    resolved = DatasetResolver().inspect(root)
+    with closing(ContextCache()) as cache:
+        sources = DatasetSourceResolver(resolved, 0, cache, QueryBudget(None, time.monotonic()))
+        if warm_cache:
+            assert 0 in sources.events([0])
+        with pytest.raises(QueryExecutionError, match="does not belong"):
+            sources.events_from_rows(sources.device.slices[1], [{"id": 0}])

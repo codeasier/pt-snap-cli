@@ -164,8 +164,13 @@ per-shard groups before global thresholds; averages use summed sizes and counts.
 Canonical ordered-frame statistics retain the bounded source-reading path because
 formatted text is not their identity. Block/leak/lifetime reductions use read-only
 attached shards for proof, conflicts and latest observations before pagination;
-when the device exceeds SQLite's attachment limit (normally ten), they retain the
-budgeted source-reading path. No intermediate merged database is created.
+the attachment limit (normally ten) counts selected observation shards plus any
+other shards owning their allocation/free references. Slice queries discover those
+proof owners before filtering or paging; exceeding the limit retains the budgeted
+source-reading path. SQLite internal scans and temporary space are not bounded by
+the fetched-row/byte budget. Summary and page (or lifetime buckets) each evaluate
+the full lifecycle CTE, sharing the same deadline. No intermediate merged database
+is created.
 
 A million-event dataset can therefore answer aggregates and small pages within the
 default work budget. Use `-n 5` or an explicit finite `limit` for large row-returning

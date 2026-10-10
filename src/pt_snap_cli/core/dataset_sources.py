@@ -211,7 +211,7 @@ class DatasetSourceResolver:
         result: dict[int, EventSource] = {}
         for event in sorted(set(event_ids)):
             self.budget.remaining()
-            if event in self._events:
+            if type(event) is int and event in self._events:
                 result[event] = self._events[event]
                 continue
             item = self.owner(event)
@@ -248,16 +248,18 @@ class DatasetSourceResolver:
 
         Native rows must include joined callstack text and the local callstackId.
         Frame reads still incur the same work budget as events() source lookup.
+        Sources remain cached until this resolver operation ends. Serialized
+        value accounting excludes Python object overhead and is not an RSS cap.
         """
         result: dict[int, EventSource] = {}
         for original in rows:
             self.budget.remaining()
             event_id = cast(int, original["id"])
+            if self.owner(event_id) != item:
+                raise QueryExecutionError("Source event does not belong to the selected shard.")
             if event_id in self._events:
                 result[event_id] = self._events[event_id]
                 continue
-            if self.owner(event_id) != item:
-                raise QueryExecutionError("Source event does not belong to the selected shard.")
             row = dict(original)
             event_id = cast(int, row["id"])
             text = row.get("callstack")

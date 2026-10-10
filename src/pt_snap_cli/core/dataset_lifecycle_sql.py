@@ -2,7 +2,10 @@
 
 No rows are copied to a merge database. SQLite performs proof, conflict checks,
 latest-observation selection and page ranking; only aggregate/page rows cross the
-Python boundary. Larger shard sets keep the budgeted general implementation.
+Python boundary. The fetched-row/byte budget does not bound SQLite's internal
+scans or temporary space. Summary and page/buckets each evaluate the full CTE;
+all statements share the operation deadline. Larger required shard sets keep
+the budgeted general implementation.
 """
 
 from __future__ import annotations
@@ -13,14 +16,18 @@ import time
 from contextlib import closing
 from typing import cast
 
+from pt_snap_cli.core.dataset_contract import SliceRecord
 from pt_snap_cli.core.dataset_files import require_readonly_member
 from pt_snap_cli.core.dataset_sources import DatasetSourceResolver
 from pt_snap_cli.core.errors import QueryExecutionError
 
 
 class _AttachedSources:
-    def __init__(self, sources: DatasetSourceResolver) -> None:
+    def __init__(
+        self, sources: DatasetSourceResolver, items: list[SliceRecord] | None = None
+    ) -> None:
         self.sources = sources
+        self.items = sources.device.slices if items is None else items
         remaining = sources.budget.remaining()
         self.connection = sqlite3.connect(
             ":memory:", uri=True, timeout=min(5.0, remaining) if remaining is not None else 5.0
@@ -42,7 +49,7 @@ class _AttachedSources:
         try:
             self._configure_deadline()
             self.connection.execute("PRAGMA trusted_schema=OFF")
-            for item in self.sources.device.slices:
+            for item in self.items:
                 self._configure_deadline()
                 path = self.sources.dataset.root / item.file
                 immutable = self.sources.dataset.callstack_layout == "v1"
@@ -79,7 +86,7 @@ class _AttachedSources:
                 result.extend(rows)
             budget.remaining()
             return result
-        except sqlite3.Error as exc:
+        except (sqlite3.Error, OverflowError) as exc:
             budget.remaining()  # Preserve the domain timeout on interruption.
             raise QueryExecutionError(str(exc)) from exc
         finally:
@@ -95,20 +102,58 @@ def _attachment_limit() -> int:
         return getter(category) if getter is not None and category is not None else 10
 
 
-def _proof(sources, field, action):
+def _required_slices(sources, items, limit):
+    """Discover proof owners without fetching individual block/event references."""
+    required = {item.index: item for item in items}
+    if len(required) > limit:
+        return None
+    if len(required) == len(sources.device.slices):
+        return list(required.values())
+    for item in items:
+        # Both references may point outside the observation scope. Discover all
+        # owners before filtering/pagination so lifecycle conflicts remain visible.
+        queries = []
+        for field in ("allocEventId", "freeEventId"):
+            cases = " ".join(
+                f'WHEN "{field}" BETWEEN {owner.start_event_id} AND {owner.end_event_id} '
+                f"THEN {owner.index}"
+                for owner in sources.device.slices
+                if owner.index not in required
+            )
+            queries.append(
+                f"SELECT CASE {cases} END AS owner_index "
+                f'FROM "block_{sources.device.device_id}"'
+            )
+        rows = sources.read(
+            sources.dataset.root / item.file,
+            "SELECT owner_index FROM (" + " UNION ".join(queries) + ") "
+            "WHERE owner_index IS NOT NULL LIMIT ?",
+            [limit - len(required) + 1],
+        )
+        for row in rows:
+            owner = sources.device.slices[row["owner_index"]]
+            required[owner.index] = owner
+        if len(required) > limit:
+            return None
+        if len(required) == len(sources.device.slices):
+            break
+    return sorted(required.values(), key=lambda item: item.index)
+
+
+def _proof(sources, items, field, action):
     device = sources.device.device_id
     cases = " ".join(
         f'WHEN b."{field}" BETWEEN {item.start_event_id} AND {item.end_event_id} '
         f'THEN EXISTS(SELECT 1 FROM "s{item.index}"."trace_entry_{device}" e '
         f'WHERE e.id=b."{field}" AND e.id>=0 AND e.action={action})'
-        for item in sources.device.slices
+        for item in items
     )
     return f"CASE {cases} ELSE 0 END"
 
 
-def _lifecycle_cte(sources, items):
-    allocated = _proof(sources, "allocEventId", 4)
-    completed = _proof(sources, "freeEventId", 6)
+def _lifecycle_cte(sources, items, proof_items):
+    allocated = _proof(sources, proof_items, "allocEventId", 4)
+    completed = _proof(sources, proof_items, "freeEventId", 6)
     observations = " UNION ALL ".join(
         f"SELECT b.*, {item.index} AS observation_slice_index, "
         f"{allocated} AS allocation_proved, "
@@ -167,11 +212,12 @@ def _filter(template, params):
 
 
 def lifecycle_query(sources, items, template, params, scope, candidate_limit):
-    if len(sources.device.slices) > _attachment_limit():
+    required = _required_slices(sources, items, _attachment_limit())
+    if required is None:
         return None
     predicate, values = _filter(template, params)
-    cte = _lifecycle_cte(sources, items)
-    with _AttachedSources(sources) as database:
+    cte = _lifecycle_cte(sources, items, required)
+    with _AttachedSources(sources, required) as database:
         summary = database.read(
             cte + f"""SELECT COUNT(*) AS lifecycles,
                 COALESCE(SUM(allocation_proved),0) AS allocation_events_resolved,
