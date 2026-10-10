@@ -169,9 +169,13 @@ def _sort(rows: list[dict[str, object]], key: str, descending: bool) -> None:
 def _events(sources, low, high, items, params, template, scope):
     rows = []
     first, last, count = None, None, 0
-    for _item, batch in _traces(sources, low, high, items, with_sources=template == "event"):
-        if template == "event":
-            sources.events_from_rows(_item, batch)
+    columns = ("id", *METRICS)
+    if template == "event":
+        columns += ("action", "address", "size", "stream")
+    with_sources = template == "event" and params["order_by"] == "callstack"
+    for _item, batch in _traces(sources, low, high, items, columns, with_sources=with_sources):
+        if with_sources:
+            sources.events_from_rows(_item, batch, with_frames=False)
         for row in batch:
             sources.budget.remaining()
             event = cast(int, row["id"])
@@ -188,13 +192,8 @@ def _events(sources, low, high, items, params, template, scope):
         "last_event_id": last,
         "real_event_count": count,
     }
-    if template == "event":
-        # Only returned events need formatted text; resolve separately after the
-        # global window below. `order_by=callstack` requires text BEFORE sorting.
-        if params["order_by"] == "callstack":
-            refs = sources.events(cast(int, r["id"]) for r in rows)
-            for row in rows:
-                row["callstack"] = refs[cast(int, row["id"])].event.get("callstack")
+    # callstack sorting already has joined text; resolving sources here would
+    # eagerly fetch ordered frames that only the returned page needs.
     _sort(rows, params["order_by"], params["order_dir"] == "DESC")
     return rows
 

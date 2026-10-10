@@ -132,3 +132,71 @@ def test_long_distinct_source_payload_remains_budgeted(tmp_path, count, succeeds
                 )
             assert budget.work_rows < budget.max_work_rows
             assert budget.work_bytes > budget.max_work_bytes
+
+
+def test_id_sorted_page_does_not_materialize_unneeded_stack_text(tmp_path):
+    root = dataset(tmp_path, 10_000, stack="x" * 8192)
+    budget = QueryBudget(None, time.monotonic())
+    with closing(QueryService()) as service:
+        result = service.execute_query(
+            "event",
+            params={"order_by": "id", "limit": 1},
+            db_path=root,
+            _budget=budget,
+        )
+    assert result.returned == 1
+    assert budget.work_bytes < 2_000_000
+
+
+def framed_dataset(tmp_path, count):
+    root = dataset(tmp_path, count)
+    manifest = json.loads((root / "manifest.json").read_text())
+    manifest["extensions"] = {"ptSnapOrderedFrames": {"version": 1}}
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    with closing(sqlite3.connect(root / "device_0/slice_00000.db")) as conn, conn:
+        conn.executescript(
+            "CREATE TABLE pt_snap_frame_coverage (eventId INTEGER PRIMARY KEY,frameCount INTEGER);"
+            "CREATE TABLE pt_snap_frame (eventId INTEGER,frameIndex INTEGER,frameJson TEXT,"
+            "PRIMARY KEY(eventId,frameIndex));"
+        )
+        conn.executemany(
+            "INSERT INTO pt_snap_frame_coverage VALUES (?,1)", ((i,) for i in range(count))
+        )
+        conn.executemany(
+            "INSERT INTO pt_snap_frame VALUES (?,0,?)", ((i, '{"name":"f"}') for i in range(count))
+        )
+    return root
+
+
+def test_frame_schema_is_checked_once_across_source_batches(tmp_path, monkeypatch):
+    root = framed_dataset(tmp_path, 600)
+    resolved = DatasetResolver().inspect(root)
+    queries = []
+    original = DatasetSourceResolver.read
+
+    def observed(self, path, sql, values=None):
+        queries.append(sql)
+        return original(self, path, sql, values)
+
+    monkeypatch.setattr(DatasetSourceResolver, "read", observed)
+    with closing(ContextCache()) as cache:
+        sources = DatasetSourceResolver(resolved, 0, cache, QueryBudget(None, time.monotonic()))
+        first = sources.events(range(512))
+        second = sources.events(range(512, 600))
+        assert all(
+            source.frames == [{"name": "f"}] for source in [*first.values(), *second.values()]
+        )
+    assert sum("PRAGMA table_info" in sql for sql in queries) == 2
+    assert sum("sqlite_master" in sql for sql in queries) == 2
+
+
+def test_callstack_sort_loads_frames_only_for_returned_page(tmp_path):
+    root = framed_dataset(tmp_path, 600)
+    budget = QueryBudget(None, time.monotonic())
+    with closing(QueryService()) as service:
+        result = service.execute_query(
+            "event", params={"order_by": "callstack", "limit": 1}, db_path=root, _budget=budget
+        )
+    assert result.rows[0]["frames"] == [{"name": "f"}]
+    # 600 trace rows + 7 schema rows + 1 coverage + 1 frame + 1 output.
+    assert budget.work_rows == 610

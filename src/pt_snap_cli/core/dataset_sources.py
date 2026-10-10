@@ -143,6 +143,8 @@ class DatasetSourceResolver:
         # Lifetime is one budgeted operation. Each retained source was charged
         # when fetched; reusing the same object performs no further database work.
         self._events: dict[int, EventSource] = {}
+        self._frames_resolved: set[int] = set()
+        self._frame_schemas: dict[Path, bool] = {}
 
     @property
     def namespace(self) -> str:
@@ -230,12 +232,17 @@ class DatasetSourceResolver:
                 rows = self.read(
                     path, sql + f" WHERE t.id IN ({placeholders}) AND t.id>=0", list(batch)
                 )
-                result.update(self.events_from_rows(item, rows))
+                result.update(self.events_from_rows(item, rows, with_frames=False))
+        frame_groups: dict[int, list[int]] = defaultdict(list)
+        for event, source in result.items():
+            frame_groups[source.slice_index].append(event)
+        for index, ids in frame_groups.items():
+            self._ensure_frames(self.device.slices[index], ids)
         self.budget.remaining()
-        return result
+        return {event: self._events[event] for event in result}
 
     def events_from_rows(
-        self, item: SliceRecord, rows: list[dict[str, object]]
+        self, item: SliceRecord, rows: list[dict[str, object]], *, with_frames: bool = True
     ) -> dict[int, EventSource]:
         """Resolve already charged full event rows without fetching them again.
 
@@ -277,12 +284,17 @@ class DatasetSourceResolver:
                 local_stack_id=local_id,
             )
         fresh = {event: source for event, source in result.items() if event not in self._events}
-        if fresh:
-            self._attach_frames(self.dataset.root / item.file, list(fresh), fresh)
         self._events.update(fresh)
-        result.update(fresh)
+        if with_frames:
+            self._ensure_frames(item, list(result))
         self.budget.remaining()
-        return result
+        return {event: self._events[event] for event in result}
+
+    def _ensure_frames(self, item: SliceRecord, ids: list[int]) -> None:
+        pending = [event for event in ids if event not in self._frames_resolved]
+        if pending:
+            self._attach_frames(self.dataset.root / item.file, pending, self._events)
+            self._frames_resolved.update(pending)
 
     def _attach_frames(self, path: Path, ids: list[int], sources: dict[int, EventSource]) -> None:
         # This is a NEW, explicit read contract, not a guessed original-producer
@@ -297,14 +309,19 @@ class DatasetSourceResolver:
                 ("frameJson", "TEXT", 0),
             ],
         }
-        for table, columns in expected.items():
-            kind = self.read(path, "SELECT type FROM sqlite_master WHERE name=?", [table])
-            schema = self.read(path, f'PRAGMA table_info("{table}")')
-            if (
-                kind != [{"type": "table"}]
-                or [(r["name"], r["type"], r["pk"]) for r in schema] != columns
-            ):
-                return  # Unknown/absent schemas never imply precision.
+        if path not in self._frame_schemas:
+            self._frame_schemas[path] = True
+            for table, columns in expected.items():
+                kind = self.read(path, "SELECT type FROM sqlite_master WHERE name=?", [table])
+                schema = self.read(path, f'PRAGMA table_info("{table}")')
+                if (
+                    kind != [{"type": "table"}]
+                    or [(r["name"], r["type"], r["pk"]) for r in schema] != columns
+                ):
+                    self._frame_schemas[path] = False
+                    break  # Unknown/absent schemas never imply precision.
+        if not self._frame_schemas[path]:
+            return
         for start in range(0, len(ids), SOURCE_BATCH_SIZE):
             batch = ids[start : start + SOURCE_BATCH_SIZE]
             placeholders = ",".join("?" for _ in batch)
