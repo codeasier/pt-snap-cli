@@ -148,13 +148,18 @@ marked, never guessed by address/local stack ID and never asserted as proved lea
 
 Dataset reads detach batches before foreign-owner lookups, using the borrowed bounded
 Context LRU. One diminishing deadline includes all shards, sources, grouping and exact
-totals; reports explicitly share **one** budget across their three queries. Cumulative
+totals; reports explicitly share **one** budget across peak selection and attribution. Cumulative
 fetched/output work is limited to **100000 rows / 64 MiB serialized values**, including
 repeated source reads. Exceeding either fails the entire operation, never an alleged
 complete partial result. Materialization/sort are bounded by this work ceiling, **not**
 by max_rows. This is not a process RSS limit: Python/SQLite, one batch and individual
-cells have overhead. Manifest hashing/validation remains proportional to artifact size
-and phase-checked, not hard-preempted. No temporary merge DB, repair or artifact write.
+cells have overhead. Strong manifest/member validation and hashing remain the default
+and share that deadline: hash chunks, Python row batches and SQLite progress handlers
+check cancellation. Individual filesystem calls are not OS-level hard-preempted.
+`PT_SNAP_DATASET_CACHE=immutable` explicitly opts into process-local validation reuse
+only when the caller guarantees immutable finalized files and reliable filesystem
+change times; see [dataset validation and cache contracts](sharded-snapshotdb.md).
+No temporary merge DB, repair or artifact write.
 
 ## Dataset point-event attribution
 
@@ -209,9 +214,10 @@ bytes **after dynamic top_n but before max_rows**, not the dataset active counte
 Exact totals ignore row/rank caps, but do not change that percentage denominator.
 
 One call shares its deadline across source batches, grouping and exact totals.
-Manifest validation/hash and Context setup elapsed time are charged, but synchronous
-filesystem I/O/validation is checked at phase boundaries, not hard-preempted; no
-OS-level time guarantee is claimed. SQL uses cleared-on-exit progress handlers.
+Manifest validation/hash and Context setup elapsed time are charged. Validation checks
+cancellation between hash chunks and Python row batches, and within SQLite via
+cleared-on-exit progress handlers. Individual filesystem calls are not hard-preempted;
+no OS-level time guarantee is claimed.
 The Context LRU remains bounded (default four) and borrowed caches remain caller-owned.
 No merged temporary database is created. `ReportService.event_attribution(E, ...)`
 reuses this same query path for a supplied event. Dataset-global queries and reports
@@ -454,16 +460,22 @@ pt-snap report peak-memory /path/to/snapshot.db --json
 
 The report command combines:
 
-- `memory_peak`
-- `allocator_gap`
+- `allocator_gap`, whose result also supplies the six existing `peak_*` fields
 - `active_memory_callstack_at_event`
 
 and prints either a human-readable summary or JSON. `--start-id/--end-id` restrict
 peak selection; attribution still resolves the complete active set at that selected
 event, including earlier allocations. `--timeout` (or `PT_SNAP_QUERY_TIMEOUT`) is
-one diminishing **report-wide** deadline, not three reset per-query timeouts.
+one diminishing **report-wide** deadline, never reset between queries.
 JSON adds peak `scope`, separate attribution `source_coverage`, `timeout_s`, and
 `budget_scope="report_composition"`.
+
+A dataset report inspects the dataset once and reuses that validated fingerprint
+for peak selection and attribution. Changes to the manifest or members detected
+between or during these steps reject the whole report; this is a generation check,
+not a concurrent-writer lock. Counter peaks are computed once for the selected
+range. Attribution still consumes the same cumulative work budget, so a very large
+active set can legitimately exceed that budget even when a peak-only query succeeds.
 
 The existing `callstack_groups` and `percent_of_active_blocks` values are preserved.
 JSON also exposes attribution `has_more`, `truncated`, `total_is_exact`, and

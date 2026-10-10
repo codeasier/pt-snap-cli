@@ -4,6 +4,7 @@ import copy
 import os
 import sqlite3
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,7 @@ from pt_snap_cli.core.context_cache import ContextCache
 from pt_snap_cli.core.dataset_attribution import event_attribution, summarize_dataset_stacks
 from pt_snap_cli.core.dataset_contract import QueryScope
 from pt_snap_cli.core.dataset_global import global_query
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.dataset_resolver import DatasetResolver, ResolvedDataset
 from pt_snap_cli.core.dataset_sources import DatasetSourceResolver, QueryBudget
 from pt_snap_cli.core.dataset_support import dataset_support
 from pt_snap_cli.core.errors import (
@@ -28,7 +29,13 @@ from pt_snap_cli.core.errors import (
     TemplateRenderError,
 )
 from pt_snap_cli.core.focus_service import FocusService
-from pt_snap_cli.core.models import QueryResult, TemplateInfo, TemplateParameter, TemplateSummary
+from pt_snap_cli.core.models import (
+    QueryResult,
+    ResolvedFocus,
+    TemplateInfo,
+    TemplateParameter,
+    TemplateSummary,
+)
 from pt_snap_cli.core.stack_summary import summarize_stacks
 from pt_snap_cli.query.executor import QueryExecutionError as ExecutorQueryExecutionError
 from pt_snap_cli.query.executor import QueryExecutor
@@ -67,6 +74,15 @@ def resolve_query_timeout(explicit: float | None) -> float | None:
             f"{QUERY_TIMEOUT_ENV} must be a number of seconds, got {raw!r}"
         ) from exc
     return value if value > 0 else None
+
+
+@dataclass(frozen=True)
+class _ResolvedQuery:
+    """One composition's focus and inspected generation, shared by every step."""
+
+    focus: ResolvedFocus
+    dataset: ResolvedDataset | None
+    explicit_device_id: int | None
 
 
 class QueryService:
@@ -217,6 +233,7 @@ class QueryService:
         timeout_s: float | None = None,
         slice_index: int | None = None,
         _budget: QueryBudget | None = None,
+        _resolved: _ResolvedQuery | None = None,
     ) -> QueryResult:
         budget = (
             _budget
@@ -225,21 +242,19 @@ class QueryService:
         )
         timeout_s, started = budget.timeout_s, budget.started
         budget.remaining()
-        resolved = self._focus_service.resolve_focus(
-            explicit_db_path=db_path,
-            explicit_device_id=device_id,
-            start_dir=start_dir,
-        )
-        if resolved.db_path is None:
-            raise FocusNotConfiguredError("No database path specified and no database configured.")
-
-        dataset = DatasetResolver().inspect(resolved.db_path, budget=budget)
+        resolution = _resolved or self._resolve_query(db_path, device_id, start_dir, budget)
+        resolved, dataset = resolution.focus, resolution.dataset
+        assert resolved.db_path is not None
         budget.remaining()
         scope: dict[str, object] | None = None
         query_params = params or {}
         sources: DatasetSourceResolver | None = None
         if dataset is not None:
-            selected = dataset.device(device_id if device_id is not None else resolved.device_id)
+            selected = dataset.device(
+                resolution.explicit_device_id
+                if resolution.explicit_device_id is not None
+                else resolved.device_id
+            )
             sources = DatasetSourceResolver(
                 dataset, selected.device_id, self._context_cache, budget
             )
@@ -282,12 +297,18 @@ class QueryService:
             if isinstance(stack_bytes, int) and stack_bytes >= 0:
                 summarize_dataset_stacks(result.rows, stack_bytes)
             budget.remaining()
+            if _resolved is not None:
+                # Inspection establishes the baseline. Reject changed contents
+                # after each composed step, before any report can be returned.
+                dataset.require_unchanged(budget)
             return result
         else:
             if slice_index is not None:
                 raise InvalidParameterError("slice_index requires a manifest dataset.")
             ctx = self._validated_context(resolved.db_path)
-            target_device = self._resolve_device_id(ctx, resolved.device_id, device_id)
+            target_device = self._resolve_device_id(
+                ctx, resolved.device_id, resolution.explicit_device_id
+            )
         executor = self._get_executor(ctx)
 
         try:
@@ -349,6 +370,25 @@ class QueryService:
             timeout_s=timeout_s,
             scope=scope,
         )
+
+    def _resolve_query(
+        self,
+        db_path: Path | str | None,
+        device_id: int | None,
+        start_dir: Path | None,
+        budget: QueryBudget,
+    ) -> _ResolvedQuery:
+        budget.remaining()
+        resolved = self._focus_service.resolve_focus(
+            explicit_db_path=db_path,
+            explicit_device_id=device_id,
+            start_dir=start_dir,
+        )
+        if resolved.db_path is None:
+            raise FocusNotConfiguredError("No database path specified and no database configured.")
+        dataset = DatasetResolver().inspect(resolved.db_path, budget=budget)
+        budget.remaining()
+        return _ResolvedQuery(resolved, dataset, device_id)
 
     def _get_executor(self, ctx: Context) -> QueryExecutor:
         """Reuse the executor while its cached database context remains valid.

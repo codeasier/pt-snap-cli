@@ -68,11 +68,20 @@ def _scope(
     }
 
 
-def _traces(sources: DatasetSourceResolver, low: int, high: int, items: list[SliceRecord]):
+def _traces(
+    sources: DatasetSourceResolver,
+    low: int,
+    high: int,
+    items: list[SliceRecord],
+    columns: tuple[str, ...],
+):
+    # Each built-in supplies only the fields it actually consumes. In particular,
+    # inline stack text must not spend the byte budget of a counter-only query.
+    projection = ", ".join(f'"{column}"' for column in columns)
     for item in items:
         rows = sources.read(
             sources.dataset.root / item.file,
-            f'SELECT * FROM "trace_entry_{sources.device.device_id}" WHERE id>=0 AND id>=? AND id<=? ORDER BY id',
+            f'SELECT {projection} FROM "trace_entry_{sources.device.device_id}" WHERE id>=0 AND id>=? AND id<=? ORDER BY id',
             [low, high],
         )
         yield item, rows
@@ -81,7 +90,7 @@ def _traces(sources: DatasetSourceResolver, low: int, high: int, items: list[Sli
 def _peaks(sources, low, high, items, template, scope):
     chosen: dict[str, dict[str, object]] = {}
     count, first, last = 0, None, None
-    for _item, rows in _traces(sources, low, high, items):
+    for _item, rows in _traces(sources, low, high, items, ("id", *METRICS)):
         for row in rows:
             sources.budget.remaining()
             event = cast(int, row["id"])
@@ -149,7 +158,10 @@ def _sort(rows: list[dict[str, object]], key: str, descending: bool) -> None:
 def _events(sources, low, high, items, params, template, scope):
     rows = []
     first, last, count = None, None, 0
-    for _item, batch in _traces(sources, low, high, items):
+    columns = ("id", *METRICS)
+    if template == "event":
+        columns += ("action", "address", "size", "stream")
+    for _item, batch in _traces(sources, low, high, items, columns):
         for row in batch:
             sources.budget.remaining()
             event = cast(int, row["id"])
@@ -287,7 +299,7 @@ def _lifecycles(sources, items, scope):
 def _stacks(sources, low, high, items, params, scope):
     grouped = {}
     events = ordered = 0
-    for _item, batch in _traces(sources, low, high, items):
+    for _item, batch in _traces(sources, low, high, items, ("id",)):
         refs = sources.events(cast(int, r["id"]) for r in batch)
         for source in refs.values():
             sources.budget.remaining()
