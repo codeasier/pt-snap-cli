@@ -87,6 +87,7 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 | `pt-snap overview [database.db]` | 只读输出设备列表、各设备 event id 边界和导入 metadata 状态 |
 | `pt-snap query` | 运行内存分析查询 |
 | `pt-snap report` | 生成高层内存分析报告 |
+| `pt-snap report memory-tree --event-id <id>` | 按帧分层拆解存活内存；`--format html` 输出交互式火焰图 |
 | `pt-snap config` | 管理全局配置 |
 | `pt-snap skill` | 列出并安装随包 agent skill |
 
@@ -95,6 +96,12 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 峰值报告会返回归因完整性及同事件 active 字节覆盖率；分组百分比以筛选和排名后的
 included bytes 为分母。解读有上限的分组结果前，请参阅
 [报告指南](docs/zh/querying.md#report-命令)。
+
+单库导入时保留结构化调用栈帧及原始顺序。用 `event_frames` 查看帧，或执行
+`report memory-tree --event-id 100 --format html > memory-tree.html`
+按调用路径查看事件时刻的占用。详见[调用栈帧内存拆解](docs/zh/querying.md#调用栈帧内存拆解)；
+旧文本数据库需要从原始快照重新导入。
+`report memory-tree` 同样支持 `--json`。
 
 ## Agent Skills
 
