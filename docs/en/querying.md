@@ -151,10 +151,28 @@ Context LRU. One diminishing deadline includes all shards, sources, grouping and
 totals; reports explicitly share **one** budget across their three queries. Cumulative
 fetched/output work is limited to **100000 rows / 64 MiB serialized values**, including
 repeated source reads. Exceeding either fails the entire operation, never an alleged
-complete partial result. Materialization/sort are bounded by this work ceiling, **not**
+complete partial result. Python materialization/sort are bounded by this work ceiling, **not**
 by max_rows. This is not a process RSS limit: Python/SQLite, one batch and individual
 cells have overhead. Manifest hashing/validation remains proportional to artifact size
 and phase-checked, not hard-preempted. No temporary merge DB, repair or artifact write.
+
+Global peak queries fetch scalar range evidence and at most three counter rows per
+shard. Event/allocation pages apply SQL filters and ordering per shard, merge at most
+`offset + limit` candidates per shard, and count matches separately. Range evidence
+is measured before non-range filters. Ordinary text-stack statistics merge full
+per-shard groups before global thresholds; averages use summed sizes and counts.
+Canonical ordered-frame statistics retain the bounded source-reading path because
+formatted text is not their identity. Block/leak/lifetime reductions use read-only
+attached shards for proof, conflicts and latest observations before pagination;
+when the device exceeds SQLite's attachment limit (normally ten), they retain the
+budgeted source-reading path. No intermediate merged database is created.
+
+A million-event dataset can therefore answer aggregates and small pages within the
+default work budget. Use `-n 5` or an explicit finite `limit` for large row-returning
+queries. Unlimited output, large offsets, many distinct stack groups, ordered-frame
+reads or the attachment-limit fallback can still exceed the budget and fail honestly.
+The limit counts rows fetched into Python and serialized output, not internal SQL
+scans, SQLite sorting space or total process memory.
 
 ## Dataset point-event attribution
 

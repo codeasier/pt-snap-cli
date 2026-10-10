@@ -1,8 +1,9 @@
-"""Explicit built-in global algorithms; no local caps or temporary merge database.
+"""Exact built-in global reductions, without a temporary merge database.
 
-Fetched work is cumulatively bounded by QueryBudget, including sources and final
-output. Sorting/materialization is O(bounded work), NOT O(max_rows). A budget
-failure rejects the operation rather than returning an alleged global answer.
+Shard SQL reduces counters, groups, and candidate windows before Python merging.
+Fetched work is cumulatively bounded by QueryBudget, including source hydration
+and final output. Unlimited/high-cardinality results can still exhaust the budget;
+a failure rejects the operation rather than returning an alleged global answer.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import hashlib
 from typing import cast
 
 from pt_snap_cli.core.dataset_contract import QueryScope, SliceRecord
+from pt_snap_cli.core.dataset_lifecycle_sql import lifecycle_query
 from pt_snap_cli.core.dataset_sources import DatasetSourceResolver
 from pt_snap_cli.core.errors import InvalidParameterError, QueryExecutionError
 from pt_snap_cli.core.models import QueryResult
@@ -68,47 +70,50 @@ def _scope(
     }
 
 
-def _traces(
-    sources: DatasetSourceResolver,
-    low: int,
-    high: int,
-    items: list[SliceRecord],
-    columns: tuple[str, ...] = ("id", *METRICS),
-    *,
-    with_sources: bool = False,
-):
-    projection = ", ".join(f't."{column}"' for column in columns)
+def _range_statistics(sources, low, high, items, scope, predicate="1", values=None):
+    """Range evidence is deliberately collected BEFORE non-range filters."""
+    count = matching = 0
+    first = last = None
     for item in items:
-        trace = f'"trace_entry_{sources.device.device_id}"'
-        if with_sources:
-            projection = (
-                "t.id, t.action, t.address, t.size, t.stream, t.allocated, t.active, t.reserved"
-            )
-            if sources.dataset.callstack_layout == "v2":
-                sql = f"SELECT {projection}, t.callstackId, cs.callstack FROM {trace} t LEFT JOIN callstack cs ON t.callstackId=cs.id"
-            else:
-                sql = f"SELECT {projection}, t.callstack FROM {trace} t"
-        else:
-            sql = f"SELECT {projection} FROM {trace} t"
-        rows = sources.read(
+        row = sources.read(
             sources.dataset.root / item.file,
-            sql + " WHERE t.id>=0 AND t.id>=? AND t.id<=? ORDER BY t.id",
-            [low, high],
-        )
-        yield item, rows
+            f"SELECT MIN(id) AS first, MAX(id) AS last, COUNT(*) AS count, "
+            f"COALESCE(SUM(CASE WHEN {predicate} THEN 1 ELSE 0 END), 0) AS matching "
+            f'FROM "trace_entry_{sources.device.device_id}" '
+            "WHERE id>=0 AND id>=? AND id<=?",
+            [*(values or []), low, high],
+        )[0]
+        count += row["count"]
+        matching += row["matching"]
+        if row["first"] is not None:
+            first = row["first"] if first is None else min(first, row["first"])
+            last = row["last"] if last is None else max(last, row["last"])
+    scope["actual_range"] = {
+        "first_event_id": first,
+        "last_event_id": last,
+        "real_event_count": count,
+    }
+    return matching
 
 
 def _peaks(sources, low, high, items, template, scope):
+    _range_statistics(sources, low, high, items, scope)
     chosen: dict[str, dict[str, object]] = {}
-    count, first, last = 0, None, None
-    for _item, rows in _traces(sources, low, high, items, ("id", *METRICS)):
-        for row in rows:
-            sources.budget.remaining()
-            event = cast(int, row["id"])
-            count += 1
-            first = event if first is None else min(first, event)
-            last = event if last is None else max(last, event)
-            for metric in METRICS:
+    # These index-friendly queries fetch at most three narrow rows per shard.
+    # NULL counters never nominate an event, matching MAX + equality semantics.
+    for item in items:
+        for metric in METRICS:
+            rows = sources.read(
+                sources.dataset.root / item.file,
+                f"SELECT id, allocated, active, reserved "
+                f'FROM "trace_entry_{sources.device.device_id}" '
+                f'WHERE id>=0 AND id>=? AND id<=? AND "{metric}" IS NOT NULL '
+                f'ORDER BY "{metric}" DESC, id ASC LIMIT 1',
+                [low, high],
+            )
+            if rows:
+                row = rows[0]
+                event = cast(int, row["id"])
                 if metric not in chosen or (cast(int, row[metric]), -event) > (
                     cast(int, chosen[metric][metric]),
                     -cast(int, chosen[metric]["id"]),
@@ -125,7 +130,9 @@ def _peaks(sources, low, high, items, template, scope):
                     result[f"{other}_at_{metric}_peak"] = row.get(other)
             for other in ("active", "allocated"):
                 result[f"reserved_{other}_gap_at_{metric}_peak"] = (
-                    cast(int, row["reserved"]) - cast(int, row[other]) if row else None
+                    cast(int, row["reserved"]) - cast(int, row[other])
+                    if row and row["reserved"] is not None and row[other] is not None
+                    else None
                 )
     if template == "allocator_gap":
         ids = [result[f"peak_{m}_event_id"] for m in METRICS]
@@ -135,15 +142,29 @@ def _peaks(sources, low, high, items, template, scope):
                 result[f"peak_{a}_event_id"] is not None
                 and result[f"peak_{a}_event_id"] == result[f"peak_{b}_event_id"]
             )
-    scope["actual_range"] = {
-        "first_event_id": first,
-        "last_event_id": last,
-        "real_event_count": count,
-    }
     scope["peak_owner_slices"] = {
         m: sources.owner(cast(int, r["id"])).index for m, r in chosen.items()
     }
     return [result]
+
+
+def _predicates(params, fields, alias=""):
+    clauses, values = [], []
+    for field in fields:
+        for prefix, operator in (("", "="), ("min_", ">="), ("max_", "<=")):
+            value = params.get(prefix + field)
+            if value is not None:
+                clauses.append(f'{alias}"{field}" {operator} ?')
+                values.append(value)
+    return " AND ".join(clauses) or "1", values
+
+
+def _window(params, max_rows):
+    offset = max(0, cast(int, params.get("offset", 0)))
+    limit = cast(int, params.get("limit", -1))
+    if max_rows is not None and max_rows > 0:
+        limit = min(limit, max_rows) if limit >= 0 else max_rows
+    return offset, limit
 
 
 def _matches(row: dict[str, object], params: dict[str, object], fields: tuple[str, ...]) -> bool:
@@ -166,36 +187,45 @@ def _sort(rows: list[dict[str, object]], key: str, descending: bool) -> None:
     rows.sort(key=lambda r: (r[key] is not None, r[key]), reverse=descending)
 
 
-def _events(sources, low, high, items, params, template, scope):
+def _events(sources, low, high, items, params, template, scope, candidate_limit):
+    fields = METRICS
+    if template == "event":
+        fields += ("id", "action", "address", "size", "stream")
+    predicate, values = _predicates(params, fields)
+    total = _range_statistics(sources, low, high, items, scope, predicate, values)
     rows = []
-    first, last, count = None, None, 0
+    order = params["order_by"]
+    direction = params["order_dir"]
     columns = ("id", *METRICS)
     if template == "event":
-        columns += ("action", "address", "size", "stream")
-    with_sources = template == "event" and params["order_by"] == "callstack"
-    for _item, batch in _traces(sources, low, high, items, columns, with_sources=with_sources):
-        if with_sources:
-            sources.events_from_rows(_item, batch, with_frames=False)
-        for row in batch:
-            sources.budget.remaining()
-            event = cast(int, row["id"])
-            first = event if first is None else min(first, event)
-            last = event if last is None else max(last, event)
-            count += 1
-            fields = ("allocated", "active", "reserved")
-            if template == "event":
-                fields += ("id", "action", "address", "size", "stream")
-            if _matches(row, params, fields):
-                rows.append(row)
-    scope["actual_range"] = {
-        "first_event_id": first,
-        "last_event_id": last,
-        "real_event_count": count,
-    }
-    # callstack sorting already has joined text; resolving sources here would
-    # eagerly fetch ordered frames that only the returned page needs.
-    _sort(rows, params["order_by"], params["order_dir"] == "DESC")
-    return rows
+        columns = ("id", "action", "address", "size", "stream", *METRICS)
+    for item in items:
+        trace = f'"trace_entry_{sources.device.device_id}"'
+        projection = ", ".join(f't."{column}"' for column in columns)
+        join = ""
+        if order == "callstack":
+            if sources.dataset.callstack_layout == "v2":
+                projection += ", t.callstackId, cs.callstack"
+                join = " LEFT JOIN callstack cs ON t.callstackId=cs.id"
+            else:
+                projection += ", t.callstack"
+        row_predicate, row_values = _predicates(params, fields, "t.")
+        # Dataset text identity/order is exact, independent of source collation.
+        sort_column = '"callstack" COLLATE BINARY' if order == "callstack" else f'"{order}"'
+        batch = sources.read(
+            sources.dataset.root / item.file,
+            f"SELECT {projection} FROM {trace} t{join} "
+            f"WHERE t.id>=0 AND t.id>=? AND t.id<=? AND {row_predicate} "
+            f"ORDER BY {sort_column} {direction}, t.id {direction} LIMIT ?",
+            [low, high, *row_values, candidate_limit],
+        )
+        if order == "callstack":
+            # Full candidate text has already crossed the budget boundary. Reuse
+            # its event data; ordered frames are needed only for the final page.
+            sources.events_from_rows(item, batch, with_frames=False)
+        rows.extend(batch)
+    _sort(rows, order, direction == "DESC")
+    return rows, total
 
 
 def _lifecycles(sources, items, scope):
@@ -305,11 +335,103 @@ def _lifecycles(sources, items, scope):
     return rows
 
 
+def _text_stacks(sources, low, high, items, params, scope):
+    """Merge shard sufficient statistics, never local HAVING/ranking windows."""
+    grouped = {}
+    events = 0
+    for item in items:
+        trace = f'"trace_entry_{sources.device.device_id}"'
+        if sources.dataset.callstack_layout == "v2":
+            table = f"{trace} t LEFT JOIN callstack cs ON t.callstackId=cs.id"
+            text, present = "cs.callstack", "t.callstackId IS NOT NULL"
+        else:
+            table, text, present = f"{trace} t", "t.callstack", "t.callstack IS NOT NULL"
+        batch = sources.read(
+            sources.dataset.root / item.file,
+            f"SELECT {text} AS callstack, COUNT(*) AS alloc_count, SUM(t.size) AS total_size, "
+            f"MAX(t.size) AS max_size, MIN(t.id) AS stack_event_id FROM {table} "
+            f"WHERE t.id>=0 AND t.id>=? AND t.id<=? AND {present} GROUP BY {text} COLLATE BINARY",
+            [low, high],
+        )
+        for local in batch:
+            sources.budget.remaining()
+            value = local["callstack"]
+            identity = (
+                f"{sources.namespace}:text:sha256:{hashlib.sha256(value.encode('utf-8')).hexdigest()}"
+                if isinstance(value, str)
+                else f"{sources.namespace}:category:missing"
+            )
+            kind = "captured" if isinstance(value, str) and value != "" else "missing"
+            row = grouped.get(identity)
+            if row is None:
+                row = dict(local)
+                row.update(
+                    {
+                        "callstack": value if value is not None else "[missing callstack]",
+                        "source_stack_id": identity,
+                        "stack_kind": kind,
+                        "text_kind": kind,
+                        "frames_status": "text_only",
+                    }
+                )
+                grouped[identity] = row
+            else:
+                row["alloc_count"] += local["alloc_count"]
+                row["total_size"] += local["total_size"]
+                row["max_size"] = max(row["max_size"], local["max_size"])
+                row["stack_event_id"] = min(row["stack_event_id"], local["stack_event_id"])
+            events += local["alloc_count"]
+    return _finish_stacks(sources, grouped, params, scope, events, 0)
+
+
+def _finish_stacks(sources, grouped, params, scope, events, ordered):
+    rows = [
+        r
+        for r in grouped.values()
+        if r["alloc_count"] >= params["min_count"] and r["total_size"] >= params["min_size"]
+    ]
+    for row in rows:
+        row["avg_size"] = row["total_size"] / row["alloc_count"]
+    rows.sort(
+        key=lambda r: (
+            -r["total_size"],
+            r["callstack"] or "",
+            r["stack_kind"] == "missing",
+            r["source_stack_id"],
+        )
+    )
+    scope["source_coverage"] = {
+        "range_complete": True,
+        "coverage_scope": "all_real_stack_bearing_actions_before_global_thresholds",
+        "stack_events": events,
+        "ordered_frame_events": ordered,
+        "source_queries": sources.query_count,
+    }
+    return rows
+
+
 def _stacks(sources, low, high, items, params, scope):
+    if sources.dataset.ordered_frames_version != 1:
+        return _text_stacks(sources, low, high, items, params, scope)
     grouped = {}
     events = ordered = 0
-    for _item, batch in _traces(sources, low, high, items, with_sources=True):
-        refs = sources.events_from_rows(_item, batch)
+    for item in items:
+        trace = f'"trace_entry_{sources.device.device_id}"'
+        columns = ("id", "action", "address", "size", "stream", *METRICS)
+        projection = ", ".join(f't."{column}"' for column in columns)
+        join = ""
+        if sources.dataset.callstack_layout == "v2":
+            projection += ", t.callstackId, cs.callstack"
+            join = " LEFT JOIN callstack cs ON t.callstackId=cs.id"
+        else:
+            projection += ", t.callstack"
+        batch = sources.read(
+            sources.dataset.root / item.file,
+            f"SELECT {projection} FROM {trace} t{join} "
+            "WHERE t.id>=0 AND t.id>=? AND t.id<=? ORDER BY t.id",
+            [low, high],
+        )
+        refs = sources.events_from_rows(item, batch)
         for source in refs.values():
             sources.budget.remaining()
             text = source.event.get("callstack")
@@ -347,29 +469,7 @@ def _stacks(sources, low, high, items, params, scope):
                 row["text_kind"] = "captured"
             events += 1
             ordered += source.frames is not None
-    rows = [
-        r
-        for r in grouped.values()
-        if r["alloc_count"] >= params["min_count"] and r["total_size"] >= params["min_size"]
-    ]
-    for row in rows:
-        row["avg_size"] = row["total_size"] / row["alloc_count"]
-    rows.sort(
-        key=lambda r: (
-            -r["total_size"],
-            r["callstack"] or "",
-            r["stack_kind"] == "missing",
-            r["source_stack_id"],
-        )
-    )
-    scope["source_coverage"] = {
-        "range_complete": True,
-        "coverage_scope": "all_real_stack_bearing_actions_before_global_thresholds",
-        "stack_events": events,
-        "ordered_frame_events": ordered,
-        "source_queries": sources.query_count,
-    }
-    return rows
+    return _finish_stacks(sources, grouped, params, scope, events, ordered)
 
 
 def global_query(
@@ -386,10 +486,15 @@ def global_query(
     )
     low, high, items = _range(sources, range_params, slice_index)
     scope = _scope(sources, low, high, items)
+    offset, limit = _window(params, max_rows)
+    candidate_limit = offset + limit if limit >= 0 else -1
+    total_override = None
     if template in ("memory_peak", "allocator_gap"):
         rows = _peaks(sources, low, high, items, template, scope)
     elif template in ("event", "allocation"):
-        rows = _events(sources, low, high, items, params, template, scope)
+        rows, total_override = _events(
+            sources, low, high, items, params, template, scope, candidate_limit
+        )
     elif template == "callstack_analysis":
         rows = _stacks(sources, low, high, items, params, scope)
     elif template == "preexisting_live":
@@ -407,56 +512,61 @@ def global_query(
             raise QueryExecutionError(
                 "Dataset leak_detection requires terminal dataset scope, not --slice; select an explicit member for local observations."
             )
-        rows = _lifecycles(sources, items, scope)
-        if template == "block":
-            rows = [
-                r
-                for r in rows
-                if _matches(
-                    r,
-                    params,
-                    ("id", "address", "size", "requestedSize", "allocEventId", "freeEventId"),
-                )
-            ]
-            _sort(rows, cast(str, params["order_by"]), params["order_dir"] == "DESC")
-        elif template == "leak_detection":
-            rows = [
-                r
-                for r in rows
-                if r["terminal_survivor"]
-                and r["allocation_source"] is not None
-                and cast(int, r["size"]) >= cast(int, params["min_size"])
-            ]
-            _sort(rows, "size", True)
-        elif template == "freed_block_lifetime":
-            buckets = {}
-            for row in rows:
-                if row["allocation_source"] is None or row["free_source"] is None:
-                    continue
-                distance = cast(int, row["freeEventId"]) - cast(int, row["allocEventId"])
-                if distance < 0:
-                    continue
-                index = next(
-                    (i for i, cap in enumerate((1000, 5000, 20000, 100000)) if distance < cap), 4
-                )
-                bucket = buckets.setdefault(
-                    index,
-                    {
-                        "lifetime_events": ("<1k", "1k-5k", "5k-20k", "20k-100k", ">=100k")[index],
-                        "block_count": 0,
-                        "size_bytes": 0,
-                    },
-                )
-                bucket["block_count"] += 1
-                bucket["size_bytes"] += row["size"]
-            rows = [buckets[i] for i in sorted(buckets)]
+        pushed = lifecycle_query(sources, items, template, params, scope, candidate_limit)
+        if pushed is not None:
+            rows, total_override = pushed
         else:
-            raise QueryExecutionError("No dataset-global merge implementation for this template.")
-    total = len(rows)
-    offset = max(0, cast(int, params.get("offset", 0)))
-    limit = cast(int, params.get("limit", -1))
-    if max_rows is not None and max_rows > 0:
-        limit = min(limit, max_rows) if limit >= 0 else max_rows
+            rows = _lifecycles(sources, items, scope)
+            if template == "block":
+                rows = [
+                    r
+                    for r in rows
+                    if _matches(
+                        r,
+                        params,
+                        ("id", "address", "size", "requestedSize", "allocEventId", "freeEventId"),
+                    )
+                ]
+                _sort(rows, cast(str, params["order_by"]), params["order_dir"] == "DESC")
+            elif template == "leak_detection":
+                rows = [
+                    r
+                    for r in rows
+                    if r["terminal_survivor"]
+                    and r["allocation_source"] is not None
+                    and cast(int, r["size"]) >= cast(int, params["min_size"])
+                ]
+                _sort(rows, "size", True)
+            elif template == "freed_block_lifetime":
+                buckets = {}
+                for row in rows:
+                    if row["allocation_source"] is None or row["free_source"] is None:
+                        continue
+                    distance = cast(int, row["freeEventId"]) - cast(int, row["allocEventId"])
+                    if distance < 0:
+                        continue
+                    index = next(
+                        (i for i, cap in enumerate((1000, 5000, 20000, 100000)) if distance < cap),
+                        4,
+                    )
+                    bucket = buckets.setdefault(
+                        index,
+                        {
+                            "lifetime_events": ("<1k", "1k-5k", "5k-20k", "20k-100k", ">=100k")[
+                                index
+                            ],
+                            "block_count": 0,
+                            "size_bytes": 0,
+                        },
+                    )
+                    bucket["block_count"] += 1
+                    bucket["size_bytes"] += row["size"]
+                rows = [buckets[i] for i in sorted(buckets)]
+            else:
+                raise QueryExecutionError(
+                    "No dataset-global merge implementation for this template."
+                )
+    total = len(rows) if total_override is None else total_override
     selected = rows[offset : offset + limit] if limit >= 0 else rows[offset:]
     if template == "event":
         refs = sources.events(cast(int, r["id"]) for r in selected)
