@@ -131,10 +131,11 @@ exactness 标记诚实。`has_more/truncated` 描述窗口，不表示来源/范
 精确总数共用递减 deadline；报告的峰值选择与归因明确共用**一个**预算。累计取回/输出工作上限为
 **100000 行 / 64 MiB 序列化值**，含重复来源读取；超限整体失败，不返回冒充完整的部分
 结论。物化/排序由工作上限约束，**不由 max_rows 约束**；不是进程 RSS 上限，Python/
-SQLite、一个批次及单个 cell 有额外开销。默认仍对 manifest/成员执行完整校验和 hash，
-并共用该 deadline：hash 分块、Python 行批次及 SQLite progress handler 都检查取消。
+SQLite、一个批次及单个 cell 有额外开销。默认仍执行强准入：每次对 manifest/全部成员
+取哈希，仅当内容及 generation 一致时复用进程内逐行校验结果。热路径仍为 O(字节数 +
+分片数)，新 CLI 进程仍冷启动。准入共用该 deadline：hash 分块、Python 行批次及 SQLite progress handler 都检查取消。
 单个文件系统调用不提供 OS 级硬抢占。仅当调用方保证最终产物不可变且文件系统变更时间
-可靠时，才可通过 `PT_SNAP_DATASET_CACHE=immutable` 显式启用进程内校验复用；参见
+可靠时，才可通过 `PT_SNAP_DATASET_CACHE=immutable` 显式启用纯元数据校验复用；参见
 [数据集校验与缓存合同](sharded-snapshotdb.md)。不生成合并临时 DB、不修复或写产物。
 
 兼容导出器默认**每设备每片 500000 个真实事件**。该存储容量与 **100000 行 / 64 MiB
