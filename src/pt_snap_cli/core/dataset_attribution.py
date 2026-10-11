@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from typing import cast
 
+from pt_snap_cli.core.dataset_active_sql import reduce_active
 from pt_snap_cli.core.dataset_sources import DatasetSourceResolver, EventSource
 from pt_snap_cli.core.errors import QueryExecutionError
 from pt_snap_cli.core.models import QueryResult
@@ -29,6 +30,32 @@ def event_attribution(
     event_id = cast(int, params["event_id"])
     item = sources.target(event_id, slice_index)
     path = sources.dataset.root / item.file
+    reduced = reduce_active(sources, item, template, params, max_rows)
+    if reduced is not None:
+        selected, coverage, total, rank_full, offset = reduced
+        if template == "active_blocks_at_event":
+            # Hydrate only the returned page; discard its coverage so the SQL
+            # coverage for the full active set before pagination remains intact.
+            _hydrate_blocks(sources, selected)
+        coverage["source_queries"] = sources.query_count
+        scope = _scope(sources, item.index, event_id, coverage)
+        has_more = total > len(selected) + offset or rank_full
+        if exact_total:
+            has_more = total > len(selected) + offset
+        sources.budget.consume(selected)
+        return QueryResult(
+            total=total if exact_total else len(selected),
+            returned=len(selected),
+            device_id=sources.device.device_id,
+            rows=selected,
+            template=template,
+            semantics_version=semantics_version,
+            has_more=has_more,
+            truncated=has_more or offset > 0,
+            total_is_exact=exact_total or not has_more and offset == 0,
+            timeout_s=sources.budget.timeout_s,
+            scope=scope,
+        )
     blocks = sources.read(
         path,
         f'SELECT * FROM "block_{sources.device.device_id}" WHERE size>=? '
@@ -37,6 +64,80 @@ def event_attribution(
         + "ORDER BY id",
         [params["min_size"], event_id, event_id],
     )
+    references, coverage = _hydrate_blocks(sources, blocks)
+    scope = _scope(sources, item.index, event_id, coverage)
+    if template == "active_blocks_at_event":
+        key = cast(str, params["order_by"])
+        blocks.sort(key=lambda b: cast(int, b["id"]))
+        blocks.sort(key=lambda b: cast(int, b[key]), reverse=params["order_dir"] == "DESC")
+        all_rows = blocks
+        rank_full = False
+        limit = cast(int, params["limit"])
+        offset = max(0, cast(int, params["offset"]))
+        selected = all_rows[offset : offset + limit] if limit >= 0 else all_rows[offset:]
+    else:
+        all_rows = _groups(sources, blocks, references)
+        top_n = cast(int, params["top_n"])
+        dynamic = [row for row in all_rows if row["category"] == "dynamic_live_at_event"]
+        rank_full = top_n >= 0 and bool(dynamic) and len(dynamic) >= top_n
+        selected = [row for row in all_rows if row["category"] != "dynamic_live_at_event"] + (
+            dynamic[:top_n] if top_n >= 0 else dynamic
+        )
+        selected.sort(key=_rank)
+        denominator = sum(cast(int, row["size_bytes"]) for row in selected)
+        # Use the same SQLite arithmetic/ROUND implementation as standalone SQL.
+        # A Decimal conversion of a binary float changes some near-half values.
+        # This connection evaluates scalars only: no source reads or merge tables.
+        with _rounding_cursor(sources) as cursor:
+            for row in selected:
+                sources.budget.remaining()
+                row["percent_of_active_blocks"] = cursor.execute(
+                    "SELECT ROUND(? * 100.0 / NULLIF(?, 0), 4)",
+                    (row["size_bytes"], denominator),
+                ).fetchone()[0]
+        offset = 0
+    has_more = len(selected) < len(all_rows) - offset or rank_full
+    if max_rows is not None and max_rows > 0:
+        has_more = has_more or len(selected) > max_rows
+        selected = selected[:max_rows]
+    if exact_total:
+        has_more = len(all_rows) > len(selected) + offset
+    sources.budget.consume(selected)
+    return QueryResult(
+        total=len(all_rows) if exact_total else len(selected),
+        returned=len(selected),
+        device_id=sources.device.device_id,
+        rows=selected,
+        template=template,
+        semantics_version=semantics_version,
+        has_more=has_more,
+        truncated=has_more or offset > 0,
+        total_is_exact=exact_total or not has_more and offset == 0,
+        timeout_s=sources.budget.timeout_s,
+        scope=scope,
+    )
+
+
+def _scope(
+    sources: DatasetSourceResolver, slice_index: int, event_id: int, coverage: dict[str, object]
+) -> dict[str, object]:
+    return {
+        "kind": "event",
+        "device_id": sources.device.device_id,
+        "slice_index": slice_index,
+        "first_event_id": event_id,
+        "last_event_id": event_id,
+        "db_path": str(sources.dataset.root / sources.device.slices[slice_index].file),
+        "dataset_path": str(sources.dataset.root),
+        "fingerprint": sources.dataset.fingerprint,
+        "boundary_events_included": False,
+        "source_coverage": coverage,
+    }
+
+
+def _hydrate_blocks(
+    sources: DatasetSourceResolver, blocks: list[dict[str, object]]
+) -> tuple[dict[int, EventSource], dict[str, object]]:
     references = sources.events(
         cast(int, block[field])
         for block in blocks
@@ -112,68 +213,7 @@ def event_attribution(
         ),
         "source_queries": sources.query_count,
     }
-    scope: dict[str, object] = {
-        "kind": "event",
-        "device_id": sources.device.device_id,
-        "slice_index": item.index,
-        "first_event_id": event_id,
-        "last_event_id": event_id,
-        "db_path": str(path),
-        "dataset_path": str(sources.dataset.root),
-        "fingerprint": sources.dataset.fingerprint,
-        "boundary_events_included": False,
-        "source_coverage": coverage,
-    }
-    if template == "active_blocks_at_event":
-        key = cast(str, params["order_by"])
-        blocks.sort(key=lambda b: cast(int, b["id"]))
-        blocks.sort(key=lambda b: cast(int, b[key]), reverse=params["order_dir"] == "DESC")
-        all_rows = blocks
-        rank_full = False
-        limit = cast(int, params["limit"])
-        offset = max(0, cast(int, params["offset"]))
-        selected = all_rows[offset : offset + limit] if limit >= 0 else all_rows[offset:]
-    else:
-        all_rows = _groups(sources, blocks, references)
-        top_n = cast(int, params["top_n"])
-        dynamic = [row for row in all_rows if row["category"] == "dynamic_live_at_event"]
-        rank_full = top_n >= 0 and bool(dynamic) and len(dynamic) >= top_n
-        selected = [row for row in all_rows if row["category"] != "dynamic_live_at_event"] + (
-            dynamic[:top_n] if top_n >= 0 else dynamic
-        )
-        selected.sort(key=_rank)
-        denominator = sum(cast(int, row["size_bytes"]) for row in selected)
-        # Use the same SQLite arithmetic/ROUND implementation as standalone SQL.
-        # A Decimal conversion of a binary float changes some near-half values.
-        # This connection evaluates scalars only: no source reads or merge tables.
-        with _rounding_cursor(sources) as cursor:
-            for row in selected:
-                sources.budget.remaining()
-                row["percent_of_active_blocks"] = cursor.execute(
-                    "SELECT ROUND(? * 100.0 / NULLIF(?, 0), 4)",
-                    (row["size_bytes"], denominator),
-                ).fetchone()[0]
-        offset = 0
-    has_more = len(selected) < len(all_rows) - offset or rank_full
-    if max_rows is not None and max_rows > 0:
-        has_more = has_more or len(selected) > max_rows
-        selected = selected[:max_rows]
-    if exact_total:
-        has_more = len(all_rows) > len(selected) + offset
-    sources.budget.consume(selected)
-    return QueryResult(
-        total=len(all_rows) if exact_total else len(selected),
-        returned=len(selected),
-        device_id=sources.device.device_id,
-        rows=selected,
-        template=template,
-        semantics_version=semantics_version,
-        has_more=has_more,
-        truncated=has_more or offset > 0,
-        total_is_exact=exact_total or not has_more and offset == 0,
-        timeout_s=sources.budget.timeout_s,
-        scope=scope,
-    )
+    return references, coverage
 
 
 def _rank(row: dict[str, object]) -> tuple[int, int, str, str]:
