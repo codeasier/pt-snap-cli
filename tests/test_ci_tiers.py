@@ -19,10 +19,14 @@ def test_compatibility_matrix_leaves_slow_and_coverage_on_python_313():
     steps = named_steps(job)
     fast = steps["Run non-slow compatibility tests"]
     assert fast["if"] == "matrix.python-version != '3.13'"
-    assert fast["run"] == 'pytest -m "not slow"'
-    full = steps["Run all tests with coverage"]
+    assert fast["run"] == 'pytest -m "not slow and not nightly"'
+    full = steps["Run full PR tests with coverage"]
     assert full["if"] == "matrix.python-version == '3.13'"
-    assert full["run"] == "pytest --cov --cov-report=xml --cov-report=term-missing"
+    assert full["run"] == 'pytest -m "not nightly" --cov --cov-report=xml --cov-report=term-missing'
+    assert (
+        'markers = ["nightly: million-scale acceptance gate (scheduled/manual only)"]'
+        in Path("pyproject.toml").read_text()
+    )
     assert "if" not in steps["Verify executable fixture provenance"]
     names = list(steps)
     assert names.index("Verify executable fixture provenance") < names.index(fast["name"])

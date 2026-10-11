@@ -129,11 +129,11 @@ jobs:
 
       - name: Run non-slow compatibility tests
         if: matrix.python-version != '3.13'
-        run: pytest -m "not slow"
+        run: pytest -m "not slow and not nightly"
 
-      - name: Run all tests with coverage
+      - name: Run full PR tests with coverage
         if: matrix.python-version == '3.13'
-        run: pytest --cov --cov-report=xml --cov-report=term-missing
+        run: pytest -m "not nightly" --cov --cov-report=xml --cov-report=term-missing
 
       - name: Guard critical runtime coverage
         if: matrix.python-version == '3.13'

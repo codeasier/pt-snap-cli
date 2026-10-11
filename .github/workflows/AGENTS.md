@@ -14,12 +14,12 @@ Concurrency is keyed by GitHub ref and superseded runs are cancelled.
 | --- | --- |
 | Snapshot provenance | Full Git history; base/head comparison; PR decision required only in PR mode |
 | Lint & Format | Python 3.13, editable dev install, Ruff, Black, basedpyright with the selected interpreter |
-| Compatibility matrix | Python 3.10–3.12; fixture provenance first, then `pytest -m "not slow"` |
-| Full test tier | Python 3.13; fixture provenance first, then all tests with branch coverage, including slow tests |
+| Compatibility matrix | Python 3.10–3.12; fixture provenance first, then `pytest -m "not slow and not nightly"` |
+| Full PR test tier | Python 3.13; `pytest -m "not nightly"` with branch coverage, preserving the existing slow tests |
 | Overall coverage | `pyproject.toml` fail-under 90 with branches enabled |
 | Critical runtime coverage | Import backend 90; simulated allocator 88; snapshot mutator 84, checked independently |
 | Python 3.13 packaging | Upload coverage, build wheel, run clean-wheel Agent acceptance |
-| Nightly/manual dataset acceptance | Python 3.13; provenance, wheel build and audit, then required installed-wheel CLI/API test |
+| Nightly/manual dataset acceptance | Python 3.13; provenance, wheel build and audit, then `nightly` tests including the required installed-wheel CLI/API test |
 
 Million-event deep-offset pagination tests are marked `slow`; their small
 pagination contracts still run across the compatibility matrix.
@@ -30,9 +30,13 @@ The [acceptance script](../scripts/clean_wheel_agent_acceptance.py) uses tempora
 paths but imports a reviewed executable fixture. These are more than YAML checks.
 
 The nightly/manual job invokes `run_dataset_acceptance.py` with the single built
-wheel. Missing wheels, missing/empty JUnit, skipped/failed tests, extra test cases,
-or evidence for a different wheel fail the gate. It uploads the pytest log, JUnit
-(including the test's evidence), and a summary with actual checkout SHA and wheel
+wheel. All `nightly` tests are selected automatically; the installed-wheel case
+must appear exactly once. New mandatory gates also add their complete pytest
+node IDs to `REQUIRED_TEST_NODES` in that runner. Do not register absent future
+files. Missing wheels, missing/empty JUnit, missing required nodes, duplicate
+identities, any skipped/failed/error test, or evidence for a different wheel fail
+the gate. It uploads the pytest log, JUnit (including the test's evidence), and a
+summary with complete executed/required test node IDs, actual checkout SHA and wheel
 SHA-256, even after failure. `PT_SNAP_ACCEPTANCE_EVIDENCE_DIR` is available for
 additional test-owned artifacts. Local invocation:
 
@@ -44,8 +48,8 @@ python .github/scripts/run_dataset_acceptance.py \
 This tier initially exercises the existing 500,002-event `pip --target` acceptance
 test. It does not claim a clean venv, two full 500,000-event shards, complete CLI
 template coverage, live agents or upstream GUI interoperability. The ordinary
-full suite may still skip this opt-in wheel test; the required nightly/manual
-runner must never do so. Manually dispatch the exact published branch/commit and
+PR tier excludes `nightly` tests; the required nightly/manual runner must never
+skip them. Manually dispatch the exact published branch/commit and
 verify the run's head SHA and summary; a PR run alone is not nightly evidence.
 
 ## Release Workflow
