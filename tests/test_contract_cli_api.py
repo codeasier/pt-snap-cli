@@ -1188,3 +1188,37 @@ def test_explicit_dataset_limits_and_failures_match_cli_api(tmp_path):
     )
     assert failed.exit_code == 1 and failed.stdout == ""
     assert json.loads(failed.stderr)["error"]["message"] == str(error.value)
+
+
+@pytest.mark.parametrize("layout", ("v1", "v2"))
+@pytest.mark.parametrize("source", ("dataset", "standalone"))
+def test_zero_rank_completeness_cli_api_contract(tmp_path, layout, source):
+    from tests.core.test_dataset_zero_rank import zero_rank_pair
+
+    dataset, single = zero_rank_pair(tmp_path, layout, "mixed")
+    path = dataset if source == "dataset" else single
+    params = {"event_id": 1, "top_n": 0, "include_static": False}
+    with SnapshotAnalyzer(path) as analyzer:
+        for exact in (False, True):
+            api = analyzer.execute_query(
+                "active_memory_callstack_at_event", params, exact_total=exact
+            )
+            cli = _json_stdout(
+                runner.invoke(
+                    app,
+                    [
+                        "query",
+                        str(path),
+                        "--template-use",
+                        "active_memory_callstack_at_event",
+                        "--params",
+                        json.dumps(params),
+                        "--json",
+                        *(["--exact-total"] if exact else []),
+                    ],
+                )
+            )
+            assert {key: cli[key] for key in api} == api
+            assert api["rows"] == [] and api["has_more"] and api["truncated"]
+            assert api["total_is_exact"] is exact
+            assert api["total"] == int(exact)

@@ -194,7 +194,7 @@ def reduce_active(
                 )
             total = cast(int, summary["total"])
             dynamic = cast(int, summary["dynamic_groups"])
-            rank_full = top_n >= 0 and dynamic > 0 and dynamic >= top_n
+            rank_full = top_n >= 0 and dynamic >= top_n
             offset = 0
     coverage["source_queries"] = sources.query_count
     return rows, coverage, total, rank_full, offset

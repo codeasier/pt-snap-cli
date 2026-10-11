@@ -491,6 +491,10 @@ def _inner_rank_window_full(rows: list[dict[str, Any]], rank_cap: int) -> bool:
     ``rank_cap`` is treated as possibly incomplete unless ``exact_total``
     later proves ``total == returned``.
     """
+    # A zero-cap window can hide every ranked group. Empty output cannot
+    # establish completeness until exact_total explicitly counts without it.
+    if rank_cap == 0:
+        return True
     if not rows:
         return False
     if any("category" in row for row in rows):
