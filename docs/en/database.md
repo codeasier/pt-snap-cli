@@ -331,14 +331,64 @@ CREATE TABLE callstack (
 
 | Property | Guarantee |
 |----------|-----------|
-| Uniqueness | One row per distinct callstack text, so grouping by `callstackId` equals grouping by text |
+| Uniqueness | One row per distinct ordered structured frame array; display text alone is not a lossless identity |
 | Scope | Shared by every device in the database; the table has no device suffix |
 | Coverage | Every event produced by import resolves to a row; `callstackId` is `NULL` only in externally generated databases |
 
-Current `pt-snap import` writes this v2 layout (`import_format_version = 2`).
+Current standalone `pt-snap import` retains this v2 text layout and adds structured frame
+tables (`import_format_version = 3`). Format 2 databases have the same text
+layout but no original frame records.
 Databases produced before callstack deduplication store inline `callstack` TEXT
 on each `trace_entry_<device>` table and have no shared `callstack` table
 (`import_format_version = 1` when metadata is present).
+
+### Structured frames and ordered arrays (format 3)
+
+`frame` stores each distinct original `(filename, line, name)` tuple once.
+`callstack_frame` associates a stack with an ordered array of frame IDs:
+
+```sql
+CREATE TABLE frame (
+    id INTEGER PRIMARY KEY,
+    filename TEXT NOT NULL,
+    line INTEGER NOT NULL,
+    name TEXT NOT NULL
+);
+CREATE TABLE callstack_frame (
+    callstackId INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    frameId INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX idx_callstack_frame_position
+    ON callstack_frame (callstackId, position);
+```
+
+These tables are shared across devices. An event refers to the array through
+`trace_entry_<device>.callstackId`; read it in `position ASC` order to reproduce
+the original snapshot array. Position 0 is the innermost frame. The frame tree
+reverses traversal to start with the outermost caller. Recursive occurrences
+retain distinct positions even when they share a frame ID. Empty arrays have
+no association rows and a manifest frameCount of zero. Structured fields preserve colons, whitespace, Unicode
+and embedded newlines without parsing display strings.
+
+Use `event_frames` to read an event's ordered frames and
+`active_memory_frame_tree_at_event` to obtain parent/child occupancy.
+See [Frame memory breakdown](querying.md#frame-memory-breakdown).
+Text-only databases remain readable by existing queries, but these new
+queries require re-importing the original snapshot. Import detects the changed
+format and rebuilds the cache; read-only analysis never migrates a database.
+
+### Standalone frame capability boundary
+
+Format 3 applies only to standalone imports. Native sharded imports remain format 2
+and compatible exports remain format 1; neither claims the standalone frame-tree
+capability. `callstack_frame_manifest(callstackId INTEGER PRIMARY KEY,
+frameCount INTEGER NOT NULL)` records the expected length of every captured stack,
+including zero. Frame fields must be text filename/name and an integer line.
+`event_frames` returns no rows for absent, known-empty or corrupt arrays, never a
+partial reconstruction. Trees keep known-empty captured stacks separate from
+missing/corrupt evidence. Dropped tail/all links, noninteger positions and invalid
+field types fail validation. Read-only queries never repair stored evidence.
 
 ### Callstack layout compatibility
 
@@ -351,7 +401,8 @@ on each `trace_entry_<device>` table and have no shared `callstack` table
 
 `event`, `callstack_analysis`, and `active_memory_callstack_at_event` keep one
 template name, parameter set, and output schema. The query engine selects v1 or
-v2 SQL from the detected layout. Other templates do not depend on this split.
+v2 SQL from the detected layout. Structured-frame queries additionally require
+the format 3 tables; their frame evidence is not reconstructed from legacy text.
 
 Detection is read-only: `focus`, `query`, reports, and the Python API all
 open the database with SQLite `mode=ro`. Layout is not stored in

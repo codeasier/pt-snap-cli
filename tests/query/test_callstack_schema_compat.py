@@ -409,7 +409,7 @@ def test_v1_layout_detected_with_or_without_metadata(
     assert Context(db_path).callstack_layout == "v1"
 
 
-@pytest.mark.parametrize("metadata_version", [None, 2])
+@pytest.mark.parametrize("metadata_version", [None, 2, 3])
 def test_v2_layout_detected_with_or_without_metadata(
     tmp_path: Path, metadata_version: int | None
 ) -> None:
@@ -442,7 +442,7 @@ def test_metadata_conflict_fails_only_variant_templates(tmp_path: Path) -> None:
 
 
 def test_unknown_metadata_version_does_not_override_structure(tmp_path: Path) -> None:
-    db_path = create_v2_db(tmp_path / "future.db", metadata_version=3)
+    db_path = create_v2_db(tmp_path / "future.db", metadata_version=4)
     assert Context(db_path).callstack_layout == "v2"
 
 

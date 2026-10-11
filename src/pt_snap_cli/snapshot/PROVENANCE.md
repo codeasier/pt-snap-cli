@@ -286,3 +286,16 @@ rejection across resolver, focus, CLI and API. No repair, checkpoint, journal-mo
 change, artifact deletion or standalone-DB policy change is introduced. This is
 not concurrent-producer locking. Existing attribution, source mappings, fixtures
 and license records are unchanged; no live upstream artifact acceptance is claimed.
+
+
+## 2026-10-10: standalone ordered frames and event-time memory trees
+
+First-party changes extend only standalone snapshot imports to format 3 with
+lossless ordered frame identities and expected per-stack frame counts. Native
+sharded replay retains format 2, text interning and its existing cache identity;
+compatible export retains format 1. Standalone frame evidence is written by the
+existing replay adaptor, without changing allocator transitions or event IDs.
+Read-only queries preserve path identity, classify absent/corrupt evidence, and
+conserve live block, requested-byte and occupancy totals. No upstream code or
+new executable fixtures were incorporated; source mappings and licenses remain
+unchanged. This supersedes the unmerged implementation proposed in PR #207.

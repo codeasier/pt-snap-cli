@@ -19,7 +19,12 @@ DEFAULT_INSERT_CACHE_SIZE = 10000
 
 class SnapshotDbHandler:
     def __init__(
-        self, db_path: str, devices: list[int], insert_cache_size: int = DEFAULT_INSERT_CACHE_SIZE
+        self,
+        db_path: str,
+        devices: list[int],
+        insert_cache_size: int = DEFAULT_INSERT_CACHE_SIZE,
+        *,
+        structured_frames: bool = False,
     ):
         self._closed = True
         self.db_path = db_path
@@ -29,7 +34,7 @@ class SnapshotDbHandler:
         self._device_block_cache = {}
         self._insert_cache_size = insert_cache_size
         try:
-            self.db.create_callstack_table()
+            self.db.create_callstack_table(structured_frames=structured_frames)
             for device in devices:
                 self._device_block_cache[device] = []
                 self._device_event_cache[device] = []
@@ -105,9 +110,12 @@ class DumpEventHooker(SimulateHooker, AllocatorHooker):
     def __init__(
         self, db_path: str, devices: list[int], dump_cache_size: int = DEFAULT_INSERT_CACHE_SIZE
     ):
-        self.db_handler = SnapshotDbHandler(db_path, devices, insert_cache_size=dump_cache_size)
+        self.db_handler = SnapshotDbHandler(
+            db_path, devices, insert_cache_size=dump_cache_size, structured_frames=True
+        )
+        # Standalone v3 opts in; native shard writers keep the default text contract.
         # One interner for the whole dump so devices share identical callstacks.
-        self.callstacks = CallstackInterner()
+        self.callstacks = CallstackInterner(structured_frames=True)
 
     def post_undo_event(
         self, already_undo_event: TraceEntry, current_snapshot: DeviceSnapshot
@@ -162,6 +170,14 @@ class DumpEventHooker(SimulateHooker, AllocatorHooker):
 
     def flush_callstacks(self):
         self.db_handler.insert_callstacks(self.callstacks.records())
+        db = self.db_handler.db
+        db.get_table_by_name("frame").insert_records(db.conn, self.callstacks.frame_records())
+        db.get_table_by_name("callstack_frame").insert_records(
+            db.conn, self.callstacks.stack_frame_records()
+        )
+        db.get_table_by_name("callstack_frame_manifest").insert_records(
+            db.conn, self.callstacks.stack_manifest_records()
+        )
 
     def close(self, *, commit: bool = True):
         self.db_handler.close(commit=commit)

@@ -20,7 +20,7 @@ from pt_snap_cli.core.errors import (
     SourceChangedError,
 )
 from pt_snap_cli.core.focus_service import FocusService
-from pt_snap_cli.core.import_metadata import ImportMetadataService
+from pt_snap_cli.core.import_metadata import NATIVE_IMPORT_FORMAT_VERSION, ImportMetadataService
 from pt_snap_cli.core.models import (
     CacheMissReason,
     FocusState,
@@ -229,8 +229,11 @@ class ImportService:
 
         def finalize(result: ShardedReplayResult) -> None:
             nonlocal completed, generated
-            metadata = self._metadata_service.build_metadata(
-                options.snapshot_file, source_hash, options.device
+            metadata = replace(
+                self._metadata_service.build_metadata(
+                    options.snapshot_file, source_hash, options.device
+                ),
+                import_format_version=NATIVE_IMPORT_FORMAT_VERSION,
             )
             for item in result.slices:
                 _require_readonly_member(result.directory, item.file)

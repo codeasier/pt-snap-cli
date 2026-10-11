@@ -177,7 +177,7 @@ class Context:
                 )
 
         metadata_version = _import_format_version(cursor)
-        if metadata_version in (1, 2):
+        if metadata_version in (1, 2, 3):
             expected: CallstackLayout = "v1" if metadata_version == 1 else "v2"
             if layout is None:
                 return None, (

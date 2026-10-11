@@ -73,6 +73,23 @@ jobs:
       - name: basedPyright check
         run: python -m basedpyright --pythonpath "$(python -c 'import sys; print(sys.executable)')"
 
+  browser:
+    name: Frame-tree browser regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install browser test dependencies
+        run: |
+          pip install -e ".[dev]"
+          python -m playwright install --with-deps chromium
+      - name: Run required Chromium interaction tests
+        env:
+          PT_SNAP_REQUIRE_BROWSER: "1"
+        run: pytest tests/test_fixture_provenance.py tests/test_memory_tree_browser.py
+
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest

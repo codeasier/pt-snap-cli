@@ -27,9 +27,11 @@ from pt_snap_cli.core.native_dataset_contract import NativeManifest
 
 METADATA_TABLE = "pt_snap_metadata"
 METADATA_SCHEMA_VERSION = 1
-# 2: trace_entry_<device> stores `callstackId` referencing the shared `callstack`
-# table instead of an inlined `callstack` text column.
-IMPORT_FORMAT_VERSION = 2
+# Standalone databases retain the v2 callstackId/text layout and add original-
+# order structured frames in v3. Only standalone v2 caches require re-import.
+IMPORT_FORMAT_VERSION = 3
+# Native shard metadata and cache identity retain their published v2 contract.
+NATIVE_IMPORT_FORMAT_VERSION = 2
 IMPORTER_NAME = "pt-snap-cli"
 HASH_CHUNK_SIZE = 1024 * 1024
 
