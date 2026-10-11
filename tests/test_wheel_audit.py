@@ -177,6 +177,12 @@ def test_repeated_setuptools_build_rejects_arbitrary_build_lib_residue(audit, so
     ("workflow", "job", "build", "next_step"),
     [
         ("test.yml", "test", "Build wheel", "Clean-wheel Agent acceptance"),
+        (
+            "test.yml",
+            "dataset-acceptance",
+            "Build wheel",
+            "Run required installed-wheel dataset acceptance",
+        ),
         ("release.yml", "build", "Build sdist and wheel", "Upload build artifacts"),
     ],
 )

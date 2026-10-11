@@ -2,6 +2,9 @@ name: Test
 
 on:
   workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
   push:
     branches: [main]
   pull_request:
@@ -23,6 +26,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Require provenance evaluation for snapshot runtime changes
         if: github.event_name == 'pull_request'
@@ -56,6 +60,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-python@v5
         with:
@@ -78,6 +84,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -99,6 +107,8 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-python@v5
         with:
@@ -114,10 +124,19 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]"
 
-      - name: Run tests with coverage
-        run: pytest tests/test_fixture_provenance.py && pytest --cov --cov-report=xml --cov-report=term-missing
+      - name: Verify executable fixture provenance
+        run: pytest tests/test_fixture_provenance.py
+
+      - name: Run non-slow compatibility tests
+        if: matrix.python-version != '3.13'
+        run: pytest -m "not slow and not nightly"
+
+      - name: Run full PR tests with coverage
+        if: matrix.python-version == '3.13'
+        run: pytest -m "not nightly" --cov --cov-report=xml --cov-report=term-missing
 
       - name: Guard critical runtime coverage
+        if: matrix.python-version == '3.13'
         # Separate floors prevent strong modules from masking a weak boundary.
         run: |
           python -m coverage report --include='*/core/snapshot_import_backend.py' --fail-under=90
@@ -153,3 +172,50 @@ jobs:
           python .github/scripts/clean_wheel_agent_acceptance.py \
             --wheel "$WHEEL" \
             --fixture tests/fixtures/snapshots/snapshot_with_empty_cache.pkl
+
+  dataset-acceptance:
+    name: Installed-wheel dataset acceptance
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Verify executable fixture provenance
+        run: pytest tests/test_fixture_provenance.py
+
+      - name: Build wheel
+        run: python -m build --wheel
+
+      - name: Audit wheel contents against source
+        run: |
+          set -euo pipefail
+          WHEEL=$(python -c 'from pathlib import Path; wheels = sorted(Path("dist").glob("*.whl")); assert len(wheels) == 1, wheels; print(wheels[0])')
+          python .github/scripts/audit_wheel.py --wheel "$WHEEL"
+
+      - name: Run required installed-wheel dataset acceptance
+        run: |
+          set -euo pipefail
+          WHEEL=$(python -c 'from pathlib import Path; wheels = sorted(Path("dist").glob("*.whl")); assert len(wheels) == 1, wheels; print(wheels[0])')
+          python .github/scripts/run_dataset_acceptance.py \
+            --wheel "$WHEEL" --output-dir .tmp/dataset-acceptance
+
+      - name: Upload dataset acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dataset-acceptance-${{ github.sha }}
+          path: .tmp/dataset-acceptance/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30

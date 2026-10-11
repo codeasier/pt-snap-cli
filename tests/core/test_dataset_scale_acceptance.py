@@ -226,6 +226,7 @@ def installed_runtime(tmp_path):
     return cli, env, module, hashlib.sha256(wheel.read_bytes()).hexdigest()
 
 
+@pytest.mark.nightly
 def test_installed_trusted_producer_default_export_cli_and_api(
     tmp_path, installed_runtime, record_property
 ):
