@@ -318,9 +318,9 @@ def test_work_limits_detached_batches_borrowed_lru_timeout_cleanup_and_report_de
         budget = QueryBudget(None, time.monotonic(), max_work_rows=4)
         with pytest.raises(QueryExecutionError, match="work budget"):
             service.execute_query("block", db_path=root, _budget=budget)
-        # The entire real range consumes 16 rows before final max_rows=1;
-        # its source lookup must use the SAME cumulative budget, not reset.
-        budget = QueryBudget(None, time.monotonic(), max_work_rows=16)
+        # Eight shard count rows plus one ID page row consume nine work rows;
+        # source hydration must use the SAME cumulative budget, not reset.
+        budget = QueryBudget(None, time.monotonic(), max_work_rows=9)
         with pytest.raises(QueryExecutionError, match="work budget"):
             service.execute_query(
                 "event", db_path=root, max_rows=1, exact_total=True, _budget=budget

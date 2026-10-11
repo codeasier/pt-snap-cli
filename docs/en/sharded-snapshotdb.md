@@ -252,6 +252,18 @@ and cumulative work ceilings; arbitrary SQL/custom overrides fail explicitly, ne
 silently choosing the first/latest slice. Single-DB real-event peak/gap and all-action
 full-text stack-statistics versions are documented with the same contracts.
 
+For dataset `event` and `allocation` queries ordered by `id` (ASC or DESC), deep
+`offset` pagination uses per-shard matching counts to skip whole shards and a local
+SQL OFFSET in the landing shard, then reads subsequent shards only to fill the
+window. Sparse native IDs are counted as rows, never as ID distances. Only selected
+event rows receive source text and ordered-frame hydration. Range counts still
+cover the requested interval before non-range filters; totals, completeness flags,
+and cumulative accounting for fetched counts, page rows, sources and output remain
+unchanged. This reduces Python-fetched work, not SQLite scan work or full-dataset
+validation cost. Other sort keys retain their existing global candidate strategy;
+unlimited or large returned pages can still exceed the work budget. No cursor API
+is added.
+
 `core.dataset_resolver.DatasetResolver.inspect(path)` returns an immutable
 `ResolvedDataset` (or `None` for a standalone DB). Its `paths(QueryScope(...))`
 addresses all matching files even for a cross-slice range, but does not execute it.
