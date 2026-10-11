@@ -5,16 +5,24 @@ import os
 import subprocess
 import sys
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
 
 import pt_snap_cli
 from pt_snap_cli.core.native_dataset_contract import NATIVE_FORMAT
+from tests.dataset_cli_resource_probe import relative_evidence_path
 from tests.test_dataset_focus import make_dataset
 from tests.test_native_dataset import dataset as native_dataset
 
 PROBE = Path(__file__).with_name("dataset_cli_resource_probe.py")
+
+
+@pytest.mark.parametrize("path_type", [PurePosixPath, PureWindowsPath])
+def test_relative_evidence_paths_use_portable_separators(path_type):
+    root = path_type("dataset")
+    member = root / "device_1" / "slice_00000.db"
+    assert relative_evidence_path(member, root) == "device_1/slice_00000.db"
 
 
 @pytest.fixture(params=["compatibility", "native"])
@@ -70,7 +78,7 @@ def test_cli_report_hash_passes_and_logical_bytes(artifact, tmp_path, cache):
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["event_id"] is not None
     files = {
-        str(path.relative_to(root)): path.stat().st_size
+        path.relative_to(root).as_posix(): path.stat().st_size
         for path in root.rglob("*")
         if path.is_file()
     }

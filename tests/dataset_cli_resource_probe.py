@@ -10,11 +10,16 @@ import os
 import sqlite3
 import sys
 from contextlib import closing
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from pt_snap_cli.cli import _safe_call
 from pt_snap_cli.core import dataset_files, dataset_resolver, native_dataset_contract
 from pt_snap_cli.core import query_service as queries
+
+
+def relative_evidence_path(path: PurePath, root: PurePath) -> str:
+    """Serialize relative evidence identities with platform-independent separators."""
+    return path.relative_to(root).as_posix()
 
 
 def main():
@@ -60,7 +65,7 @@ def main():
 
     def hashed(path, **kwargs):
         record = {
-            "path": str(path.relative_to(root)),
+            "path": relative_evidence_path(path, root),
             "phase": phase[-1],
             "bytes_read": 0,
             "completed": False,
@@ -106,7 +111,7 @@ def main():
             os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
             assert target.stat().st_size == before.st_size
             dataset_resolver._generation = lambda *a: pinned[-1].generation
-            evidence["mutated"] = str(target.relative_to(root))
+            evidence["mutated"] = relative_evidence_path(target, root)
             return result
 
         setattr(queries, name, changed)
