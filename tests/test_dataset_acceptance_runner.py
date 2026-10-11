@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -12,6 +13,11 @@ import pytest
 
 RUNNER = Path(".github/scripts/run_dataset_acceptance.py")
 BOUNDARY_NAME = "test_installed_default_export_short_final_shard_boundary"
+SCALE_TEST_NODES = (
+    "tests/core/test_dataset_route_scale_acceptance.py::test_million_lifecycles_real_attach_and_scratch_routes",
+    "tests/core/test_dataset_route_scale_acceptance.py::test_million_lifecycles_over_limit_respects_disabled_scratch_budget",
+    "tests/core/test_dataset_route_scale_acceptance.py::test_million_lifecycles_real_subprocess_deep_offset_and_budget_precedence",
+)
 
 
 @pytest.fixture
@@ -44,6 +50,15 @@ def write_report(path, name, evidence, outcome=None, *, include_boundary=True):
             name=BOUNDARY_NAME,
             file="tests/core/test_dataset_scale_acceptance.py",
             classname="tests.core.test_dataset_scale_acceptance",
+        )
+    for node in SCALE_TEST_NODES:
+        file, name = node.split("::")
+        ET.SubElement(
+            suite,
+            "testcase",
+            name=name,
+            file=file,
+            classname=file.removesuffix(".py").replace("/", "."),
         )
     ET.ElementTree(suite).write(path)
 
@@ -119,6 +134,7 @@ def test_runner_accepts_additional_nightly_cases_and_records_complete_identities
     assert [runner.test_node_id(case) for case in runner.read_cases(report)] == [
         runner.TEST_NODE,
         runner.BOUNDARY_TEST_NODE,
+        *SCALE_TEST_NODES,
         "tests/test_extra.py::TestRoutes::test_extra[v2]",
     ]
 
@@ -301,4 +317,30 @@ def test_runner_rejects_nonpassing_short_final_shard_case(runner, tmp_path, outc
         outcome=outcome,
     )
     with pytest.raises(runner.AcceptanceError, match="without skips"):
+        runner.read_evidence(report, "abc")
+
+
+def test_required_nightly_registry_contains_actual_scale_gates(runner):
+    assert runner.REQUIRED_TEST_NODES == (
+        runner.TEST_NODE,
+        runner.BOUNDARY_TEST_NODE,
+        *SCALE_TEST_NODES,
+    )
+
+
+@pytest.mark.parametrize("node", SCALE_TEST_NODES)
+@pytest.mark.parametrize("outcome", ["missing", "skipped", "failure", "error"])
+def test_every_scale_gate_is_required_by_full_identity(runner, tmp_path, node, outcome):
+    report = tmp_path / "junit.xml"
+    write_report(report, runner.TEST_NAME, {"wheel_sha256": "abc"})
+    tree = ET.parse(report)
+    case = next(case for case in tree.findall(".//testcase") if runner.test_node_id(case) == node)
+    if outcome == "missing":
+        # A same-named passing function in another module cannot replace a gate.
+        case.set("file", "tests/test_extra.py")
+        case.set("classname", "tests.test_extra")
+    else:
+        ET.SubElement(case, outcome)
+    tree.write(report)
+    with pytest.raises(runner.AcceptanceError, match=re.escape(node)):
         runner.read_evidence(report, "abc")
