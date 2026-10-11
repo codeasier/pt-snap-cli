@@ -127,7 +127,7 @@ def test_any_unexpected_error_fails_and_records_both_outcomes(tmp_path, errors):
 
         return SimpleNamespace(execute_query=execute)
 
-    with pytest.raises(AssertionError, match="unexpected query errors.*seed"):
+    with pytest.raises(AssertionError, match="(?s)unexpected query errors.*seed"):
         compare_case(
             analyzer(0), analyzer(1), QueryCase("error-check", "event"), tmp_path, 31, "v2", 2
         )
