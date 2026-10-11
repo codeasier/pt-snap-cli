@@ -29,6 +29,12 @@ from pt_snap_cli.core.errors import (
     QueryExecutionError,
     QueryTimeoutError,
 )
+from pt_snap_cli.core.query_limits import (
+    DEFAULT_MAX_SCRATCH_DB_BYTES,
+    DEFAULT_MAX_WORK_BYTES,
+    DEFAULT_MAX_WORK_ROWS,
+    QueryLimits,
+)
 from pt_snap_cli.query.executor import QueryExecutionError as ExecutorError
 from pt_snap_cli.query.executor import QueryExecutor
 from pt_snap_cli.query.executor import QueryTimeoutError as ExecutorTimeout
@@ -64,13 +70,34 @@ def _bounded_depth(value: object) -> bool:
 class QueryBudget:
     timeout_s: float | None
     started: float
-    max_work_rows: int = 100_000
-    max_work_bytes: int = 64 * 1024 * 1024
+    max_work_rows: int = DEFAULT_MAX_WORK_ROWS
+    max_work_bytes: int = DEFAULT_MAX_WORK_BYTES
     work_rows: int = 0
     work_bytes: int = 0
     # Per-operation derived database pages, not total SQLite temp space or RSS.
-    # Zero retains the bounded in-Python fallback. Local/internal API only.
-    max_scratch_db_bytes: int = 512 * 1024 * 1024
+    # Zero retains the bounded in-Python fallback.
+    max_scratch_db_bytes: int = DEFAULT_MAX_SCRATCH_DB_BYTES
+
+    @classmethod
+    def from_limits(
+        cls, limits: QueryLimits, timeout_s: float | None, started: float
+    ) -> QueryBudget:
+        return cls(
+            timeout_s,
+            started,
+            max_work_rows=limits.max_work_rows,
+            max_work_bytes=limits.max_work_bytes,
+            max_scratch_db_bytes=limits.max_scratch_db_bytes,
+        )
+
+    def describe(self) -> dict[str, object]:
+        return {
+            "max_rows": self.max_work_rows,
+            "max_bytes": self.max_work_bytes,
+            "max_scratch_db_bytes": self.max_scratch_db_bytes,
+            "unit": "cumulative_fetched_and_output_serialized_values; not_RSS",
+            "scratch_unit": "derived_database_pages; not_total_temporary_space_or_RSS",
+        }
 
     def consume(self, rows: list[dict[str, object]]) -> None:
         """Bound cumulative fetched rows/serialized values, not merely output.
@@ -86,8 +113,11 @@ class QueryBudget:
         )
         if self.work_rows > self.max_work_rows or self.work_bytes > self.max_work_bytes:
             raise QueryExecutionError(
-                "Dataset query work budget exceeded (100000 fetched rows / 64 MiB serialized "
-                "values by default); no partial global result. Narrow the scope or select a member."
+                "Dataset query work budget exceeded "
+                f"(max_work_rows={self.max_work_rows}, max_work_bytes={self.max_work_bytes}, "
+                f"max_scratch_db_bytes={self.max_scratch_db_bytes}; "
+                f"consumed_rows={self.work_rows}, consumed_bytes={self.work_bytes}); "
+                "no partial global result. Narrow the scope or explicitly raise query limits."
             )
 
     def remaining(self) -> float | None:

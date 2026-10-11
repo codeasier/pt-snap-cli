@@ -1072,3 +1072,48 @@ def test_overview_error_contract_maps_four_domain_failures(tmp_path: Path) -> No
     assert unconfigured_error["code"] == "FOCUS_NOT_CONFIGURED"
     with pytest.raises(RuntimeError, match="No database configured"):
         SnapshotAnalyzer().get_database_overview()
+
+
+def test_explicit_dataset_limits_and_failures_match_cli_api(tmp_path):
+    from pt_snap_cli.api import QueryLimits
+
+    root = make_dataset(tmp_path / "limits-contract", devices=(0,))
+    limits = QueryLimits(100, 123456, 0)
+    with SnapshotAnalyzer(root) as analyzer:
+        api = analyzer.execute_query("event", query_limits=limits)
+        with pytest.raises(QueryExecutionError, match="max_work_rows=1") as error:
+            analyzer.execute_query("event", query_limits=QueryLimits(1))
+    cli = runner.invoke(
+        app,
+        [
+            "query",
+            str(root),
+            "--template-use",
+            "event",
+            "--max-work-rows",
+            "100",
+            "--max-work-bytes",
+            "123456",
+            "--max-scratch-db-bytes",
+            "0",
+            "--json",
+        ],
+    )
+    assert cli.exit_code == 0, cli.output
+    payload = json.loads(cli.stdout)
+    assert payload["scope"] == api["scope"]
+    assert payload["rows"] == api["rows"]
+    failed = runner.invoke(
+        app,
+        [
+            "query",
+            str(root),
+            "--template-use",
+            "event",
+            "--max-work-rows",
+            "1",
+            "--json",
+        ],
+    )
+    assert failed.exit_code == 1 and failed.stdout == ""
+    assert json.loads(failed.stderr)["error"]["message"] == str(error.value)

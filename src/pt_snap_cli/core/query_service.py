@@ -36,6 +36,7 @@ from pt_snap_cli.core.models import (
     TemplateParameter,
     TemplateSummary,
 )
+from pt_snap_cli.core.query_limits import QueryLimits, resolve_query_limits
 from pt_snap_cli.core.stack_summary import summarize_stacks
 from pt_snap_cli.query.executor import QueryExecutionError as ExecutorQueryExecutionError
 from pt_snap_cli.query.executor import QueryExecutor
@@ -91,7 +92,11 @@ class QueryService:
         focus_service: FocusService | None = None,
         *,
         context_cache: ContextCache | None = None,
+        query_limits: QueryLimits | None = None,
     ) -> None:
+        if query_limits is not None:
+            _ = resolve_query_limits(query_limits)
+        self._query_limits: QueryLimits | None = query_limits
         self._focus_service = focus_service or FocusService()
         # Cache Context instances across calls so long-lived SnapshotAnalyzer
         # owners skip the per-call schema validation and
@@ -150,7 +155,9 @@ class QueryService:
             )
         return summaries
 
-    def get_template_info(self, name: str) -> TemplateInfo:
+    def get_template_info(
+        self, name: str, *, query_limits: QueryLimits | None = None
+    ) -> TemplateInfo:
         template = get_query(name)
         if template is None:
             raise TemplateNotFoundError(f"Template '{name}' not found")
@@ -183,6 +190,7 @@ class QueryService:
                 name,
                 is_packaged_query(name)
                 and not (self._executor is not None and self._executor.has_runtime_template(name)),
+                self.resolve_limits(query_limits),
             ),
             semantics_version=info.get("semantics_version"),
             interpretation_limits=(
@@ -232,14 +240,11 @@ class QueryService:
         exact_total: bool = False,
         timeout_s: float | None = None,
         slice_index: int | None = None,
+        query_limits: QueryLimits | None = None,
         _budget: QueryBudget | None = None,
         _resolved: _ResolvedQuery | None = None,
     ) -> QueryResult:
-        budget = (
-            _budget
-            if _budget is not None
-            else QueryBudget(resolve_query_timeout(timeout_s), time.monotonic())
-        )
+        budget = _budget if _budget is not None else self._new_budget(timeout_s, query_limits)
         timeout_s, started = budget.timeout_s, budget.started
         budget.remaining()
         resolution = _resolved or self._resolve_query(db_path, device_id, start_dir, budget)
@@ -301,6 +306,8 @@ class QueryService:
                 # Inspection establishes the baseline. Reject changed contents
                 # after each composed step, before any report can be returned.
                 dataset.require_unchanged(budget)
+            if result.scope is not None:
+                result.scope["work_budget"] = budget.describe()
             return result
         else:
             if slice_index is not None:
@@ -369,6 +376,18 @@ class QueryService:
             total_is_exact=total_is_exact,
             timeout_s=timeout_s,
             scope=scope,
+        )
+
+    def resolve_limits(self, explicit: QueryLimits | None = None) -> QueryLimits:
+        """Per-call limits override instance limits, then environment/defaults."""
+        return resolve_query_limits(explicit if explicit is not None else self._query_limits)
+
+    def _new_budget(
+        self, timeout_s: float | None = None, query_limits: QueryLimits | None = None
+    ) -> QueryBudget:
+        """Create fresh counters and a deadline for one operation/composition."""
+        return QueryBudget.from_limits(
+            self.resolve_limits(query_limits), resolve_query_timeout(timeout_s), time.monotonic()
         )
 
     def _resolve_query(

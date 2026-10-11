@@ -1,5 +1,7 @@
 """One shared, explicit per-template dataset execution support matrix."""
 
+from pt_snap_cli.core.query_limits import QueryLimits
+
 DATASET_SUPPORT: dict[str, str] = {
     "event": "real_events_global_filter_sort_page",
     "allocation": "real_events_global_filter_sort_page",
@@ -15,14 +17,18 @@ DATASET_SUPPORT: dict[str, str] = {
 }
 
 
-def dataset_support(name: str, packaged: bool) -> dict[str, object]:
+def dataset_support(
+    name: str, packaged: bool, limits: QueryLimits | None = None
+) -> dict[str, object]:
+    limits = limits if limits is not None else QueryLimits()
     semantics = DATASET_SUPPORT.get(name) if packaged else None
     return {
         "supported": semantics is not None,
         "semantics": semantics,
         "device_scope": "one_selected_device; never sum device peaks",
         "custom_sql": "unsupported; select an explicit standalone member",
-        "work_limit_rows": 100_000,
-        "work_limit_bytes": 64 * 1024 * 1024,
+        "work_limit_rows": limits.max_work_rows,
+        "work_limit_bytes": limits.max_work_bytes,
+        "max_scratch_db_bytes": limits.max_scratch_db_bytes,
         "budget_scope": "one_query_or_explicit_report_composition",
     }

@@ -128,7 +128,7 @@ exactness 标记诚实。`has_more/truncated` 描述窗口，不表示来源/范
 独立。未证明历史身份按片局部单独表达，不按地址/局部栈 ID 猜合并，不断言为已证明泄漏。
 
 数据集读取先分离批次再查外片来源，使用借用的有界 Context LRU。所有片、来源、分组、
-精确总数共用递减 deadline；报告的峰值选择与归因明确共用**一个**预算。累计取回/输出工作上限为
+精确总数共用递减 deadline；报告的峰值选择与归因明确共用**一个**预算。累计取回/输出工作默认上限为
 **100000 行 / 64 MiB 序列化值**，含重复来源读取；超限整体失败，不返回冒充完整的部分
 结论。物化/排序由工作上限约束，**不由 max_rows 约束**；不是进程 RSS 上限，Python/
 SQLite、一个批次及单个 cell 有额外开销。默认仍执行强准入：每次对 manifest/全部成员
@@ -157,8 +157,9 @@ slice 查询在筛选、分页前发现所需的证明来源分片。超限时�
 
 临时目录权限为 0700，派生文件以 0600 创建；正常完成、错误和取消均关闭连接并删除目录。
 强制杀进程或文件系统清理失败可能留下私有残余；这不是安全擦除。派生主库页数空间默认
-上限为 512 MiB，可通过内部 `QueryBudget.max_scratch_db_bytes` 字段设为 4096 字节至
-4 GiB；0 禁用该路径、沿用原有受预算约束的来源读取。这不是新增 CLI 选项。页数超限或
+上限为 512 MiB，可通过 `--max-scratch-db-bytes`、`PT_SNAP_MAX_SCRATCH_DB_BYTES`
+或公开 `QueryLimits.max_scratch_db_bytes` 设为 4096 字节至 4 GiB；0 禁用该路径、
+沿用原有受预算约束的来源读取。详见[公开数据集预算](#公开数据集预算)。页数超限或
 磁盘满会拒绝整个查询。该上限**不包括**回滚 journal、SQLite 排序文件、全部临时空间或
 RSS。主库和源库各请求 2 MiB page cache，仅为缓存目标，不保证内存上限。SQL 内部扫描
 和临时计算不算 Python 取回行；全部阶段、汇总/分页或时长分桶及来源补全共用递减 deadline。
@@ -168,6 +169,47 @@ RSS。主库和源库各请求 2 MiB page cache，仅为缓存目标，不保证
 来源读取仍可能超取回预算，并明确失败。大量生命周期归约也可能单独超出派生主库页数上限
 或 deadline。预算统计进入 Python 的实际取回行和序列化输出，不限制
 SQL 内部扫描、SQLite 排序空间或整个进程内存。
+
+## 公开数据集预算
+
+`query`、`report peak-memory` 与 `report memory-tree` 接受同一组选项：
+
+| CLI 选项 | 环境变量 | 默认值 / 合法范围 |
+| --- | --- | --- |
+| `--max-work-rows` | `PT_SNAP_MAX_WORK_ROWS` | `100000`；正整数 |
+| `--max-work-bytes` | `PT_SNAP_MAX_WORK_BYTES` | `67108864`（64 MiB）；正整数字节数 |
+| `--max-scratch-db-bytes` | `PT_SNAP_MAX_SCRATCH_DB_BYTES` | `536870912`（512 MiB）；`0` 禁用 scratch，否则为 `4096` 至 `4294967296`（4 GiB） |
+
+逐字段按显式 CLI flag、对应环境变量、内建默认值依次解析。环境变量只接受十进制整数，
+不接受单位后缀；未设置或空白时使用默认值。布尔值、小数、负数和零工作预算都非法；
+不存在无限工作预算。scratch 为零**不会禁用工作预算**。非整页 scratch 值由 SQLite
+向下取整到 4096 字节页。非法配置在访问数据库前失败，单库命令也执行配置校验。
+这些预算约束数据集执行，不给单库 SQLite 查询新增工作上限，也不让不支持数据集的模板
+变得可用。
+
+```bash
+pt-snap query '<dataset_dir>' --template-use event \
+  --params '{"offset":100000,"limit":5}' --max-work-rows 300000 \
+  --max-work-bytes 134217728 --exact-total --json
+pt-snap report peak-memory '<dataset_dir>' --max-work-rows 300000 \
+  --max-scratch-db-bytes 1073741824 --timeout 30 --json
+```
+
+`SnapshotAnalyzer`、`QueryService` 和 `ReportService` 共用
+[不可变 Python `QueryLimits` API](snapshot-analyzer-api.md#数据集查询预算)。成功的数据集
+查询/报告在 `scope.work_budget` 回显实际 `max_rows`、`max_bytes`、
+`max_scratch_db_bytes` 及单位。模板 `dataset_support` 中的 `work_limit_rows`、
+`work_limit_bytes` 与 `max_scratch_db_bytes` 反映当前环境或 analyzer 默认配置；
+`query --template-info` 也接受显式预算 flag。单次结果的 scope 是该次有效预算的依据，
+不受后续环境变更影响。工作/scratch 超限报错包含实际配置值，整次失败且不返回部分全局
+结论；工作超限还报告已消耗的行数/字节数。峰值报告全部步骤共用累计预算与 deadline；
+独立查询/报告每次创建新计数器，即使底层复用连接。
+
+显式提高预算允许更多工作，可能增加内存/磁盘开销；这不是性能优化，也不保证 RSS 或
+全部临时空间上限。对先从每片取 `offset + limit` 个候选、全局排序后再切页的
+event/allocation 分页路径，全部候选工作仍计费，因此输出少也可能超预算。`-n`、`limit`、`stack_bytes`、`timeout`
+不会提高工作预算。适用时优先缩小范围，或明确为该操作选择更大容量。提高预算本身
+不会优化分页计划，也不暗中放宽默认预算。
 
 ## 数据集定点事件归因
 
