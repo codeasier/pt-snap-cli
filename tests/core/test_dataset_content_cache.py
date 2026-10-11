@@ -220,7 +220,10 @@ def test_immutable_v1_entry_cannot_seed_default_reuse(tmp_path, monkeypatch):
     root = make_dataset(tmp_path / "dataset", devices=(0,), slices=1)
     monkeypatch.setenv("PT_SNAP_DATASET_CACHE", "immutable")
     resolver.DatasetResolver().inspect(root)
-    assert not resolver._VALIDATED[root].content_verified
+    if os.name == "posix":
+        assert not resolver._VALIDATED[root].content_verified
+    else:
+        assert root not in resolver._VALIDATED
     monkeypatch.delenv("PT_SNAP_DATASET_CACHE")
     calls = []
     original = resolver.validate_dataset

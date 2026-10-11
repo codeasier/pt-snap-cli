@@ -23,10 +23,12 @@ def isolate(tmp_path, monkeypatch):
 def test_directory_descriptors_closed_on_success_and_failure(tmp_path, monkeypatch, fail):
     service, options, first, old, focus = saved_state(tmp_path)
     descriptors = []
+    identities = []
     original = SplitService._stage_identity
 
     def track(path):
         result = original(path)
+        identities.append(result)
         if result[2] is not None:
             descriptors.append(result[2])
         return result
@@ -43,7 +45,9 @@ def test_directory_descriptors_closed_on_success_and_failure(tmp_path, monkeypat
         assert_preserved(tmp_path, first, old, focus)
     else:
         service.import_snapshot(options)
-    assert descriptors
+    assert identities  # Windows uses path identity rather than directory descriptors.
+    assert bool(descriptors) == (os.name != "nt")
+    assert list(first.db_path.parent.iterdir()) == [first.db_path]
     for fd in descriptors:
         with pytest.raises(OSError):
             os.fstat(fd)

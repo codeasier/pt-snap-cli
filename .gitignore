@@ -11,6 +11,8 @@ dist/
 .coverage
 .coverage.*
 coverage.xml
+platform-tests.xml
+platform-partition.json
 htmlcov/
 .pytest_cache/
 .ruff_cache/

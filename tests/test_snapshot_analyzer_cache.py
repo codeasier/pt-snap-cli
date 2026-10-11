@@ -96,6 +96,10 @@ class TestSnapshotAnalyzerContextCache:
         conn.execute("CREATE TABLE trace_entry_1 (id INTEGER PRIMARY KEY)")
         conn.commit()
         conn.close()
+        if os.name == "nt":
+            # Keep the entry to test automatic signature invalidation, while
+            # releasing the handle Windows requires publishers to close first.
+            first_ctx.close()
         os.replace(new_path, valid_db)
 
         second_ctx = analyzer.context_cache.get(valid_db)

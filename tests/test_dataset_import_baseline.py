@@ -171,3 +171,26 @@ def test_recorded_performance_report_is_structural_not_a_speed_gate():
         assert record["individual_shard_bytes"] and record["total_disk_bytes"] > 0
         assert all(q["status"] == "passed" for q in record["queries"].values())
         # Deliberately no timing/RSS/speedup threshold: these are observations.
+
+
+def test_peak_rss_is_explicitly_unavailable_without_posix_resource(monkeypatch):
+    from benchmarks import dataset_import_baseline as baseline
+
+    monkeypatch.setattr(baseline, "resource", None)
+    assert baseline.process_peak_rss() is None
+
+
+def test_peak_rss_uses_current_process_only(monkeypatch):
+    from types import SimpleNamespace
+
+    from benchmarks import dataset_import_baseline as baseline
+
+    calls = []
+
+    def getrusage(who):
+        calls.append(who)
+        return SimpleNamespace(ru_maxrss=1234)
+
+    monkeypatch.setattr(baseline, "resource", SimpleNamespace(RUSAGE_SELF=0, getrusage=getrusage))
+    assert baseline.process_peak_rss() == 1234
+    assert calls == [0]

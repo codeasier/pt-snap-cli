@@ -101,13 +101,15 @@ def test_cold_warm_actual_hash_bytes_and_validator_counts(artifact, mode, work):
     for state in ("cold", "warm"):
         work.clear()
         assert resolver.DatasetResolver().inspect(root) is not None
-        passes = cold_member_passes if state == "cold" else int(mode == "strong")
+        # Immutable reuse requires POSIX change-time tokens; Windows revalidates.
+        cold_validation = state == "cold" or (mode == "immutable" and os.name != "posix")
+        passes = cold_member_passes if cold_validation else int(mode == "strong")
         for path in members:
             assert work[("hashes", path)] == passes
             assert work[("bytes", path)] == passes * path.stat().st_size
-        manifest_passes = 2 if state == "cold" else int(mode == "strong")
+        manifest_passes = 2 if cold_validation else int(mode == "strong")
         assert work[("bytes", manifest)] == manifest_passes * manifest.stat().st_size
-        assert work["validators"] == int(state == "cold")
+        assert work["validators"] == int(cold_validation)
         evidence[state] = {
             "hash_read_bytes": sum(
                 v for k, v in work.items() if isinstance(k, tuple) and k[0] == "bytes"
@@ -147,7 +149,7 @@ def test_hidden_change_tokens_document_immutable_trust_boundary(artifact, mode, 
     # Simulate a filesystem concealing ctime too. This violates immutable mode's
     # explicit caller contract; that mode must not be described as strong integrity.
     monkeypatch.setattr(resolver, "_generation", lambda *args: first.generation)
-    if mode == "strong":
+    if mode == "strong" or os.name != "posix":
         with pytest.raises(DatabaseSchemaError):
             resolver.DatasetResolver().inspect(root)
         assert root not in resolver._VALIDATED
