@@ -6,12 +6,9 @@ uses that installation's CLI and Python API. Supply PT_SNAP_ACCEPTANCE_WHEEL to
 run it; this is not live PyTorch/NPU capture or upstream msinsight GUI acceptance.
 """
 
-import hashlib
 import json
 import os
 import sqlite3
-import subprocess
-import sys
 import time
 from contextlib import closing
 from pathlib import Path
@@ -24,7 +21,13 @@ from pt_snap_cli.core.dataset_sources import QueryBudget
 from pt_snap_cli.core.errors import QueryExecutionError
 from pt_snap_cli.core.msinsight_export import DEFAULT_CAPACITY
 from tests.core.dataset_lifecycle_fixtures import SCHEMA
-from tests.snapshot.test_sharded_replay import block, event, segment, write_source
+from tests.core.wheel_scale_acceptance import (
+    API_QUERIES,
+    WheelRuntime,
+    query_cases,
+    sha256,
+    write_scale_source,
+)
 from tests.test_dataset_focus import hashes
 
 pytestmark = pytest.mark.slow
@@ -182,98 +185,174 @@ def test_long_stack_aggregate_and_small_page_succeed_but_full_output_is_byte_bou
     assert hashes(root) == before
 
 
-def run(command, root, env):
-    result = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, check=False)
-    assert result.returncode == 0, f"{command}\n{result.stdout}\n{result.stderr}"
-    return result
-
-
 @pytest.fixture
-def installed_runtime(tmp_path):
+def installed_runtime(tmp_path, request):
     wheel_value = os.environ.get("PT_SNAP_ACCEPTANCE_WHEEL")
     if not wheel_value:
-        pytest.skip("Set PT_SNAP_ACCEPTANCE_WHEEL to test a non-editable installed artifact")
+        pytest.skip("Set PT_SNAP_ACCEPTANCE_WHEEL to test a clean-venv installed artifact")
     wheel = Path(wheel_value).resolve()
     assert wheel.is_file() and wheel.suffix == ".whl"
-    target = tmp_path / "installed"
-    env = os.environ.copy()
-    env.pop("PYTHONHOME", None)
-    env.pop("PT_SNAP_DB_PATH", None)
-    env.pop("PT_SNAP_QUERY_TIMEOUT", None)
-    env["PYTHONPATH"] = str(target)
-    run(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--no-deps",
-            "--no-index",
-            "--target",
-            str(target),
-            str(wheel),
-        ],
-        tmp_path,
-        env,
+    evidence_dir = Path(os.environ.get("PT_SNAP_ACCEPTANCE_EVIDENCE_DIR", tmp_path / "evidence"))
+    if request.node.name != "test_installed_trusted_producer_default_export_cli_and_api":
+        evidence_dir /= request.node.name
+    wheelhouse = os.environ.get("PT_SNAP_ACCEPTANCE_WHEELHOUSE")
+    return WheelRuntime(
+        tmp_path, wheel, evidence_dir.resolve(), Path(wheelhouse).resolve() if wheelhouse else None
     )
-    probe = run(
-        [sys.executable, "-c", "import pt_snap_cli; print(pt_snap_cli.__file__)"], tmp_path, env
-    )
-    module = Path(probe.stdout.strip()).resolve()
-    assert module.is_relative_to(target)
-    cli = target / "bin" / "pt-snap"
-    assert cli.is_file()
-    return cli, env, module, hashlib.sha256(wheel.read_bytes()).hexdigest()
+
+
+def _assert_scale_oracle(queries, count, boundary):
+    """Independent arithmetic/geometry, not the same API used as its own oracle."""
+    for name, value in queries.items():
+        assert value["total_is_exact"], name
+        assert value["returned"] == len(value["rows"]), name
+        assert value["scope"]["boundary_events_included"] is False, name
+        scope = value["scope"]
+        if scope["kind"] == "event":
+            assert scope["source_coverage"]["range_complete"], name
+        else:
+            assert scope["range_complete"], name
+    peak = queries["memory_peak"]["rows"][0]
+    assert peak == {
+        "peak_allocated": 176,
+        "peak_allocated_event_id": 3,
+        "peak_active": 176,
+        "peak_active_event_id": 3,
+        "peak_reserved": 4096,
+        "peak_reserved_event_id": 0,
+    }
+    gap = queries["allocator_gap"]["rows"][0]
+    assert gap["reserved_active_gap_at_active_peak"] == 3920
+    assert gap["active_at_reserved_peak"] == 112
+    assert gap["all_peaks_same_event"] == 0
+    for name in ("event", "allocation"):
+        result = queries[name]
+        assert [row["id"] for row in result["rows"]] == list(range(boundary - 2, boundary + 3))
+        assert result["total"] == count
+        assert result["has_more"] and result["truncated"]
+        assert [row["active"] for row in result["rows"]] == [176, 176, 160, 176, 176]
+    blocks = queries["block"]
+    assert blocks["total"] == (count - 1) // 3 + 5
+    assert [row["id"] for row in blocks["rows"]] == [0, 1, 2, 3, 6]
+    assert blocks["has_more"] and blocks["truncated"]
+    crossing = queries["crossing_block"]["rows"]
+    assert len(crossing) == 1
+    assert crossing[0]["allocEventId"] == boundary - 2
+    assert crossing[0]["freeEventId"] == boundary
+    assert crossing[0]["allocation_source"]["slice_index"] == 0
+    assert crossing[0]["free_source"]["slice_index"] == 1
+    assert crossing[0]["free_source"]["event"]["action"] == 6
+    assert queries["freed_block_lifetime"]["rows"] == [
+        {
+            "lifetime_events": "<1k",
+            "block_count": (count - 4) // 3,
+            "size_bytes": 16 * ((count - 4) // 3),
+        }
+    ]
+    leaks = queries["leak_detection"]
+    assert leaks["total"] == 4 and not leaks["has_more"] and not leaks["truncated"]
+    assert {row["allocEventId"] for row in leaks["rows"]} == {0, 1, 2, count - 1}
+    assert all(row["terminal_survivor"] for row in leaks["rows"])
+    grouped = queries["callstack_analysis"]["rows"]
+    assert len(grouped) == 6
+    assert sum(row["alloc_count"] for row in grouped) == count
+    assert sum(row["total_size"] for row in grouped) == 16 * count + 64
+    expected_stacks = {
+        "retain_64": (1, 64),
+        "retain_32": (1, 32),
+        "retain_16": (1, 16),
+        "alloc": ((count - 1) // 3, 16 * ((count - 1) // 3)),
+        "free_requested": ((count - 4) // 3, 16 * ((count - 4) // 3)),
+        "free_completed": ((count - 4) // 3, 16 * ((count - 4) // 3)),
+    }
+    assert {
+        row["callstack"].rsplit(" ", 1)[1]: (row["alloc_count"], row["total_size"])
+        for row in grouped
+    } == expected_stacks
+    for name in ("block", "crossing_block", "leak_detection", "freed_block_lifetime"):
+        coverage = queries[name]["scope"]["source_coverage"]
+        assert coverage["lifecycles"] == (count - 1) // 3 + 5
+        assert coverage["allocation_events_resolved"] == (count - 1) // 3 + 3
+        assert coverage["free_events_resolved"] == (count - 4) // 3
+        assert coverage["unproved_identities"] == 0 and coverage["allocation_source_complete"]
+    assert queries["preexisting_live"]["rows"] == [{"block_count": 0, "size_bytes": 0}]
+    before = queries["active_before"]["rows"]
+    after = queries["active_after"]["rows"]
+    assert len(before) == 6 and sum(row["size"] for row in before) == 176
+    assert len(after) == 5 and sum(row["size"] for row in after) == 160
+    assert [row["allocEventId"] for row in before if row["allocEventId"] >= 0] == [
+        0,
+        1,
+        2,
+        boundary - 2,
+    ]
+    assert [row["allocEventId"] for row in after if row["allocEventId"] >= 0] == [0, 1, 2]
+    assert sum(row["size"] for row in before if row["category"] == "static") == 48
+    page = queries["active_static_offset"]
+    assert page["rows"] == before[1:4] and page["total"] == 6
+    assert page["has_more"] and page["truncated"]
+    dynamic = queries["active_dynamic_offset"]
+    assert [row["id"] for row in dynamic["rows"]] == [1, 2] and dynamic["total"] == 4
+    assert dynamic["has_more"] and dynamic["truncated"]
+    groups = queries["active_groups"]["rows"]
+    assert sum(row["size_bytes"] for row in groups) == 176
+    assert sum(row["block_count"] for row in groups) == 6
+    assert next(row for row in groups if row["category"] == "static")["size_bytes"] == 48
 
 
 @pytest.mark.nightly
 def test_installed_trusted_producer_default_export_cli_and_api(
     tmp_path, installed_runtime, record_property
 ):
-    cli, env, module, wheel_hash = installed_runtime
-    # Original, inspectable test-owned data. No committed or external pickle is loaded.
-    # 500000 ends after free_requested; free_completed is in the next shard.
-    count = DEFAULT_CAPACITY + 2
-    traces = [event(("alloc", "free_requested", "free_completed")[i % 3]) for i in range(count)]
-    data = {"segments": [segment(0, 64, [block(1000, 16, 16)])], "device_traces": [traces]}
-    source = write_source(tmp_path, data)
-    # The installed importer owns its own full input load; do not retain a second
-    # 500002-event graph in the test process while it runs.
-    del traces, data
-    source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
-    started = time.perf_counter()
-    imported = json.loads(
-        run(
-            [
-                sys.executable,
-                str(cli),
-                "import",
-                str(source),
-                "--format",
-                "msinsight",
-                "--output-dir",
-                str(tmp_path / "exported"),
-                "--no-focus",
-                "--json",
-            ],
-            tmp_path,
-            env,
-        ).stdout
+    runtime = installed_runtime
+    assert DEFAULT_CAPACITY == 500_000
+    count, boundary = 2 * DEFAULT_CAPACITY, DEFAULT_CAPACITY
+    source = write_scale_source(runtime.cwd / "input.pkl", count)
+    source_hash = sha256(source)
+    (runtime.evidence_dir / "inputs.json").write_text(
+        json.dumps(
+            {
+                "identity": runtime.identity,
+                "wheel_sha256": runtime.wheel_hash,
+                "source_sha256": source_hash,
+                "events": count,
+                "events_per_slice": boundary,
+            },
+            indent=2,
+        )
     )
-    import_seconds = time.perf_counter() - started
+    imported = runtime.cli_json(
+        "import",
+        "import",
+        source,
+        "--format",
+        "msinsight",
+        "--output-dir",
+        runtime.cwd / "exported",
+        "--no-focus",
+        "--json",
+    )
     root = Path(imported["db_path"])
     manifest = json.loads((root / "manifest.json").read_text())
-    assert manifest["eventsPerSlice"] == DEFAULT_CAPACITY
+    assert manifest["eventsPerSlice"] == boundary
     assert manifest["devices"]["0"]["eventCount"] == count
     slices = manifest["devices"]["0"]["slices"]
     assert [(s["startEventId"], s["endEventId"]) for s in slices] == [
         (0, 499_999),
-        (500_000, 500_001),
+        (500_000, 999_999),
     ]
     before = hashes(root)
-    # Inspect actual producer membership before running any query.
+    (runtime.evidence_dir / "members-before.json").write_text(json.dumps(before, indent=2))
+    # Preserve the old 500002-event boundary regression in the full-size workload:
+    # first-shard pending-free allocation completes only in the second shard.
     for item in slices:
-        with closing(sqlite3.connect(root / item["file"])) as conn:
+        with closing(
+            sqlite3.connect((root / item["file"]).as_uri() + "?mode=ro", uri=True)
+        ) as conn:
+            assert (
+                conn.execute("SELECT COUNT(*) FROM trace_entry_0 WHERE id>=0").fetchone()[0]
+                == boundary
+            )
             assert (
                 conn.execute(
                     "SELECT COUNT(*) FROM block_0 WHERE allocEventId>?", (item["endEventId"],)
@@ -287,64 +366,208 @@ def test_installed_trusted_producer_default_export_cli_and_api(
                 ).fetchone()[0]
                 == 0
             )
-    with closing(sqlite3.connect(root / slices[1]["file"])) as conn:
-        assert conn.execute(
-            "SELECT allocEventId,freeEventId FROM block_0 ORDER BY id"
-        ).fetchall() == [(499_998, 500_000), (500_001, -1)]
-    peak = json.loads(
-        run(
-            [
-                sys.executable,
-                str(cli),
-                "query",
-                str(root),
-                "--template-use",
-                "memory_peak",
-                "--json",
-            ],
-            tmp_path,
-            env,
-        ).stdout
+            assert conn.execute(
+                "SELECT allocEventId,freeEventId FROM block_0 WHERE id=499998"
+            ).fetchall() == [(499_998, 500_000)]
+    catalog = runtime.cli_json("capabilities", "capabilities", "--json")
+    cases = query_cases(boundary)
+    by_name = {entry["name"]: entry for entry in catalog["templates"]}
+    assert {case["template"] for case in cases} == set(by_name)
+    supported = {name for name, entry in by_name.items() if entry["dataset_support"]["supported"]}
+    unsupported = set(by_name) - supported
+    assert unsupported == {"event_frames", "active_memory_frame_tree_at_event"}
+    cases_file = runtime.cwd / "cases.json"
+    cases_file.write_text(json.dumps(cases))
+    api = runtime.python_json("api", API_QUERIES, root, cases_file, boundary - 1)
+    assert catalog["ok"] is True and catalog["schema_version"] == 1
+    assert {key: catalog[key] for key in api["catalog"]} == api["catalog"]
+    assert set(api["errors"]) == unsupported
+    cli_queries = {}
+    for case in cases:
+        success = case["template"] in supported
+        result = runtime.cli_json(
+            f"query-{case['name']}",
+            "query",
+            root,
+            "--template-use",
+            case["template"],
+            "--params",
+            json.dumps(case["params"]),
+            "--exact-total",
+            "--json",
+            expected=0 if success else 1,
+        )
+        if success:
+            assert {key: result[key] for key in api["queries"][case["name"]]} == api["queries"][
+                case["name"]
+            ]
+            cli_queries[case["name"]] = result
+        else:
+            assert result["error"]["code"] == api["errors"][case["name"]]["code"] == "QUERY_FAILED"
+            assert "Unsupported dataset-global" in result["error"]["message"]
+    _assert_scale_oracle(cli_queries, count, boundary)
+    peak = runtime.cli_json("report-peak", "report", "peak-memory", root, "--limit", "-1", "--json")
+    assert peak == api["peak_report"]
+    assert peak["event_id"] == 3 and peak["included_bytes"] == 176
+    assert peak["active_bytes_at_event"] == 176 and peak["coverage_percent"] == 100
+    assert peak["total_is_exact"] and not peak["truncated"]
+    tree = runtime.cli_json(
+        "report-tree",
+        "report",
+        "memory-tree",
+        root,
+        "--event-id",
+        boundary - 1,
+        "--json",
+        expected=1,
     )
-    assert peak["rows"][0]["peak_active"] == 16 and peak["rows"][0]["peak_active_event_id"] == 0
-    api_script = """
-import json, sys
-from pt_snap_cli.api import SnapshotAnalyzer
-from pt_snap_cli.core.report_service import ReportService
-with SnapshotAnalyzer(sys.argv[1]) as analyzer:
-    rows = analyzer.execute_query("event", {"min_id": 0, "limit": 5}, exact_total=True)
-    assert rows["returned"] == 5 and rows["total"] == 500002
-    peak = analyzer.execute_query("memory_peak")["rows"][0]
-    assert peak["peak_active"] == 16 and peak["peak_active_event_id"] == 0
-    before = analyzer.execute_query("active_blocks_at_event", {"event_id": 499999})
-    after = analyzer.execute_query("active_blocks_at_event", {"event_id": 500000})
-    assert [r["allocEventId"] for r in before["rows"]] == [499998]
-    assert after["rows"] == []
-    live = analyzer.execute_query("leak_detection", {"limit": 5})
-    assert [r["allocEventId"] for r in live["rows"]] == [500001]
-service = ReportService()
-try:
-    report = service.peak_memory_report(sys.argv[1], limit=-1)
-    assert report.event_id == 0 and report.included_bytes == 16
-    assert report.active_bytes_at_event == 16 and report.coverage_percent == 100
-finally:
-    service.close()
-print(json.dumps({"query_total": rows["total"], "peak": peak, "report_bytes": report.included_bytes}))
-"""
-    result = json.loads(run([sys.executable, "-c", api_script, str(root)], tmp_path, env).stdout)
-    assert result["query_total"] == count
+    assert tree["error"]["code"] == api["tree_report"]["code"] == "QUERY_FAILED"
+    assert "Unsupported dataset-global" in tree["error"]["message"]
     assert hashes(root) == before
-    assert hashlib.sha256(source.read_bytes()).hexdigest() == source_hash
+    assert sha256(source) == source_hash
+    assert not (runtime.cwd / ".pt-snap").exists()
+    assert not (runtime.home / ".config" / "pt-snap-cli").exists()
     evidence = {
-        "scope": "test-owned snapshot producer -> installed pt-snap replay/export -> installed CLI/API; no live collector or upstream GUI",
-        "module": str(module),
-        "wheel_sha256": wheel_hash,
+        "scope": "test-owned snapshot -> clean-venv installed console import/export, query/report and API; no live collector or upstream GUI",
+        "identity": runtime.identity,
+        "wheel_sha256": runtime.wheel_hash,
         "source_sha256": source_hash,
+        "members_sha256": before,
         "events": count,
-        "events_per_slice": DEFAULT_CAPACITY,
+        "events_per_slice": boundary,
         "slices": 2,
-        "import_seconds": import_seconds,
-        "result": result,
+        "templates_supported": sorted(supported),
+        "templates_expected_rejections": sorted(unsupported),
+        "reports": {"peak-memory": "passed", "memory-tree": "expected dataset rejection"},
+        "commands": runtime.commands,
+        "read_only_verified": True,
     }
     record_property("dataset_acceptance", json.dumps(evidence))
-    (tmp_path / "acceptance.json").write_text(json.dumps(evidence, indent=2))
+    (runtime.evidence_dir / "acceptance.json").write_text(json.dumps(evidence, indent=2))
+
+
+@pytest.mark.nightly
+def test_installed_default_export_short_final_shard_boundary(installed_runtime, record_property):
+    """Keep the original 500002-event final-two-row shard producer regression."""
+    runtime = installed_runtime
+    assert DEFAULT_CAPACITY == 500_000
+    count, boundary = DEFAULT_CAPACITY + 2, DEFAULT_CAPACITY
+    source = write_scale_source(runtime.cwd / "input.pkl", count)
+    source_hash = sha256(source)
+    imported = runtime.cli_json(
+        "import",
+        "import",
+        source,
+        "--format",
+        "msinsight",
+        "--output-dir",
+        runtime.cwd / "exported",
+        "--no-focus",
+        "--json",
+    )
+    root = Path(imported["db_path"])
+    manifest = json.loads((root / "manifest.json").read_text())
+    assert manifest["eventsPerSlice"] == boundary
+    device = manifest["devices"]["0"]
+    assert device["eventCount"] == count and device["sliceCount"] == 2
+    assert device["readySlices"] == [0, 1]
+    slices = device["slices"]
+    assert [(item["startEventId"], item["endEventId"]) for item in slices] == [
+        (0, 499_999),
+        (500_000, 500_001),
+    ]
+    before = hashes(root)
+    for item, expected_count in zip(slices, (500_000, 2), strict=True):
+        with closing(
+            sqlite3.connect((root / item["file"]).as_uri() + "?mode=ro", uri=True)
+        ) as conn:
+            assert conn.execute(
+                "SELECT COUNT(*),MIN(id),MAX(id) FROM trace_entry_0 WHERE id>=0"
+            ).fetchone() == (expected_count, item["startEventId"], item["endEventId"])
+            assert conn.execute(
+                "SELECT COUNT(*) FROM block_0 WHERE allocEventId>? OR (freeEventId>=0 AND freeEventId<?)",
+                (item["endEventId"], item["startEventId"]),
+            ).fetchone() == (0,)
+            if item["index"] == 1:
+                assert conn.execute(
+                    "SELECT id,action FROM trace_entry_0 WHERE id>=0 ORDER BY id"
+                ).fetchall() == [(500_000, 6), (500_001, 4)]
+                assert conn.execute(
+                    "SELECT allocEventId,freeEventId FROM block_0 ORDER BY id"
+                ).fetchall() == [
+                    (-1, -1),
+                    (-1, -1),
+                    (0, -1),
+                    (1, -1),
+                    (2, -1),
+                    (499_998, 500_000),
+                    (500_001, -1),
+                ]
+    names = {"event", "crossing_block", "active_before", "active_after", "leak_detection"}
+    cases = [case for case in query_cases(boundary) if case["name"] in names]
+    cases_file = runtime.cwd / "cases.json"
+    cases_file.write_text(json.dumps(cases))
+    api = runtime.python_json("api", API_QUERIES, root, cases_file, boundary - 1)
+    assert api["errors"] == {}
+    results = {}
+    for case in cases:
+        result = runtime.cli_json(
+            f"query-{case['name']}",
+            "query",
+            root,
+            "--template-use",
+            case["template"],
+            "--params",
+            json.dumps(case["params"]),
+            "--exact-total",
+            "--json",
+        )
+        assert {key: result[key] for key in api["queries"][case["name"]]} == api["queries"][
+            case["name"]
+        ]
+        assert result["total_is_exact"] and result["returned"] == len(result["rows"])
+        results[case["name"]] = result
+    tail = results["event"]
+    assert tail["total"] == count and tail["returned"] == 4
+    assert not tail["has_more"] and tail["truncated"]
+    assert [(row["id"], row["action"], row["active"]) for row in tail["rows"]] == [
+        (499_998, 4, 176),
+        (499_999, 5, 176),
+        (500_000, 6, 160),
+        (500_001, 4, 176),
+    ]
+    crossing = results["crossing_block"]["rows"]
+    assert len(crossing) == 1
+    assert crossing[0]["allocEventId"] == 499_998 and crossing[0]["freeEventId"] == 500_000
+    assert crossing[0]["allocation_source"]["slice_index"] == 0
+    assert crossing[0]["free_source"]["slice_index"] == 1
+    assert crossing[0]["free_source"]["event"]["id"] == 500_000
+    assert crossing[0]["free_source"]["event"]["action"] == 6
+    before_rows, after_rows = results["active_before"]["rows"], results["active_after"]["rows"]
+    assert [row["allocEventId"] for row in before_rows if row["allocEventId"] >= 0] == [
+        0,
+        1,
+        2,
+        499_998,
+    ]
+    assert [row["allocEventId"] for row in after_rows if row["allocEventId"] >= 0] == [0, 1, 2]
+    assert sum(row["size"] for row in before_rows) == 176
+    assert sum(row["size"] for row in after_rows) == 160
+    leak = results["leak_detection"]
+    assert leak["total"] == 4 and not leak["has_more"] and not leak["truncated"]
+    assert {row["allocEventId"] for row in leak["rows"]} == {0, 1, 2, 500_001}
+    assert hashes(root) == before and sha256(source) == source_hash
+    evidence = {
+        "scope": "clean-wheel producer regression: one full default shard and a final two-event shard",
+        "wheel_sha256": runtime.wheel_hash,
+        "source_sha256": source_hash,
+        "members_sha256": before,
+        "events": count,
+        "events_per_slice": boundary,
+        "slice_event_counts": [500_000, 2],
+        "identity": runtime.identity,
+        "commands": runtime.commands,
+        "read_only_verified": True,
+    }
+    record_property("dataset_boundary_acceptance", json.dumps(evidence))
+    (runtime.evidence_dir / "acceptance.json").write_text(json.dumps(evidence, indent=2))
