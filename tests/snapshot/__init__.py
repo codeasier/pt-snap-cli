@@ -1,1 +1,0 @@
-"""Snapshot runtime compatibility tests."""
