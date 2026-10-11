@@ -104,6 +104,11 @@ included bytes 为分母。解读有上限的分组结果前，请参阅
 `report memory-tree` 同样支持 `--json`。HTML 支持全树搜索和可键盘操作的子节点列表，
 极小占用及零字节帧也能进入查看。
 
+数据集工作预算可通过 `--max-work-rows`、`--max-work-bytes`、
+`--max-scratch-db-bytes`、环境变量或不可变 Python `QueryLimits` 配置。
+默认仍为 100000 工作行 / 64 MiB 工作字节 / 512 MiB scratch 页；优先级、
+深分页成本和整次失败语义见[公开数据集预算](docs/zh/querying.md#公开数据集预算)。
+
 ## Agent Skills
 
 诊断长调用栈时，可在 `event` 或 `active_memory_callstack_at_event` 上显式设置

@@ -58,6 +58,7 @@ from pt_snap_cli.core.models import (
     TemplateSummary,
 )
 from pt_snap_cli.core.overview_service import OverviewService
+from pt_snap_cli.core.query_limits import QueryLimits
 from pt_snap_cli.core.query_service import QueryService
 from pt_snap_cli.core.report_service import ReportService
 from pt_snap_cli.core.skill_service import SkillService
@@ -116,6 +117,7 @@ __all__ = [
     "FocusService",
     "ImportMetadataService",
     "QueryService",
+    "QueryLimits",
     "ReportService",
     "ImportService",
     "SplitService",
