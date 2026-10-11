@@ -190,8 +190,19 @@ with SnapshotAnalyzer(Path("/capture/snapshot.pkl.msinsight"), device_id=0) as a
 selector。输出 `scope` 标识实际 DB/device/slice、受限真实区间、数据集指纹和边界排除。
 总数和分页针对该 scope，**不是**隐式截断的整份数据集。CLI `effective_params` 的调用者
 参数默认值另受 `scope` 约束。定点 `active_blocks_at_event` 和
-`active_memory_callstack_at_event` 现于分组/排名前批量解析 alloc/free/完整栈来源，
-原版无扩展产物也适用。生命周期身份、独立来源/frame 覆盖及版本化有序 frame reader
+`active_memory_callstack_at_event` 在分页/排名前验证全部 alloc/free/完整栈来源覆盖，
+包括未来 completed-free 所在片，原版无扩展产物也适用。纯文本 v1/v2 查询在所需 owner
+集合不超过 SQLite ATTACH 上限时使用只读 SQL 归约：全量覆盖与完整文本分组保留在 SQL
+内，仅补充返回 block 的来源详情。全局 top_n 百分比分母仍是 max_rows 前的全部入选组。
+有序 frame 输入或更大的 owner 集合保留受预算约束的来源批次回退。SQL 扫描/排序共用
+超时；归约行、实际补充来源及输出仍计入工作预算，因此有限页可成功而无界输出仍超限。
+
+可选合成验收 `PYTHONPATH=src python benchmarks/active_at_event_capacity.py`（以及
+`--layout v2`）检查 150 万事件 / 三个 500000 事件分片 / 20 万活跃 block、page20、
+top20、精确总数、单库差分、只读哈希和无界 block 输出硬失败。它创建并清理私有临时
+数据，不是 producer/GUI 验收或通用 RSS/性能保证。
+
+生命周期身份、独立来源/frame 覆盖及版本化有序 frame reader
 接口详见[定点归因](querying.md#数据集定点事件归因)。数据集全局内建查询遵循 P3 矩阵
 及累计工作上限；任意 SQL/自定义 override 明确失败，不静默选首片/最新片。单库真实
 事件 peak/gap 与全部 action 完整文本栈统计版本在相同合同中明确说明。

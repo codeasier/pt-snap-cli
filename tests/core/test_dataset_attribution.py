@@ -608,7 +608,9 @@ def test_high_block_count_batches_distinct_sources_and_bounds_cache_queries(tmp_
                 "active_memory_callstack_at_event", {"event_id": 599, "top_n": -1}
             )
             assert sum(r["block_count"] for r in high["rows"]) == 599
-            assert high["scope"]["source_coverage"]["source_queries"] == 302
+            assert (
+                high["scope"]["source_coverage"]["source_queries"] == 303
+            )  # Includes the bounded proof-owner probe.
             assert len(cache) <= 2
         # A single large shard specifically crosses the parameter batch bound.
         single = make_dataset(tmp_path / "wide", devices=(0,), slices=1)
@@ -646,6 +648,15 @@ def test_global_budget_counts_source_work_and_clears_sqlite_progress_handler(tmp
             return original(self, path, sql, params)
 
         monkeypatch.setattr(DatasetSourceResolver, "read", counted)
+        from pt_snap_cli.core.dataset_lifecycle_connection import _AttachedSources
+
+        original_attached = _AttachedSources.read
+
+        def counted_attached(self, sql, params=None):
+            values.append(self.sources.budget.remaining())
+            return original_attached(self, sql, params)
+
+        monkeypatch.setattr(_AttachedSources, "read", counted_attached)
         service.execute_query(
             "active_memory_callstack_at_event",
             {"event_id": 8},
