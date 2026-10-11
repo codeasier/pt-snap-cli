@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import time
 from pathlib import Path
 from typing import Literal, cast
 
 from pt_snap_cli.core.dataset_sources import QueryBudget
 from pt_snap_cli.core.focus_service import FocusService
 from pt_snap_cli.core.models import PeakMemoryReport, QueryResult
-from pt_snap_cli.core.query_service import QueryService, _ResolvedQuery, resolve_query_timeout
+from pt_snap_cli.core.query_limits import QueryLimits
+from pt_snap_cli.core.query_service import QueryService, _ResolvedQuery
 
 PeakMetric = Literal["active", "allocated", "reserved"]
 
@@ -34,9 +34,11 @@ _ACTIVE_COUNTER_BY_METRIC = {
 
 
 class ReportService:
-    def __init__(self, focus_service: FocusService | None = None) -> None:
+    def __init__(
+        self, focus_service: FocusService | None = None, *, query_limits: QueryLimits | None = None
+    ) -> None:
         self._focus_service = focus_service or FocusService()
-        self._query_service = QueryService(self._focus_service)
+        self._query_service = QueryService(self._focus_service, query_limits=query_limits)
 
     def close(self) -> None:
         """Release connections owned by this report service; allow later reuse."""
@@ -52,6 +54,7 @@ class ReportService:
         *,
         start_dir: Path | None = None,
         timeout_s: float | None = None,
+        query_limits: QueryLimits | None = None,
     ) -> QueryResult:
         """Return frame occupancy through the shared standalone query contract."""
         return self._query_service.execute_query(
@@ -61,6 +64,7 @@ class ReportService:
             device_id=device_id,
             start_dir=start_dir,
             timeout_s=timeout_s,
+            query_limits=query_limits,
         )
 
     def event_attribution(
@@ -74,6 +78,7 @@ class ReportService:
         stack_bytes: int = -1,
         start_dir: Path | None = None,
         timeout_s: float | None = None,
+        query_limits: QueryLimits | None = None,
         _budget: QueryBudget | None = None,
         _resolved: _ResolvedQuery | None = None,
     ) -> QueryResult:
@@ -95,6 +100,7 @@ class ReportService:
             device_id=device_id,
             start_dir=start_dir,
             timeout_s=timeout_s,
+            query_limits=query_limits,
             _budget=_budget,
             _resolved=_resolved,
         )
@@ -112,13 +118,14 @@ class ReportService:
         start_id: int | None = None,
         end_id: int | None = None,
         timeout_s: float | None = None,
+        query_limits: QueryLimits | None = None,
     ) -> PeakMemoryReport:
         if metric not in _EVENT_ID_BY_METRIC:
             raise ValueError(
                 f"Invalid metric '{metric}'. Must be one of: active, allocated, reserved"
             )
 
-        budget = QueryBudget(resolve_query_timeout(timeout_s), time.monotonic())
+        budget = self._query_service._new_budget(timeout_s, query_limits)
         resolution = self._query_service._resolve_query(db_path, device_id, start_dir, budget)
         range_params = {"start_id": start_id, "end_id": end_id}
         gap_result = self._query_service.execute_query(

@@ -9,6 +9,7 @@ from typing import Annotated, Literal
 
 import typer
 
+from pt_snap_cli.cli_limits import MaxScratchDBBytes, MaxWorkBytes, MaxWorkRows
 from pt_snap_cli.cli_output import (
     error as _error,
 )
@@ -37,6 +38,7 @@ from pt_snap_cli.core import (
 )
 from pt_snap_cli.core.error_codes import DATABASE_NOT_FOUND, INVALID_PARAMETER
 from pt_snap_cli.core.errors import PtSnapCoreError
+from pt_snap_cli.core.query_limits import QueryLimits
 from pt_snap_cli.memory_tree_render import render_memory_tree
 
 report_app = typer.Typer(help="Generate memory analysis reports")
@@ -62,6 +64,9 @@ def report_memory_tree(
     timeout: Annotated[
         float | None, typer.Option("--timeout", help="Query deadline in seconds; <=0 disables")
     ] = None,
+    max_work_rows: MaxWorkRows = None,
+    max_work_bytes: MaxWorkBytes = None,
+    max_scratch_db_bytes: MaxScratchDBBytes = None,
     json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Decompose event-time active memory by ordered allocation frames."""
@@ -76,6 +81,11 @@ def report_memory_tree(
             include_static=include_static,
             min_size=min_size,
             timeout_s=timeout,
+            query_limits=QueryLimits.resolve(
+                max_work_rows=max_work_rows,
+                max_work_bytes=max_work_bytes,
+                max_scratch_db_bytes=max_scratch_db_bytes,
+            ),
         )
         if json_output:
             typer.echo(json.dumps({"event_id": event_id, **asdict(result)}, indent=2))
@@ -131,6 +141,9 @@ def report_peak_memory(
         float | None,
         typer.Option("--timeout", help="One report-wide deadline in seconds; <=0 disables"),
     ] = None,
+    max_work_rows: MaxWorkRows = None,
+    max_work_bytes: MaxWorkBytes = None,
+    max_scratch_db_bytes: MaxScratchDBBytes = None,
     json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Generate a peak memory attribution report."""
@@ -147,6 +160,11 @@ def report_peak_memory(
             start_id=start_id,
             end_id=end_id,
             timeout_s=timeout,
+            query_limits=QueryLimits.resolve(
+                max_work_rows=max_work_rows,
+                max_work_bytes=max_work_bytes,
+                max_scratch_db_bytes=max_scratch_db_bytes,
+            ),
         )
     except ValueError as e:
         _error(str(e), code=INVALID_PARAMETER, hint="Use --metric active, allocated, or reserved.")

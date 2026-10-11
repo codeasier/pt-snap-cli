@@ -25,6 +25,7 @@ except ImportError:  # pragma: no cover
     ClickAbort = Abort
 
 from pt_snap_cli import __version__
+from pt_snap_cli.cli_limits import MaxScratchDBBytes, MaxWorkBytes, MaxWorkRows
 from pt_snap_cli.cli_output import (
     JSON_MODE as _JSON_MODE,
 )
@@ -95,6 +96,7 @@ from pt_snap_cli.core import (
 )
 from pt_snap_cli.core.error_codes import DATABASE_NOT_FOUND, ERROR, INVALID_PARAMETER
 from pt_snap_cli.core.errors import InvalidParameterError
+from pt_snap_cli.core.query_limits import QueryLimits
 from pt_snap_cli.query.config import OUTPUT_COLUMN_OPTIONAL
 from pt_snap_cli.query.executor import reported_sql_limit
 from pt_snap_cli.query.registry import discover_categories, get_query
@@ -601,11 +603,23 @@ def query_database(
             help="Query execution timeout in seconds (separate from -n; <= 0 disables; default: PT_SNAP_QUERY_TIMEOUT or unlimited)",
         ),
     ] = None,
+    max_work_rows: MaxWorkRows = None,
+    max_work_bytes: MaxWorkBytes = None,
+    max_scratch_db_bytes: MaxScratchDBBytes = None,
     json_output: Annotated[bool, _json_flag()] = False,
 ) -> None:
     """Execute queries on the memory snapshot database."""
     focus_service = _focus_service()
     query_service = _query_service()
+    try:
+        query_limits = QueryLimits.resolve(
+            max_work_rows=max_work_rows,
+            max_work_bytes=max_work_bytes,
+            max_scratch_db_bytes=max_scratch_db_bytes,
+        )
+    except InvalidParameterError as exc:
+        query_service.close()
+        _error_from_exc(exc)
 
     if category is not None and not list_templates and not template_use and not template_info:
         list_templates = True
@@ -653,7 +667,7 @@ def query_database(
 
     if template_info:
         try:
-            info = query_service.get_template_info(template_info)
+            info = query_service.get_template_info(template_info, query_limits=query_limits)
         except TemplateNotFoundError as e:
             _error_from_exc(e)
 
@@ -756,6 +770,7 @@ def query_database(
             exact_total=exact_total,
             timeout_s=timeout,
             slice_index=slice_index,
+            query_limits=query_limits,
         )
         if json_output:
             resolved = focus_service.resolve_focus(
@@ -888,7 +903,7 @@ def show_capabilities(
     service = CapabilityService()
     try:
         catalog = service.catalog()
-    except SkillCatalogError as e:
+    except (SkillCatalogError, InvalidParameterError) as e:
         _error_from_exc(e)
     if json_output:
         _emit_json(json_success(**service.catalog_to_dict(catalog)))

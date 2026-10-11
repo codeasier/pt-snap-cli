@@ -101,7 +101,7 @@ def test_actual_range_precedes_filters_and_empty_window_is_exact(tmp_path):
     }
 
 
-def run_resolved(resolved, template, params=None, budget=None, slice_index=None):
+def run_resolved(resolved, template, params=None, budget=None, slice_index=None, exact_total=True):
     config = get_query(template)
     with closing(ContextCache()) as cache:
         source = DatasetSourceResolver(
@@ -112,7 +112,7 @@ def run_resolved(resolved, template, params=None, budget=None, slice_index=None)
             template,
             config.validate_params(params or {}),
             5,
-            True,
+            exact_total,
             slice_index,
             config.semantics_version,
         )

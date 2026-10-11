@@ -149,7 +149,7 @@ marked, never guessed by address/local stack ID and never asserted as proved lea
 Dataset reads detach batches before foreign-owner lookups, using the borrowed bounded
 Context LRU. One diminishing deadline includes all shards, sources, grouping and exact
 totals; reports explicitly share **one** budget across peak selection and attribution. Cumulative
-fetched/output work is limited to **100000 rows / 64 MiB serialized values**, including
+fetched/output work defaults to **100000 rows / 64 MiB serialized values**, including
 repeated source reads. Exceeding either fails the entire operation, never an alleged
 complete partial result. Python materialization/sort are bounded by this work ceiling, **not**
 by max_rows. This is not a process RSS limit: Python/SQLite, one batch and individual
@@ -177,24 +177,33 @@ shard. Event/allocation pages apply SQL filters and ordering per shard, merge at
 is measured before non-range filters. Ordinary text-stack statistics merge full
 per-shard groups before global thresholds; averages use summed sizes and counts.
 Canonical ordered-frame statistics retain the bounded source-reading path because
-formatted text is not their identity. Block/leak/lifetime reductions use read-only
+formatted text is not their identity. Small block/leak/lifetime reductions use read-only
 attached shards for proof, conflicts and latest observations before pagination;
 the attachment limit (normally ten) counts selected observation shards plus any
 other shards owning their allocation/free references. Slice queries discover those
-proof owners before filtering or paging. Above the limit, a query-private temporary
+proof owners before filtering or paging. Above the attachment limit, or above 4096
+selected block observations when scratch is enabled, a query-private temporary
 SQLite database retains only distinct event references and one narrow state row per
 lifecycle. Sources are attached read-only one at a time: reference ownership/actions
 are proved first, then all observations are reduced and conflicts checked before
 filters, totals or pagination. Only returned candidates hydrate complete source events.
-The small attached-set path is unchanged.
+Summary and page/lifetime buckets reuse the reduced table, avoiding two full
+history/window reductions. Routing counts at most 4097 observations across the
+selected members with bounded SQL probes; only scalar counts enter the fetched-work
+budget. This observation threshold preserves the small read-only path and does not
+predict every layout's performance. Setting the scratch budget to zero skips the
+probe and retains ATTACH when the complete proof-owner set fits, otherwise the
+original bounded source reader. Once scratch is selected, storage failure is an
+error with cleanup, never a retry through a less bounded plan.
 
 The temporary directory is private (0700), its derived database is created with 0600
 permissions, and normal completion, errors and cancellation close connections and
 remove the directory. A killed process or failed filesystem cleanup can leave private
 residue; this is not secure erasure. Its main database page ceiling defaults to
-512 MiB, configurable through the internal `QueryBudget.max_scratch_db_bytes` field from
+512 MiB, configurable with `--max-scratch-db-bytes`,
+`PT_SNAP_MAX_SCRATCH_DB_BYTES` or public `QueryLimits.max_scratch_db_bytes` from
 4096 bytes to 4 GiB; zero disables this path and retains the original budgeted source
-reader. This is not a new CLI option. Exceeding the page ceiling or running out of
+reader. See [public dataset limits](#public-dataset-limits). Exceeding the page ceiling or running out of
 storage rejects the entire operation. The ceiling does **not** bound rollback journals,
 SQLite sorting files, total temporary space or RSS. Main/source page caches request
 2 MiB each; these are cache targets, not memory guarantees. Internal SQL scans and
@@ -209,6 +218,54 @@ honestly. Many-lifecycle reductions can independently exceed the derived-page li
 or deadline.
 The limit counts rows fetched into Python and serialized output, not internal SQL
 scans, SQLite sorting space or total process memory.
+
+## Public dataset limits
+
+`query`, `report peak-memory` and `report memory-tree` accept the same options:
+
+| CLI option | Environment variable | Default / valid values |
+| --- | --- | --- |
+| `--max-work-rows` | `PT_SNAP_MAX_WORK_ROWS` | `100000`; positive integer |
+| `--max-work-bytes` | `PT_SNAP_MAX_WORK_BYTES` | `67108864` (64 MiB); positive integer bytes |
+| `--max-scratch-db-bytes` | `PT_SNAP_MAX_SCRATCH_DB_BYTES` | `536870912` (512 MiB); `0` disables scratch, otherwise `4096` through `4294967296` (4 GiB) |
+
+Each explicit flag overrides its environment variable, then the built-in default.
+Environment values are decimal integers without units; unset or blank uses the default.
+Booleans, fractions, negative values and zero work limits are errors; there is no
+unlimited work-budget setting. Scratch zero **does not disable the work budget**.
+Non-page-aligned scratch limits are rounded down to whole 4096-byte pages by SQLite.
+Invalid configuration fails before database access, including on standalone commands.
+These limits govern dataset execution; they do not add a new work cap to standalone
+SQLite queries or make a dataset-unsupported template supported.
+
+```bash
+pt-snap query '<dataset_dir>' --template-use event \
+  --params '{"offset":100000,"limit":5}' --max-work-rows 300000 \
+  --max-work-bytes 134217728 --exact-total --json
+pt-snap report peak-memory '<dataset_dir>' --max-work-rows 300000 \
+  --max-scratch-db-bytes 1073741824 --timeout 30 --json
+```
+
+Use the [immutable Python `QueryLimits` API](snapshot-analyzer-api.md#dataset-query-limits)
+for the same settings in `SnapshotAnalyzer`, `QueryService` and `ReportService`.
+A successful dataset query/report returns actual effective limits in
+`scope.work_budget`: `max_rows`, `max_bytes`, `max_scratch_db_bytes`, and units.
+Template `dataset_support` reports effective `work_limit_rows`, `work_limit_bytes`
+and `max_scratch_db_bytes`, including environment or analyzer defaults; query
+`--template-info` also honors explicit limit flags. Limits in an operation's scope
+are authoritative for that operation, even if the environment later changes.
+Budget and scratch exhaustion errors identify the configured limit and reject the
+whole operation without a partial global result. Work exhaustion also reports
+consumed rows/bytes. Peak-report steps share one cumulative budget and deadline;
+each independent query/report starts fresh counters, even with reused connections.
+
+Raising limits explicitly permits more work and may increase memory/disk costs; it
+is not a performance optimization or an RSS/total-temporary-space guarantee.
+On event/allocation pagination paths that fetch `offset + limit` candidates
+per shard before global sorting and slicing, that full candidate work is charged. A small output can therefore exceed
+the work ceiling; `-n`, `limit`, `stack_bytes` and `timeout` do not raise it. Prefer
+narrower ranges when suitable, or deliberately size the limits for the operation.
+Raising a budget does not optimize its pagination plan or silently change default limits.
 
 ## Dataset point-event attribution
 
