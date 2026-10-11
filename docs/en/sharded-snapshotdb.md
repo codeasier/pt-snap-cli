@@ -283,6 +283,24 @@ immutable-file contract. An opted-in hit performs no row scans or whole-file has
 work is O(shards), independent of event/block counts. None of these checks provides
 a concurrent-writer lock or an atomic filesystem snapshot.
 
+The two-mode acceptance contract is measured by work, not warm wall-clock timing.
+For fixed manifest/member membership, let **B** be total member bytes and **M**
+manifest bytes. The hash-read budget (excluding small header preflights and SQLite
+validation reads) is:
+
+| Admission | Default strong | Explicit immutable |
+| --- | --- | --- |
+| Compatibility-v1 cold | 2B + 2M; one full validator | B + 2M; one full validator |
+| Native-v2 cold | 2B + 2M; one full validator | 2B + 2M; one full validator |
+| Unchanged in-process warm | B + M; no full validator | No hash reads or full validator |
+
+Both modes revalidate after manifest/member replacement and evict failed or
+cancelled admissions; a new process starts cold. If a filesystem hides **all**
+change tokens after content tampering, default strong mode detects the changed
+bytes, whereas immutable mode may reuse stale validation. Such input violates the
+opt-in contract. These are process-local acceptance guarantees, not a commitment
+to a persistent cache or dataset-size-independent strong validation.
+
 The query's shared deadline reaches admission: hashing checks every 1 MiB chunk,
 Python validation loops check every 256 rows, and SQLite validation (including
 `quick_check`) uses an interruptible progress handler, cleared on every exit.

@@ -291,3 +291,69 @@ def test_setup_or_detach_sqlite_failure_cleans_storage(tmp_path, monkeypatch, st
     for connection in connections:
         with pytest.raises(sqlite3.ProgrammingError, match="closed"):
             connection.execute("SELECT 1")
+
+
+@pytest.mark.parametrize("failure", ["rows", "bytes", "timeout", "cancel", "io"])
+def test_result_phase_failure_preserves_sources_cleans_storage_and_allows_retry(
+    tmp_path, monkeypatch, failure
+):
+    """Exercise failure after construction, while the scratch owner is yielded."""
+    root = many_owners(tmp_path)
+    resolved = DatasetResolver().inspect(root)
+    expected = run_resolved(resolved, "block")
+    hashes = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob("*.db")}
+    parent, created = capture_storage(monkeypatch, tmp_path)
+    original_build = scratch._ScratchSources.build
+    original_read = scratch._ScratchSources.read
+    connections = []
+    ready = set()
+
+    def build(database, items, maximum):
+        original_build(database, items, maximum)
+        connections.append(database.connection)
+        ready.add(id(database))
+        budget = database.sources.budget
+        if failure == "rows":
+            budget.max_work_rows = budget.work_rows
+        elif failure == "bytes":
+            budget.max_work_bytes = budget.work_bytes
+        elif failure == "timeout":
+            budget.timeout_s = 1
+            budget.started = time.monotonic() - 2
+
+    def read(database, sql, values=None):
+        if id(database) in ready:
+            if failure == "cancel":
+                raise KeyboardInterrupt()
+            if failure == "io":
+                raise sqlite3.OperationalError("injected result read I/O failure")
+        return original_read(database, sql, values)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(scratch._ScratchSources, "build", build)
+        fault.setattr(scratch._ScratchSources, "read", read)
+        error, message = {
+            "rows": (QueryExecutionError, "work budget exceeded"),
+            "bytes": (QueryExecutionError, "work budget exceeded"),
+            "timeout": (QueryTimeoutError, "timed out"),
+            "cancel": (KeyboardInterrupt, "^$"),
+            "io": (QueryExecutionError, "result read I/O failure"),
+        }[failure]
+        with pytest.raises(error, match=message):
+            run_resolved(resolved, "block")
+
+    assert len(connections) == 1
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        connections[0].execute("SELECT 1")
+    assert created and not list(parent.iterdir())
+    assert all(not path.exists() for path in created)
+    assert {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in hashes} == hashes
+    assert not any(root.rglob("*-journal"))
+    assert not any(root.rglob("*-wal"))
+    assert not any(root.rglob("*-shm"))
+
+    retried = run_resolved(resolved, "block")
+    assert retried.rows == expected.rows
+    assert (retried.total, retried.has_more) == (expected.total, expected.has_more)
+    assert len(created) == 2 and not list(parent.iterdir())
+    assert {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in hashes} == hashes

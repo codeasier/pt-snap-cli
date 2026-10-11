@@ -228,6 +228,21 @@ POSIX change token 的平台在此模式下每次完整重验。immutable 模式
 行、不做整文件哈希，工作量为 O(分片数)，不随 event/block 数增长。这些检查均不提供
 并发 writer 锁或原子文件系统快照。
 
+双模式验收以实际工作量为准，不以 warm wall-clock 耗时作为唯一证据。固定 manifest/
+成员集合，令 **B** 为所有成员总字节数、**M** 为 manifest 字节数；哈希读取预算如下
+（不含小规模 header 预检及 SQLite 校验读取）：
+
+| 准入路径 | 默认强验证 | 显式 immutable |
+| --- | --- | --- |
+| 兼容 v1 cold | 2B + 2M；一次完整 validator | B + 2M；一次完整 validator |
+| 原生 v2 cold | 2B + 2M；一次完整 validator | 2B + 2M；一次完整 validator |
+| 同进程未变更 warm | B + M；无完整 validator | 无哈希读取、无完整 validator |
+
+两模式在 manifest/成员替换后重新完整校验；失败或取消的准入会驱逐缓存，新进程仍从
+cold 开始。如果内容篡改后文件系统隐藏了**所有** change token，默认强验证仍检测内容
+变化，而 immutable 可能复用旧校验结果；此输入违反显式 opt-in 合同。这些仅为进程内
+验收保证，不承诺持久缓存或与数据量无关的默认强验证。
+
 查询共用 deadline 覆盖准入：哈希每个 1 MiB 块、Python 校验每 256 行检查一次；SQLite
 校验（含 `quick_check`）使用可中断 progress handler，并在所有退出路径清除。
 取消保留 `QUERY_TIMEOUT`，不会缓存不完整校验。设备 tab 补全只读取有界 manifest
