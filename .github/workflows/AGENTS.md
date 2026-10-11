@@ -18,7 +18,7 @@ Concurrency is keyed by GitHub ref and superseded runs are cancelled.
 | Full PR test tier | Python 3.13; `pytest -m "not nightly"` with branch coverage, preserving the existing slow tests |
 | Overall coverage | `pyproject.toml` fail-under 90 with branches enabled |
 | Critical runtime coverage | Import backend 90; simulated allocator 88; snapshot mutator 84, checked independently |
-| Python 3.13 packaging | Upload coverage, build wheel, run clean-wheel Agent acceptance |
+| Python 3.13 packaging | Upload coverage, build wheel, run offline clean-wheel skill/CLI acceptance including both sharded formats |
 | Nightly/manual dataset acceptance | Python 3.13; provenance, wheel build and audit, then `nightly` tests including the required installed-wheel CLI/API test |
 
 Million-event deep-offset pagination tests are marked `slow`; their small

@@ -27,15 +27,29 @@ events so correcting a declaration can rerun CI.
 
 ## Installed-Wheel Acceptance
 
-The acceptance script installs a supplied wheel offline into a temporary venv
-with system dependencies available, and verifies that `pt_snap_cli` resolves
-inside that venv. It clears source/catalog/focus environment overrides and uses
-temporary HOME/CWD for helper installation and import-created focus.
+The acceptance script audits a supplied wheel against source and validates the
+reviewed fixture manifest before installing or importing. It installs offline
+into a temporary venv with system dependencies available by default. Supplying
+`--wheelhouse` instead installs dependencies offline into a venv without system
+packages and verifies their installed paths too. It verifies that `pt_snap_cli`
+resolves inside the venv, clears source/catalog/focus/resource-limit overrides,
+disables user site packages, and uses temporary HOME/CWD for skill installation
+and import-created focus.
 
 It then checks help, bundled catalog/install status, capabilities, trusted fixture
 import/reuse, overview and a peak query. This is executable CLI acceptance, not a
-live model evaluation. The script accepts only the expected committed
-`snapshot_with_empty_cache.pkl` path; run fixture provenance verification first.
+live model evaluation. `--events-per-slice 4096` adds native-v2 and compatibility-v1
+sharded imports/reuse, directory/manifest discovery, installed helper/peak skill
+guidance, and real peak/cross-shard event parity with the standalone CLI. It
+requires at least two physical slices on the selected device and verifies that
+explicit dataset operations do not change focus. The script accepts only the
+expected committed `snapshot_with_empty_cache.pkl` path, rejects an unhydrated
+pointer, and runs the provenance gate itself; also run fixture provenance tests
+before acceptance. Its output explicitly distinguishes offline CLI execution,
+stored-baseline grading (not run here), and live-agent execution (not run).
+
+Harness changes use `pytest tests/test_clean_wheel_agent_acceptance.py` plus an
+actual audited-wheel invocation; mocked guard tests alone are not acceptance.
 
 ## Change Together
 
