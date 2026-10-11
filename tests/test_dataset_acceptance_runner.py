@@ -12,6 +12,11 @@ from pathlib import Path
 import pytest
 
 RUNNER = Path(".github/scripts/run_dataset_acceptance.py")
+RESOURCE_FILE = "tests/core/test_export_validation_resources.py"
+RESOURCE_NAMES = (
+    "test_million_event_export_validation_memory_is_bounded",
+    "test_first_500k_dataset_cli_query_startup_trend",
+)
 BOUNDARY_NAME = "test_installed_default_export_short_final_shard_boundary"
 SCALE_TEST_NODES = (
     "tests/core/test_dataset_route_scale_acceptance.py::test_million_lifecycles_real_attach_and_scratch_routes",
@@ -59,6 +64,14 @@ def write_report(path, name, evidence, outcome=None, *, include_boundary=True):
             name=name,
             file=file,
             classname=file.removesuffix(".py").replace("/", "."),
+        )
+    for resource_name in RESOURCE_NAMES:
+        ET.SubElement(
+            suite,
+            "testcase",
+            name=resource_name,
+            file=RESOURCE_FILE,
+            classname="tests.core.test_export_validation_resources",
         )
     ET.ElementTree(suite).write(path)
 
@@ -135,6 +148,7 @@ def test_runner_accepts_additional_nightly_cases_and_records_complete_identities
         runner.TEST_NODE,
         runner.BOUNDARY_TEST_NODE,
         *SCALE_TEST_NODES,
+        *(f"{RESOURCE_FILE}::{name}" for name in RESOURCE_NAMES),
         "tests/test_extra.py::TestRoutes::test_extra[v2]",
     ]
 
@@ -325,6 +339,7 @@ def test_required_nightly_registry_contains_actual_scale_gates(runner):
         runner.TEST_NODE,
         runner.BOUNDARY_TEST_NODE,
         *SCALE_TEST_NODES,
+        *(f"{RESOURCE_FILE}::{name}" for name in RESOURCE_NAMES),
     )
 
 
@@ -343,4 +358,27 @@ def test_every_scale_gate_is_required_by_full_identity(runner, tmp_path, node, o
         ET.SubElement(case, outcome)
     tree.write(report)
     with pytest.raises(runner.AcceptanceError, match=re.escape(node)):
+        runner.read_evidence(report, "abc")
+
+
+def test_runner_requires_both_real_resource_gates(runner):
+    assert {f"{RESOURCE_FILE}::{name}" for name in RESOURCE_NAMES} <= set(
+        runner.REQUIRED_TEST_NODES
+    )
+
+
+@pytest.mark.parametrize("name", RESOURCE_NAMES)
+@pytest.mark.parametrize("outcome", ["missing", "skipped", "failure", "error"])
+def test_runner_rejects_missing_or_nonpassing_resource_gate(runner, tmp_path, name, outcome):
+    report = tmp_path / "junit.xml"
+    write_report(report, runner.TEST_NAME, {"wheel_sha256": "abc"})
+    tree = ET.parse(report)
+    case = tree.find(f".//testcase[@name='{name}']")
+    assert case is not None
+    if outcome == "missing":
+        tree.getroot().remove(case)
+    else:
+        ET.SubElement(case, outcome)
+    tree.write(report)
+    with pytest.raises(runner.AcceptanceError, match=name):
         runner.read_evidence(report, "abc")
