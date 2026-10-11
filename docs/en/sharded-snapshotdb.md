@@ -480,11 +480,14 @@ one copy per distinct stack. Existing native interning remains available. Conver
 temporarily holds both layouts and can leave free SQLite pages; capacity is not an
 RSS/registry/block/disk bound. No optional frame enhancement is emitted.
 
-**GUI remains pending/not run.** Fixed-source parser checks complete manifest,
+**The artifact-only runner still reports its own GUI stage as pending/not-run.**
+The separate fixed-version real GUI/C++ acceptance on 2026-10-11 is recorded in
+[interoperability acceptance](interop-acceptance.md); the runner does not mark
+GUI acceptance passed automatically. Fixed-source parser checks complete manifest,
 nonempty identical hash, every ready/resolved/existing member, read-only DB/device
 validation and allocation-cache existence **or buildability** before UP_TO_DATE.
 Derived allocation caches may modify DBs without invoking the producer: mtime or
-new derived tables alone are not rerun evidence. Later GUI acceptance must retain
+new derived tables alone are not rerun evidence. A real GUI acceptance must retain
 UP_TO_DATE/no-script-invocation logs and compare curves, blocks and cross-slice
 presentation. Source checks and original-artifact production reads are not GUI,
 C++ server/compile or full differential/performance acceptance.
@@ -502,7 +505,8 @@ license/provenance history.
 
 [Acceptance and bounded performance](interop-acceptance.md) provides deterministic
 CI, an optional hash-first existing-original consumer/physical-forward comparison,
-the same-source three-mode local baseline and an explicitly pending GUI checklist.
+the same-source three-mode local baseline, the runner's pending GUI status,
+and the separately recorded fixed-version real GUI acceptance.
 These evidence layers stay separate; a raw negative token is only dataset-local,
 never a cross-producer object-identity promise or permission to rewrite real IDs.
 
