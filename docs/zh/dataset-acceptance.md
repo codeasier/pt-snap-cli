@@ -103,10 +103,15 @@ fallback 三条路径的这些契约。`top_n=0` 完整性另有空/static/dynam
   大规模有序 frame 或无界输出查询均可成功。
 - 独立 10,000-event / 8-KiB 内联栈数据集验证聚合/小页成功，以及完整输出触发真实
   64-MiB 上限，无需创建 8-GB 数据文件。
-- 受信、测试自行构造的 500,002 个 alloc/free-request/free-completion 事件快照，
-  经非 editable 安装的 `pt-snap import --format msinsight`，**不覆盖容量默认值**。
-  先核对 500,000 + 2 成员布局及跨界生命周期，再通过该安装包的 CLI/API 验证峰值、
-  分页、终片候选、定点事件及报告。查询前后产物 hash 必须不变。
+- 受信、测试自行构造的 1,000,000 个 alloc/free-request/free-completion 事件快照，
+  经干净 venv 中安装的 `pt-snap import --format msinsight`，**不覆盖容量默认值**，
+  生成两个完整的 500,000-event 成员。所有已安装目录模板均被分类：11 个支持数据集的
+  模板核对 CLI/API 一致性及独立结果；`event_frames` 和
+  `active_memory_frame_tree_at_event` 保留明确的数据集拒绝。`peak-memory` 报告成功，
+  `memory-tree` 保留数据集拒绝。
+- 第二个必需的安装包用例保留原有 500,002-event 工作负载及 500,000 + 2 成员布局，
+  验证跨界完成生命周期、最终存活分配、分页及定点事件结果。两个安装包用例均要求
+  查询前后输入、manifest 及成员 hash 不变。
 
 按照[分发包构建说明](../../README_zh.md#构建分发包)，从目标干净 checkout 构建 wheel：
 
@@ -116,14 +121,19 @@ PT_SNAP_ACCEPTANCE_WHEEL="$(realpath dist/<built-wheel>.whl)" \
   pytest tests/core/test_dataset_scale_acceptance.py --junitxml=dataset-acceptance.xml
 ```
 
-将 `<built-wheel>` 替换为实际名称。测试以 `--no-deps --no-index` 将该确切 wheel 安装到
-临时目录，子进程清除源码 `PYTHONPATH` 并核对 `pt_snap_cli` 来自该安装目录。运行依赖
-复用测试解释器环境，不代表全新依赖解析测试。未设置 `PT_SNAP_ACCEPTANCE_WHEEL` 时，
-仅安装包用例明确 skip；skip 不算 E2E 通过。常规套件可用 `pytest -m 'not slow'`。
+将 `<built-wheel>` 替换为实际名称。每个安装包用例创建独立且不含系统包的全新 venv，
+安装该确切 wheel 及运行依赖，清除源码 `PYTHONPATH`，并核对产品包和运行依赖均来自
+该 venv。依赖安装可能访问包索引。可将 `PT_SNAP_ACCEPTANCE_WHEELHOUSE` 指向包含兼容
+依赖 wheel 的目录，以 `--no-index --find-links` 离线安装。
+未设置 `PT_SNAP_ACCEPTANCE_WHEEL` 时，两个安装包用例均明确 skip；skip 不算 E2E 通过。
+完整 PR 层使用 `pytest -m 'not nightly'`；兼容层使用
+`pytest -m 'not slow and not nightly'`。
 
-安装包用例在 pytest 临时目录写 `acceptance.json`，并记录 `dataset_acceptance` JUnit
-属性，包括 wheel/source SHA-256、包路径、事件数量、导入耗时及查询断言。耗时只是
-单次观察，不设固定时限断言，也不承诺进程 RSS。
+百万事件安装包用例写入 `acceptance.json` 和 `dataset_acceptance` JUnit 属性，包含
+wheel/source hash、运行环境身份、事件数量及命令/查询证据。短终片用例单独保存其证据。
+`PT_SNAP_ACCEPTANCE_EVIDENCE_DIR` 可指定持久证据目录，否则使用 pytest 临时目录。
+必需的 nightly runner 拒绝缺失或未通过的用例。耗时仅为观察记录；这些安装包用例
+不设固定时限，也不承诺进程 RSS。
 
 ## 证据边界
 

@@ -21,7 +21,11 @@ TEST_NAME = "test_installed_trusted_producer_default_export_cli_and_api"
 TEST_NODE = f"tests/core/test_dataset_scale_acceptance.py::{TEST_NAME}"
 # Extend this tuple alongside new mandatory nightly gates. Never list future
 # files that have not landed: the runner rejects any missing configured node.
-REQUIRED_TEST_NODES = (TEST_NODE,)
+BOUNDARY_TEST_NODE = (
+    "tests/core/test_dataset_scale_acceptance.py::"
+    "test_installed_default_export_short_final_shard_boundary"
+)
+REQUIRED_TEST_NODES = (TEST_NODE, BOUNDARY_TEST_NODE)
 
 
 class AcceptanceError(RuntimeError):

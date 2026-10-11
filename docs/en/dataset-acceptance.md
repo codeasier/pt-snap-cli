@@ -128,12 +128,17 @@ separate empty/static/dynamic/mixed regressions across both layouts and reducers
   gate does not claim all large ordered-frame or unlimited-output queries succeed.
 - A separate 10,000-event / 8-KiB-inline-stack dataset checks aggregate/small-page
   success and genuine 64-MiB full-output rejection without creating an 8-GB file.
-- A trusted, test-owned snapshot with 500,002 alloc/free-request/free-completion
-  events goes through a non-editable installed `pt-snap import --format msinsight`
-  with **no capacity override**. The resulting 500,000 + 2 member layout and
-  cross-boundary lifecycle membership are checked before installed CLI/API peak,
-  page, terminal-candidate, point-event and report queries. Artifact hashes must
-  remain unchanged during queries.
+- A trusted, test-owned snapshot with 1,000,000 alloc/free-request/free-completion
+  events goes through the clean-venv installed `pt-snap import --format msinsight`
+  with **no capacity override**, producing two full 500,000-event members. All
+  installed catalog templates are classified: 11 dataset-supported templates
+  have CLI/API parity and independent result checks; `event_frames` and
+  `active_memory_frame_tree_at_event` retain explicit dataset rejection. The
+  `peak-memory` report succeeds; `memory-tree` retains its dataset rejection.
+- A second required installed-wheel case preserves the original 500,002-event
+  workload and its 500,000 + 2 member layout. It verifies the crossing completed
+  lifetime, final survivor, pages and point-event results. Both installed cases
+  require unchanged input, manifest and member hashes after queries.
 
 Build the wheel from the intended clean checkout using the
 [distribution instructions](../../README.md#building-distributions), then run:
@@ -144,18 +149,23 @@ PT_SNAP_ACCEPTANCE_WHEEL="$(realpath dist/<built-wheel>.whl)" \
   pytest tests/core/test_dataset_scale_acceptance.py --junitxml=dataset-acceptance.xml
 ```
 
-Replace `<built-wheel>` with the actual wheel name. The test installs that exact
-wheel into its temporary directory using `--no-deps --no-index`; subprocesses
-clear source `PYTHONPATH` and verify that `pt_snap_cli` resolves inside the
-installation. Runtime dependencies are reused from the test interpreter: this
-is not a fresh dependency-resolution test. Without `PT_SNAP_ACCEPTANCE_WHEEL`,
-only the installed test is explicitly skipped; that skip is not E2E acceptance.
-Use `pytest -m 'not slow'` for the regular suite.
+Replace `<built-wheel>` with the actual wheel name. Each installed case creates
+its own fresh venv without system packages, installs the exact wheel and runtime
+dependencies, clears source `PYTHONPATH`, and checks that the package and
+runtime dependencies resolve inside that venv. Dependency installation may use
+the package index. Set `PT_SNAP_ACCEPTANCE_WHEELHOUSE` to a directory containing
+compatible dependency wheels for an offline `--no-index --find-links` install.
+Without `PT_SNAP_ACCEPTANCE_WHEEL`, both installed cases are explicitly skipped;
+those skips are not E2E acceptance. The full PR tier uses `pytest -m 'not nightly'`;
+the compatibility tier uses `pytest -m 'not slow and not nightly'`.
 
-The installed test writes `acceptance.json` under its pytest temporary directory
-and a `dataset_acceptance` JUnit property containing the wheel/source SHA-256,
-package path, event counts, import duration and query assertions. Duration is
-observational; there is no fixed timing assertion or RSS promise.
+The million-event installed case writes `acceptance.json` and a
+`dataset_acceptance` JUnit property with wheel/source hashes, runtime identity,
+event counts and command/query evidence. The short-final-shard case stores its
+own evidence separately. `PT_SNAP_ACCEPTANCE_EVIDENCE_DIR` selects a persistent
+evidence directory; otherwise pytest temporary directories are used. The
+required nightly runner rejects a missing or nonpassing case. Durations are
+observational; these installed-wheel cases have no fixed timing or RSS promise.
 
 ## Evidence limits
 
