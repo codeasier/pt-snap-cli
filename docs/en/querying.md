@@ -719,6 +719,14 @@ If a direct query uses `-n`/`max_rows`, inspect its completeness flags: a
 truncated set of node rows is not a complete tree. Old text-only databases
 must be re-imported; the analyzer does not reconstruct frames from text.
 
+The HTML chart keeps byte-proportional widths. Tiny and zero-byte frames are
+still reachable through the direct-child list or the search results for the
+entire tree, even when zoomed into another branch. Search matches filename,
+function or node ID; each result shows its full caller path, inclusive bytes and
+node ID to distinguish identical labels. Lists include every match and support
+Tab then Enter/Space. Parent frame moves up one level; Reset zoom returns to the
+root without clearing the search. Clear the search field to remove the results.
+
 Frame-tree templates and `report memory-tree` support standalone format-3 databases
 only. Dataset roots are rejected explicitly; the analyzer never selects a shard
 implicitly. Direct native shards have no standalone frame tables: re-import the

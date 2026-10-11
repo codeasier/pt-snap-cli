@@ -101,7 +101,8 @@ included bytes 为分母。解读有上限的分组结果前，请参阅
 `report memory-tree --event-id 100 --format html > memory-tree.html`
 按调用路径查看事件时刻的占用。详见[调用栈帧内存拆解](docs/zh/querying.md#调用栈帧内存拆解)；
 旧文本数据库需要从原始快照重新导入。
-`report memory-tree` 同样支持 `--json`。
+`report memory-tree` 同样支持 `--json`。HTML 支持全树搜索和可键盘操作的子节点列表，
+极小占用及零字节帧也能进入查看。
 
 ## Agent Skills
 

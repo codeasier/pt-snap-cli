@@ -115,7 +115,8 @@ inspect them, or `report memory-tree --event-id 100 --format html > memory-tree.
 to explore event-time occupancy by caller path. See
 [frame memory breakdown](docs/en/querying.md#frame-memory-breakdown); older
 text-only databases require re-importing the original snapshot.
-`report memory-tree` also accepts `--json`.
+`report memory-tree` also accepts `--json`. The HTML view has full-tree search and
+keyboard-accessible child lists, so tiny and zero-byte frames remain reachable.
 
 ## Agent Skills
 

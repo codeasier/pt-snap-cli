@@ -39,6 +39,7 @@ Issues = "https://github.com/codeasier/pt-snap-cli/issues"
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "playwright>=1.40.0",
     "black>=23.0.0",
     "ruff>=0.0.280",
     "build>=1.0.0",

@@ -52,6 +52,17 @@ python -m basedpyright --pythonpath "$(python -c 'import sys; print(sys.executab
 git diff --check
 ```
 
+HTML interaction regressions run in a separate Chromium CI job. To run locally:
+
+```bash
+python -m playwright install chromium
+PT_SNAP_REQUIRE_BROWSER=1 pytest tests/test_memory_tree_browser.py
+```
+
+Without an installed browser, the ordinary suite skips these browser tests. The
+required-browser flag makes missing browser support fail. `PT_SNAP_TEST_CHROMIUM`
+may point to an existing Chromium executable instead of downloading one.
+
 - Type checking covers all `src/pt_snap_cli`, including `snapshot/`. Zero errors
   is the gate; warnings are informational. Preserve the file-level Any/Unknown
   error gates in `api.py`, `core/models.py`, and `snapshot/representation.py`;
