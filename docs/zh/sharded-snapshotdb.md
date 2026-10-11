@@ -196,6 +196,14 @@ selector。输出 `scope` 标识实际 DB/device/slice、受限真实区间、�
 及累计工作上限；任意 SQL/自定义 override 明确失败，不静默选首片/最新片。单库真实
 事件 peak/gap 与全部 action 完整文本栈统计版本在相同合同中明确说明。
 
+数据集 `event` 和 `allocation` 以 `id` 排序（ASC 或 DESC）时，深 `offset` 分页按逐片
+匹配行数跳过整片，只在落点片使用局部 SQL OFFSET，再读取后续片补满窗口。原生稀疏 ID
+按实际行数计数，不按 ID 差值推算。仅最终选中的 event 行解析来源文本和有序 frame。
+范围计数仍描述非范围筛选前的请求区间；总数、完整性标记，以及获取计数行、页内行、
+来源与输出的累计计费语义保持不变。这减少的是取入 Python 的工作量，不保证降低 SQLite
+内部扫描量或完整数据集校验成本。其他排序键保持原有全局候选策略；无限或较大返回页
+仍可能超过工作预算。没有新增 cursor API。
+
 `core.dataset_resolver.DatasetResolver.inspect(path)` 返回不可变 `ResolvedDataset`
 （单库返回 `None`）；其 `paths(QueryScope(...))` 可寻址跨片范围的全部文件，但不执行查询。
 默认首次 inspect 完整校验最终化合同，并在校验前后对内容取哈希。进程级 LRU 最多保留

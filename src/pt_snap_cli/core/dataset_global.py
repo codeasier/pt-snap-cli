@@ -73,6 +73,7 @@ def _scope(
 def _range_statistics(sources, low, high, items, scope, predicate="1", values=None):
     """Range evidence is deliberately collected BEFORE non-range filters."""
     count = matching = 0
+    matching_by_shard = {}
     first = last = None
     for item in items:
         row = sources.read(
@@ -85,6 +86,7 @@ def _range_statistics(sources, low, high, items, scope, predicate="1", values=No
         )[0]
         count += row["count"]
         matching += row["matching"]
+        matching_by_shard[item.index] = row["matching"]
         if row["first"] is not None:
             first = row["first"] if first is None else min(first, row["first"])
             last = row["last"] if last is None else max(last, row["last"])
@@ -93,7 +95,7 @@ def _range_statistics(sources, low, high, items, scope, predicate="1", values=No
         "last_event_id": last,
         "real_event_count": count,
     }
-    return matching
+    return matching, matching_by_shard
 
 
 def _peaks(sources, low, high, items, template, scope):
@@ -187,18 +189,76 @@ def _sort(rows: list[dict[str, object]], key: str, descending: bool) -> None:
     rows.sort(key=lambda r: (r[key] is not None, r[key]), reverse=descending)
 
 
-def _events(sources, low, high, items, params, template, scope, candidate_limit):
+def _id_event_page(sources, low, high, items, params, fields, columns, counts, offset, limit):
+    """Page ordered, disjoint shard ranges without fetching the skipped prefix.
+
+    Counts describe matching rows, not ID distances: native IDs may be sparse.
+    Only the landing shard uses a local OFFSET; later shards fill the remaining
+    window. SQLite may still scan skipped rows, but only fetched work crosses the
+    Python budget boundary. Source text/frames are hydrated after final selection.
+    """
+    rows = []
+    direction = params["order_dir"]
+    ordered = reversed(items) if direction == "DESC" else iter(items)
+    predicate, values = _predicates(params, fields, "t.")
+    projection = ", ".join(f't."{column}"' for column in columns)
+    for item in ordered:
+        sources.budget.remaining()
+        if limit == 0:
+            break
+        count = counts[item.index]
+        if offset >= count:
+            offset -= count
+            continue
+        batch = sources.read(
+            sources.dataset.root / item.file,
+            f'SELECT {projection} FROM "trace_entry_{sources.device.device_id}" t '
+            f"WHERE t.id>=0 AND t.id>=? AND t.id<=? AND {predicate} "
+            f"ORDER BY t.id {direction} LIMIT ? OFFSET ?",
+            [low, high, *values, limit, offset],
+        )
+        rows.extend(batch)
+        offset = 0
+        if limit >= 0:
+            limit -= len(batch)
+    return rows
+
+
+def _events(sources, low, high, items, params, template, scope, offset, limit):
     fields = METRICS
     if template == "event":
         fields += ("id", "action", "address", "size", "stream")
     predicate, values = _predicates(params, fields)
-    total = _range_statistics(sources, low, high, items, scope, predicate, values)
+    total, counts = _range_statistics(sources, low, high, items, scope, predicate, values)
     rows = []
     order = params["order_by"]
     direction = params["order_dir"]
     columns = ("id", *METRICS)
     if template == "event":
         columns = ("id", "action", "address", "size", "stream", *METRICS)
+    candidate_limit = offset + limit if limit >= 0 else -1
+    if order == "id":
+        # Preserve the existing finite candidate-window int64 error, including
+        # empty matches, even though the optimized plan binds a smaller LIMIT.
+        if items and candidate_limit > 2**63 - 1:
+            raise QueryExecutionError(
+                "Query execution failed: Python int too large to convert to SQLite INTEGER"
+            )
+        return (
+            _id_event_page(
+                sources,
+                low,
+                high,
+                items,
+                params,
+                fields,
+                columns,
+                counts,
+                offset,
+                limit if limit >= 0 else -1,
+            ),
+            total,
+        )
     for item in items:
         trace = f'"trace_entry_{sources.device.device_id}"'
         projection = ", ".join(f't."{column}"' for column in columns)
@@ -489,12 +549,15 @@ def global_query(
     offset, limit = _window(params, max_rows)
     candidate_limit = offset + limit if limit >= 0 else -1
     total_override = None
+    selected_offset = offset
     if template in ("memory_peak", "allocator_gap"):
         rows = _peaks(sources, low, high, items, template, scope)
     elif template in ("event", "allocation"):
         rows, total_override = _events(
-            sources, low, high, items, params, template, scope, candidate_limit
+            sources, low, high, items, params, template, scope, offset, limit
         )
+        if params["order_by"] == "id":
+            selected_offset = 0
     elif template == "callstack_analysis":
         rows = _stacks(sources, low, high, items, params, scope)
     elif template == "preexisting_live":
@@ -567,7 +630,9 @@ def global_query(
                     "No dataset-global merge implementation for this template."
                 )
     total = len(rows) if total_override is None else total_override
-    selected = rows[offset : offset + limit] if limit >= 0 else rows[offset:]
+    selected = (
+        rows[selected_offset : selected_offset + limit] if limit >= 0 else rows[selected_offset:]
+    )
     if template == "event":
         refs = sources.events(cast(int, r["id"]) for r in selected)
         detailed = (
