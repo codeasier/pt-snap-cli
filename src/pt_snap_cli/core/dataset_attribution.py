@@ -34,6 +34,8 @@ def event_attribution(
     if reduced is not None:
         selected, coverage, total, rank_full, offset = reduced
         if template == "active_blocks_at_event":
+            # Hydrate only the returned page; discard its coverage so the SQL
+            # coverage for the full active set before pagination remains intact.
             _hydrate_blocks(sources, selected)
         coverage["source_queries"] = sources.query_count
         scope = _scope(sources, item.index, event_id, coverage)
