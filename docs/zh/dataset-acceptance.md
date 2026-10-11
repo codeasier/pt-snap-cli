@@ -71,3 +71,36 @@ PT_SNAP_ACCEPTANCE_WHEEL="$(realpath dist/<built-wheel>.whl)" \
 新增导出门禁在可审查的测试输入上执行真实第一方 replay/export/query 链路；不执行
 实时 PyTorch/NPU 采集、上游 msinsight 生产端或 GUI，这些验收仍独立。未增加任何提交
 到仓库的 pickle。provenance 门禁在收集测试前运行；临时受信输入在测试期间自行写入。
+
+## 并发读取与进程中断
+
+`tests/core/test_dataset_concurrency.py` 对同一份合成数据集分别启动两个和四个
+独立读取者，覆盖线程、spawn 子进程，以及 ATTACH 和 scratch 两条路径。
+屏障位于实际 SQLite 读取或 scratch 插入完成之后，保证所有读取者同时持有各自的
+查询资源。完整结果必须一致，scratch 目录必须互不相同且在正常完成后移除，源文件
+哈希必须保持不变。这不代表同一个 analyzer 或其 SQLite 连接可以跨线程共享。
+
+`tests/test_dataset_signal_boundaries.py` 在实际 scratch 插入完成后向 CLI 发送
+真实 POSIX 信号。正常完成和 SIGINT 会展开产品资源并移除 scratch。
+**目前 SIGTERM 和 SIGKILL 会直接终止进程，未执行上述清理，私有
+`pt-snap-lifecycle-*` 目录及 `derived.db` 会残留。** 测试明确记录这一限制，
+不会把测试清理当作产品清理，也不宣称已经满足 issue #252 的 kill 后无残留目标。
+源文件哈希保持不变，不发布部分查询结果。本次未引入信号处理器、启动回收或自动删除策略。
+
+这些小规模、确定性测试进入常规套件（信号用例仅限 POSIX）。超时及错误的清理与
+进程被直接终止是不同边界：Python 异常展开不能证明 SIGTERM 或 SIGKILL 会执行
+`finally`。
+
+`tests/test_dataset_mutation_acceptance.py` 在 spawn 子进程中的 CLI/API 查询实际
+读取第一片的行或计数之后暂停，由父进程原地修改测试自有成员。默认强校验和显式
+immutable 缓存模式都必须拒绝已变更的 generation，不发布部分行或计数。
+未变更的运行必须成功且符合独立计算的结果。哈希工作量断言明确兼容 v1 的冷/热查询成本：
+默认分别对每个 manifest/成员扫描三次/两次（准入加最终检查）；POSIX immutable
+模式对成员分别扫描一次/零次，对 manifest 分别扫描两次/零次。最终检查本身在默认模式
+增加一次完整扫描，在纯元数据 immutable 模式不增加哈希扫描，并共用查询 deadline。
+非 POSIX 上的 immutable 请求不会根据创建时间复用准入：冷/热查询都对每个成员扫描
+两次、对 manifest 扫描三次，包含完整的最终哈希检查。默认强校验在非 POSIX 上仍可复用
+经过内容验证的热准入。测试还通过仅替换 resolver 的平台对象，确定性覆盖这一保守策略；
+此模拟不是实际 Windows 执行证据。
+这是工作量断言，不是固定耗时或 RSS 保证。检查会检测这些受控变更，但不会创建原子文件系统
+快照，也不证明所有先变更再恢复的竞态都能被检测。
