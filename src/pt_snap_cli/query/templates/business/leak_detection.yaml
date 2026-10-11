@@ -20,6 +20,8 @@ queries:
     semantics_version: 1
     interpretation_limits:
       - "Rows are candidates still without a free-completion event in the captured range; end-of-trace survival is not a confirmed leak."
+      - "Standalone SQL checks allocEventId >= 0 and a NULL/negative freeEventId, without state filtering or allocation-action proof."
+      - "Dataset scope additionally requires a proved real allocation and a terminal-shard active_allocated/active_pending_free observation (state IN (0,1)); inactive plus unknown-free and earlier-only observations are excluded. ATTACH, scratch and bounded fallback share this contract."
       - "Event IDs and ID distances are ordering markers, not elapsed time."
     query: |
       SELECT id, address, size, allocEventId

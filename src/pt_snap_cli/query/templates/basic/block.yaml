@@ -125,7 +125,7 @@ queries:
         units: text
         metric_semantics: identifier
         scope: captured_range
-        interpretation_limits: ["Dataset only, optional: generation/device/proved allocation-event or stable negative lifetime token; unproved histories use a separate shard-local identity. Never address or local stack identity."]
+        interpretation_limits: ["Dataset only, optional: generation/device/proved allocation-event or stable negative lifetime token; unproved histories retain separate unproved:slice:<index>:block:<id> identities even when block IDs, addresses and unproved allocation references coincide across shards. Never address or local stack identity."]
       - column: identity_status
         type: str
         units: text
