@@ -1,6 +1,7 @@
 """Tests for CLI."""
 
 import json
+import shlex
 import shutil
 import sqlite3
 from pathlib import Path
@@ -668,7 +669,10 @@ class TestQueryTemplateInfo:
         """Test 'focus --session' prints export without writing focus files."""
         result = runner.invoke(app, ["focus", str(sample_db), "--session"])
         assert result.exit_code == 0
-        assert result.stdout.strip() == f"export PT_SNAP_DB_PATH={sample_db.resolve()}"
+        assert shlex.split(result.stdout.strip()) == [
+            "export",
+            f"PT_SNAP_DB_PATH={sample_db.resolve()}",
+        ]
         assert not (Path.cwd() / ".pt-snap" / "focus.json").exists()
 
     def test_focus_database_session_and_global_conflict(self, sample_db: Path) -> None:

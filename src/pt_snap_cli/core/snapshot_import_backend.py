@@ -95,6 +95,11 @@ class SnapshotImportBackend:
                         raise
                 os.replace(tmp_db_path, db_path)
             except OSError as exc:
+                # Windows cannot unlink a file while its mkstemp handle is open.
+                # Publication has not committed, so release the secure backup
+                # before removing it; the original destination is still intact.
+                close_backup()
+                backup_fd = None
                 if backup_path is not None:
                     try:
                         backup_path.unlink(missing_ok=True)

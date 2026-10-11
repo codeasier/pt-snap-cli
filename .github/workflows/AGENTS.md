@@ -96,3 +96,17 @@ YAML and run `pytest tests/test_governance.py tests/test_release_workflow.py
 tests/test_ci_tiers.py tests/test_dataset_acceptance_runner.py tests/test_wheel_audit.py` from
 the repository root. Full CI tests the matrix and installed wheel; static tests
 do not prove a release environment is configured or a publication occurred.
+
+### Required paired differential profile
+
+The scheduled/manual `dataset-acceptance` job also runs
+`run_differential_acceptance.py --seed-count 200` after the installed-wheel
+nightly gate. This separate source-query step is required, with no skip or
+continue-on-error escape. Its JUnit report must contain exactly 400 distinct
+seed/format test IDs (200 per v1/v2), matching all per-seed coverage artifacts,
+expected query counts/templates, zero unexpected errors and actual scratch use.
+A single-seed environment override is removed by the runner. Logs, source SHA,
+summary, JUnit and compact timeline/coverage/failure JSON are always uploaded from
+`.tmp/differential-acceptance/`; regenerated SQLite files stay out of stored artifacts. The ordinary PR matrix retains the default
+20-seed profile. This does not make the differential step installed-wheel or
+upstream-producer evidence.

@@ -50,12 +50,12 @@ class TestFocusService:
         focus_dir = tmp_path / ".pt-snap"
         focus_dir.mkdir()
         (focus_dir / "focus.json").write_text(
-            json.dumps({"db_path": "/missing.db", "device_id": 0})
+            json.dumps({"db_path": str(tmp_path / "missing.db"), "device_id": 0})
         )
 
         state = FocusService().get_focus()
 
-        assert state.db_path == Path("/missing.db")
+        assert state.db_path == tmp_path / "missing.db"
         assert state.device_id == 0
         assert state.available_devices == []
 
@@ -84,7 +84,7 @@ class TestFocusService:
     def test_set_device_with_missing_db_fails(self, tmp_path: Path) -> None:
         focus_dir = tmp_path / ".pt-snap"
         focus_dir.mkdir()
-        (focus_dir / "focus.json").write_text(json.dumps({"db_path": "/missing.db"}))
+        (focus_dir / "focus.json").write_text(json.dumps({"db_path": str(tmp_path / "missing.db")}))
 
         with pytest.raises(DatabaseMissingError):
             FocusService().set_device(0)

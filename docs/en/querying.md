@@ -193,6 +193,14 @@ check cancellation. Individual filesystem calls are not OS-level hard-preempted.
 `PT_SNAP_DATASET_CACHE=immutable` explicitly opts into metadata-only validation reuse
 only when the caller guarantees immutable finalized files and reliable filesystem
 change times; see [dataset validation and cache contracts](sharded-snapshotdb.md).
+Every dataset query also verifies that admitted generation before returning rows or
+counts, including count-only queries. A detected concurrent change fails the whole
+query with a database-integrity error; no partial result is published. By default,
+this final guard adds one complete manifest/member hash pass under the same
+operation deadline. The explicit immutable mode retains its metadata-only guard
+when its existing filesystem requirements hold. This is a change-detection boundary,
+not an atomic filesystem snapshot: it does not prove all change-and-restore races
+impossible or support querying mutable live SQLite artifacts.
 Source artifacts are never repaired or written. A large lifecycle query may create a
 private temporary derived database as described below.
 
@@ -543,6 +551,12 @@ This query:
 - joins dynamic blocks back to their allocation events in `trace_entry_<device>`
 - groups by allocation callstack
 - emits static and preexisting memory as dedicated groups instead of inventing a callstack
+
+A zero-sized inner rank window (`top_n=0`) is also conservatively incomplete:
+without `--exact-total`, `has_more=true`, `truncated=true`, and
+`total_is_exact=false`, even if no rows are returned. This applies to standalone
+and dataset queries, with or without static groups. `--exact-total` counts the
+matching groups before the rank window and resolves whether any were omitted.
 
 `top_n` only bounds dynamic callstack groups; `static` and
 `preexisting_live_at_event` groups, when included and present, are exempt from
