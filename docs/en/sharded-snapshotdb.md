@@ -230,8 +230,21 @@ restricted real interval, dataset fingerprint and boundary exclusion. Totals and
 pagination apply to this scope, **not** to an implicitly truncated full dataset.
 Caller parameter defaults in CLI `effective_params` are additionally constrained
 by `scope`. Point-event `active_blocks_at_event` and
-`active_memory_callstack_at_event` now resolve alloc/free/full stack sources in
-bounded batches before grouping/ranking, including original no-extension artifacts.
+`active_memory_callstack_at_event` prove alloc/free/full-stack coverage before
+pagination/ranking, including future completed-free owners and original no-extension
+artifacts. Text-only v1/v2 queries use read-only SQL reduction when the required
+owners fit SQLite's ATTACH limit: coverage and full-text groups stay in SQL, and
+only returned block details are hydrated. Global top_n percentages still use all
+included groups before max_rows. Ordered-frame inputs or larger owner sets retain
+the budgeted source-batch fallback. SQL scans/sorts share the timeout; reduced
+rows, hydrated sources and output still consume the work budget. A finite page
+can therefore succeed where unbounded output exceeds the same budget.
+
+The opt-in synthetic gate `PYTHONPATH=src python benchmarks/active_at_event_capacity.py`
+(and `--layout v2`) checks 1.5 million events / three 500000-event shards / 200000
+active blocks, page20 and top20, exact totals, standalone differential results,
+read-only hashes and rejection of unbounded block output. It creates and removes
+private temporary data; it is not producer/GUI or general RSS/performance evidence.
 See [point-event attribution](querying.md#dataset-point-event-attribution) for
 lifecycle identity, separate source/frame coverage, and the optional versioned
 ordered-frame reader interface. Dataset-global built-ins use the explicit P3 matrix

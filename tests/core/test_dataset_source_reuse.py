@@ -80,58 +80,65 @@ def test_target_and_distinct_events_reuse_only_identical_sources(tmp_path):
         assert first[0].stack_id == first[1].stack_id
 
 
-@pytest.mark.parametrize("count, succeeds", [(49_999, True), (50_000, False)])
-def test_distinct_block_and_allocation_work_still_counts(tmp_path, count, succeeds):
+@pytest.mark.parametrize("count", [49_999, 50_000])
+def test_active_reduction_does_not_materialize_blocks_and_allocation_events(tmp_path, count):
     root = dataset(tmp_path, count, blocks=True)
     budget = QueryBudget(None, time.monotonic())
-    service = QueryService()
-    try:
-        if succeeds:
-            result = service.execute_query(
-                "active_memory_callstack_at_event",
-                params={"event_id": count - 1},
-                db_path=root,
-                _budget=budget,
-            )
-            assert result.returned == 1
-            assert budget.work_rows == 2 * count + 1
-        else:
-            with pytest.raises(QueryExecutionError, match="work budget exceeded"):
-                service.execute_query(
-                    "active_memory_callstack_at_event",
-                    params={"event_id": count - 1},
-                    db_path=root,
-                    _budget=budget,
-                )
-            assert budget.work_rows == 100_001
-    finally:
-        service.close()
+    with closing(QueryService()) as service:
+        result = service.execute_query(
+            "active_memory_callstack_at_event",
+            params={"event_id": count - 1},
+            db_path=root,
+            _budget=budget,
+        )
+    assert result.returned == 1
+    assert result.rows[0]["block_count"] == count
+    # Target, full coverage summary, group count, reduced group and enriched output.
+    assert budget.work_rows == 5
 
 
-@pytest.mark.parametrize("count, succeeds", [(3_000, True), (5_000, False)])
-def test_long_distinct_source_payload_remains_budgeted(tmp_path, count, succeeds):
-    root = dataset(tmp_path, count, stack="x" * 16_384, blocks=True)
+def test_shared_long_text_reduction_is_small_but_full_sources_remain_budgeted(tmp_path):
+    root = dataset(tmp_path, 5_000, stack="x" * 16_384, blocks=True)
     budget = QueryBudget(None, time.monotonic())
     with closing(QueryService()) as service:
-        if succeeds:
-            result = service.execute_query(
-                "active_memory_callstack_at_event",
-                params={"event_id": count - 1},
+        result = service.execute_query(
+            "active_memory_callstack_at_event",
+            params={"event_id": 4_999},
+            db_path=root,
+            _budget=budget,
+        )
+        assert result.rows[0]["block_count"] == 5_000
+        assert budget.work_rows == 5 and budget.work_bytes < 100_000
+        full = QueryBudget(None, time.monotonic())
+        with pytest.raises(QueryExecutionError, match="work budget exceeded"):
+            service.execute_query(
+                "active_blocks_at_event",
+                params={"event_id": 4_999, "limit": -1},
                 db_path=root,
-                _budget=budget,
+                _budget=full,
             )
-            assert result.returned == 1
-            assert budget.work_rows == 2 * count + 1
-        else:
-            with pytest.raises(QueryExecutionError, match="work budget exceeded"):
-                service.execute_query(
-                    "active_memory_callstack_at_event",
-                    params={"event_id": count - 1},
-                    db_path=root,
-                    _budget=budget,
-                )
-            assert budget.work_rows < budget.max_work_rows
-            assert budget.work_bytes > budget.max_work_bytes
+        assert full.work_rows < full.max_work_rows
+        assert full.work_bytes > full.max_work_bytes
+
+
+def test_fallback_still_charges_distinct_blocks_and_sources(tmp_path, monkeypatch):
+    from pt_snap_cli.core import dataset_attribution
+
+    monkeypatch.setattr(dataset_attribution, "reduce_active", lambda *args: None)
+    root = dataset(tmp_path, 100, blocks=True)
+    with closing(QueryService()) as service:
+        budget = QueryBudget(None, time.monotonic(), max_work_rows=201)
+        result = service.execute_query(
+            "active_memory_callstack_at_event", {"event_id": 99}, db_path=root, _budget=budget
+        )
+        assert result.returned == 1 and budget.work_rows == 201
+        with pytest.raises(QueryExecutionError, match="work budget exceeded"):
+            service.execute_query(
+                "active_memory_callstack_at_event",
+                {"event_id": 99},
+                db_path=root,
+                _budget=QueryBudget(None, time.monotonic(), max_work_rows=200),
+            )
 
 
 def test_id_sorted_page_does_not_materialize_unneeded_stack_text(tmp_path):

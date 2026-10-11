@@ -1,11 +1,10 @@
-"""Read-only relational lifecycle reduction over a bounded set of attached shards.
+"""Bounded lifecycle reduction with one reusable state row per large-scope identity.
 
-No rows are copied to a merge database. SQLite performs proof, conflict checks,
-latest-observation selection and page ranking; only aggregate/page rows cross the
-Python boundary. The fetched-row/byte budget does not bound SQLite's internal
-scans or temporary space. Summary and page/buckets each evaluate the full CTE;
-all statements share the operation deadline. Larger required shard sets use a
-private, size-limited derived SQLite database; source members remain read-only.
+Small observation sets use read-only ATTACH/CTEs; larger sets reuse a private,
+size-limited derived table for summary and page/buckets. Only aggregates/pages
+cross the Python boundary. The fetched-row/byte budget does not bound SQLite's
+internal scans or temporary space. All statements, including the bounded routing
+probe, share the operation deadline. Source members always remain read-only.
 """
 
 from __future__ import annotations
@@ -16,6 +15,12 @@ from typing import cast
 
 from pt_snap_cli.core.dataset_lifecycle_connection import _AttachedSources
 from pt_snap_cli.core.errors import QueryExecutionError
+
+# A row threshold, not an ATTACH/shard-count heuristic. Same-artifact synthetic
+# measurements show scratch's fixed storage cost dominates tiny inputs, while
+# reduction reuse wins well before this conservative observation bound. Probe
+# only this many + 1 observations across all members, never COUNT the whole scope.
+_ATTACHED_OBSERVATION_LIMIT = 4096
 
 
 def _attachment_limit() -> int:
@@ -73,6 +78,21 @@ def _proof(sources, items, field, action):
         for item in items
     )
     return f"CASE {cases} ELSE 0 END"
+
+
+def _large_observation_set(sources, items):
+    remaining = _ATTACHED_OBSERVATION_LIMIT + 1
+    for item in items:
+        count = sources.read(
+            sources.dataset.root / item.file,
+            f'SELECT COUNT(*) AS count FROM (SELECT 1 FROM "block_{sources.device.device_id}" '
+            "LIMIT ?)",
+            [remaining],
+        )[0]["count"]
+        remaining -= count
+        if remaining == 0:
+            return True
+    return False
 
 
 def _lifecycle_cte(sources, items, proof_items):
@@ -136,15 +156,21 @@ def _filter(template, params):
 
 
 def lifecycle_query(sources, items, template, params, scope, candidate_limit):
-    required = _required_slices(sources, items, _attachment_limit())
+    attachment_limit = _attachment_limit()
+    if attachment_limit < 1:
+        return None
+    required = _required_slices(sources, items, attachment_limit)
     predicate, values = _filter(template, params)
-    if required is None:
+    scratch_enabled = sources.budget.max_scratch_db_bytes != 0
+    if scratch_enabled and (required is None or _large_observation_set(sources, items)):
         from pt_snap_cli.core.dataset_lifecycle_scratch import scratch_lifecycles
 
-        if sources.budget.max_scratch_db_bytes == 0 or _attachment_limit() < 1:
-            return None
+        # Once selected, storage/deadline failures must fail the whole operation;
+        # falling back could hide exhaustion and redo unbounded expensive work.
         execution = scratch_lifecycles(sources, items)
     else:
+        if required is None:
+            return None
         from contextlib import contextmanager
 
         @contextmanager

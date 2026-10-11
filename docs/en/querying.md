@@ -177,16 +177,24 @@ shard. Event/allocation pages apply SQL filters and ordering per shard, merge at
 is measured before non-range filters. Ordinary text-stack statistics merge full
 per-shard groups before global thresholds; averages use summed sizes and counts.
 Canonical ordered-frame statistics retain the bounded source-reading path because
-formatted text is not their identity. Block/leak/lifetime reductions use read-only
+formatted text is not their identity. Small block/leak/lifetime reductions use read-only
 attached shards for proof, conflicts and latest observations before pagination;
 the attachment limit (normally ten) counts selected observation shards plus any
 other shards owning their allocation/free references. Slice queries discover those
-proof owners before filtering or paging. Above the limit, a query-private temporary
+proof owners before filtering or paging. Above the attachment limit, or above 4096
+selected block observations when scratch is enabled, a query-private temporary
 SQLite database retains only distinct event references and one narrow state row per
 lifecycle. Sources are attached read-only one at a time: reference ownership/actions
 are proved first, then all observations are reduced and conflicts checked before
 filters, totals or pagination. Only returned candidates hydrate complete source events.
-The small attached-set path is unchanged.
+Summary and page/lifetime buckets reuse the reduced table, avoiding two full
+history/window reductions. Routing counts at most 4097 observations across the
+selected members with bounded SQL probes; only scalar counts enter the fetched-work
+budget. This observation threshold preserves the small read-only path and does not
+predict every layout's performance. Setting the scratch budget to zero skips the
+probe and retains ATTACH when the complete proof-owner set fits, otherwise the
+original bounded source reader. Once scratch is selected, storage failure is an
+error with cleanup, never a retry through a less bounded plan.
 
 The temporary directory is private (0700), its derived database is created with 0600
 permissions, and normal completion, errors and cancellation close connections and

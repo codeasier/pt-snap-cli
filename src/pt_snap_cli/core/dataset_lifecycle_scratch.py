@@ -1,4 +1,4 @@
-"""Private disk-backed lifecycle reduction when the read-only ATTACH set is too large.
+"""Private disk-backed reduction for large lifecycle observation or ATTACH sets.
 
 Only references and one narrow row per identity are retained. The derived main
 DB has a page ceiling; this does NOT limit all SQLite journals/sort files or RSS.
