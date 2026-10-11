@@ -36,15 +36,32 @@ def forbidden(*args, **kwargs):
     pytest.fail("warm resolution must not hash or validate shard contents")
 
 
-def test_new_resolvers_reuse_verified_generation_without_hash_or_sql(artifact, monkeypatch):
+def test_new_resolvers_respect_platform_generation_reuse_policy(artifact, monkeypatch):
     first = DatasetResolver().inspect(artifact)
-    monkeypatch.setattr(dataset_resolver, "_hash_file", forbidden)
-    monkeypatch.setattr(native_dataset_contract, "_hash_file", forbidden)
-    monkeypatch.setattr(dataset_resolver, "validate_dataset", forbidden)
-    monkeypatch.setattr(dataset_resolver, "validate_native_dataset", forbidden)
-    monkeypatch.setattr(sqlite3, "connect", forbidden)
+    calls = []
+    for module, name in (
+        (dataset_resolver, "_hash_file"),
+        (native_dataset_contract, "_hash_file"),
+        (dataset_resolver, "validate_dataset"),
+        (dataset_resolver, "validate_native_dataset"),
+        (sqlite3, "connect"),
+    ):
+        original = getattr(module, name)
+
+        def tracked(*args, _original=original, _name=name, **kwargs):
+            calls.append(_name)
+            return _original(*args, **kwargs)
+
+        monkeypatch.setattr(module, name, tracked)
     second = DatasetResolver().inspect(artifact / "manifest.json")
     assert second == first and second is not first
+    if os.name == "posix":
+        assert calls == []
+    else:
+        # Windows creation time cannot authorize metadata-only immutable reuse.
+        assert "_hash_file" in calls and "connect" in calls
+        assert "validate_dataset" in calls or "validate_native_dataset" in calls
+        assert artifact not in dataset_resolver._VALIDATED
     second.require_unchanged()
 
 
@@ -88,7 +105,10 @@ def test_restored_mtime_size_does_not_hide_content_tampering(artifact):
         after.st_size,
         after.st_mtime_ns,
     )
-    assert before.st_ctime_ns != after.st_ctime_ns
+    if os.name == "posix":
+        assert before.st_ctime_ns != after.st_ctime_ns
+    else:
+        assert artifact not in dataset_resolver._VALIDATED
     with pytest.raises(DatabaseSchemaError):
         DatasetResolver().inspect(artifact)
 
@@ -134,11 +154,14 @@ def test_cached_manifest_cannot_be_mutated_by_a_previous_caller(tmp_path):
 
 
 def test_cache_is_bounded_and_untrusted_change_tokens_disable_reuse(tmp_path, monkeypatch):
+    # Default content-verified caching is available on every platform.
+    monkeypatch.delenv("PT_SNAP_DATASET_CACHE")
     monkeypatch.setattr(dataset_resolver, "_CACHE_LIMIT", 2)
     for i in range(3):
         DatasetResolver().inspect(make_dataset(tmp_path / str(i), devices=(0,), slices=1))
     assert len(dataset_resolver._VALIDATED) == 2
     root = make_dataset(tmp_path / "uncached", devices=(0,), slices=1)
+    monkeypatch.setenv("PT_SNAP_DATASET_CACHE", "immutable")
     monkeypatch.setattr(dataset_resolver, "_cacheable", lambda generation: False)
     DatasetResolver().inspect(root)
     assert root not in dataset_resolver._VALIDATED
@@ -381,6 +404,7 @@ def test_strong_operation_guard_hashes_even_when_filesystem_tokens_look_unchange
 
 
 def test_disabling_cache_does_not_reuse_an_existing_entry(tmp_path, monkeypatch):
+    monkeypatch.delenv("PT_SNAP_DATASET_CACHE")
     root = make_dataset(tmp_path / "dataset", devices=(0,), slices=1)
     DatasetResolver().inspect(root)
     assert root in dataset_resolver._VALIDATED
@@ -404,3 +428,24 @@ def test_strong_operation_guard_normalizes_hash_io_failure(tmp_path, monkeypatch
     monkeypatch.setattr(dataset_resolver, "_hash_file", fail)
     with pytest.raises(DatabaseSchemaError, match="member became unreadable"):
         resolved.require_unchanged()
+
+
+def test_immutable_request_never_trusts_windows_creation_time(artifact, monkeypatch):
+    from types import SimpleNamespace
+
+    # Exercise the real conservative policy even when this regression runs on Linux.
+    monkeypatch.setattr(dataset_resolver, "os", SimpleNamespace(name="nt", environ=os.environ))
+    first = DatasetResolver().inspect(artifact)
+    assert not dataset_resolver._cacheable(first.generation)
+    assert artifact not in dataset_resolver._VALIDATED
+    assert DatasetResolver().inspect(artifact) == first
+    assert artifact not in dataset_resolver._VALIDATED
+    member = next(artifact.glob("*/*.db"))
+    device = member.parent.name.removeprefix("device_")
+    with closing(sqlite3.connect(member)) as conn, conn:
+        conn.execute(f"UPDATE trace_entry_{device} SET action=100 WHERE id>=0")
+    monkeypatch.setattr(dataset_resolver, "_generation", lambda *args: first.generation)
+    with pytest.raises(DatabaseSchemaError):
+        DatasetResolver().inspect(artifact)
+    with pytest.raises(DatabaseSchemaError, match="content changed"):
+        first.require_unchanged()

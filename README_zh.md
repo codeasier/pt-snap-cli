@@ -147,6 +147,14 @@ black --check . && ruff check .  # 检查格式和 lint
 常规套件可用 `pytest -m 'not slow'`。默认容量规模及非 editable 安装包导出测试见
 [数据集验收指南](docs/zh/dataset-acceptance.md)。
 
+补充的平台工作流在 macOS 和 Windows 上运行 Python 3.13 非 slow 测试。
+Windows 将完整的非 slow 集合确定性地划分为两个互不重叠的分片；macOS 使用一个任务。
+三个任务均保持 20 分钟上限，最多同时运行两个。每个 Windows 分片在执行前验证
+划分无遗漏、无重复，并随 JUnit 结果上传完整的收集及分片清单。不会为了满足时间上限
+而跳过测试。本地复现一个 Windows 分片可运行
+`python .github/scripts/run_platform_tests.py --shard 0`（或 `--shard 1`）；
+增加 `--collect-only` 可仅检查划分，不执行测试。
+
 ### 构建分发包
 
 请从目标提交的全新 checkout 或新 worktree 构建，确保没有已有的 `build/` 和

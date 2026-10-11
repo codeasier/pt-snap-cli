@@ -682,16 +682,19 @@ def test_publication_symlink_race_is_not_replaced(
     if not broken:
         target.mkdir()
     real_publish = SplitService._publish_directory
+    original_targets = []
 
     def race(stage: Path, destination: Path) -> None:
         destination.symlink_to(target, target_is_directory=True)
+        original_targets.append(destination.readlink())
         real_publish(stage, destination)
 
     monkeypatch.setattr(SplitService, "_publish_directory", staticmethod(race))
     with pytest.raises(SplitError, match="publication"):
         SplitService().split(_options(tmp_path, device=0))
     assert (tmp_path / "split").is_symlink()
-    assert (tmp_path / "split").readlink() == target
+    # Windows reports an extended-length target; compare before/after exactly.
+    assert [(tmp_path / "split").readlink()] == original_targets
     assert not list(tmp_path.glob(".split.pt-snap-*"))
 
 

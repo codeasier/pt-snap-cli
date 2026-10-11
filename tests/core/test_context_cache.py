@@ -90,6 +90,10 @@ class TestContextCache:
         conn.commit()
         conn.close()
         os.utime(replacement, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+        if os.name == "nt":
+            # Windows forbids replacing an open SQLite file. Release the handle
+            # but retain the cache entry so signature invalidation is still tested.
+            first.close()
         os.replace(replacement, db_path)
 
         second = cache.get(db_path)
@@ -121,6 +125,10 @@ class TestContextCache:
         conn.execute("CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY, callstackId INTEGER)")
         conn.commit()
         conn.close()
+        if os.name == "nt":
+            # Windows forbids replacing an open SQLite file. Release the handle
+            # but retain the cache entry so signature invalidation is still tested.
+            first.close()
         os.replace(replacement, db_path)
 
         second = cache.get(db_path)

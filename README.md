@@ -165,6 +165,16 @@ For the regular suite use `pytest -m 'not slow'`. Default-capacity scale and
 non-editable installed exporter tests are described in the
 [dataset acceptance guide](docs/en/dataset-acceptance.md).
 
+The supplemental platform workflow runs Python 3.13 non-slow tests on macOS and
+Windows. Windows uses two deterministic, disjoint shards of the full non-slow
+collection; macOS runs it in one job. All three jobs retain a 20-minute limit,
+with at most two running concurrently. Each Windows shard validates exhaustive
+coverage before execution and uploads its full collection/partition manifest
+alongside JUnit results. No tests are skipped to meet the time limit. To reproduce
+one Windows partition locally, run
+`python .github/scripts/run_platform_tests.py --shard 0` (or `--shard 1`);
+add `--collect-only` to inspect the partition without executing tests.
+
 ### Building distributions
 
 Build from a fresh checkout or a new worktree at the intended commit, with no

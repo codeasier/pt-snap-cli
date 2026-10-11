@@ -372,6 +372,7 @@ def test_live_sidecar_rejected_before_any_sqlite_open(
     if dangling:
         sidecar.symlink_to(tmp_path / "missing-sidecar-target")
         assert sidecar.is_symlink() and not sidecar.exists()
+        original_target = sidecar.readlink()
     else:
         sidecar.touch()
     before = hashes(root)
@@ -388,7 +389,8 @@ def test_live_sidecar_rejected_before_any_sqlite_open(
     assert before == hashes(root)
     assert inventory == sorted(str(p.relative_to(root)) for p in root.rglob("*"))
     if dangling:
-        assert sidecar.readlink() == tmp_path / "missing-sidecar-target"
+        # Preserve the OS-reported target spelling, including Windows \?\ paths.
+        assert sidecar.readlink() == original_target
 
 
 @pytest.mark.parametrize("manifest_path", [False, True])
