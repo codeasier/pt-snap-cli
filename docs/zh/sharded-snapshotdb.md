@@ -238,6 +238,19 @@ POSIX change token 的平台在此模式下每次完整重验。immutable 模式
 | 原生 v2 cold | 2B + 2M；一次完整 validator | 2B + 2M；一次完整 validator |
 | 同进程未变更 warm | B + M；无完整 validator | 无哈希读取、无完整 validator |
 
+默认模式下内容未变时，`peak_memory_report` 只 inspect 一次，随后每个组合查询结束都
+检查完整 manifest 和**所有设备的成员**。正常 peak 加 attribution 共哈希
+**cold 4(B + M)**、**warm 3(B + M)**；无峰值提前返回只有一次 guard，共哈希
+**cold 3(B + M)**、**warm 2(B + M)**。cold 报告运行一次完整 validator，warm 不运行。
+这是逻辑哈希读取字节数，不是物理磁盘 I/O；OS page cache 可能减少磁盘读取，且上述
+数字不包含 SQLite/查询读取和 header 预检。`tests/core/test_report_content_integrity.py`
+按阶段与实际读取字节回归：原生模式使用真实稀疏空范围；兼容 v1 要求连续 ID 和非 NULL
+计数，因此兼容模式的无峰值用例只在真实查询后注入该结果分支。两个真实 guard 均被
+覆盖，包括隐藏 change token 后另一设备的变更，以及原本可在 attribution 时恢复的
+中途变更。这记录现有完整性成本，不代表提速或解决
+[issue #238](https://github.com/codeasier/pt-snap-cli/issues/238)。减少遍数需要另行建立
+稳定读取边界或明确变更合同。
+
 两模式在 manifest/成员替换后重新完整校验；失败或取消的准入会驱逐缓存，新进程仍从
 cold 开始。如果内容篡改后文件系统隐藏了**所有** change token，默认强验证仍检测内容
 变化，而 immutable 可能复用旧校验结果；此输入违反显式 opt-in 合同。这些仅为进程内
