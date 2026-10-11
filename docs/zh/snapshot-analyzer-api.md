@@ -28,6 +28,42 @@ analyzer = SnapshotAnalyzer(
 显式设备覆盖。省略 `db_path` 时，数据库解析顺序与 CLI 相同：`PT_SNAP_DB_PATH`、
 最近的 `.pt-snap/focus.json`，最后是 legacy 全局配置。
 
+## 数据集查询预算
+
+可从 `pt_snap_cli.api` 与 `SnapshotAnalyzer` 一起导入冻结的 `QueryLimits`，直接调用
+服务时也可从 `pt_snap_cli.core` 导入。它只包含三个不可变上限，不含共享可变计数器：
+
+```python
+from pt_snap_cli.api import QueryLimits, SnapshotAnalyzer
+
+limits = QueryLimits.resolve(max_work_rows=300_000, max_work_bytes=128 * 1024**2)
+with SnapshotAnalyzer(Path("/path/to/dataset"), query_limits=limits) as analyzer:
+    result = analyzer.execute_query("event", {"offset":100_000, "limit":5})
+    print(result["scope"]["work_budget"])
+    # 只覆盖本次调用；后续仍使用构造时的配置。
+    other = analyzer.execute_query("event", query_limits=QueryLimits(max_work_rows=400_000))
+```
+
+`QueryLimits()` 始终使用内建默认值：`max_work_rows=100000`、
+`max_work_bytes=67108864`、`max_scratch_db_bytes=536870912`。
+`QueryLimits.resolve(...)` 对省略的字段读取相应 `PT_SNAP_MAX_WORK_ROWS`、
+`PT_SNAP_MAX_WORK_BYTES`、`PT_SNAP_MAX_SCRATCH_DB_BYTES` 环境变量，再回退默认值。
+显式字段覆盖对应环境变量，即使该环境值非法。工作上限必须是正整数，不接受布尔值或
+浮点数；scratch 接受整数零（禁用）或 4096 至 4294967296 字节。没有无限工作预算；
+非法值抛出 core `InvalidParameterError`。
+
+每次操作的 `query_limits` 替换整个构造配置；构造配置又覆盖环境/默认值解析。两处均
+省略时，每次操作重新读取环境。若只覆盖部分字段、其余继续读取环境，应调用
+`QueryLimits.resolve(...)`。`get_template_info(..., query_limits=...)` 可查看单次覆盖，
+`list_capabilities()` 则反映该 analyzer 的常规有效默认配置。
+
+`QueryService`、`ReportService` 构造函数也接受 `query_limits`；`execute_query`、
+`peak_memory_report`、`event_attribution`、`memory_tree_report` 接受单次覆盖。
+峰值报告步骤共用累计计数器和 deadline，独立操作使用全新计数器。可变内部
+`QueryBudget` 不是公开配置接口。预算只约束数据集工作，不约束单库结果物化、RSS 或
+所有 SQLite 临时空间。深分页成本、失败语义及保持不变的默认上限见
+[公开配置说明](querying.md#公开数据集预算)。
+
 ## 连接生命周期与缓存所有权
 
 analyzer 会为查询和概览复用只读 SQLite 连接。使用 `with` 可确定性释放连接，

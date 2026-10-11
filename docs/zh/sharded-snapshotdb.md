@@ -190,11 +190,30 @@ with SnapshotAnalyzer(Path("/capture/snapshot.pkl.msinsight"), device_id=0) as a
 selector。输出 `scope` 标识实际 DB/device/slice、受限真实区间、数据集指纹和边界排除。
 总数和分页针对该 scope，**不是**隐式截断的整份数据集。CLI `effective_params` 的调用者
 参数默认值另受 `scope` 约束。定点 `active_blocks_at_event` 和
-`active_memory_callstack_at_event` 现于分组/排名前批量解析 alloc/free/完整栈来源，
-原版无扩展产物也适用。生命周期身份、独立来源/frame 覆盖及版本化有序 frame reader
+`active_memory_callstack_at_event` 在分页/排名前验证全部 alloc/free/完整栈来源覆盖，
+包括未来 completed-free 所在片，原版无扩展产物也适用。纯文本 v1/v2 查询在所需 owner
+集合不超过 SQLite ATTACH 上限时使用只读 SQL 归约：全量覆盖与完整文本分组保留在 SQL
+内，仅补充返回 block 的来源详情。全局 top_n 百分比分母仍是 max_rows 前的全部入选组。
+有序 frame 输入或更大的 owner 集合保留受预算约束的来源批次回退。SQL 扫描/排序共用
+超时；归约行、实际补充来源及输出仍计入工作预算，因此有限页可成功而无界输出仍超限。
+
+可选合成验收 `PYTHONPATH=src python benchmarks/active_at_event_capacity.py`（以及
+`--layout v2`）检查 150 万事件 / 三个 500000 事件分片 / 20 万活跃 block、page20、
+top20、精确总数、单库差分、只读哈希和无界 block 输出硬失败。它创建并清理私有临时
+数据，不是 producer/GUI 验收或通用 RSS/性能保证。
+
+生命周期身份、独立来源/frame 覆盖及版本化有序 frame reader
 接口详见[定点归因](querying.md#数据集定点事件归因)。数据集全局内建查询遵循 P3 矩阵
 及累计工作上限；任意 SQL/自定义 override 明确失败，不静默选首片/最新片。单库真实
 事件 peak/gap 与全部 action 完整文本栈统计版本在相同合同中明确说明。
+
+数据集 `event` 和 `allocation` 以 `id` 排序（ASC 或 DESC）时，深 `offset` 分页按逐片
+匹配行数跳过整片，只在落点片使用局部 SQL OFFSET，再读取后续片补满窗口。原生稀疏 ID
+按实际行数计数，不按 ID 差值推算。仅最终选中的 event 行解析来源文本和有序 frame。
+范围计数仍描述非范围筛选前的请求区间；总数、完整性标记，以及获取计数行、页内行、
+来源与输出的累计计费语义保持不变。这减少的是取入 Python 的工作量，不保证降低 SQLite
+内部扫描量或完整数据集校验成本。其他排序键保持原有全局候选策略；无限或较大返回页
+仍可能超过工作预算。没有新增 cursor API。
 
 `core.dataset_resolver.DatasetResolver.inspect(path)` 返回不可变 `ResolvedDataset`
 （单库返回 `None`）；其 `paths(QueryScope(...))` 可寻址跨片范围的全部文件，但不执行查询。
@@ -237,6 +256,19 @@ POSIX change token 的平台在此模式下每次完整重验。immutable 模式
 | 兼容 v1 cold | 2B + 2M；一次完整 validator | B + 2M；一次完整 validator |
 | 原生 v2 cold | 2B + 2M；一次完整 validator | 2B + 2M；一次完整 validator |
 | 同进程未变更 warm | B + M；无完整 validator | 无哈希读取、无完整 validator |
+
+默认模式下内容未变时，`peak_memory_report` 只 inspect 一次，随后每个组合查询结束都
+检查完整 manifest 和**所有设备的成员**。正常 peak 加 attribution 共哈希
+**cold 4(B + M)**、**warm 3(B + M)**；无峰值提前返回只有一次 guard，共哈希
+**cold 3(B + M)**、**warm 2(B + M)**。cold 报告运行一次完整 validator，warm 不运行。
+这是逻辑哈希读取字节数，不是物理磁盘 I/O；OS page cache 可能减少磁盘读取，且上述
+数字不包含 SQLite/查询读取和 header 预检。`tests/core/test_report_content_integrity.py`
+按阶段与实际读取字节回归：原生模式使用真实稀疏空范围；兼容 v1 要求连续 ID 和非 NULL
+计数，因此兼容模式的无峰值用例只在真实查询后注入该结果分支。两个真实 guard 均被
+覆盖，包括隐藏 change token 后另一设备的变更，以及原本可在 attribution 时恢复的
+中途变更。这记录现有完整性成本，不代表提速或解决
+[issue #238](https://github.com/codeasier/pt-snap-cli/issues/238)。减少遍数需要另行建立
+稳定读取边界或明确变更合同。
 
 两模式在 manifest/成员替换后重新完整校验；失败或取消的准入会驱逐缓存，新进程仍从
 cold 开始。如果内容篡改后文件系统隐藏了**所有** change token，默认强验证仍检测内容

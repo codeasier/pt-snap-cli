@@ -1,4 +1,4 @@
-"""Private disk-backed lifecycle reduction when the read-only ATTACH set is too large.
+"""Private disk-backed reduction for large lifecycle observation or ATTACH sets.
 
 Only references and one narrow row per identity are retained. The derived main
 DB has a page ceiling; this does NOT limit all SQLite journals/sort files or RSS.
@@ -17,9 +17,10 @@ from pathlib import Path
 from pt_snap_cli.core.dataset_files import require_readonly_member
 from pt_snap_cli.core.dataset_lifecycle_connection import _AttachedSources
 from pt_snap_cli.core.errors import QueryExecutionError
+from pt_snap_cli.core.query_limits import MAX_SCRATCH_DB_BYTES, MIN_SCRATCH_DB_BYTES
 
-_PAGE_SIZE = 4096
-_MAX_SCRATCH_BYTES = 4 * 1024 * 1024 * 1024
+_PAGE_SIZE = MIN_SCRATCH_DB_BYTES
+_MAX_SCRATCH_BYTES = MAX_SCRATCH_DB_BYTES
 _CACHE_KIB = 2048
 _COLUMNS = ("id", "address", "size", "requestedSize", "state", "allocEventId", "freeEventId")
 
@@ -38,7 +39,9 @@ class _ScratchSources(_AttachedSources):
             ) or "database or disk is full" in str(exc):
                 raise QueryExecutionError(
                     "Dataset lifecycle scratch space exhausted (derived database page limit "
-                    "or disk full); no partial global result."
+                    "or disk full; "
+                    f"max_scratch_db_bytes={self.sources.budget.max_scratch_db_bytes}); "
+                    "no partial global result."
                 ) from exc
             raise QueryExecutionError(str(exc)) from exc
 
@@ -172,7 +175,7 @@ def scratch_lifecycles(sources, items):
     maximum = sources.budget.max_scratch_db_bytes
     if type(maximum) is not int or not _PAGE_SIZE <= maximum <= _MAX_SCRATCH_BYTES:
         raise QueryExecutionError(
-            "Dataset lifecycle scratch limit must be 0 (disabled) or between 4096 bytes "
+            f"Dataset lifecycle scratch limit {maximum!r} must be 0 (disabled) or between 4096 bytes "
             "and 4 GiB; this bounds derived database pages, not total temporary space or RSS."
         )
     try:
@@ -188,4 +191,7 @@ def scratch_lifecycles(sources, items):
                 database.__exit__(None, None, None)
     except (OSError, sqlite3.Error) as exc:
         sources.budget.remaining()
-        raise QueryExecutionError(f"Dataset lifecycle scratch storage failed: {exc}") from exc
+        raise QueryExecutionError(
+            "Dataset lifecycle scratch storage failed "
+            f"(max_scratch_db_bytes={maximum}); no partial global result: {exc}"
+        ) from exc
