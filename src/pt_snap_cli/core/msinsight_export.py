@@ -22,10 +22,10 @@ from .dataset_contract import (
     MANIFEST_SCHEMA_VERSION,
     MSINSIGHT_REVISION,
     TRACE_COLUMNS,
+    DatasetContractError,
     DatasetManifest,
     _unique_object,
     validate_dataset,
-    validate_event_ids,
 )
 from .dataset_files import hash_file, require_readonly_member
 from .dataset_import_backend import DatasetImportBackend
@@ -81,6 +81,66 @@ class MsinsightImportBackend(DatasetImportBackend):
         return None
 
 
+def _require_integer_primary_key(conn: sqlite3.Connection, trace: str) -> None:
+    """Prove unique integer IDs before relying on count and range endpoints.
+
+    The native writer uses a rowid alias, which enforces integer storage. SQLite's
+    inline PRIMARY KEY DESC exception and WITHOUT ROWID tables instead have a
+    primary-key index: retain support for these only after checking storage types.
+    """
+    kind = conn.execute("SELECT type FROM sqlite_master WHERE name=?", (trace,)).fetchone()
+    primary_key = [row for row in conn.execute(f'PRAGMA table_info("{trace}")') if row[5]]
+    if (
+        kind != ("table",)
+        or len(primary_key) != 1
+        or primary_key[0][1] != "id"
+        or primary_key[0][2].upper() != "INTEGER"
+        or primary_key[0][5] != 1
+    ):
+        raise ValueError(f"{trace}.id must be the sole INTEGER PRIMARY KEY")
+    if any(row[3] == "pk" for row in conn.execute(f'PRAGMA index_list("{trace}")')) and (
+        conn.execute(f"SELECT 1 FROM {trace} WHERE typeof(id)!='integer' LIMIT 1").fetchone()
+        is not None
+    ):
+        raise ValueError(f"{trace}.id INTEGER PRIMARY KEY must contain only integers")
+
+
+def _validate_shards(result: ShardedReplayResult) -> None:
+    """Validate every selected device before conversion without collecting IDs."""
+    for device in sorted({s.device for s in result.slices}):
+        next_expected = 0
+        for item in (s for s in result.slices if s.device == device):
+            require_readonly_member(result.directory, item.file)
+            with closing(sqlite3.connect(item.file.as_uri() + "?mode=ro", uri=True)) as conn:
+                trace = f"trace_entry_{device}"
+                _require_integer_primary_key(conn, trace)
+                count, low, high = conn.execute(
+                    f'SELECT COUNT(*), MIN(id), MAX(id) FROM "{trace}" WHERE id>=0'
+                ).fetchone()
+                # With unique integer IDs, count and endpoints prove there are
+                # no holes inside this shard. Checking each shard in order also
+                # rejects overlaps/gaps that a device-wide aggregate can hide.
+                if count and (low != next_expected or high != next_expected + count - 1):
+                    raise DatasetContractError(
+                        f"events[{next_expected}]",
+                        "event_identity",
+                        "compatibility requires original real IDs 0..N-1; do not silently renumber",
+                    )
+                next_expected += count
+                if (
+                    conn.execute(
+                        f"SELECT id FROM {trace} WHERE typeof(action)!='integer' "
+                        "OR action NOT BETWEEN 0 AND 7 OR action IS NULL LIMIT 1"
+                    ).fetchone()
+                    is not None
+                ):
+                    raise ValueError("msinsight compatibility does not support OOM/unknown actions")
+        if not next_expected:
+            raise DatasetContractError(
+                "events", "empty", "empty/static-only devices cannot use compatibility v1"
+            )
+
+
 def convert_shards(result: ShardedReplayResult) -> None:
     """Preserve event/stream/lifecycle values, materialize inline ninth column.
 
@@ -88,26 +148,7 @@ def convert_shards(result: ShardedReplayResult) -> None:
     coercing unsupported OOM. Block/reference tables are left byte-semantically
     intact; no foreign real events are copied into the slice window.
     """
-    for device in sorted({s.device for s in result.slices}):
-        ids: list[int] = []
-        for item in (s for s in result.slices if s.device == device):
-            require_readonly_member(result.directory, item.file)
-            with closing(sqlite3.connect(item.file.as_uri() + "?mode=ro", uri=True)) as conn:
-                ids.extend(
-                    row[0]
-                    for row in conn.execute(
-                        f"SELECT id FROM trace_entry_{device} WHERE id>=0 ORDER BY id"
-                    )
-                )
-                if (
-                    conn.execute(
-                        f"SELECT id FROM trace_entry_{device} WHERE typeof(action)!='integer' "
-                        "OR action NOT BETWEEN 0 AND 7 OR action IS NULL LIMIT 1"
-                    ).fetchone()
-                    is not None
-                ):
-                    raise ValueError("msinsight compatibility does not support OOM/unknown actions")
-        validate_event_ids(ids)
+    _validate_shards(result)
     for item in result.slices:
         device = item.device
         trace = f"trace_entry_{device}"
