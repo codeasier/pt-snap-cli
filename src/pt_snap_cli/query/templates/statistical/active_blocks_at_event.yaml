@@ -76,7 +76,7 @@ queries:
       LIMIT {{ limit|int }}
       {% if offset > 0 %}OFFSET {{ offset|int }}{% endif %}
     interpretation_limits:
-      - "Dataset point-event queries resolve alloc/free sources in batches before paging; scope.source_coverage describes all filtered blocks and is separate from row truncation. Stored state is a slice observation, not necessarily state at the target event."
+      - "Dataset point-event queries prove alloc/free coverage for all filtered blocks before paging, then hydrate returned details; scope.source_coverage is separate from row truncation. Stored state is a slice observation, not necessarily state at the target event."
     output_schema:
       - column: lifecycle_id
         type: str

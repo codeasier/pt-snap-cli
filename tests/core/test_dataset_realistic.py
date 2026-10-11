@@ -220,6 +220,8 @@ def test_rounding_int64_aggregate_overflow_is_a_domain_error(tmp_path, same_stac
 @pytest.mark.parametrize("rounding_pass", [1, 2], ids=["gib", "percentages"])
 def test_rounding_timeout_closes_scalar_connection_and_cursor(tmp_path, monkeypatch, rounding_pass):
     root, _ = rounding_case(tmp_path, (1, 127))
+    # Exercise the retained ordered-frame/fallback scalar ownership path.
+    monkeypatch.setattr(dataset_attribution, "reduce_active", lambda *args: None)
     connections, cursors = [], []
     connect = sqlite3.connect
 
