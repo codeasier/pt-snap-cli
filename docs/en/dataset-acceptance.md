@@ -169,3 +169,45 @@ on inspectable test-owned input. It does not execute live PyTorch/NPU collection
 the upstream msinsight producer, or its GUI. Those acceptance steps remain
 separate. No new committed pickle is introduced. The provenance gate runs before
 collection; the test-owned temporary input is written during the test.
+
+## Concurrent readers and process interruption
+
+`tests/core/test_dataset_concurrency.py` runs two and four independent readers
+in both threads and spawned processes, against the same synthetic dataset and
+through both ATTACH and scratch routes. Barriers follow an actual SQLite read
+or scratch insert; all readers hold their own query resources concurrently.
+Their complete results must agree, scratch directories must be distinct and
+removed on normal completion, and source hashes must stay unchanged. This does
+not promise that one analyzer or its SQLite connections can be shared by threads.
+
+`tests/test_dataset_signal_boundaries.py` sends actual POSIX signals to the CLI
+after a completed scratch insert. Normal completion and SIGINT unwind product
+resources and remove scratch. **Current SIGTERM and SIGKILL terminate the process
+without that cleanup: the private `pt-snap-lifecycle-*` directory and `derived.db`
+remain.** The tests record this limitation, rather than treating test teardown as
+product cleanup or claiming issue #252's no-residue kill goal is satisfied. Source
+hashes remain unchanged and no partial query output is published. No signal
+handler, startup reclamation, or automatic deletion policy is introduced.
+
+These small deterministic tests run in the regular suite (signal cases are POSIX
+only). Timeout/error cleanup is separate from abrupt termination: Python-level
+unwinding is not evidence that SIGTERM or SIGKILL runs a `finally` block.
+
+`tests/test_dataset_mutation_acceptance.py` pauses a spawned CLI/API query after
+its first shard has actually supplied rows or a count, then changes test-owned
+members in place. Both the default strong and explicit immutable cache modes must
+reject the changed generation without publishing partial rows/counts. Unchanged
+runs succeed with independently expected results. Hash-work assertions quantify
+compatibility-v1 cold/warm queries: default queries scan each manifest/member
+three/two times respectively (admission plus the new final check). Explicit POSIX
+immutable queries scan members once/zero times and the manifest twice/zero times.
+The final check itself adds one full scan in default mode, zero in metadata-only
+immutable mode, and shares the query's deadline. Non-POSIX immutable requests do
+not reuse admission based on creation times: both cold and warm queries scan each
+member twice and the manifest three times, including a full final hash guard.
+Default strong warm reuse still works on non-POSIX systems. The tests exercise
+this conservative policy through a resolver-local simulated non-POSIX case too;
+that simulation is not evidence of actual Windows execution. These are work-count assertions,
+not fixed wall-time or RSS promises. The guard detects these controlled mutations;
+it does not create an atomic filesystem snapshot or prove all change-and-restore
+races impossible.
