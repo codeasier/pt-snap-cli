@@ -7,9 +7,11 @@
 The ONLY upstream target is **Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5**.
 Protocol/schema validation, isolated source-function checks, synthetic CI,
 reading an actual original-producer artifact, and actual GUI/C++ consumption are
-DIFFERENT evidence layers. None implies the next. **GUI is human-deferred,
-pending/not-run**; the issue stays open. The existing pending note is
-[#205](https://github.com/codeasier/pt-snap-cli/issues/205#issuecomment-5987264017).
+DIFFERENT evidence layers. None implies the next. **The bounded real GUI/C++ and
+original-producer reverse acceptance passed on 2026-10-11**, as recorded below.
+The earlier [#205 pending note](https://github.com/codeasier/pt-snap-cli/issues/205#issuecomment-5987264017)
+records the historical human-deferred stage; it is not the current run status.
+This evidence does not itself close an issue or approve a release.
 
 The acceptance tools are original interface-facts/reference code, not vendor
 copies. Fixed [producer schema](https://api.github.com/repos/Ascend/msinsight/git/blobs/1fe50a5136f85365db55f4632d58f3cf7090431e),
@@ -21,12 +23,12 @@ are separately CC BY 4.0, not automatically covered by this project's MIT lineag
 A port needs snapshot provenance/PR decisions and retained notices. Executable
 pickle trust is a SEPARATE fixture review; no new committed pickle is added here.
 
-## Forward chain: trusted source → physical export → FUTURE GUI
+## Forward chain: trusted source → physical export → real GUI
 
 1. Review/trust the source separately: pickle is executable input, not a sandbox.
    Record exact source SHA256, size, selected device and capacity. Default import
    stays single-db; native and compatible outputs are explicit distinct modes.
-2. Use an ABSENT destination. For the future original-source GUI entrance, the
+2. Use an ABSENT destination. For the original-source GUI entrance, the
    compatible artifact must be adjacent to the SAME original pickle:
 
    ```bash
@@ -48,9 +50,10 @@ pickle trust is a SEPARATE fixture review; no new committed pickle is added here
    preserving multiplicity; validate each artifact's own token stability. This
    does not prove cross-producer negative object identity. Never deduplicate by
    address, rewrite IDs, or patch the fixed producer to force equality.
-4. **Later, after explicit human authorization**, open the same original pickle
-   using the exact recorded real GUI build. Complete the checklist below. Physical
-   equality and salted-hash equality are NOT GUI cache-reuse acceptance.
+4. With explicit authorization for a real acceptance run, open the same original
+   pickle using the exact recorded real GUI build. Record the evidence below.
+   Physical equality and salted-hash equality alone are NOT GUI cache-reuse
+   acceptance. The 2026-10-11 run separately observed the real consumer.
 
 ## Reverse chain: existing original artifact → complete focus → canonical reference
 
@@ -96,7 +99,7 @@ be NEW, canonical, non-symlink and disjoint from inputs. It contains a new physi
 canonical-reference DB, report and isolated test project focus, never modifies
 external focus/cache and never automatically downloads/executes a producer.
 
-The small independent oracle materializes bounded rows in memory (32 MiB files,
+The independent physical SQL reference materializes bounded rows in memory (32 MiB files,
 256 entries, 64 slices, 20000 physical trace rows INCLUDING boundaries, 20000 block
 rows, 256 dictionary rows/shard, 1 MiB JSON, optional 2 MiB source). These are
 reference-tool limits, NOT a product RSS contract. It compares all real columns,
@@ -104,6 +107,9 @@ full completed-free/allocation source identity, canonical lifetimes/latest state
 terminal candidates, global earliest-tie peaks/full and shard ranges, selected
 active sets/bytes, all-action stack statistics and global sort/page/exact totals.
 The canonical standalone reference is NOT another original producer run.
+Active-attribution comparisons reuse the product's standalone query implementation
+on that reference DB; they are a differential check, not a wholly independent
+second oracle for active attribution.
 The console chain verifies identical interpreter/API source across its isolated
 CWD, then actual focus/query/report and normalized CLI/API scope/coverage.
 Selected points/ranges are recorded, NOT an exhaustive all-event active-set proof.
@@ -180,21 +186,96 @@ compatible inline text. Query hashing/scans may dominate. No unmeasured speed/RS
 disk-saving promise. The existing original run's single cold wall0.160545s has NO
 RSS/phase measurements and is not a controlled comparative performance baseline.
 
-## FUTURE GUI checklist — every row PENDING / NOT-RUN
+## Recorded real acceptance — 2026-10-11
 
-- [ ] Exact real version/build/commit/package SHA, interpreter/server provenance,
-  environment and exact startup/open command; don't invent executable syntax.
-- [ ] SAME original pickle path/hash/size and adjacent complete artifact; all
-  manifest/member/checksum inventories BEFORE and AFTER opening, source unchanged.
-- [ ] UP_TO_DATE/cache-reuse logs AND absence of producer/parser script invocation,
-  with process/log observation that could detect rebuilding; hash alone is not proof.
-- [ ] Curves/counters/ranges/real IDs excluding boundaries at recorded points;
-  blocks/sizes/states and cross-shard allocation/free_completed source/details.
-- [ ] Ordered-frame claims only where actual recognized coverage exists; original
-  text-only artifacts remain text-only. Record unavailable views honestly.
-- [ ] Inspect derived allocation-cache mutation separately: it may change DB bytes
-  without producer rerun and invalidate ptSnap ownership attestation. Preserve both
-  inventories, never repair/overwrite an original cache just to make reuse pass.
+The [sanitized machine-readable receipt](../interop-acceptance-2026-10-11.json)
+records exact identities, dependency pins, inventories and bounded results. It is
+an observation summary, not a distributable original artifact or a replacement
+for reviewing receipt authenticity. No screenshots, raw protocol call stacks,
+private paths, accounts or full logs are included.
 
-Synthetic/schema/original-artifact checks and static skill grades cannot tick
-these rows. No GUI/C++ execution/compile occurred in this acceptance package.
+### Build and input identity
+
+- Fixed upstream: `101f65b877a267ffd5f66ea3834706057ba243e5`; clean tracked source.
+  Linux x86_64, GCC 14.2.0, CMake 3.31.6, Ninja 1.11.1.4, Node 24.19.0.
+  Only the production framework and Leaks bundles plus `profiler_server` were
+  built. Frontend installation used pnpm 11.25.0, the frozen lockfile, original
+  hoist patterns, strict SSL and disabled lifecycle scripts. No source/lock edits.
+- Server SHA256: `7b1c2325d88d709ad111faad458422099fd34b7f574ba557f9e0643a0108b64f`.
+  The staged server ran as `./profiler_server --wsPort=9000 --wsHost=127.0.0.1`
+  with its directory on `LD_LIBRARY_PATH` and process tracing enabled.
+  Shared-library hashes and libuv/uSockets/uWebSockets/RapidJSON/SQLite pins are
+  in the receipt. RapidJSON's recorded local commit is not an upstream historical
+  dependency pin; this is not byte-identical vendor-release reproduction.
+- Noneditable wheel: `0.0.post1.dev1`, SHA256
+  `884a13f08f65e866cd106c0a80f218d289269da10e9f623f1b0779cafdc67f9a`;
+  all 110 installed package members matched. Its source tree corresponds to
+  `cd1aac689f653e2701334d26ae1f25489f7f5af9`, not a claim that later main commits
+  or a published PyPI release were exercised.
+- Reviewed `snapshot_expandable.pkl`: 581140 bytes, SHA256
+  `3afc9d1c5ef4ca4b417e58c0830e9eb8a913eb9459f4088b8c66c22325c68c40`;
+  device 0, 2000 events per slice. Fixture provenance tests passed 7/7 before
+  deserialization. Pickle execution still requires independent trust review.
+
+### Forward GUI/C++ results and preservation
+
+- [x] The real framework/Leaks GUI opened the original pickle with its adjacent
+  complete five-shard pt-snap export. Window transitions 1 → 2 → 1 → 4, lifetime
+  curves, reserved line and five-window overview rendered. Window 4 displayed the
+  allocated/active peak at event 7430 (597642080 bytes = 569.956 MiB; the GUI
+  label reads `569.956 MB`).
+- [x] The server logged `UP_TO_DATE` (state 4). Full launch-to-termination process
+  tracing recorded one executable launch, the server itself, and no parser/Python
+  producer execution. The separate reverse-producer run is outside this trace.
+- [x] Block 1669 (37632 bytes) resolved allocation 1669 in Window 1 from Window 2,
+  and completed-free 2605 in Window 2 from Window 1. The block-details automatic
+  association of free-requested event 2604 queried only the current shard: absent
+  from Window 1 detail, present in Window 2. This does not imply that direct lookup
+  by event ID cannot cross shards; that separate path was not additionally queried
+  for 2604 in this run. The observed block-details limitation was not patched.
+- [x] The same loaded real C++ server passed 16 query cases / 167 typed assertions,
+  with zero failures/query errors. Protocol samples covered the first two slices,
+  curve/reserved endpoints, events 1999/2000, clipped block ranges and cross-shard
+  details. At 1999/2000 the state had 801/802 blocks and 419457080/419465784 allocated
+  bytes. `maxSize` is the reserved display scale, not an allocated peak.
+- [x] Original table schemas and every original row were preserved in all five
+  runtime shards; both source copies and the runtime manifest were unchanged.
+  **Runtime DB bytes changed:** the consumer added `memory_allocation_cache_v1_0`
+  to each shard, invalidating the unchanged manifest's ptSnap member attestation.
+  The separate pre-GUI export stayed byte-identical. No repair/reimport was used
+  to hide the mutation. Cache reuse does not mean the opened artifact is immutable.
+- [x] Actual call stacks remained text-only; no ordered frames were reconstructed.
+  GUI/server/private HTTP services were stopped after the run.
+
+### Reverse results and limits
+
+A separate unmodified fixed producer invocation finalized five shards with 8092
+real events. The installed wheel passed all eleven built-in templates, physical
+SQL/reference comparisons and actual isolated CLI/API focus/query/report checks.
+Counts: 10 excluded boundaries, 6412 physical block rows, 3219 canonical lifecycles,
+3193 repeated rows, 325 terminal candidates and 60 all-action stack groups.
+Twelve recorded event points and six ranges were selected; active sets were not
+exhaustively checked at every event. Active attribution reuses standalone product
+queries on the canonical DB, so it is not a fully independent second oracle.
+
+Forward/pre-GUI versus original-producer physical comparison passed all nine
+real-event columns, schemas/dictionaries, exact real IDs and negative-token
+six-field/state multisets. Negative identity does not transfer between producers.
+Original-producer metadata correctly returned `unavailable` / `metadata_missing`;
+frames remained text-only. The reverse original artifact, forward comparison copy,
+source bytes and producer sources remained unchanged under read-only analysis.
+
+The runner in [benchmarks/interop_acceptance.py](../../benchmarks/interop_acceptance.py)
+only reads existing artifacts; its `GUI=human-deferred/pending/not-run` and
+`original_producer=not-run by this runner` fields describe that tool's own scope.
+They are retained, not rewritten as if the runner executed the GUI or producer.
+The dated receipt combines the separately observed stages. Use the commands above
+and [fixture review](../../tests/fixtures/AGENTS.md) to repeat the bounded read-only
+comparison with a separately reviewed receipt; hashes alone cannot recreate its
+original manifest paths or authenticate execution.
+
+This run does not cover all plugins, a shipped desktop package, GPU/NPU execution,
+multiple devices, exhaustive GUI interactions, fault injection or performance
+improvements. Broader failure/rollback scenarios still require the owning tests
+listed above. Historical synthetic checks and performance observations remain
+separate evidence; this docs-only record introduces no runtime behavior change.

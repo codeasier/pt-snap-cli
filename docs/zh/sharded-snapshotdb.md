@@ -382,10 +382,12 @@ force 不绕过该规则。源路径/内容、选项/合同变化、成员损坏
 转换暂时并存两种布局，可能留下 SQLite free pages；容量不是 RSS/registry/block/磁盘
 上限。不生成可选 frame 增强。
 
-**GUI 待验收/未运行。** 固定源码 parser 在 UP_TO_DATE 前检查 complete manifest、
+**仅检查已有产物的 runner 仍将自身 GUI 阶段标为待验收/not-run。**
+2026-10-11 独立固定版本真实 GUI/C++ 实测见[互操作验收](interop-acceptance.md)，
+不表示 runner 自动判定 GUI 通过。固定源码 parser 在 UP_TO_DATE 前检查 complete manifest、
 非空相同 hash、每个 ready/可解析/存在成员、只读 DB/设备校验，以及 allocation cache
 存在**或可构建**。派生 allocation cache 可在不运行生产者时修改 DB，mtime 或新派生表
-不能单独证明重跑。后续 GUI 验收须保留 UP_TO_DATE/无 script 调用日志并对照曲线、block、
+不能单独证明重跑。真实 GUI 验收须保留 UP_TO_DATE/无 script 调用日志并对照曲线、block、
 跨片展示。源码检查及原版产物的生产 reader 读取不是 GUI、C++ server/编译或完整差分/
 性能验收。
 
@@ -400,7 +402,8 @@ Ascend 源码为 Mulan PSL v2，docs 单独为 CC BY 4.0；此最小转换器是
 ## 可重复验收与实测限制
 
 [验收与有界性能](interop-acceptance.md) 提供确定性 CI、hash-first 的已有原版消费者/
-正向物理对照、同源三模式本地基线及明确待验收 GUI 清单。证据层彼此独立；负 token
+正向物理对照、同源三模式本地基线、runner 的 GUI 待验收状态及另行记录的固定版本
+真实 GUI 验收。证据层彼此独立；负 token
 仅在数据集内标识对象，不承诺跨生产端对象身份，也不允许重写真实 ID。
 
 ## 来源证据与限制

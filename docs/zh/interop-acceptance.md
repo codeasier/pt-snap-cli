@@ -6,8 +6,9 @@
 
 唯一上游目标是 **Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5**。
 协议/schema、隔离源函数、合成 CI、真实原版生产端产物的读取差分、GUI/C++ 实测是
-不同证据层，不能互相替代。**GUI 已由人明确延期，待验收/not-run**；issue 保持开放。
-已有说明见 [#205](https://github.com/codeasier/pt-snap-cli/issues/205#issuecomment-5987264017)，不重复发布。
+不同证据层，不能互相替代。**2026-10-11 的有界真实 GUI/C++ 与原版生产端反向验收已通过**，
+详见下方记录。[#205 待验收说明](https://github.com/codeasier/pt-snap-cli/issues/205#issuecomment-5987264017)
+保留此前人工延期阶段的历史，不代表本次当前状态。本证据本身不关闭 issue，也不批准发行。
 
 验收工具是本地原创接口事实/独立参考实现，没有复制 vendor 实现。
 固定 [生产 schema](https://api.github.com/repos/Ascend/msinsight/git/blobs/1fe50a5136f85365db55f4632d58f3cf7090431e)、
@@ -18,11 +19,11 @@
 本项目 MIT lineage。真正移植须走 snapshot provenance/PR 声明并保留 notices。
 可执行 pickle 的信任是独立 fixture 审核；本验收不新增已提交 pickle。
 
-## 正向：可信源 → 物理兼容导出 → 未来 GUI
+## 正向：可信源 → 物理兼容导出 → 真实 GUI
 
 1. 先独立审核/信任源：pickle 可执行，不是沙箱。记录 SHA256、大小、设备与容量。
    默认 import 仍单库，原生/兼容模式显式区分。
-2. 目标必须不存在。未来 GUI 支持入口要求产物邻接**同一原始 pickle**：
+2. 目标必须不存在。GUI 支持入口要求产物邻接**同一原始 pickle**：
 
    ```bash
    pt-snap import /capture/snapshot.pkl --format msinsight --events-per-slice 2000 --device 0 --no-focus --json
@@ -38,8 +39,8 @@
    必须完全相等。负 block ID 是生产端局部 token：全局及逐片比较其余六字段**包括 state**
    的 MULTISET，保留重复数量，并独立验证每份产物的 token 跨片稳定性。这不证明跨生产端
    的负对象身份。不能按地址去重、改写 ID 或修补固定原版源码来制造等价。
-4. **将来另经人明确授权后**，使用记录的真实 GUI build 打开同一原始 pickle，补下方清单。
-   物理或 salted hash 相等都不等于 GUI 缓存复用通过。
+4. 获得真实验收的明确授权后，使用记录的真实 GUI build 打开同一原始 pickle，记录下方证据。
+   仅物理或 salted hash 相等不等于 GUI 缓存复用通过；2026-10-11 已另行实测真实消费端。
 
 ## 反向：已有原版产物 → 完整 focus → canonical 参考
 
@@ -78,11 +79,12 @@ receipt 真实性依赖调用者审核，hash 本身不能证明生产端身份�
 输出必须全新、规范、无符号链接且不与输入重叠；只在其中创建物理 canonical-reference DB、
 报告和隔离测试项目 focus，不改外部 focus/cache，不下载/执行生产端。
 
-小型独立 oracle 显式物化有限数据（文件总32 MiB、256目录项、64片、含边界的20000条
+独立物理 SQL 参考显式物化有限数据（文件总32 MiB、256目录项、64片、含边界的20000条
 物理 trace、20000条 block、逐片256 dictionary 行、1 MiB JSON、可选2 MiB源）。这些是
 参考工具界限，不是产品 RSS 承诺。它比较全部真实列、完整 alloc/free_completed 来源、
 canonical 生命周期/最新状态、终片候选、最早 tie 的全局及逐片峰值、指定点活跃集合/字节、
 全部 action 栈统计与全局排序/分页/精确总数。canonical 单库不是又一次原版生产端执行。
+活跃归因比较在该参考库上复用产品单库查询实现，是差分检查，不是活跃归因的完全独立第二 oracle。
 控制台链在切换隔离 CWD 前后验证同一解释器/相同 API 源路径，再运行真实 focus/query/report
 并规范化 CLI/API scope/覆盖。报告记录实际选择的点/区间，不宣称枚举每个 event 的活跃集合。
 
@@ -144,14 +146,73 @@ Python/platform 和全部11查询延迟。[机器可读本地观测](../dataset-
 和兼容内联栈会重复，query hash/scan可能占主导。不承诺未测速度/RSS/磁盘收益。
 已有原版唯一冷wall0.160545s没有RSS/phase测量，不是受控比较性能基线。
 
-## 未来 GUI 清单——全部待验收 / NOT-RUN
+## 真实验收记录——2026-10-11
 
-- [ ] 精确真实version/build/commit/package SHA、解释器/server来源、环境、启动/open命令；不猜可执行语法。
-- [ ] 同一原始pickle路径/hash/size、邻接complete产物；打开前后全部manifest/member/hash清单，源不变。
-- [ ] UP_TO_DATE/cache-reuse日志、没有producer/parser脚本调用，并有足以发现重建的process/log观察；hash不足以证明。
-- [ ] 指定点的曲线/counter/range/真实ID（排除边界），block/size/state及跨片alloc/free_completed来源详情。
-- [ ] 仅实际recognized覆盖允许ordered frame声明，原版文本产物保持text-only；不可用展示如实记录。
-- [ ] 派生allocation cache修改单独检查：可能不运行生产端就改DB并使ptSnap证明失效；保留前后清单，
-  不能修复/覆盖原版缓存来让reuse通过。
+[去敏机器可读 receipt](../interop-acceptance-2026-10-11.json) 记录精确身份、依赖 pin、
+成员清单和有界结果。它是实测摘要，不是可分发的原始产物，也不能替代 receipt 真实性审核。
+不包含截图、协议原始调用栈、私有路径、账户或完整日志。
 
-schema/合成/原版产物读取和静态skill评分不能勾选GUI项；本验收包不执行/编译GUI或C++。
+### 构建与输入身份
+
+- 固定上游 `101f65b877a267ffd5f66ea3834706057ba243e5`，tracked source 干净。
+  Linux x86_64、GCC 14.2.0、CMake 3.31.6、Ninja 1.11.1.4、Node 24.19.0。
+  仅构建 production framework、Leaks 和 `profiler_server`。前端使用 pnpm 11.25.0、
+  frozen lockfile、原有 hoist 规则、strict SSL、禁用 lifecycle scripts；未修改源码/锁文件。
+- Server SHA256：`7b1c2325d88d709ad111faad458422099fd34b7f574ba557f9e0643a0108b64f`。
+  在隔离 server 目录运行 `./profiler_server --wsPort=9000 --wsHost=127.0.0.1`，
+  `LD_LIBRARY_PATH` 指向该目录，并启用完整进程跟踪。
+  动态库 hash 和 libuv/uSockets/uWebSockets/RapidJSON/SQLite pin 见 receipt。
+  RapidJSON 记录的是本次本地依赖 commit，不是上游历史依赖 pin；不宣称逐字节复现发行包。
+- 非 editable wheel：`0.0.post1.dev1`，SHA256
+  `884a13f08f65e866cd106c0a80f218d289269da10e9f623f1b0779cafdc67f9a`；
+  全部110个已安装 package 成员匹配。其源码 tree 对应
+  `cd1aac689f653e2701334d26ae1f25489f7f5af9`，不代表后续 main commit 或已发布 PyPI 版本验过。
+- 已审 `snapshot_expandable.pkl`：581140字节，SHA256
+  `3afc9d1c5ef4ca4b417e58c0830e9eb8a913eb9459f4088b8c66c22325c68c40`；
+  device 0，每片2000 events。反序列化前 fixture provenance 测试7/7通过。
+  pickle 执行仍需独立信任审核。
+
+### 正向 GUI/C++ 结果与保留情况
+
+- [x] 真实 framework/Leaks GUI 打开原始 pickle 及邻接完整五片 pt-snap 导出。
+  Window 1 → 2 → 1 → 4 切换、生命周期曲线、reserved 线及五窗总览正常展示。
+  Window 4 展示 event 7430 的 allocated/active 峰值（597642080字节 = 569.956 MiB；
+  GUI 标签实际为 `569.956 MB`）。
+- [x] Server 记录 `UP_TO_DATE`（state 4）。从启动到终止的完整进程跟踪只有一次 server
+  可执行文件启动，无 parser/Python producer 执行。另行反向 producer 运行不属于这份 trace。
+- [x] Block 1669（37632字节）从 Window 2 定位 Window 1 的 allocation 1669，
+  从 Window 1 定位 Window 2 的 completed-free 2605。Block 详情自动关联 free-requested
+  event 2604 时只查询当前片：Window 1 详情缺失，Window 2 存在。这不表示按 event ID
+  直接定位不能跨片；本次没有额外从该独立路径查询2604。如实记录 block 详情限制，未修补它。
+- [x] 同一已加载的真实 C++ server 通过16个 query cases / 167条 typed assertions，
+  零失败/query error。协议采样覆盖前两片的 curve/reserved 端点、events 1999/2000、
+  裁剪 block 区间及跨片详情。1999/2000 状态分别为801/802 blocks、
+  419457080/419465784 allocated字节。`maxSize` 是 reserved 展示尺度，不是 allocated 峰值。
+- [x] 五个 runtime shard 的原表 schema 与全部原行保持一致；两份源和 runtime manifest 不变。
+  **Runtime DB 字节已变化**：消费端逐片新增 `memory_allocation_cache_v1_0`，导致未变
+  manifest 内的 ptSnap 成员证明失效。另存的 pre-GUI 导出仍逐字节不变。未修复/重新导入
+  来隐藏此修改；缓存复用并不表示打开后的产物不可变。
+- [x] 实际调用栈仍为 text-only，未重建 ordered frames；运行后 GUI/server/私有 HTTP 服务均已停止。
+
+### 反向结果与限制
+
+另行执行一次未改动的固定原版 producer，最终生成五片、8092真实 events。已安装 wheel
+通过全部11内建模板、物理 SQL/参考比较及真实隔离 CLI/API focus/query/report 检查。
+数量为10条排除边界、6412物理 block 行、3219 canonical 生命周期、3193重复行、
+325终片候选、60个全 action 栈组。选择12个记录点和6个区间，没有穷举每个 event 的活跃集合。
+活跃归因在 canonical DB 上复用产品单库查询，因此不是完全独立第二 oracle。
+
+正向 pre-GUI 与原版产物的物理比较通过：全部九列真实 event、schema/dictionary、
+精确真实 ID 和负 token 六字段/state multiset。负对象身份不跨生产端成立。
+原版 metadata 正确返回 `unavailable` / `metadata_missing`，frames 仍 text-only。
+反向原版产物、正向比较副本、源字节及 producer 源码在只读分析后均未变。
+
+[benchmarks/interop_acceptance.py](../../benchmarks/interop_acceptance.py) 只读取已有产物；
+其中 `GUI=human-deferred/pending/not-run` 和 `original_producer=not-run by this runner`
+说明该工具自身范围，保留原值，不伪装成 runner 执行过 GUI 或 producer。带日期 receipt
+汇总分别实测的阶段。复现有界只读比较请使用上面的命令、[fixture 审核](../../tests/fixtures/AGENTS.md)
+及另行审核的 receipt；hash 本身不能重建原 manifest 路径，也不能认证执行。
+
+本次不覆盖全部插件、已发行桌面包、GPU/NPU 执行、多设备、穷举 GUI 交互、故障注入或性能改善。
+广泛失败/rollback 场景仍依赖上方 owning tests。历史合成检查与性能观测继续作为独立证据；
+本次 docs-only 记录不改变运行时行为。
