@@ -7,7 +7,12 @@ import pytest
 
 from pt_snap_cli.context import Context
 from pt_snap_cli.query.config import QueryParameter, QueryTemplate
-from pt_snap_cli.query.executor import QueryExecutionError, QueryExecutor, TemplateRenderError
+from pt_snap_cli.query.executor import (
+    QueryExecutionError,
+    QueryExecutor,
+    QueryTimeoutError,
+    TemplateRenderError,
+)
 
 
 class TestQueryExecutor:
@@ -457,3 +462,60 @@ def _make_mock_context(device_ids: list[int]):
     mock = MagicMock()
     mock.device_ids = device_ids
     return mock
+
+
+@pytest.mark.parametrize("method", ["execute", "count"])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        QueryExecutionError("Dataset query work budget exceeded; no partial global result."),
+        QueryExecutionError("Query execution failed: already normalized"),
+        QueryTimeoutError("Query timed out after 1 seconds"),
+    ],
+)
+def test_existing_query_errors_cross_executor_unchanged(method, failure):
+    context = _make_mock_context(device_ids=[0])
+    context.connect.side_effect = failure
+    with pytest.raises(type(failure)) as caught:
+        getattr(QueryExecutor(context), method)("SELECT 1")
+    assert caught.value is failure
+    assert str(caught.value) == str(failure)
+
+
+@pytest.mark.parametrize("method", ["execute", "count"])
+@pytest.mark.parametrize(
+    "failure", [RuntimeError("backend failed"), sqlite3.OperationalError("broken SQL")]
+)
+def test_unknown_query_failures_are_wrapped_once(method, failure):
+    context = _make_mock_context(device_ids=[0])
+    context.connect.side_effect = failure
+    with pytest.raises(QueryExecutionError) as caught:
+        getattr(QueryExecutor(context), method)("SELECT 1")
+    assert str(caught.value) == f"Query execution failed: {failure}"
+    assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize("error_type", [QueryExecutionError, QueryTimeoutError])
+def test_consumer_domain_error_discards_prior_batches_and_keeps_connection_usable(error_type):
+    context = _make_mock_context(device_ids=[0])
+    failure = error_type("consumer budget exhausted")
+    batches = []
+
+    def consume(rows):
+        batches.append(len(rows))
+        if len(batches) == 2:
+            raise failure
+
+    with closing(sqlite3.connect(":memory:")) as connection:
+        context.connect.return_value.__enter__.return_value = connection
+        executor = QueryExecutor(context)
+        with pytest.raises(error_type) as caught:
+            executor.execute(
+                "WITH RECURSIVE rows(id) AS (SELECT 0 UNION ALL "
+                "SELECT id+1 FROM rows WHERE id<256) SELECT id FROM rows",
+                timeout_s=10,
+                consume=consume,
+            )
+        assert caught.value is failure
+        assert batches == [256, 1]
+        assert executor.execute("SELECT 42 AS answer") == [{"answer": 42}]

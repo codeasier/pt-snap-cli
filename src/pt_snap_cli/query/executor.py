@@ -379,7 +379,9 @@ class QueryExecutor:
             if timeout_s is not None and timeout_s > 0 and _is_sqlite_interrupt(e):
                 raise self._timeout_error(timeout_s) from e
             raise self._execution_error(e) from e
-        except QueryTimeoutError:
+        except QueryExecutionError:
+            # Domain failures (including timeouts and budget callbacks) are
+            # already normalized; preserve their type, message, and cause.
             raise
         except Exception as e:
             raise QueryExecutionError(f"Query execution failed: {e}") from e
@@ -399,7 +401,9 @@ class QueryExecutor:
             if timeout_s is not None and timeout_s > 0 and _is_sqlite_interrupt(e):
                 raise self._timeout_error(timeout_s) from e
             raise self._execution_error(e) from e
-        except QueryTimeoutError:
+        except QueryExecutionError:
+            # Domain failures (including timeouts and budget callbacks) are
+            # already normalized; preserve their type, message, and cause.
             raise
         except Exception as e:
             raise QueryExecutionError(f"Query execution failed: {e}") from e

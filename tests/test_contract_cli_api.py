@@ -23,7 +23,11 @@ from typer.testing import CliRunner
 from pt_snap_cli.api import FocusState, SnapshotAnalyzer
 from pt_snap_cli.cli import app
 from pt_snap_cli.core import InvalidDeviceError, QueryExecutionError, TemplateRenderError
+from pt_snap_cli.core.dataset_sources import QueryBudget
+from pt_snap_cli.core.errors import QueryTimeoutError
 from pt_snap_cli.core.json_codec import JSON_SCHEMA_VERSION
+from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.core.report_service import ReportService
 from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.registry import QueryRegistry, register_query
 from tests.test_dataset_focus import make_dataset
@@ -50,6 +54,73 @@ def test_dataset_int64_overflow_cli_api_domain_error(tmp_path, template, params)
     assert result.stdout == ""
     assert json.loads(result.stderr)["error"]["code"] == "QUERY_FAILED"
     assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize("surface", ["service", "api", "report", "cli-query", "cli-report"])
+@pytest.mark.parametrize("failure_kind", ["budget", "timeout"])
+def test_dataset_budget_error_keeps_message_kind_and_no_partial_result(
+    tmp_path, monkeypatch, surface, failure_kind
+):
+    root = make_dataset(tmp_path / "budget-error", devices=(0,))
+    consume = QueryBudget.consume
+    failures = []
+
+    def bounded_consume(budget, rows):
+        try:
+            if failure_kind == "timeout":
+                raise QueryTimeoutError(f"Query timed out after {budget.timeout_s} seconds")
+            budget.max_work_rows = 1
+            consume(budget, rows)
+        except QueryExecutionError as exc:
+            failures.append(exc)
+            raise
+
+    monkeypatch.setattr(QueryBudget, "consume", bounded_consume)
+    expected_type = QueryTimeoutError if failure_kind == "timeout" else QueryExecutionError
+    if surface in {"service", "api", "report"}:
+        with (
+            closing(QueryService()) as service,
+            SnapshotAnalyzer(root) as analyzer,
+            closing(ReportService()) as report,
+        ):
+            with pytest.raises(expected_type) as caught:
+                if surface == "service":
+                    service.execute_query("event", db_path=root, timeout_s=30)
+                elif surface == "api":
+                    analyzer.execute_query("event", timeout_s=30)
+                else:
+                    report.peak_memory_report(root, timeout_s=30)
+        assert len(failures) == 1
+        assert type(caught.value) is expected_type
+        assert str(caught.value) == str(failures[0])
+    else:
+        args = (
+            ["query", str(root), "--template-use", "event"]
+            if surface == "cli-query"
+            else ["report", "peak-memory", str(root)]
+        ) + ["--timeout", "30"]
+        for json_mode in (False, True):
+            failures.clear()
+            result = runner.invoke(app, args + (["--json"] if json_mode else []))
+            assert result.exit_code == 1
+            assert len(failures) == 1
+            expected_message = str(failures[0])
+            if json_mode:
+                assert result.stdout == ""
+                payload = json.loads(result.stderr)
+                assert payload["error"]["code"] == (
+                    "QUERY_TIMEOUT" if failure_kind == "timeout" else "QUERY_FAILED"
+                )
+                assert payload["error"]["message"] == expected_message
+                assert "rows" not in payload and "callstack_groups" not in payload
+            else:
+                prefix = (
+                    "Error executing query: "
+                    if surface == "cli-query"
+                    else "Error generating report: "
+                )
+                assert result.stdout == f"{prefix}{expected_message}\n"
+                assert result.stderr == ""
 
 
 @pytest.mark.parametrize("template", ["event", "active_memory_callstack_at_event"])
