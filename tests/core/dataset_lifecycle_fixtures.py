@@ -1,16 +1,19 @@
-"""Deterministic synthetic v1 fixtures with replay-faithful window membership.
+"""Deterministic synthetic v1/native-v2 fixtures with replay-faithful window membership.
 
 These fixtures exercise SQL/query contracts, not the snapshot producer/exporter.
 The independent model retains full lifecycle IDs across windows, includes only
 carry-in/new allocations, and drops lifetimes completed before a window starts.
 """
 
+import hashlib
 import json
 import random
 import sqlite3
 from contextlib import closing
 
 from pt_snap_cli.core.dataset_contract import ACTION_NAMES, BLOCK_STATES, validate_dataset
+from pt_snap_cli.core.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.native_dataset_contract import NATIVE_FORMAT, cache_identity
 
 EVENT_COUNT = 80
 CAPACITY = 10
@@ -44,13 +47,14 @@ def timeline(seed):
         },
     }
     trace = []
-    nextaddr = 2000
+    # Slots exceed the largest block, so live address intervals cannot overlap.
+    nextaddr = 5000
     fixed = {
         0: ("a", 1000, "shared"),
-        1: ("a", 1100, None),
-        2: ("a", 1200, ""),
-        3: ("a", 1300, "[missing callstack]"),
-        4: ("a", 1400, " \n"),
+        1: ("a", 1512, None),
+        2: ("a", 2024, ""),
+        3: ("a", 2536, "[missing callstack]"),
+        4: ("a", 3048, " \n"),
         17: ("r", -1),
         18: ("f", -1),
         22: ("r", 0),
@@ -79,12 +83,12 @@ def timeline(seed):
                     b["address"]
                     for b in blocks.values()
                     if b["free"] >= 0
-                    and b["address"] >= 2000
+                    and b["address"] >= 5000
                     and all(c["address"] != b["address"] or c["free"] >= 0 for c in blocks.values())
                 ]
                 address = rng.choice(available) if available and rng.random() < 0.6 else nextaddr
                 if address == nextaddr:
-                    nextaddr += 100
+                    nextaddr += 512
                 op = (
                     "a",
                     address,
@@ -168,16 +172,20 @@ def db(path, trace, rows, boundary=True):
         c.executemany("INSERT INTO block_0 VALUES (?,?,?,?,?,?,?)", rows)
 
 
-def build(out, seed):
-    root = out / f"seed-{seed:04d}"
+def build(out, seed, *, layout="v1", capacity=CAPACITY):
+    if layout not in ("v1", "v2"):
+        raise ValueError(f"unsupported fixture layout: {layout}")
+    if not 1 <= capacity <= EVENT_COUNT:
+        raise ValueError(f"invalid fixture capacity: {capacity}")
+    root = out / f"seed-{seed:04d}-{layout}"
     root.mkdir()
     dataset = root / "dataset"
     (dataset / "device_0").mkdir(parents=True)
     trace, blocks = timeline(seed)
     slices = []
-    layout = []
-    for i, lo in enumerate(range(0, EVENT_COUNT, CAPACITY)):
-        hi = lo + CAPACITY - 1
+    windows = []
+    for i, lo in enumerate(range(0, EVENT_COUNT, capacity)):
+        hi = min(lo + capacity, EVENT_COUNT) - 1
         rows = [row(b, state_at_left(b, lo)) for b in blocks if member(b, lo, hi)]
         assert all(b[5] == -1 or b[5] <= hi for b in rows)
         assert all(b[6] == -1 or b[6] >= lo for b in rows)
@@ -186,13 +194,13 @@ def build(out, seed):
         slices.append(
             {"index": i, "startEventId": lo, "endEventId": hi, "file": file, "ready": True}
         )
-        layout.append({"slice": i, "lo": lo, "hi": hi, "block_ids": [r[0] for r in rows]})
+        windows.append({"slice": i, "lo": lo, "hi": hi, "block_ids": [r[0] for r in rows]})
     manifest = {
         "schemaVersion": 1,
         "status": "complete",
         "sourceFile": "/synthetic/no-pickle",
         "cacheHash": "",
-        "eventsPerSlice": CAPACITY,
+        "eventsPerSlice": capacity,
         "devices": {
             "0": {
                 "eventCount": EVENT_COUNT,
@@ -211,11 +219,7 @@ def build(out, seed):
             b,
             state_at_left(
                 b,
-                max(
-                    i * CAPACITY
-                    for i in range(EVENT_COUNT // CAPACITY)
-                    if member(b, i * CAPACITY, (i + 1) * CAPACITY - 1)
-                ),
+                max(window["lo"] for window in windows if member(b, window["lo"], window["hi"])),
             ),
         )
         for b in blocks
@@ -223,12 +227,23 @@ def build(out, seed):
     db(single, trace, finalrows)
     (root / "timeline.json").write_text(
         json.dumps(
-            {"seed": seed, "trace": trace, "blocks": blocks, "layout": layout},
+            {
+                "seed": seed,
+                "format": layout,
+                "capacity": capacity,
+                "trace": trace,
+                "blocks": blocks,
+                "layout": windows,
+            },
             ensure_ascii=False,
             indent=2,
         )
     )
-    validate_dataset(dataset)
+    if layout == "v2":
+        native_dataset(dataset, single, trace, blocks, manifest, seed, capacity)
+        assert DatasetResolver().inspect(dataset).callstack_layout == "v2"
+    else:
+        validate_dataset(dataset)
     return root, dataset, single, trace, blocks
 
 
@@ -274,3 +289,89 @@ def shapes(seed):
             {"event_id": event, "top_n": 1, "include_static": False, "min_size": 16},
         ),
     ]
+
+
+def native_dataset(dataset, single, trace, blocks, manifest, seed, capacity):
+    """Write independently modeled native tables, not a relabeled v1 manifest.
+
+    All trace references, including NULL-text stacks, have real local stack IDs.
+    Their assignment rotates per shard so local IDs are never global identities.
+    This exercises the reader; it deliberately does not claim exporter coverage.
+    """
+    source = json.dumps({"trace": trace, "blocks": blocks}, sort_keys=True).encode()
+    digest = hashlib.sha256(source).hexdigest()
+    metadata = {
+        "metadata_schema_version": 1,
+        "import_format_version": 2,
+        "source_sha256": digest,
+        "source_size": len(source),
+        "source_name": f"synthetic-seed-{seed}.json",
+        "requested_device": None,
+        "importer_name": "synthetic-differential-fixture",
+        "importer_version": "1",
+        "completed_at": "2026-01-01T00:00:00+00:00",
+    }
+    slices = manifest["devices"]["0"]["slices"]
+    for index, path in enumerate([*(dataset / s["file"] for s in slices), single]):
+        with closing(sqlite3.connect(path)) as connection, connection:
+            events = connection.execute("SELECT * FROM trace_entry_0 ORDER BY id").fetchall()
+            texts = list(dict.fromkeys(event[-1] for event in events))
+            random.Random(seed + index).shuffle(texts)
+            stack_ids = {text: i for i, text in enumerate(texts)}
+            connection.executescript(
+                "ALTER TABLE trace_entry_0 RENAME TO inline_trace;"
+                "CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY,action INTEGER,"
+                "address INTEGER,size INTEGER,stream INTEGER,allocated INTEGER,"
+                "active INTEGER,reserved INTEGER,callstackId INTEGER);"
+                "CREATE TABLE callstack (id INTEGER PRIMARY KEY,callstack TEXT);"
+                "CREATE TABLE pt_snap_block_reference (blockId INTEGER PRIMARY KEY,"
+                "stream INTEGER,allocCallstack TEXT,freeCallstack TEXT);"
+                "CREATE TABLE pt_snap_metadata (id INTEGER PRIMARY KEY,"
+                "metadata_schema_version INTEGER,import_format_version INTEGER,"
+                "source_sha256 TEXT,source_size INTEGER,source_name TEXT,"
+                "requested_device INTEGER,importer_name TEXT,importer_version TEXT,"
+                "completed_at TEXT);"
+            )
+            connection.executemany("INSERT INTO callstack VALUES (?,?)", enumerate(texts))
+            connection.executemany(
+                "INSERT INTO trace_entry_0 VALUES (?,?,?,?,?,?,?,?,?)",
+                [(*event[:-1], stack_ids[event[-1]]) for event in events],
+            )
+            connection.execute("DROP TABLE inline_trace")
+            connection.execute("INSERT INTO dictionary VALUES ('trace_entry_0','action','8','oom')")
+            contained = {row[0] for row in connection.execute("SELECT id FROM block_0")}
+            connection.executemany(
+                "INSERT INTO pt_snap_block_reference VALUES (?,?,?,?)",
+                [
+                    (
+                        b["id"],
+                        trace[b["alloc"]][4] if b["alloc"] >= 0 else 0,
+                        b["stack"],
+                        trace[b["free"]][-1] if b["free"] >= 0 else None,
+                    )
+                    for b in blocks
+                    if b["id"] in contained
+                ],
+            )
+            connection.execute(
+                "INSERT INTO pt_snap_metadata VALUES (1,?,?,?,?,?,?,?,?,?)",
+                list(metadata.values()),
+            )
+        if index < len(slices):
+            item = slices[index]
+            item.update(
+                startPosition=item["startEventId"],
+                endPosition=item["endEventId"],
+                sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+            )
+    native = {
+        "format": NATIVE_FORMAT,
+        "schemaVersion": 1,
+        "status": "complete",
+        "sourceFile": metadata["source_name"],
+        "identity": cache_identity(digest, None, capacity),
+        "metadata": metadata,
+        "omittedDevices": [],
+        "devices": manifest["devices"],
+    }
+    (dataset / "manifest.json").write_text(json.dumps(native))

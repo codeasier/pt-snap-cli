@@ -79,7 +79,7 @@ def event_attribution(
         all_rows = _groups(sources, blocks, references)
         top_n = cast(int, params["top_n"])
         dynamic = [row for row in all_rows if row["category"] == "dynamic_live_at_event"]
-        rank_full = top_n >= 0 and bool(dynamic) and len(dynamic) >= top_n
+        rank_full = top_n >= 0 and len(dynamic) >= top_n
         selected = [row for row in all_rows if row["category"] != "dynamic_live_at_event"] + (
             dynamic[:top_n] if top_n >= 0 else dynamic
         )

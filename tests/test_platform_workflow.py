@@ -27,7 +27,7 @@ def workflow():
     )
 
 
-def test_platform_ci_runs_exactly_three_bounded_non_linux_python_313_jobs():
+def test_platform_ci_runs_exactly_five_bounded_non_linux_python_313_jobs():
     data = workflow()
     assert set(data["on"]) == {"push", "pull_request", "workflow_dispatch"}
     assert data["on"]["push"]["branches"] == ["main"]
@@ -57,6 +57,16 @@ def test_platform_ci_runs_exactly_three_bounded_non_linux_python_313_jobs():
                     "os": "windows-latest",
                     "partition": "shard-1",
                     "command": "python .github/scripts/run_platform_tests.py --shard 1",
+                },
+                {
+                    "os": "windows-latest",
+                    "partition": "shard-2",
+                    "command": "python .github/scripts/run_platform_tests.py --shard 2",
+                },
+                {
+                    "os": "windows-latest",
+                    "partition": "shard-3",
+                    "command": "python .github/scripts/run_platform_tests.py --shard 3",
                 },
                 {
                     "os": "macos-latest",
@@ -103,20 +113,22 @@ def test_partition_is_deterministic_disjoint_exhaustive_and_balanced():
     nodeids = [f"tests/test_sample.py::test_value[{n}]" for n in range(101)]
     parts = module.partition_nodeids(nodeids)
     assert parts == module.partition_nodeids(list(reversed(nodeids)))
-    assert len(parts[0]) == 51 and len(parts[1]) == 50
-    assert not set(parts[0]) & set(parts[1])
-    assert set(parts[0]) | set(parts[1]) == set(nodeids)
+    assert module.SHARD_COUNT == 4
+    assert [len(part) for part in parts] == [26, 25, 25, 25]
+    flattened = [node for part in parts for node in part]
+    assert len(flattened) == len(set(flattened))
+    assert set(flattened) == set(nodeids)
 
 
 @pytest.mark.parametrize(
     "nodeids,parts",
     [
-        (["a", "b"], [["a"], []]),
-        (["a", "b", "c"], [["a"], ["b"]]),
-        (["a", "b"], [["a", "b"], ["a"]]),
-        (["a", "b"], [["a"], ["unknown"]]),
-        (["a", "b"], [["a", "b"]]),
-        (["a", "a"], [["a"], ["a"]]),
+        (["a", "b", "c"], [["a"], ["b"], ["c"], []]),
+        (["a", "b", "c", "d", "e"], [["a"], ["b"], ["c"], ["d"]]),
+        (["a", "b", "c", "d"], [["a", "b"], ["b"], ["c"], ["d"]]),
+        (["a", "b", "c", "d"], [["a"], ["b"], ["c"], ["unknown"]]),
+        (["a", "b", "c", "d"], [["a", "b"], ["c", "d"]]),
+        (["a", "a", "b", "c"], [["a"], ["a"], ["b"], ["c"]]),
     ],
 )
 def test_partition_rejects_missing_duplicate_unknown_or_empty_coverage(nodeids, parts):
@@ -124,7 +136,7 @@ def test_partition_rejects_missing_duplicate_unknown_or_empty_coverage(nodeids, 
         runner().validate_partition(nodeids, parts)
 
 
-@pytest.mark.parametrize("shard", [-1, 2])
+@pytest.mark.parametrize("shard", [-1, 4])
 def test_partition_rejects_unknown_shard(shard):
     with pytest.raises(pytest.UsageError):
         runner().PlatformPartition(shard)
@@ -148,7 +160,7 @@ def run_toy_suite(tmp_path, shard, *, corrupt=False):
         "module = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(module)\n"
     )
     if corrupt:
-        code += "module.partition_nodeids = lambda ids: [[ids[0]], [ids[1]]]\n"
+        code += "module.partition_nodeids = lambda ids: [[ids[n]] for n in range(4)]\n"
     code += (
         f"raise SystemExit(pytest.main(['-m', 'not slow', '-v', '--junitxml=toy.xml'], "
         f"plugins=[module.PlatformPartition({shard})]))\n"
@@ -160,23 +172,26 @@ def run_toy_suite(tmp_path, shard, *, corrupt=False):
 
 def test_real_pytest_shards_cover_exact_non_slow_collection(tmp_path):
     manifests = []
-    for shard in (0, 1):
+    for shard in range(4):
         result = run_toy_suite(tmp_path, shard)
         assert result.returncode == 0, result.stdout + result.stderr
         manifest = json.loads((tmp_path / "platform-partition.json").read_text(encoding="utf-8"))
         assert manifest["shard"] == shard
+        assert manifest["shard_count"] == 4
+        assert manifest["selected"] == manifest["partitions"][shard]
         assert manifest["selection"] == "not slow"
         assert len(manifest["full_collection"]) == 7
         assert all("test_slow" not in node for node in manifest["full_collection"])
         assert f"{len(manifest['selected'])} passed" in result.stdout
         manifests.append(manifest)
-    assert manifests[0]["collection_sha256"] == manifests[1]["collection_sha256"]
-    assert manifests[0]["full_collection"] == manifests[1]["full_collection"]
-    assert not set(manifests[0]["selected"]) & set(manifests[1]["selected"])
-    assert (
-        sorted(manifests[0]["selected"] + manifests[1]["selected"])
-        == manifests[0]["full_collection"]
+    assert len({manifest["collection_sha256"] for manifest in manifests}) == 1
+    assert all(
+        manifest["full_collection"] == manifests[0]["full_collection"] for manifest in manifests
     )
+    assert all(manifest["partitions"] == manifests[0]["partitions"] for manifest in manifests)
+    flattened = [node for manifest in manifests for node in manifest["selected"]]
+    assert len(flattened) == len(set(flattened))
+    assert sorted(flattened) == manifests[0]["full_collection"]
 
 
 def test_real_pytest_partition_corruption_fails_before_execution(tmp_path):

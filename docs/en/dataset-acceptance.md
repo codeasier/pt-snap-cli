@@ -5,13 +5,35 @@ fixture is not evidence that a producer, collector, or exporter ran.
 
 ## Regular correctness gate
 
-`tests/core/test_dataset_realistic.py` runs eight fixed seeds and twenty query
-shapes per seed against a standalone reference. Each shard contains only blocks
-allocated within its window and blocks still alive on entry. Completed lifetimes
-do not appear in later windows; global allocation/free-completion IDs remain
-unchanged. Cases include address reuse, a pending free crossing a window,
+`tests/core/test_dataset_realistic.py` defaults to 20 deterministic seeds in both
+compatibility-v1 and native-v2 layouts; the nightly profile extends the same bank
+to 200 seeds. The original eight regression seeds and twenty query shapes remain.
+Each seed now runs 69–73 query cases per layout (2,896 paired comparisons for the
+20-seed bank; 28,864 for 200), covering all eleven dataset-supported templates.
+The two standalone-only templates, `event_frames` and
+`active_memory_frame_tree_at_event`, have separate explicit rejection tests and
+never count as successful differential comparisons.
+
+Both layouts use the same independently generated 80-event history and a
+layout-matched standalone SQL oracle. Capacities 2/3/4/5/10/16 produce 5–40
+members, including a partial final member. Native fixtures contain real local
+stack references, finalized block-reference tables, metadata and member hashes;
+they pass the actual native reader validation. Local stack IDs vary by member.
+These are synthetic reader/query fixtures, not evidence of native replay/export.
+Each shard contains only allocations within its window and carry-in lifetimes;
+completed lifetimes do not appear in later windows. Global allocation and
+free-completion IDs remain unchanged. Every seed includes address reuse,
 preexisting/static blocks, NULL/empty/whitespace stacks, a literal missing-stack
-label, sorting, pagination, filters and dynamic `top_n` truncation.
+label and separate free-request/completion events. Critical first/last, shard,
+request/completion and reuse boundaries are queried under both static policies
+and checked independently against generated active IDs, sizes and counters.
+
+Seeded parameters cover legal event ranges, filters, sorting, offset/limit,
+`max_rows`, `top_n`, `include_static`, and both `exact_total` settings. Selected
+first/last/random member ranges are checked for event/allocation/peak/gap queries.
+Empty/full/truncated/beyond-end pages occur in every seed. Many-member cases
+assert actual scratch reducer construction, rather than inferring it from shard
+count. Input hashes and absence of SQLite write sidecars are checked afterward.
 
 Comparisons are exact, including four-decimal percentages. The minimal 1-byte /
 127-byte case requires `0.7813`; an 8-MiB scale variant also checks six-decimal
@@ -37,6 +59,60 @@ that the native writer emits ordered frames.
 pytest tests/test_fixture_provenance.py
 pytest tests/core/test_dataset_realistic.py tests/core/test_dataset_attribution.py tests/core/test_dataset_global.py
 ```
+
+The scheduled/manual CI `dataset-acceptance` job runs the 200-seed profile as a
+separate required step after its installed-wheel nightly gate. The fail-closed
+`.github/scripts/run_differential_acceptance.py` validates exactly 400 distinct
+executed test IDs, both formats for all 200 expected seeds, matching JUnit and
+per-seed coverage, expected comparison/template counts, zero unexpected errors,
+and observed scratch execution. Skips, missing/duplicate cases, stale reports,
+or inconsistent evidence fail the job. Its source SHA, summary, log, XML and
+compact timeline/coverage/failure JSON are always uploaded as
+`differential-acceptance-<commit>`; generated SQLite files are reproducible from the seed
+and are not retained in CI artifacts.
+This step is source-query acceptance; installed-wheel evidence stays separate.
+
+### Seed profiles and replay
+
+Run these from the intended checkout/interpreter (`PYTHONPATH="$PWD/src"` selects
+an isolated worktree without repointing another editable installation):
+
+```bash
+# PR/default: 20 seeds, both formats, plus the generator/oracle guard tests
+PYTHONPATH="$PWD/src" pytest tests/core/test_dataset_differential_cases.py tests/core/test_dataset_realistic.py
+
+# Nightly: 200 seeds, preserving per-seed evidence and JUnit properties
+PYTHONPATH="$PWD/src" PT_SNAP_DIFFERENTIAL_SEEDS=200 pytest \
+  tests/core/test_dataset_realistic.py -k seeded \
+  --basetemp=test_reports/differential --junitxml=test_reports/differential.xml \
+  -o junit_family=xunit1
+
+# Replay one seed and layout (the single-seed override wins over the bank size)
+PYTHONPATH="$PWD/src" PT_SNAP_DIFFERENTIAL_SEED=196 pytest \
+  tests/core/test_dataset_realistic.py -k 'seeded and v2'
+```
+
+`PT_SNAP_DIFFERENTIAL_SEEDS` accepts 1–10,000; `PT_SNAP_DIFFERENTIAL_SEED` accepts
+0–2^63−1. Invalid/blank values fail collection, rather than silently skipping work.
+The first eight bank entries are the retained regressions, followed by ascending
+nonduplicate integers; the 200-seed profile is a strict extension of the default.
+The pytest `--basetemp` directory is disposable and is cleared on the next run.
+
+Every successful seed writes `timeline.json` and `coverage.json`, including the
+seed, layout, capacity, shard count, comparison count, templates, observed scratch
+builds and zero unexpected errors. JUnit carries the same coverage properties.
+Failures print the seed/format/parameters and a replay command, and retain
+`differential-failure.json` with both full result envelopes or exception details.
+One-sided errors and both-sided errors always fail. Expected unsupported-template
+rejections are tested separately. Preserve the XML and temporary directory as
+CI artifacts when diagnosing a failure.
+
+Terminal-leak parity here applies only to these proved, window-faithful histories,
+where every live allocation appears in the terminal shard. It does not erase the
+intentional standalone/dataset distinctions for inactive, earlier-only or
+unproved histories. `test_dataset_lifecycle_contract.py` retains those contracts
+across attached SQL, scratch and bounded fallback. `top_n=0` completeness has
+separate empty/static/dynamic/mixed regressions across both layouts and reducers.
 
 ## Slow scale and installed export gates
 

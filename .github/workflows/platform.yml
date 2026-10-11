@@ -31,6 +31,12 @@ jobs:
           - os: windows-latest
             partition: shard-1
             command: python .github/scripts/run_platform_tests.py --shard 1
+          - os: windows-latest
+            partition: shard-2
+            command: python .github/scripts/run_platform_tests.py --shard 2
+          - os: windows-latest
+            partition: shard-3
+            command: python .github/scripts/run_platform_tests.py --shard 3
           - os: macos-latest
             partition: all
             command: python -m pytest -m "not slow" --junitxml=platform-tests.xml -o junit_family=legacy
