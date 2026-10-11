@@ -25,7 +25,13 @@ BOUNDARY_TEST_NODE = (
     "tests/core/test_dataset_scale_acceptance.py::"
     "test_installed_default_export_short_final_shard_boundary"
 )
-REQUIRED_TEST_NODES = (TEST_NODE, BOUNDARY_TEST_NODE)
+REQUIRED_TEST_NODES = (
+    TEST_NODE,
+    BOUNDARY_TEST_NODE,
+    "tests/core/test_dataset_route_scale_acceptance.py::test_million_lifecycles_real_attach_and_scratch_routes",
+    "tests/core/test_dataset_route_scale_acceptance.py::test_million_lifecycles_over_limit_respects_disabled_scratch_budget",
+    "tests/core/test_dataset_route_scale_acceptance.py::test_million_lifecycles_real_subprocess_deep_offset_and_budget_precedence",
+)
 
 
 class AcceptanceError(RuntimeError):
