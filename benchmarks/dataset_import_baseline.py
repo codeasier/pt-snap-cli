@@ -13,7 +13,6 @@ import json
 import logging
 import os
 import platform
-import resource
 import sqlite3
 import subprocess
 import sys
@@ -23,11 +22,21 @@ from collections import defaultdict
 from contextlib import closing
 from pathlib import Path
 
+try:
+    import resource
+except ImportError:  # Windows has no POSIX getrusage module.
+    resource = None
+
 MODES = ("single-db", "pt-snap-native-v2", "compatibility-v1")
 
 
 def rss_kib(raw: float, system: str) -> float:
     return raw / 1024 if system == "darwin" else raw
+
+
+def process_peak_rss() -> float | None:
+    """Return this process's high-water RSS, or explicitly unavailable on Windows."""
+    return None if resource is None else resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 
 
 def source_identity(source: Path, expected: str) -> dict:
@@ -158,7 +167,8 @@ def child(args) -> dict:
         service._msinsight_backend.dump_to_dataset = no_rebuild
     result = service.import_snapshot(options)
     wall = time.perf_counter() - start
-    usage = resource.getrusage(resource.RUSAGE_SELF)  # this process ONLY, before analysis
+    peak_rss = process_peak_rss()  # this process ONLY, before analysis
+    peak_rss_kib = rss_kib(peak_rss, sys.platform) if peak_rss is not None else None
     if result.reused != (args.phase == "reuse"):
         raise AssertionError("Cold/reuse measurement did not follow requested cache path")
     members = [result.db_path] if result.db_path.is_file() else sorted(result.db_path.rglob("*.db"))
@@ -225,10 +235,16 @@ def child(args) -> dict:
         "mode": args.mode,
         "phase": args.phase,
         "import_wall_seconds": wall,
-        "isolated_import_process_peak_rss_raw": usage.ru_maxrss,
-        "isolated_import_process_peak_rss_kib": rss_kib(usage.ru_maxrss, sys.platform),
-        "isolated_import_process_peak_rss_mib": rss_kib(usage.ru_maxrss, sys.platform) / 1024,
-        "rss_scope": "RUSAGE_SELF fresh child high-water through import, before queries; includes interpreter/imports",
+        "isolated_import_process_peak_rss_raw": peak_rss,
+        "isolated_import_process_peak_rss_kib": peak_rss_kib,
+        "isolated_import_process_peak_rss_mib": (
+            peak_rss_kib / 1024 if peak_rss_kib is not None else None
+        ),
+        "rss_scope": (
+            "RUSAGE_SELF fresh child high-water through import, before queries; includes interpreter/imports"
+            if peak_rss is not None
+            else "unavailable: this platform does not provide POSIX resource.getrusage"
+        ),
         "phase_timings": dict(phases),
         "phase_timing_scope": "named wrapped functions, inclusive; sharded replay includes SQLite writes/backfills, NOT parser-only",
         "phase_rss": {

@@ -92,6 +92,34 @@ def test_short_backup_writes_preserve_complete_rollback(staged_backend, monkeypa
     assert list(output.iterdir()) == [destination]
 
 
+def test_failed_publication_closes_backup_before_unlink(staged_backend, monkeypatch):
+    """Enforce Windows open-file deletion semantics on every test platform."""
+    backend, source, output, destination, descriptors = staged_backend
+    original = destination.read_bytes()
+    real_unlink = Path.unlink
+    removed = []
+
+    def require_closed(path, *args, **kwargs):
+        if path.suffix == ".rollback":
+            assert descriptors
+            for fd in descriptors:
+                with pytest.raises(OSError):
+                    os.fstat(fd)
+            removed.append(path)
+        return real_unlink(path, *args, **kwargs)
+
+    def fail_publish(*args, **kwargs):
+        raise OSError("publication failed")
+
+    monkeypatch.setattr(Path, "unlink", require_closed)
+    monkeypatch.setattr("pt_snap_cli.core.snapshot_import_backend.os.replace", fail_publish)
+    with pytest.raises(ImportExecutionError, match="publication failed"):
+        backend.dump_to_db(source, output, post_publish=lambda path: None)
+    assert len(removed) == 1
+    assert destination.read_bytes() == original
+    assert list(output.iterdir()) == [destination]
+
+
 def test_zero_backup_write_fails_without_publishing(staged_backend, monkeypatch):
     backend, source, output, destination, _ = staged_backend
     monkeypatch.setattr("pt_snap_cli.core.snapshot_import_backend.os.write", lambda *args: 0)

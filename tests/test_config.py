@@ -451,10 +451,12 @@ class TestDbFocusResolver:
         config = Config()
         focus_file = config.write_project_focus(tmp_path / "first.db", base_dir=tmp_path)
         focus_file.chmod(0o640)
+        # Windows chmod preserves only the read-only flag, not POSIX group bits.
+        expected_mode = focus_file.stat().st_mode & 0o777
 
         config.write_project_focus(tmp_path / "second.db", base_dir=tmp_path)
 
-        assert focus_file.stat().st_mode & 0o777 == 0o640
+        assert focus_file.stat().st_mode & 0o777 == expected_mode
 
     def test_atomic_write_new_file_uses_private_mode(self, monkeypatch, tmp_path: Path) -> None:
         config = Config()
@@ -467,4 +469,12 @@ class TestDbFocusResolver:
 
         config.write_project_focus(tmp_path / "second.db", base_dir=tmp_path)
 
-        assert config_path.stat().st_mode & 0o777 == 0o600
+        if os.name == "nt":
+            # chmod(0o600) is a writable file on Windows; ACL privacy is not a
+            # POSIX mode-bit contract. Keep the atomic-write assertion active.
+            assert config_path.stat().st_mode & 0o200
+        else:
+            assert config_path.stat().st_mode & 0o777 == 0o600
+        assert json.loads(config_path.read_text())[DB_PATH_KEY] == str(
+            (tmp_path / "second.db").resolve()
+        )

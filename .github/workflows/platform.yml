@@ -1,0 +1,70 @@
+name: Platform compatibility
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  platform:
+    name: Non-slow (${{ matrix.os }}, Python 3.13, ${{ matrix.partition }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: windows-latest
+            partition: shard-0
+            command: python .github/scripts/run_platform_tests.py --shard 0
+          - os: windows-latest
+            partition: shard-1
+            command: python .github/scripts/run_platform_tests.py --shard 1
+          - os: windows-latest
+            partition: shard-2
+            command: python .github/scripts/run_platform_tests.py --shard 2
+          - os: windows-latest
+            partition: shard-3
+            command: python .github/scripts/run_platform_tests.py --shard 3
+          - os: macos-latest
+            partition: all
+            command: python -m pytest -m "not slow" --junitxml=platform-tests.xml -o junit_family=legacy
+    env:
+      # Keep multilingual source/fixture text and subprocess output deterministic.
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install test dependencies and console launcher
+        run: python -m pip install -e ".[dev]"
+      - name: Verify executable fixture provenance before collection
+        run: python -m pytest tests/test_fixture_provenance.py
+      - name: Run exhaustive non-slow partition
+        # No coverage denominator or scale matrix here. Resource-warning gates
+        # remain enabled; required Chromium interaction runs in the Linux job.
+        run: ${{ matrix.command }}
+      - name: Upload platform test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-tests-${{ matrix.os }}-py313-${{ matrix.partition }}
+          path: |
+            platform-tests.xml
+            platform-partition.json
+          if-no-files-found: warn
+          retention-days: 7

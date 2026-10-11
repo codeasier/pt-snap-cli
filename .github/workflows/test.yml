@@ -211,12 +211,33 @@ jobs:
           python .github/scripts/run_dataset_acceptance.py \
             --wheel "$WHEEL" --output-dir .tmp/dataset-acceptance
 
+      - name: Run required 200-seed paired differential acceptance
+        run: |
+          python .github/scripts/run_differential_acceptance.py \
+            --seed-count 200 --output-dir .tmp/differential-acceptance
+
       - name: Upload dataset acceptance evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dataset-acceptance-${{ github.sha }}
           path: .tmp/dataset-acceptance/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload paired differential evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: differential-acceptance-${{ github.sha }}
+          path: |
+            .tmp/differential-acceptance/*.log
+            .tmp/differential-acceptance/*.xml
+            .tmp/differential-acceptance/summary.json
+            .tmp/differential-acceptance/pytest-temp/**/coverage.json
+            .tmp/differential-acceptance/pytest-temp/**/timeline.json
+            .tmp/differential-acceptance/pytest-temp/**/differential-failure.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 30

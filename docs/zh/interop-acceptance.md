@@ -114,6 +114,46 @@ missing label、非NULL空文本活动组不能混同。`callstack_analysis` 语
 共用递减时间及累计100000 fetched/output行、64 MiB序列化值，**不是 RSS**；失败不能给出
 部分的虚假全局结论。
 
+## 三片 free-requested fixture
+
+[pt-snap-cli #249](https://github.com/codeasier/pt-snap-cli/issues/249) 在
+[`tests/fixtures/interop/`](../../tests/fixtures/interop/README.md) 增加最小合成生产端
+fixture：单设备、三个真实事件、三个分片，由真实 CLI 配合 `--events-per-slice 1`
+生成。allocation 0、free_requested 1、free_completed 2 各只属于一个分片。
+不新增已提交的可执行 pickle，也不引入第三方生产端代码。来源、生成身份、隐私/权利审核、
+大小/hash 和限制均记录在该目录的 provenance 中。
+
+```bash
+PYTHONPATH="$PWD/src" python -m pytest tests/test_fixture_provenance.py
+PYTHONPATH="$PWD/src" python -m pytest tests/test_interop_three_shard.py
+PYTHONPATH="$PWD/src" python tests/fixtures/interop/generate_three_shard.py \
+  --output /tmp/NEW-three-shard-interop
+```
+
+输出目录必须不存在。生成器仅从可检查的 JSON 自建合成 pickle，以
+`--device 0 --events-per-slice 1 --no-focus` 分别调用真实 `pt-snap import`：
+`msinsight`（compatibility-v1，内联调用栈）与 `pt-snap-native-v2`（interned 调用栈）。
+不打开 GUI、不运行原版生产端。已提交的 v1 产物在只读测试打开前校验 checksum；
+新生成结果复现物理语义，不承诺含时间/路径/版本差异的逐字节相等。
+
+回归检查事件唯一归属、全部九个物理 event 字段、完整栈文本和 block 引用。
+free-requested 行为 ID 1、action 5、address 4096、size 16、stream 7，
+allocated/active/reserved 计数器为 0/16/64 字节（消费端的
+Caching Allocated/Active/Reserved 字段）。Block 0 保留
+`allocEventId=0`、`freeEventId=2`；后者指向 **completed** free。
+现有消费端只查当前片的 predicate 在片 0/2 找不到 event 1。
+独立 SQL oracle 先按 manifest 寻找与 `allocEventId < id < freeEventId` 相交的候选片；
+`freeEventId < 0` 时查到该设备最后一个真实事件，再按 action/address 与相同边界过滤。
+另设 v1/v2 地址复用及 open-ended pending-free/allocated 测试，防止关联后一次生命周期，
+并校验应返回唯一事件或无事件。原有九事件 `lifecycle_data` 包含 OOM，故不用作此最小
+v1 fixture；既有完整回放覆盖继续保留。
+
+另行获准 GUI 复测时，应使用新生成的原始 `three_shard_free_requested.pkl` 及其邻接
+`.msinsight` 目录。不要让会写派生缓存表的消费端修改已提交的只读 fixture。
+不宣称 native-v2 是 msinsight GUI 输入。本项仅验证生产端/fixture 契约，
+没有修复或验证 [msinsight #625](https://gitcode.com/Ascend/msinsight/issues/625)，
+也不覆盖下方带日期验收记录中的消费端限制。
+
 ## 性能：相同已审小样本，三模式
 
 测量使用 `snapshot_expandable.pkl`，581140字节，SHA256

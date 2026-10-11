@@ -45,11 +45,29 @@ python .github/scripts/run_dataset_acceptance.py \
   --wheel dist/<built-wheel>.whl --output-dir .tmp/dataset-acceptance
 ```
 
-This tier initially exercises the existing 500,002-event `pip --target` acceptance
-test. It does not claim a clean venv, two full 500,000-event shards, complete CLI
-template coverage, live agents or upstream GUI interoperability. The ordinary
-PR tier excludes `nightly` tests; the required nightly/manual runner must never
-skip them. Manually dispatch the exact published branch/commit and
+The required installed-wheel case creates a clean venv without system packages
+and runs its actual `pt-snap` console script from isolated HOME/CWD. Its trusted,
+test-owned input has exactly 1,000,000 events; the default exporter produces two
+full 500,000-event shards. All installed catalog entries are classified: currently
+11 dataset-supported templates succeed with installed CLI/API equivalence and
+independent known-result checks, while `event_frames` and
+`active_memory_frame_tree_at_event` return explicit unsupported-dataset errors.
+Both report commands run: `peak-memory` succeeds and `memory-tree` preserves the
+corresponding dataset rejection. The allocation/free-request/free-completion
+boundary assertions remain covered, alongside static occupancy, offset pages,
+terminal survivors and unchanged source/manifest/member hashes. A second required
+nightly case separately imports 500,002 events and proves the original final
+short shard has exactly two real events, with the crossing completed lifetime
+and the final survivor. Its evidence is stored in its own subdirectory so the
+two gates cannot overwrite each other's command logs. This adds one half-million
+event import plus five query subprocesses to the nightly job. Existing
+synthetic scale/default-budget regressions remain separate source-level tests.
+`PT_SNAP_ACCEPTANCE_WHEELHOUSE` optionally supplies dependencies for an offline
+clean-venv install. Timings are recorded without machine-speed thresholds; this
+does not claim live agents, live hardware capture or upstream GUI interoperability.
+
+The ordinary PR tier excludes `nightly` tests; the required nightly/manual runner
+must never skip them. Manually dispatch the exact published branch/commit and
 verify the run's head SHA and summary; a PR run alone is not nightly evidence.
 
 ## Release Workflow
@@ -78,3 +96,17 @@ YAML and run `pytest tests/test_governance.py tests/test_release_workflow.py
 tests/test_ci_tiers.py tests/test_dataset_acceptance_runner.py tests/test_wheel_audit.py` from
 the repository root. Full CI tests the matrix and installed wheel; static tests
 do not prove a release environment is configured or a publication occurred.
+
+### Required paired differential profile
+
+The scheduled/manual `dataset-acceptance` job also runs
+`run_differential_acceptance.py --seed-count 200` after the installed-wheel
+nightly gate. This separate source-query step is required, with no skip or
+continue-on-error escape. Its JUnit report must contain exactly 400 distinct
+seed/format test IDs (200 per v1/v2), matching all per-seed coverage artifacts,
+expected query counts/templates, zero unexpected errors and actual scratch use.
+A single-seed environment override is removed by the runner. Logs, source SHA,
+summary, JUnit and compact timeline/coverage/failure JSON are always uploaded from
+`.tmp/differential-acceptance/`; regenerated SQLite files stay out of stored artifacts. The ordinary PR matrix retains the default
+20-seed profile. This does not make the differential step installed-wheel or
+upstream-producer evidence.

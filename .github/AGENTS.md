@@ -9,6 +9,7 @@ Parent scope: [repository](../AGENTS.md).
 | `pull_request_template.md` | Default PR template and machine-parsed snapshot decision labels |
 | `scripts/check_snapshot_provenance.py` | Base/head Git-blob comparison and PR declaration validation |
 | `scripts/clean_wheel_agent_acceptance.py` | Supplied wheel acceptance in temporary home/CWD/venv |
+| `scripts/run_differential_acceptance.py` | Source-query 200-seed/v1-v2 acceptance with exact executed identities and coverage evidence |
 | `scripts/run_dataset_acceptance.py` | Required installed-wheel dataset test with fail-closed JUnit and artifact evidence |
 
 ## Provenance Guard

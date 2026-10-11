@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -11,6 +12,17 @@ from pathlib import Path
 import pytest
 
 RUNNER = Path(".github/scripts/run_dataset_acceptance.py")
+RESOURCE_FILE = "tests/core/test_export_validation_resources.py"
+RESOURCE_NAMES = (
+    "test_million_event_export_validation_memory_is_bounded",
+    "test_first_500k_dataset_cli_query_startup_trend",
+)
+BOUNDARY_NAME = "test_installed_default_export_short_final_shard_boundary"
+SCALE_TEST_NODES = (
+    "tests/core/test_dataset_route_scale_acceptance.py::test_million_lifecycles_real_attach_and_scratch_routes",
+    "tests/core/test_dataset_route_scale_acceptance.py::test_million_lifecycles_over_limit_respects_disabled_scratch_budget",
+    "tests/core/test_dataset_route_scale_acceptance.py::test_million_lifecycles_real_subprocess_deep_offset_and_budget_precedence",
+)
 
 
 @pytest.fixture
@@ -22,7 +34,7 @@ def runner():
     return module
 
 
-def write_report(path, name, evidence, outcome=None):
+def write_report(path, name, evidence, outcome=None, *, include_boundary=True):
     suite = ET.Element("testsuite")
     case = ET.SubElement(
         suite,
@@ -36,12 +48,37 @@ def write_report(path, name, evidence, outcome=None):
     if evidence is not None:
         properties = ET.SubElement(case, "properties")
         ET.SubElement(properties, "property", name="dataset_acceptance", value=json.dumps(evidence))
+    if include_boundary:
+        ET.SubElement(
+            suite,
+            "testcase",
+            name=BOUNDARY_NAME,
+            file="tests/core/test_dataset_scale_acceptance.py",
+            classname="tests.core.test_dataset_scale_acceptance",
+        )
+    for node in SCALE_TEST_NODES:
+        file, name = node.split("::")
+        ET.SubElement(
+            suite,
+            "testcase",
+            name=name,
+            file=file,
+            classname=file.removesuffix(".py").replace("/", "."),
+        )
+    for resource_name in RESOURCE_NAMES:
+        ET.SubElement(
+            suite,
+            "testcase",
+            name=resource_name,
+            file=RESOURCE_FILE,
+            classname="tests.core.test_export_validation_resources",
+        )
     ET.ElementTree(suite).write(path)
 
 
 def test_runner_accepts_matching_wheel_evidence(runner, tmp_path):
     report = tmp_path / "junit.xml"
-    evidence = {"wheel_sha256": "abc", "events": 500_002}
+    evidence = {"wheel_sha256": "abc", "events": 1_000_000}
     write_report(report, runner.TEST_NAME, evidence)
     assert runner.read_evidence(report, "abc") == evidence
 
@@ -109,6 +146,9 @@ def test_runner_accepts_additional_nightly_cases_and_records_complete_identities
     assert runner.read_evidence(report, "abc") == evidence
     assert [runner.test_node_id(case) for case in runner.read_cases(report)] == [
         runner.TEST_NODE,
+        runner.BOUNDARY_TEST_NODE,
+        *SCALE_TEST_NODES,
+        *(f"{RESOURCE_FILE}::{name}" for name in RESOURCE_NAMES),
         "tests/test_extra.py::TestRoutes::test_extra[v2]",
     ]
 
@@ -265,7 +305,80 @@ def test_runner_records_checkout_and_artifact_with_fail_closed_results(
     assert summary["source_sha"] == "checkout-sha"
     assert summary["wheel_sha256"] == wheel_hash
     assert summary["pytest_exit_code"] == exit_code
-    assert summary["required_test_nodes"] == [runner.TEST_NODE]
-    assert summary["test_nodes"] == ([runner.TEST_NODE] if write_junit else [])
+    assert summary["required_test_nodes"] == list(runner.REQUIRED_TEST_NODES)
+    assert summary["test_nodes"] == (list(runner.REQUIRED_TEST_NODES) if write_junit else [])
     assert summary["status"] == ("passed" if exit_code == 0 and write_junit else "failed")
     assert (output / "pytest.log").read_text() == "captured pytest output\n"
+
+
+def test_runner_requires_original_short_final_shard_case(runner, tmp_path):
+    report = tmp_path / "junit.xml"
+    assert runner.BOUNDARY_TEST_NODE in runner.REQUIRED_TEST_NODES
+    write_report(report, runner.TEST_NAME, {"wheel_sha256": "abc"}, include_boundary=False)
+    with pytest.raises(runner.AcceptanceError, match="Missing required nightly test nodes"):
+        runner.read_evidence(report, "abc")
+
+
+@pytest.mark.parametrize("outcome", ["skipped", "failure", "error"])
+def test_runner_rejects_nonpassing_short_final_shard_case(runner, tmp_path, outcome):
+    report = tmp_path / "junit.xml"
+    write_report(report, runner.TEST_NAME, {"wheel_sha256": "abc"}, include_boundary=False)
+    add_case(
+        report,
+        name=BOUNDARY_NAME,
+        file="tests/core/test_dataset_scale_acceptance.py",
+        classname="tests.core.test_dataset_scale_acceptance",
+        outcome=outcome,
+    )
+    with pytest.raises(runner.AcceptanceError, match="without skips"):
+        runner.read_evidence(report, "abc")
+
+
+def test_required_nightly_registry_contains_actual_scale_gates(runner):
+    assert runner.REQUIRED_TEST_NODES == (
+        runner.TEST_NODE,
+        runner.BOUNDARY_TEST_NODE,
+        *SCALE_TEST_NODES,
+        *(f"{RESOURCE_FILE}::{name}" for name in RESOURCE_NAMES),
+    )
+
+
+@pytest.mark.parametrize("node", SCALE_TEST_NODES)
+@pytest.mark.parametrize("outcome", ["missing", "skipped", "failure", "error"])
+def test_every_scale_gate_is_required_by_full_identity(runner, tmp_path, node, outcome):
+    report = tmp_path / "junit.xml"
+    write_report(report, runner.TEST_NAME, {"wheel_sha256": "abc"})
+    tree = ET.parse(report)
+    case = next(case for case in tree.findall(".//testcase") if runner.test_node_id(case) == node)
+    if outcome == "missing":
+        # A same-named passing function in another module cannot replace a gate.
+        case.set("file", "tests/test_extra.py")
+        case.set("classname", "tests.test_extra")
+    else:
+        ET.SubElement(case, outcome)
+    tree.write(report)
+    with pytest.raises(runner.AcceptanceError, match=re.escape(node)):
+        runner.read_evidence(report, "abc")
+
+
+def test_runner_requires_both_real_resource_gates(runner):
+    assert {f"{RESOURCE_FILE}::{name}" for name in RESOURCE_NAMES} <= set(
+        runner.REQUIRED_TEST_NODES
+    )
+
+
+@pytest.mark.parametrize("name", RESOURCE_NAMES)
+@pytest.mark.parametrize("outcome", ["missing", "skipped", "failure", "error"])
+def test_runner_rejects_missing_or_nonpassing_resource_gate(runner, tmp_path, name, outcome):
+    report = tmp_path / "junit.xml"
+    write_report(report, runner.TEST_NAME, {"wheel_sha256": "abc"})
+    tree = ET.parse(report)
+    case = tree.find(f".//testcase[@name='{name}']")
+    assert case is not None
+    if outcome == "missing":
+        tree.getroot().remove(case)
+    else:
+        ET.SubElement(case, outcome)
+    tree.write(report)
+    with pytest.raises(runner.AcceptanceError, match=name):
+        runner.read_evidence(report, "abc")

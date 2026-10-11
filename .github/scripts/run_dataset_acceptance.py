@@ -21,7 +21,19 @@ TEST_NAME = "test_installed_trusted_producer_default_export_cli_and_api"
 TEST_NODE = f"tests/core/test_dataset_scale_acceptance.py::{TEST_NAME}"
 # Extend this tuple alongside new mandatory nightly gates. Never list future
 # files that have not landed: the runner rejects any missing configured node.
-REQUIRED_TEST_NODES = (TEST_NODE,)
+BOUNDARY_TEST_NODE = (
+    "tests/core/test_dataset_scale_acceptance.py::"
+    "test_installed_default_export_short_final_shard_boundary"
+)
+REQUIRED_TEST_NODES = (
+    TEST_NODE,
+    BOUNDARY_TEST_NODE,
+    "tests/core/test_dataset_route_scale_acceptance.py::test_million_lifecycles_real_attach_and_scratch_routes",
+    "tests/core/test_dataset_route_scale_acceptance.py::test_million_lifecycles_over_limit_respects_disabled_scratch_budget",
+    "tests/core/test_dataset_route_scale_acceptance.py::test_million_lifecycles_real_subprocess_deep_offset_and_budget_precedence",
+    "tests/core/test_export_validation_resources.py::test_million_event_export_validation_memory_is_bounded",
+    "tests/core/test_export_validation_resources.py::test_first_500k_dataset_cli_query_startup_trend",
+)
 
 
 class AcceptanceError(RuntimeError):

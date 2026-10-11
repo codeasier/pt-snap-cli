@@ -302,10 +302,10 @@ class QueryService:
             if isinstance(stack_bytes, int) and stack_bytes >= 0:
                 summarize_dataset_stacks(result.rows, stack_bytes)
             budget.remaining()
-            if _resolved is not None:
-                # Inspection establishes the baseline. Reject changed contents
-                # after each composed step, before any report can be returned.
-                dataset.require_unchanged(budget)
+            # Inspection establishes the baseline for standalone queries and
+            # composed reports alike. Reject mixed-generation rows or counts
+            # before either adapter can publish any part of the result.
+            dataset.require_unchanged(budget)
             if result.scope is not None:
                 result.scope["work_budget"] = budget.describe()
             return result
@@ -491,6 +491,10 @@ def _inner_rank_window_full(rows: list[dict[str, Any]], rank_cap: int) -> bool:
     ``rank_cap`` is treated as possibly incomplete unless ``exact_total``
     later proves ``total == returned``.
     """
+    # A zero-cap window can hide every ranked group. Empty output cannot
+    # establish completeness until exact_total explicitly counts without it.
+    if rank_cap == 0:
+        return True
     if not rows:
         return False
     if any("category" in row for row in rows):

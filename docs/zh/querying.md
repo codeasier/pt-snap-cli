@@ -163,8 +163,14 @@ SQLite、一个批次及单个 cell 有额外开销。默认仍执行强准入�
 分片数)，新 CLI 进程仍冷启动。准入共用该 deadline：hash 分块、Python 行批次及 SQLite progress handler 都检查取消。
 单个文件系统调用不提供 OS 级硬抢占。仅当调用方保证最终产物不可变且文件系统变更时间
 可靠时，才可通过 `PT_SNAP_DATASET_CACHE=immutable` 显式启用纯元数据校验复用；参见
-[数据集校验与缓存合同](sharded-snapshotdb.md)。不修复或写入源产物；较大的生命周期查询
-可能生成下述私有临时派生数据库。
+[数据集校验与缓存合同](sharded-snapshotdb.md)。
+每次数据集查询在返回行或计数之前，都会再次检查已准入的 generation，纯计数查询也不例外。
+一旦检测到并发变更，整个查询以数据库完整性错误失败，不发布部分结果。默认情况下，
+这一最终检查在同一操作 deadline 内额外扫描一次 manifest/全部成员的完整内容哈希。
+显式 immutable 模式在满足原有文件系统要求时，仍使用纯元数据的最终检查。
+这是变更检测边界，不是原子文件系统快照：不证明所有先变更再恢复的竞态都能被检测，
+也不代表支持查询可变的在线 SQLite 产物。
+不修复或写入源产物；较大的生命周期查询可能生成下述私有临时派生数据库。
 
 兼容导出器默认**每设备每片 500000 个真实事件**。该存储容量与 **100000 行 / 64 MiB
 查询工作预算**独立：即使只有一个默认大小的分片，无足够筛选或分页的结果物化也可能
@@ -456,6 +462,11 @@ pt-snap query --template-use active_memory_callstack_at_event --params '{"event_
 - 把动态 block 回连到 `trace_entry_<device>` 的分配事件
 - 按分配调用栈做聚合
 - 对静态内存和 preexisting 内存单独分组，而不是伪造调用栈
+
+零大小的内部排名窗口（`top_n=0`）同样保守地视为不完整：未使用
+`--exact-total` 时，即使返回零行，也有 `has_more=true`、`truncated=true`、
+`total_is_exact=false`。此规则同时适用于单库和 dataset 查询，与是否包含静态组无关。
+`--exact-total` 会统计排名窗口之前的匹配分组，从而确定是否存在被省略的组。
 
 `top_n` 只限制动态调用栈分组的数量；启用包含且实际存在的 `static` 和
 `preexisting_live_at_event` 分组不受这层内部筛选限制。外层 `-n` 仍限制所有
