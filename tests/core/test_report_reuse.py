@@ -145,19 +145,30 @@ def test_report_projects_independent_earliest_peaks_and_same_event_counters(
     )
 
 
-def test_report_attribution_keeps_real_work_limit(tmp_path):
+def test_report_attribution_reduces_static_blocks_but_keeps_shared_work_limit(
+    tmp_path, monkeypatch
+):
     root = cycle_dataset(tmp_path, 60000)
     with closing(sqlite3.connect(root / "device_0/slice_00000.db")) as conn, conn:
         conn.executemany(
             "INSERT INTO block_0 VALUES (?,?,?,?,?,?,?)",
             ((-100000 - index, 2000000 + index, 1, 1, 1, -1, -1) for index in range(100001)),
         )
-    service = ReportService()
-    try:
+    with closing(ReportService()) as service:
+        result = service.peak_memory_report(root)
+        assert result.source_coverage["active_blocks"] == 100_002
+        assert sum(row["block_count"] for row in result.callstack_groups) == 100_002
+        consume = QueryBudget.consume
+
+        def exhaust_after_gap(self, rows):
+            if rows and "peak_allocated" in rows[0]:
+                self.max_work_rows = self.work_rows + len(rows)
+            consume(self, rows)
+
+        # Reduced attribution still spends the SAME remaining report budget.
+        monkeypatch.setattr(QueryBudget, "consume", exhaust_after_gap)
         with pytest.raises(QueryExecutionError, match="work budget"):
             service.peak_memory_report(root)
-    finally:
-        service.close()
 
 
 def test_report_deadline_is_not_restarted_for_attribution(tmp_path, monkeypatch):

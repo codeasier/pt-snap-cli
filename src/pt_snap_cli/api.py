@@ -24,6 +24,7 @@ from pt_snap_cli.core import (
     TemplateNotFoundError,
 )
 from pt_snap_cli.core.context_cache import ContextCache
+from pt_snap_cli.core.query_limits import QueryLimits
 
 
 class TemplateSummaryPayload(TypedDict):
@@ -70,6 +71,7 @@ class SnapshotAnalyzer:
         device_id: int | None = None,
         *,
         context_cache: ContextCache | None = None,
+        query_limits: QueryLimits | None = None,
     ) -> None:
         self._config: Config = Config()
         self._db_path: Path | None = db_path
@@ -86,7 +88,7 @@ class SnapshotAnalyzer:
         self._owns_context_cache: bool = context_cache is None
         self._closed: bool = False
         self._query_service: QueryService = QueryService(
-            self._focus_service, context_cache=self._context_cache
+            self._focus_service, context_cache=self._context_cache, query_limits=query_limits
         )
         self._metadata_service: ImportMetadataService = ImportMetadataService()
         self._capability_service: CapabilityService = CapabilityService(
@@ -195,10 +197,12 @@ class SnapshotAnalyzer:
             for template in self._query_service.list_templates(category)
         ]
 
-    def get_template_info(self, name: str) -> dict[str, object] | None:
+    def get_template_info(
+        self, name: str, *, query_limits: QueryLimits | None = None
+    ) -> dict[str, object] | None:
         self._ensure_open()
         try:
-            info = self._query_service.get_template_info(name)
+            info = self._query_service.get_template_info(name, query_limits=query_limits)
         except TemplateNotFoundError:
             return None
 
@@ -214,6 +218,7 @@ class SnapshotAnalyzer:
         exact_total: bool = False,
         timeout_s: float | None = None,
         slice_index: int | None = None,
+        query_limits: QueryLimits | None = None,
     ) -> QueryResultPayload:
         self._ensure_open()
         try:
@@ -226,6 +231,7 @@ class SnapshotAnalyzer:
                 exact_total=exact_total,
                 timeout_s=timeout_s,
                 slice_index=slice_index,
+                query_limits=query_limits,
             )
         except FocusNotConfiguredError as exc:
             raise RuntimeError("No database configured. Call set_focus() first.") from exc

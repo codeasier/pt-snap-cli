@@ -31,6 +31,48 @@ and `device_id` is its default explicit query-device override. When `db_path` is
 omitted, the database uses the same resolution order as the CLI:
 `PT_SNAP_DB_PATH`, the nearest `.pt-snap/focus.json`, then legacy global config.
 
+## Dataset query limits
+
+Import the frozen `QueryLimits` configuration alongside `SnapshotAnalyzer` (or
+from `pt_snap_cli.core` for direct services). It contains only three immutable
+limits, never shared mutable counters:
+
+```python
+from pt_snap_cli.api import QueryLimits, SnapshotAnalyzer
+
+limits = QueryLimits.resolve(max_work_rows=300_000, max_work_bytes=128 * 1024**2)
+with SnapshotAnalyzer(Path("/path/to/dataset"), query_limits=limits) as analyzer:
+    result = analyzer.execute_query("event", {"offset":100_000, "limit":5})
+    print(result["scope"]["work_budget"])
+    # One-call override; subsequent calls still use the constructor's limits.
+    other = analyzer.execute_query("event", query_limits=QueryLimits(max_work_rows=400_000))
+```
+
+`QueryLimits()` always uses built-in defaults: `max_work_rows=100000`,
+`max_work_bytes=67108864`, `max_scratch_db_bytes=536870912`.
+`QueryLimits.resolve(...)` resolves each omitted field from its corresponding
+`PT_SNAP_MAX_WORK_ROWS`, `PT_SNAP_MAX_WORK_BYTES`, or `PT_SNAP_MAX_SCRATCH_DB_BYTES`
+environment value, then the default. Explicit fields ignore even invalid matching
+environment values. Work limits must be positive integers (not booleans/floats);
+scratch accepts integer zero to disable or 4096 through 4294967296 bytes. No
+unlimited work setting exists. Invalid values raise core `InvalidParameterError`.
+
+For each operation, a `query_limits` argument replaces the entire constructor
+configuration; constructor configuration replaces environment/default resolution.
+When neither is supplied, the environment is read afresh for each operation.
+Use `QueryLimits.resolve(...)` if a partial override should retain other environment
+settings. `get_template_info(..., query_limits=...)` can inspect a one-call override;
+`list_capabilities()` reflects the analyzer's normal effective defaults.
+
+`QueryService` and `ReportService` likewise accept constructor `query_limits`.
+`execute_query`, `peak_memory_report`, `event_attribution`, and `memory_tree_report`
+accept per-call `query_limits`. Peak-report steps share one cumulative counter and
+deadline; independent operations start fresh counters. Passing mutable internal
+`QueryBudget` objects is not the public configuration API. These limits only bound
+dataset work, not standalone query materialization, RSS, or all SQLite temporary
+space. See [configuration and failure semantics](querying.md#public-dataset-limits),
+including deep-pagination costs and the unchanged default caps.
+
 ## Connection Lifetime and Cache Ownership
 
 An analyzer reuses read-only SQLite connections for queries and overviews. Use

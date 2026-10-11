@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from pt_snap_cli.core import dataset_lifecycle_scratch as scratch
+from pt_snap_cli.core import dataset_lifecycle_sql
 from pt_snap_cli.core.dataset_resolver import DatasetResolver
 from pt_snap_cli.core.dataset_sources import QueryBudget
 from pt_snap_cli.core.errors import QueryExecutionError, QueryTimeoutError
@@ -202,7 +203,8 @@ def test_scratch_source_writes_rejected_while_main_is_writable(tmp_path, monkeyp
     "variant", ["earlier_free", "null_invariant", "wrong_action", "same_slice_tie"]
 )
 @pytest.mark.parametrize("template", ["block", "leak_detection", "freed_block_lifetime"])
-def test_scratch_semantics_match_attached_path(tmp_path, monkeypatch, variant, template):
+@pytest.mark.parametrize("routing", ["attachment_limit", "observation_count"])
+def test_scratch_semantics_match_attached_path(tmp_path, monkeypatch, variant, template, routing):
     from tests.core.test_dataset_attribution import case
     from tests.core.test_dataset_sql_pushdown import last_observation
 
@@ -228,7 +230,10 @@ def test_scratch_semantics_match_attached_path(tmp_path, monkeypatch, variant, t
             )
     params = {"offset": 1, "limit": 3} if template == "block" else {}
     expected = run_resolved(resolved, template, params)
-    limited_connections(monkeypatch, 1)
+    if routing == "attachment_limit":
+        limited_connections(monkeypatch, 1)
+    else:
+        monkeypatch.setattr(dataset_lifecycle_sql, "_ATTACHED_OBSERVATION_LIMIT", 0)
     actual = run_resolved(resolved, template, params)
     assert actual.rows == expected.rows
     assert (actual.total, actual.has_more) == (expected.total, expected.has_more)
@@ -236,7 +241,11 @@ def test_scratch_semantics_match_attached_path(tmp_path, monkeypatch, variant, t
 
 @pytest.mark.parametrize("variant", ["invariant", "null", "free"])
 @pytest.mark.parametrize("params", [{"id": 7}, {"limit": 0}, {"offset": 100}])
-def test_scratch_conflicts_outside_page_still_fail(tmp_path, monkeypatch, variant, params):
+@pytest.mark.parametrize("routing", ["attachment_limit", "observation_count"])
+@pytest.mark.parametrize("exact_total", [False, True])
+def test_scratch_conflicts_outside_page_still_fail(
+    tmp_path, monkeypatch, variant, params, routing, exact_total
+):
     from tests.core.test_dataset_attribution import case
     from tests.core.test_dataset_sql_pushdown import last_observation
 
@@ -255,10 +264,13 @@ def test_scratch_conflicts_outside_page_still_fail(tmp_path, monkeypatch, varian
             with contextlib.closing(sqlite3.connect(path)) as conn, conn:
                 conn.execute("UPDATE trace_entry_0 SET action=6 WHERE id=4")
     with pytest.raises(QueryExecutionError, match="Conflicting"):
-        run_resolved(resolved, "block", params)
-    limited_connections(monkeypatch, 1)
+        run_resolved(resolved, "block", params, exact_total=exact_total)
+    if routing == "attachment_limit":
+        limited_connections(monkeypatch, 1)
+    else:
+        monkeypatch.setattr(dataset_lifecycle_sql, "_ATTACHED_OBSERVATION_LIMIT", 0)
     with pytest.raises(QueryExecutionError, match="Conflicting"):
-        run_resolved(resolved, "block", params)
+        run_resolved(resolved, "block", params, exact_total=exact_total)
 
 
 @pytest.mark.parametrize("stage", ["open", "detach"])

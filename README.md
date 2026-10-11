@@ -118,6 +118,12 @@ text-only databases require re-importing the original snapshot.
 `report memory-tree` also accepts `--json`. The HTML view has full-tree search and
 keyboard-accessible child lists, so tiny and zero-byte frames remain reachable.
 
+Dataset work limits are configurable with `--max-work-rows`, `--max-work-bytes`,
+`--max-scratch-db-bytes`, environment variables, or immutable Python `QueryLimits`.
+Defaults remain 100000 work rows / 64 MiB work bytes / 512 MiB scratch pages; see
+[public dataset limits](docs/en/querying.md#public-dataset-limits) for precedence,
+deep-pagination costs and all-or-error semantics.
+
 ## Agent Skills
 
 For long diagnostic stacks, opt into `stack_bytes` on `event` or
