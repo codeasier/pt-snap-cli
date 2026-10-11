@@ -230,8 +230,21 @@ restricted real interval, dataset fingerprint and boundary exclusion. Totals and
 pagination apply to this scope, **not** to an implicitly truncated full dataset.
 Caller parameter defaults in CLI `effective_params` are additionally constrained
 by `scope`. Point-event `active_blocks_at_event` and
-`active_memory_callstack_at_event` now resolve alloc/free/full stack sources in
-bounded batches before grouping/ranking, including original no-extension artifacts.
+`active_memory_callstack_at_event` prove alloc/free/full-stack coverage before
+pagination/ranking, including future completed-free owners and original no-extension
+artifacts. Text-only v1/v2 queries use read-only SQL reduction when the required
+owners fit SQLite's ATTACH limit: coverage and full-text groups stay in SQL, and
+only returned block details are hydrated. Global top_n percentages still use all
+included groups before max_rows. Ordered-frame inputs or larger owner sets retain
+the budgeted source-batch fallback. SQL scans/sorts share the timeout; reduced
+rows, hydrated sources and output still consume the work budget. A finite page
+can therefore succeed where unbounded output exceeds the same budget.
+
+The opt-in synthetic gate `PYTHONPATH=src python benchmarks/active_at_event_capacity.py`
+(and `--layout v2`) checks 1.5 million events / three 500000-event shards / 200000
+active blocks, page20 and top20, exact totals, standalone differential results,
+read-only hashes and rejection of unbounded block output. It creates and removes
+private temporary data; it is not producer/GUI or general RSS/performance evidence.
 See [point-event attribution](querying.md#dataset-point-event-attribution) for
 lifecycle identity, separate source/frame coverage, and the optional versioned
 ordered-frame reader interface. Dataset-global built-ins use the explicit P3 matrix
@@ -293,6 +306,22 @@ validation reads) is:
 | Compatibility-v1 cold | 2B + 2M; one full validator | B + 2M; one full validator |
 | Native-v2 cold | 2B + 2M; one full validator | 2B + 2M; one full validator |
 | Unchanged in-process warm | B + M; no full validator | No hash reads or full validator |
+
+For an unchanged default-mode dataset, `peak_memory_report` inspects once, then
+checks the complete manifest and **all devices' members** after each composed
+query. A normal peak plus attribution therefore hashes **4(B + M) cold** or
+**3(B + M) warm**; a no-peak early return has one guard and hashes **3(B + M) cold**
+or **2(B + M) warm**. Cold reports run one full validator; warm reports run none.
+These are logical hash-read bytes, not physical disk I/O: OS page caching can
+reduce disk reads. They also exclude SQLite/query reads and header preflights.
+The phase/byte regressions in `tests/core/test_report_content_integrity.py` use a
+real sparse native empty range; the compatibility no-peak case injects only that
+result branch after a real query, since finalized v1 requires contiguous IDs and
+non-NULL counters. Both real guards remain covered, including hidden-token
+changes to another device and changes that attribution could otherwise restore.
+This records the existing integrity cost, not a speedup or resolution of
+[issue #238](https://github.com/codeasier/pt-snap-cli/issues/238). Reducing passes
+requires a separately established stable-read boundary or explicit contract change.
 
 Both modes revalidate after manifest/member replacement and evict failed or
 cancelled admissions; a new process starts cold. If a filesystem hides **all**
