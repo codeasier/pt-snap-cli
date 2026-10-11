@@ -199,9 +199,49 @@ python -m tests.skills baseline \
 
 Diagnostic fixtures remain declarative SQLite databases. The import scenario
 records `pt_snap.import` semantically and never materializes a pickle.
-The release-gating clean-wheel check separately installs the built wheel into a
-fresh venv, installs `pt-snap-helper` from package data, and completes import,
-capability, overview, and peak-query discovery using JSON output.
+The release-gating clean-wheel check separately audits and installs the built
+wheel into a temporary venv, installs `pt-snap-helper` from package data, and
+completes import, capability, overview, and peak-query discovery using genuine
+CLI JSON output. By default the venv shares existing system dependencies; this
+is not a fresh dependency-resolution test.
+
+For offline sharded CLI/skill acceptance (issue #253):
+
+```bash
+python .github/scripts/clean_wheel_agent_acceptance.py \
+  --wheel dist/<built-wheel>.whl \
+  --fixture tests/fixtures/snapshots/snapshot_with_empty_cache.pkl \
+  --events-per-slice 4096
+```
+
+The script verifies fixture provenance before deserialization. The capacity must
+produce at least two slices on the selected device. This invocation also installs
+the bundled peak diagnostic, checks its and the helper's complete-dataset
+instructions, and executes native-v2 and compatibility-v1 import/reuse. It checks
+both dataset directory and `manifest.json` discovery, full-device peaks against
+the standalone CLI, opposite-shard point events and boundary-crossing event
+ranges, source completeness, stable fingerprints, and unchanged project focus.
+The approved import harness owns pickle handling; diagnostic skills still must
+not import or persist focus. Filesystem installation is not proof a host loaded
+the skill or an agent followed it.
+
+Add `--wheelhouse <local-dependency-wheels>` to install all dependencies with
+`--no-index` into a venv without system packages. This mode verifies dependency
+module paths inside the venv. Both modes isolate HOME/CWD, clear source and
+resource-limit overrides, and disable user site packages. A missing offline
+dependency fails rather than falling back to network installation.
+
+This is deterministic offline CLI and installed-skill acceptance, not live-agent
+evaluation. `baseline` remains scoring of stored records. A real model runner,
+its transcripts and decision quality remain incomplete and require separate
+approval; this check does not connect a user's agent session or model provider.
+
+中文：上述命令为离线 CLI 与已安装 skills 验收；`--events-per-slice 4096`
+覆盖 native-v2 / compatibility-v1 的真实多分片导入、缓存复用、目录和 manifest
+发现、跨分片查询及单库结果对照。运行前会验证已审核 fixture 的来源清单。
+默认复用系统依赖；加 `--wheelhouse` 可完全离线安装依赖且不共享系统包。
+安装到磁盘不等于宿主已加载或真实 agent 已遵循技能。`baseline` 仍只评分历史记录，
+真实模型执行、执行记录和决策质量仍未完成，需另行批准；不连接真实用户会话或模型服务。
 
 Generated transcripts and reports belong under `.skill-evals/`, which is
 ignored by Git. Normal `pytest` runs never invoke a live model.

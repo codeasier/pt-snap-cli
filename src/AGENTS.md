@@ -33,7 +33,10 @@ Source-path selection alone does not change installed version metadata.
   package resolution inside a temporary venv, bundled skill discovery and
   installation, then trusted import/reuse, overview and query. Its venv shares
   system dependencies but installs the supplied wheel with `--no-deps --no-index`;
-  this is not a fresh dependency-resolution test. See [automation](../.github/AGENTS.md).
+  this default is not a fresh dependency-resolution test. `--wheelhouse` instead
+  installs dependencies offline without system packages; `--events-per-slice`
+  adds both complete-dataset formats, installed diagnostic skill guidance and
+  cross-shard public CLI parity. See [automation](../.github/AGENTS.md).
 
 Use `pytest tests/test_package.py tests/test_bundled_skills.py` for package
 contracts. A source checkout alone cannot prove that a newly added asset ships.

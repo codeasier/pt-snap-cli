@@ -171,7 +171,8 @@ jobs:
           WHEEL=$(python -c 'from pathlib import Path; wheels = sorted(Path("dist").glob("*.whl")); assert len(wheels) == 1, wheels; print(wheels[0])')
           python .github/scripts/clean_wheel_agent_acceptance.py \
             --wheel "$WHEEL" \
-            --fixture tests/fixtures/snapshots/snapshot_with_empty_cache.pkl
+            --fixture tests/fixtures/snapshots/snapshot_with_empty_cache.pkl \
+            --events-per-slice 4096
 
   dataset-acceptance:
     name: Installed-wheel dataset acceptance

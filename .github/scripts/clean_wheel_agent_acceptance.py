@@ -1,3 +1,5 @@
+"""Offline installed-CLI/skill acceptance, never a live agent/model evaluation."""
+
 from __future__ import annotations
 
 import argparse
@@ -74,6 +76,9 @@ def _run_json(
         raise AcceptanceError(f"{label} did not return complete JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise AcceptanceError(f"{label} returned a non-object JSON value")
+    # Skill/catalog payloads predate the common ok envelope. If one is present,
+    # never accept a structured failure just because the process exited zero.
+    _require("ok" not in payload or payload["ok"] is True, f"{label} did not report JSON success")
     return payload
 
 
@@ -109,13 +114,21 @@ def _venv_paths(venv_dir: Path) -> tuple[Path, Path]:
 
 
 def _isolated_environment(home: Path, cwd: Path, venv_dir: Path, bin_dir: Path) -> dict[str, str]:
-    env = os.environ.copy()
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "PT_SNAP_", "PIP_"))
+    }
     for name in CLEARED_ENV:
         env.pop(name, None)
     env.pop("PYTHONHOME", None)
     env["HOME"] = str(home)
     env["USERPROFILE"] = str(home)
     env["XDG_CONFIG_HOME"] = str(home / ".config")
+    env["XDG_CACHE_HOME"] = str(home / ".cache")
+    env["PYTHONNOUSERSITE"] = "1"
+    env["PIP_CONFIG_FILE"] = os.devnull
+    env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
     env["VIRTUAL_ENV"] = str(venv_dir)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
     env["PWD"] = str(cwd)
@@ -124,7 +137,258 @@ def _isolated_environment(home: Path, cwd: Path, venv_dir: Path, bin_dir: Path) 
     return env
 
 
-def _run_acceptance(wheel: Path, fixture: Path) -> None:
+def _check_dataset_skill(text: str, name: str) -> None:
+    """Check the installed instructions, not an authored checkout substitute."""
+    for required in (
+        "pt-snap-native-v2 dataset directory or `manifest.json`",
+        "overview.dataset.status",
+        "manifest_path",
+        "fingerprint",
+        "dataset_support.supported",
+        "scope.source_coverage.range_complete",
+        "scope.range_complete",
+        "has_more",
+        "truncated",
+        "pt-snap capabilities --json",
+    ):
+        _require(required in text, f"Installed {name} omits dataset guidance: {required}")
+
+
+def _dataset_overview(
+    overview: dict[str, Any], target: Path, dataset: Path, expected_format: str
+) -> dict[str, Any]:
+    _require(
+        _path_value(overview, "db_path", "dataset overview") == target, "Wrong overview target"
+    )
+    _require(
+        overview.get("focus_source") == "explicit", "Dataset discovery did not use explicit target"
+    )
+    metadata = overview.get("import_metadata", {})
+    _require(metadata.get("status") == "available", "Dataset import provenance is not available")
+    details = overview.get("dataset", {})
+    _require(details.get("status") == "complete", "Dataset is not complete")
+    _require(details.get("format") == expected_format, "Wrong dataset format")
+    _require(
+        _path_value(details, "manifest_path", "dataset overview") == dataset / "manifest.json",
+        "Wrong dataset manifest",
+    )
+    fingerprint = details.get("fingerprint")
+    _require(isinstance(fingerprint, str) and bool(fingerprint), "Dataset has no fingerprint")
+    _require(details.get("cross_slice_queries") is True, "Cross-slice queries are unavailable")
+    return details
+
+
+def _dataset_query(
+    query: dict[str, Any], target: Path, dataset: Path, fingerprint: str, device: int
+) -> dict[str, Any]:
+    _require(_path_value(query, "db_path", "dataset query") == target, "Wrong query target")
+    _require(query.get("focus_source") == "explicit", "Dataset query did not use explicit target")
+    _require(query.get("device_id") == device, "Dataset query changed device")
+    rows = query.get("rows")
+    _require(isinstance(rows, list) and query.get("returned") == len(rows), "Invalid query rows")
+    _require(
+        query.get("has_more") is False and query.get("truncated") is False, "Incomplete query rows"
+    )
+    scope = query.get("scope", {})
+    _require(_path_value(scope, "dataset_path", "query scope") == dataset, "Wrong query dataset")
+    _require(scope.get("fingerprint") == fingerprint, "Query changed dataset generation")
+    _require(scope.get("range_complete") is True, "Incomplete query source range")
+    _require(scope.get("boundary_events_included") is False, "Query included synthetic boundaries")
+    return scope
+
+
+def _sharded_acceptance(
+    pt_snap: Path,
+    fixture: Path,
+    output_dir: Path,
+    events_per_slice: int,
+    standalone: Path,
+    standalone_overview: dict[str, Any],
+    standalone_peak: dict[str, Any],
+    focus_file: Path,
+    *,
+    cwd: Path,
+    env: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Execute both complete-dataset forms through the installed public CLI."""
+
+    def cli(label: str, *args: object) -> dict[str, Any]:
+        return _run_json([str(pt_snap), *map(str, args), "--json"], cwd=cwd, env=env, label=label)
+
+    device = standalone_peak["device_id"]
+    focus_before = focus_file.read_bytes()
+    evidence = []
+    for format_name in ("pt-snap-native-v2", "compatibility-v1"):
+        import_args = (
+            "import",
+            fixture,
+            "--output-dir",
+            output_dir / format_name,
+            "--events-per-slice",
+            events_per_slice,
+            "--format",
+            format_name,
+            "--no-focus",
+        )
+        imported = cli(f"{format_name} import", *import_args)
+        dataset = _path_value(imported, "dataset_path", "sharded import")
+        _require(
+            dataset.is_dir() and dataset.is_relative_to(output_dir),
+            "Dataset was not published inside the isolated output",
+        )
+        _require(
+            _path_value(imported, "db_path", "sharded import") == dataset,
+            "Import target is not the dataset",
+        )
+        _require(imported.get("format") == format_name, "Import returned the wrong format")
+        _require(
+            imported.get("rebuilt") is True and imported.get("reused") is False,
+            "Initial dataset import was not built",
+        )
+        _require(imported.get("focus_state") is None, "No-focus import returned persisted focus")
+        reused = cli(f"{format_name} reuse", *import_args)
+        _require(reused.get("reused") is True, "Dataset import did not reuse its cache")
+        _require(
+            _path_value(reused, "dataset_path", "sharded reuse") == dataset,
+            "Reused dataset changed target",
+        )
+        _require(reused.get("focus_state") is None, "No-focus reuse returned persisted focus")
+
+        fingerprint = None
+        selected = None
+        for target in (dataset, dataset / "manifest.json"):
+            overview = cli(f"{format_name} overview {target.name}", "overview", target)
+            details = _dataset_overview(overview, target, dataset, format_name)
+            _require(
+                overview["devices"] == standalone_overview["devices"],
+                "Dataset discovery changed real device bounds",
+            )
+            selected = next(
+                (d for d in details.get("devices", []) if d.get("device_id") == device), None
+            )
+            _require(selected is not None, "Dataset discovery lost the selected device")
+            slices = selected.get("slices", [])
+            _require(
+                len(slices) >= 2,
+                "Sharded acceptance needs at least two slices on the selected device; lower --events-per-slice",
+            )
+            _require(
+                all(Path(s["db_path"]).is_file() for s in slices), "Discovered shard is absent"
+            )
+            _require(
+                imported.get("slice_count") == sum(len(d["slices"]) for d in details["devices"]),
+                "Import/discovery slice counts disagree",
+            )
+            _require(
+                fingerprint in (None, details["fingerprint"]),
+                "Directory and manifest identify different generations",
+            )
+            fingerprint = details["fingerprint"]
+            peak = cli(
+                f"{format_name} peak {target.name}",
+                "query",
+                target,
+                "--device",
+                device,
+                "--template-use",
+                "memory_peak",
+            )
+            scope = _dataset_query(peak, target, dataset, fingerprint, device)
+            _require(peak.get("template") == "memory_peak", "Wrong peak template")
+            _require(
+                peak["rows"] == standalone_peak["rows"],
+                "Dataset peaks differ from standalone CLI results",
+            )
+            _require(
+                scope.get("slice_indices") == [s["index"] for s in slices],
+                "Peak query did not span every shard",
+            )
+            _require(
+                scope.get("actual_range", {}).get("real_event_count") == selected["event_count"],
+                "Peak query omitted real events",
+            )
+
+        # Inspect actual events at opposite ends, then a range crossing a shard
+        # boundary. Never count synthetic boundary rows as real capture events.
+        assert selected is not None and fingerprint is not None
+        slices = selected["slices"]
+        for owner in (slices[0], slices[-1]):
+            event_id = owner["first_event_id"]
+            point = cli(
+                f"{format_name} point {owner['index']}",
+                "query",
+                dataset,
+                "--device",
+                device,
+                "--template-use",
+                "event",
+                "--params",
+                json.dumps({"id": event_id}),
+            )
+            scope = _dataset_query(point, dataset, dataset, fingerprint, device)
+            _require(
+                scope.get("slice_indices") == [owner["index"]],
+                "Point query used the wrong owning shard",
+            )
+            _require(
+                scope.get("source_coverage", {}).get("range_complete") is True,
+                "Point query source coverage is incomplete",
+            )
+            _require(
+                [row.get("id") for row in point["rows"]] == [event_id],
+                "Point query returned the wrong real event",
+            )
+
+        params = json.dumps(
+            {"min_id": slices[0]["last_event_id"], "max_id": slices[1]["first_event_id"]}
+        )
+        arguments = (
+            "--device",
+            device,
+            "--template-use",
+            "event",
+            "--params",
+            params,
+            "--exact-total",
+        )
+        crossing = cli(f"{format_name} cross-shard events", "query", dataset, *arguments)
+        reference = cli(f"{format_name} standalone events", "query", standalone, *arguments)
+        scope = _dataset_query(crossing, dataset, dataset, fingerprint, device)
+        _require(
+            scope.get("slice_indices") == [slices[0]["index"], slices[1]["index"]],
+            "Event range did not cross shards",
+        )
+        _require(
+            crossing["rows"] == reference["rows"] and len(crossing["rows"]) == 2,
+            "Cross-shard real events differ from standalone",
+        )
+        _require(
+            crossing.get("total_is_exact") is True and crossing.get("total") == 2,
+            "Cross-shard exact total is invalid",
+        )
+        _require(
+            focus_file.read_bytes() == focus_before,
+            "Dataset discovery/query/import changed project focus",
+        )
+        evidence.append(
+            {
+                "format": format_name,
+                "slice_count": imported["slice_count"],
+                "real_event_count": selected["event_count"],
+                "device_id": device,
+                "addressing": ["directory", "manifest.json"],
+                "reused": True,
+                "standalone_peak_parity": True,
+                "cross_shard_event_parity": True,
+                "focus_unchanged": True,
+            }
+        )
+    return evidence
+
+
+def _run_acceptance(
+    wheel: Path, fixture: Path, events_per_slice: int | None = None, wheelhouse: Path | None = None
+) -> dict[str, Any]:
     repo_root = Path(__file__).resolve().parents[2]
     expected_fixture = repo_root / "tests/fixtures/snapshots/snapshot_with_empty_cache.pkl"
     wheel = wheel.resolve()
@@ -134,6 +398,13 @@ def _run_acceptance(wheel: Path, fixture: Path) -> None:
     _require(wheel.suffix == ".whl", f"Expected a wheel path: {wheel}")
     _require(fixture == expected_fixture, f"Unexpected snapshot fixture: {fixture}")
     _require(fixture.is_file(), f"Snapshot fixture does not exist: {fixture}")
+    _require(
+        events_per_slice is None or type(events_per_slice) is int and events_per_slice > 0,
+        "--events-per-slice must be positive",
+    )
+    if wheelhouse is not None:
+        wheelhouse = wheelhouse.resolve()
+        _require(wheelhouse.is_dir(), f"Wheelhouse does not exist: {wheelhouse}")
 
     with tempfile.TemporaryDirectory(prefix="pt-snap-agent-wheel-") as temporary:
         root = Path(temporary).resolve()
@@ -144,10 +415,41 @@ def _run_acceptance(wheel: Path, fixture: Path) -> None:
         home.mkdir()
         cwd.mkdir()
         output_dir.mkdir()
-        venv.EnvBuilder(with_pip=True, system_site_packages=True, clear=True).create(venv_dir)
         venv_python, pt_snap = _venv_paths(venv_dir)
-        _require(venv_python.is_file(), f"Venv Python was not created: {venv_python}")
         env = _isolated_environment(home, cwd, venv_dir, pt_snap.parent)
+        _run(
+            [
+                sys.executable,
+                str(repo_root / ".github/scripts/audit_wheel.py"),
+                "--wheel",
+                str(wheel),
+            ],
+            cwd=cwd,
+            env=env,
+            label="wheel/source audit",
+        )
+        _run(
+            [
+                sys.executable,
+                "-c",
+                "import runpy, sys; from pathlib import Path; "
+                "root = Path(sys.argv[1]).parent / 'fixtures/snapshots'; "
+                "runpy.run_path(sys.argv[1])['verify_snapshot_fixtures'](root, root / 'SHA256SUMS')",
+                str(repo_root / "tests/_fixture_provenance.py"),
+            ],
+            cwd=cwd,
+            env=env,
+            label="fixture provenance gate",
+        )
+        with fixture.open("rb") as stream:
+            _require(
+                not stream.read(128).startswith(b"version https://git-lfs.github.com/spec/"),
+                "Snapshot fixture is an unhydrated LFS pointer",
+            )
+        venv.EnvBuilder(with_pip=True, system_site_packages=wheelhouse is None, clear=True).create(
+            venv_dir
+        )
+        _require(venv_python.is_file(), f"Venv Python was not created: {venv_python}")
 
         _run(
             [
@@ -155,7 +457,7 @@ def _run_acceptance(wheel: Path, fixture: Path) -> None:
                 "-m",
                 "pip",
                 "install",
-                "--no-deps",
+                *(["--no-deps"] if wheelhouse is None else ["--find-links", str(wheelhouse)]),
                 "--no-index",
                 "--force-reinstall",
                 str(wheel),
@@ -182,6 +484,31 @@ def _run_acceptance(wheel: Path, fixture: Path) -> None:
             _is_inside(module_path, venv_dir),
             f"pt_snap_cli resolved outside the venv: {module_path}",
         )
+        if wheelhouse is not None:
+            identity = _run_json(
+                [
+                    str(venv_python),
+                    "-I",
+                    "-c",
+                    "import json, site, sys, typer, yaml, jinja2; "
+                    "print(json.dumps({'prefix': sys.prefix, 'user_site': site.ENABLE_USER_SITE, "
+                    "'modules': {m.__name__: m.__file__ for m in (typer, yaml, jinja2)}}))",
+                ],
+                cwd=cwd,
+                env=env,
+                label="offline dependency identity",
+            )
+            _require(
+                Path(identity["prefix"]).resolve() == venv_dir, "Wrong installed runtime prefix"
+            )
+            _require(identity["user_site"] is False, "User site packages were enabled")
+            _require(
+                all(
+                    _is_inside(Path(path).resolve(), venv_dir)
+                    for path in identity["modules"].values()
+                ),
+                "Offline dependencies resolved outside the venv",
+            )
         bundled_root = module_path.parent / "bundled_skills"
         bundled_helper = bundled_root / "pt-snap-helper" / "SKILL.md"
         _require(bundled_helper.is_file(), f"Bundled helper is missing: {bundled_helper}")
@@ -298,6 +625,10 @@ def _run_acceptance(wheel: Path, fixture: Path) -> None:
         )
         installed_text = (installed_path / "SKILL.md").read_text(encoding="utf-8")
         _require(
+            installed_text == bundled_helper.read_text(encoding="utf-8"),
+            "Installed helper differs from wheel source",
+        )
+        _require(
             "name: pt-snap-helper" in installed_text, "Installed helper content is not readable"
         )
         for command in (
@@ -306,6 +637,47 @@ def _run_acceptance(wheel: Path, fixture: Path) -> None:
             "pt-snap query --template-use <name> --json",
         ):
             _require(command in installed_text, f"Installed helper omits {command}")
+
+        if events_per_slice is not None:
+            _check_dataset_skill(installed_text, "pt-snap-helper")
+            diagnostic = "pt-snap-memory-peak-breakdown"
+            installed_diagnostic = _run_json(
+                [str(pt_snap), "skill", "install", diagnostic, "--target", "agents", "--json"],
+                cwd=cwd,
+                env=env,
+                label="diagnostic skill install",
+            )
+            diagnostic_result = installed_diagnostic.get("results", [])
+            _require(len(diagnostic_result) == 1, "Invalid diagnostic skill installation")
+            diagnostic_path = _path_value(diagnostic_result[0], "path", "diagnostic skill install")
+            _require(
+                diagnostic_result[0].get("action") == "installed",
+                "Diagnostic skill was not installed",
+            )
+            _require(
+                diagnostic_path == home / ".agents/skills" / diagnostic,
+                "Diagnostic skill escaped isolated HOME",
+            )
+            diagnostic_text = (diagnostic_path / "SKILL.md").read_text(encoding="utf-8")
+            _require(
+                diagnostic_text
+                == (bundled_root / diagnostic / "SKILL.md").read_text(encoding="utf-8"),
+                "Installed diagnostic differs from wheel source",
+            )
+            _check_dataset_skill(diagnostic_text, diagnostic)
+            for command in (
+                'pt-snap overview "<DB>" --json',
+                "--template-use memory_peak",
+                "pt-snap report peak-memory --help",
+            ):
+                _require(command in diagnostic_text, f"Installed diagnostic omits {command}")
+            _run(
+                [str(pt_snap), "report", "peak-memory", "--help"],
+                cwd=cwd,
+                env=env,
+                label="diagnostic report help",
+                clean_stderr=True,
+            )
 
         capabilities = _run_json(
             [str(pt_snap), "capabilities", "--json"],
@@ -317,6 +689,23 @@ def _run_acceptance(wheel: Path, fixture: Path) -> None:
             item.get("name") for item in capabilities.get("templates", []) if isinstance(item, dict)
         }
         _require("memory_peak" in template_names, "Capabilities did not include memory_peak")
+        if events_per_slice is not None:
+            for name in ("event", "memory_peak"):
+                template = next((t for t in capabilities["templates"] if t.get("name") == name), {})
+                _require(
+                    template.get("dataset_support", {}).get("supported") is True,
+                    f"Catalog does not support dataset {name}",
+                )
+            diagnostic_entry = _skill_entry(capabilities, diagnostic, "capabilities")
+            _require(
+                diagnostic_entry.get("status") == "installed",
+                "Capabilities did not see the installed diagnostic",
+            )
+            _require(
+                _path_value(diagnostic_entry, "source_dir", "capabilities")
+                == bundled_root / diagnostic,
+                "Diagnostic catalog source escaped wheel",
+            )
         capability_helper = _skill_entry(capabilities, "pt-snap-helper", "capabilities")
         _require(
             capability_helper.get("status") == "installed",
@@ -435,22 +824,72 @@ def _run_acceptance(wheel: Path, fixture: Path) -> None:
             "Memory peak query returned rows without peak values",
         )
 
+        sharded = []
+        if events_per_slice is not None:
+            sharded = _sharded_acceptance(
+                pt_snap,
+                fixture,
+                output_dir,
+                events_per_slice,
+                database,
+                overview,
+                query,
+                focus_file,
+                cwd=cwd,
+                env=env,
+            )
+        return {
+            "acceptance_kind": "offline-installed-cli-and-skills",
+            "live_agent_execution": "not-run; requires separate approval",
+            "stored_baseline_scoring": "not-run; separate recorded-run grading only",
+            "wheel_source_audit": "passed",
+            "fixture_provenance": "passed",
+            "dependency_mode": (
+                "isolated-offline-wheelhouse" if wheelhouse else "system-site-packages"
+            ),
+            "installed_package_in_venv": True,
+            "standalone_import_reuse_discovery_query": "passed",
+            "events_per_slice": events_per_slice,
+            "datasets": sharded,
+        }
 
-def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
+
+def _positive_int(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive integer") from exc
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return number
+
+
+def _parse_args(arguments: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--wheel", required=True, type=Path)
     parser.add_argument("--fixture", required=True, type=Path)
-    return parser.parse_args()
+    parser.add_argument(
+        "--events-per-slice",
+        type=_positive_int,
+        help="Also test both sharded formats; use a capacity producing at least two slices (reviewed fixture: 4096)",
+    )
+    parser.add_argument(
+        "--wheelhouse",
+        type=Path,
+        help="Install dependencies offline from this directory in a venv without system packages; default reuses system dependencies",
+    )
+    return parser.parse_args(arguments)
 
 
 def main() -> int:
     args = _parse_args()
     try:
-        _run_acceptance(args.wheel, args.fixture)
+        evidence = _run_acceptance(args.wheel, args.fixture, args.events_per_slice, args.wheelhouse)
     except AcceptanceError as exc:
         print(f"clean-wheel Agent acceptance failed: {exc}", file=sys.stderr)
         return 1
-    print("clean-wheel Agent acceptance passed")
+    print(json.dumps(evidence, indent=2))
+    print("clean-wheel offline CLI/skills acceptance passed (live agent not run)")
     return 0
 
 
