@@ -498,6 +498,12 @@ Those queries and global aggregation follow the P3 query matrix. Text cannot rec
 original ordered frame arrays; original workspace raw-frame loss and string-action
 OOM coercion are known upstream limitations, not compatible features to imitate.
 
+Before converting any shard, the exporter checks every selected device's real IDs
+and all actions. ID continuity uses each shard's SQL `COUNT/MIN/MAX` and a per-device
+next expected ID, after verifying a unique integer primary key; negative boundary
+rows are excluded. It does not collect the device's event IDs in Python. This bounds
+additional ID-validation memory, not snapshot loading, replay, or total import RSS.
+
 `cacheHash = SHA256(b"mem_snapshot_parser_v2" + raw_pickle_bytes)`: the salt is
 **prepended**. Independent `ptSnap.identity` fields are `sourceSha256`,
 `requestedDevice`, `eventsPerSlice`, `outputFormat=compatibility-v1`,

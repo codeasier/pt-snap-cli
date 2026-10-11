@@ -397,6 +397,11 @@ native-v2 输出仍独立且不变。
 跨来源查询/全局聚合遵循 P3 查询矩阵。文本不能恢复原始有序 frame 数组；原版 workspace
 raw-frame 丢失与字符串 OOM action 强制转换属于已知局限，不应仿制为兼容能力。
 
+转换任何分片前，导出器先校验所有选中设备的真实 ID 和全部 action。确认 ID 为唯一整数
+主键后，用逐片 SQL `COUNT/MIN/MAX` 和每设备下一个预期 ID 校验连续性，排除负 ID
+边界行，不再在 Python 中收集整个设备的事件 ID。这只限制额外的 ID 校验内存，
+不代表快照加载、回放或完整导入的 RSS 有界。
+
 `cacheHash = SHA256(b"mem_snapshot_parser_v2" + 原始_pickle_字节)`，salt **前置**。
 独立 `ptSnap.identity` 字段为 `sourceSha256`、`requestedDevice`、`eventsPerSlice`、
 `outputFormat=compatibility-v1`、`manifestContractVersion=1`、`exportContractVersion=1`、
