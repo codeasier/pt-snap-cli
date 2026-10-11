@@ -102,7 +102,7 @@ across devices and there is no shared cross-device event order.
 | `preexisting_live` | Owner-event preexisting occupancy, not a leak count |
 | `block` | Merge proved allocation-event lifetimes and stable negative tokens once, then apply filters/order/page; latest containing-shard state is an observation, not state at arbitrary E |
 | `freed_block_lifetime` | Deduplicated captured allocations with a proved `free_completed` source; event-ID distance buckets, not time |
-| `leak_detection` | Captured dynamic lifetimes still present without completion in the **terminal dataset shard**, not union of per-shard unfreed lists; survival is only a candidate, not a confirmed leak; `--slice` is rejected |
+| `leak_detection` | Proved captured dynamic lifetimes observed as active/pending-free (`state IN (0,1)`) without completion in the **terminal dataset shard**, not union of per-shard unfreed lists; survival is only a candidate, not a confirmed leak; `--slice` is rejected |
 | `callstack_analysis` | All real stack-bearing trace actions, including free/segment/workspace, merged by full canonical source identity before global thresholds/ranking; weighted `avg_size=total_size/alloc_count` |
 | Runtime overrides/custom templates/arbitrary SQL | Explicitly unsupported on datasets, even when named after a built-in; pass an explicit standalone member to use local SQL |
 
@@ -145,6 +145,38 @@ flags. Result `has_more/truncated` describes the window, not source/range comple
 involved `slice_indices`, device, fingerprint and boundary exclusion. Source coverage
 is separate. Unproved historical lifecycle identities are shard-local, explicitly
 marked, never guessed by address/local stack ID and never asserted as proved leaks.
+
+### Leak candidates and lifecycle identity
+
+`leak_detection` retains an intentional scope difference at semantics version **1**:
+
+- **Standalone SQL** selects `allocEventId >= 0` with a NULL/negative `freeEventId`
+  (and the size filter). It does not filter stored `state` or verify the referenced
+  allocation action. An explicit dataset member is queried with this local contract.
+- **Dataset scope** requires a proved real allocation action from its owning shard,
+  a terminal-shard observation with `state=1` (`active_allocated`) or `state=0`
+  (`active_pending_free`), and a NULL/negative completion reference after merging
+  any proved completion. Inactive (`state=-1`) or earlier-only observations are
+  excluded even when `freeEventId=-1`. A free request is not a completed free;
+  absence of a completion does not override the state or allocation-proof checks.
+
+Thus an inactive block with a proved allocation and unknown free can appear in
+standalone results but not dataset results. This is a schema-valid synthetic
+counterexample, not evidence that real replay generates it or that replay is
+defective. ATTACH, private scratch reduction and bounded Python fallback implement
+the same dataset contract. Neither scope confirms a leak.
+
+Dataset `block` identity is separate from terminal survival. A proved allocation
+event merges its observations across shards; `allocEventId=-1` with a negative
+block ID uses a stable preexisting token, not allocation proof. Negative boundary
+events never provide allocation proof. Other unproved observations retain
+`unproved:slice:<index>:block:<id>` identities even if block ID, address and
+allocation reference collide across shards. They remain visible in `block`, with
+`identity_status=unproved_shard_local` and missing allocation source, but are
+excluded from dataset leak candidates. Merging them requires new cross-shard
+identity evidence; equal addresses or unproved references alone are insufficient.
+`source_coverage.unproved_identities` counts these shard-local identities before
+filters/pages, independently of `has_more`/`truncated`.
 
 Dataset reads detach batches before foreign-owner lookups, using the borrowed bounded
 Context LRU. One diminishing deadline includes all shards, sources, grouping and exact

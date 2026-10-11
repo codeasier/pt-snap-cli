@@ -92,7 +92,7 @@ pt-snap query '<db_path>' --device 0 --template-use event --params '{"id":123}' 
 | `preexisting_live` | 所有者事件的 preexisting 占用，不是泄漏数 |
 | `block` | 已证明的分配事件生命周期及稳定负 token 去重后筛选/排序/分页；最新出现片 state 是观察，不是任意 E 的状态 |
 | `freed_block_lifetime` | 已采集分配与已证明 `free_completed` 来源的去重生命周期；event-ID 距离桶，不是时间 |
-| `leak_detection` | **数据集终片**中仍存在且无完成释放的已采集动态生命周期，不拼接逐片未释放列表；存活仅为候选，不证明泄漏；拒绝 `--slice` |
+| `leak_detection` | **数据集终片**中观察为活跃/待释放（`state IN (0,1)`）且无完成释放、分配已证明的已采集动态生命周期，不拼接逐片未释放列表；存活仅为候选，不证明泄漏；拒绝 `--slice` |
 | `callstack_analysis` | 全部带栈真实 trace action（含 free/segment/workspace），完整 canonical 来源身份合并后再做全局阈值/排名；加权 `avg_size=total_size/alloc_count` |
 | runtime override/自定义模板/任意 SQL | 数据集明确不支持，即使命名为内建模板；需显式传单库 member 使用局部 SQL |
 
@@ -126,6 +126,33 @@ pt-snap report peak-memory '<dataset_dir>' --device 0 --metric reserved --start-
 exactness 标记诚实。`has_more/truncated` 描述窗口，不表示来源/范围完整性。`scope` 返回
 请求区间、适用时实际真实事件覆盖、涉及 `slice_indices`、设备、指纹及边界排除；来源覆盖
 独立。未证明历史身份按片局部单独表达，不按地址/局部栈 ID 猜合并，不断言为已证明泄漏。
+
+### 泄漏候选与生命周期身份
+
+`leak_detection` 在语义版本 **1** 中保留有意的作用域差异：
+
+- **单库 SQL** 选择 `allocEventId >= 0` 且 `freeEventId` 为 NULL/负数的行
+  （并应用大小筛选），不按存储的 `state` 筛选，也不验证引用的分配 action。
+  显式查询数据集成员文件时采用此局部合同。
+- **数据集作用域** 要求在所属片证明真实 allocation action，终片观察为
+  `state=1`（`active_allocated`）或 `state=0`（`active_pending_free`），且归并
+  已证明的完成释放后，完成释放引用仍为 NULL/负数。即使 `freeEventId=-1`，
+  inactive（`state=-1`）或仅较早分片出现的观察也排除。释放请求不等于完成释放；
+  缺少完成释放不能取代 state 或分配来源证明检查。
+
+因此，分配已证明、释放未知的 inactive block 可出现在单库结果中，却不出现在数据集
+结果中。这是符合 schema 的合成差分反例，不证明真实 replay 会生成此组合，也不证明
+replay 存在缺陷。ATTACH、私有 scratch 归约和受预算约束的 Python fallback 实现同一
+数据集合同。两种作用域都不确认泄漏。
+
+数据集 `block` 身份与终片存活相互独立。已证明的分配事件跨片归并其观察；
+`allocEventId=-1` 且 block ID 为负数时采用稳定的 preexisting token，但不构成分配证明。
+负边界事件从不提供分配证明。其他未证明观察保留
+`unproved:slice:<index>:block:<id>` 身份，即使跨片 block ID、地址和分配引用相同也不归并。
+这些观察仍可在 `block` 中看到，标记为 `identity_status=unproved_shard_local`、分配来源
+缺失，但不进入数据集泄漏候选。归并需要新的跨片身份证据；仅地址或未证明引用相同不足以
+支持归并。`source_coverage.unproved_identities` 在筛选/分页前统计这些按片身份，与
+`has_more`/`truncated` 独立。
 
 数据集读取先分离批次再查外片来源，使用借用的有界 Context LRU。所有片、来源、分组、
 精确总数共用递减 deadline；报告的峰值选择与归因明确共用**一个**预算。累计取回/输出工作默认上限为
