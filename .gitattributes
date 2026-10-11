@@ -1,2 +1,9 @@
 tests/fixtures/snapshots/snapshot_import_131k_sanitized.pickle filter=lfs diff=lfs merge=lfs -text
 tests/fixtures/snapshots/snapshot_import_628k_sanitized.pickle filter=lfs diff=lfs merge=lfs -text
+
+# Exact-hash interop fixture bytes must survive core.autocrlf checkouts.
+tests/fixtures/interop/generate_three_shard.py text eol=lf
+tests/fixtures/interop/three_shard_free_requested.json text eol=lf
+tests/fixtures/interop/checksums.json text eol=lf
+tests/fixtures/interop/three_shard_free_requested.pkl.msinsight/manifest.json text eol=lf
+tests/fixtures/interop/three_shard_free_requested.pkl.msinsight/device_0/*.db -text

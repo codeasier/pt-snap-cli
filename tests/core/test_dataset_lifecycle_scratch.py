@@ -82,8 +82,11 @@ def test_real_attach_limit_and_many_proof_owners(
         original(database, items, maximum)
         path = Path(database.connection.execute("PRAGMA database_list").fetchone()[2])
         observed.append(database.connection)
-        assert os.stat(path.parent).st_mode & 0o777 == 0o700
-        assert os.stat(path).st_mode & 0o777 == 0o600
+        # Windows exposes read-only flags, not POSIX permission bits. The
+        # actual route, byte bound and handle/temporary cleanup run everywhere.
+        if os.name != "nt":
+            assert os.stat(path.parent).st_mode & 0o777 == 0o700
+            assert os.stat(path).st_mode & 0o777 == 0o600
         assert path.stat().st_size <= maximum
         assert database.connection.getlimit(sqlite3.SQLITE_LIMIT_ATTACHED) == limit
 

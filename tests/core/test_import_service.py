@@ -254,10 +254,14 @@ def test_import_output_path_uses_full_filename(tmp_path: Path) -> None:
     assert result.db_path.name == "snapshot.pickle.db"
 
 
-@pytest.mark.parametrize("character", ["?", "#"])
+@pytest.mark.parametrize("character", ["?", "#", "%", " "])
 def test_import_supports_sqlite_uri_characters_in_filename(character: str, tmp_path: Path) -> None:
     import_service_cls = _import_service_type()
     service = import_service_cls()
+    # A literal ? is not a Windows filename. Its legal percent-encoded spelling
+    # still tests that SQLite URI handling does not decode a path twice.
+    if character == "?" and sys.platform == "win32":
+        character = "%3F"
     snapshot_file = tmp_path / f"snapshot{character}.pickle"
     snapshot_file.write_bytes(EMPTY_CACHE_SNAPSHOT.read_bytes())
 
@@ -656,17 +660,28 @@ def test_rollback_backup_writes_through_secure_mkstemp_fd(
     victim.write_text("safe")
 
     real_mkstemp = tempfile.mkstemp
+    attempts = []
 
     def racing_mkstemp(*args, **kwargs):
         fd, name = real_mkstemp(*args, **kwargs)
-        # Simulate an attacker that swaps the secure temp file for a symlink
-        # pointing at a victim file before the backend starts writing.
+        if kwargs.get("suffix") != ".rollback":
+            return fd, name
+        # Target the rollback backup, not unrelated snapshot staging files.
+        # Windows denies unlinking its open fd, preventing this race outright.
         try:
-            os.unlink(name)
-        except FileNotFoundError:
-            pass
-        os.symlink(victim, name)
-        return fd, name
+            try:
+                os.unlink(name)
+            except PermissionError:
+                if os.name != "nt":
+                    raise
+                attempts.append("blocked-open-file")
+            else:
+                os.symlink(victim, name)
+                attempts.append("redirected-path")
+            return fd, name
+        except BaseException:
+            os.close(fd)  # The failing fixture never transferred ownership.
+            raise
 
     monkeypatch.setattr(backend_module.tempfile, "mkstemp", racing_mkstemp)
 
@@ -688,6 +703,7 @@ def test_rollback_backup_writes_through_secure_mkstemp_fd(
             )
         )
 
+    assert attempts == ["blocked-open-file" if os.name == "nt" else "redirected-path"]
     # Victim must remain untouched; the secure fd prevented a symlink redirect.
     assert victim.read_text() == "safe"
     # The destination database must be restored from the safe rollback copy.

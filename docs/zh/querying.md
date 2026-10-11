@@ -463,6 +463,11 @@ pt-snap query --template-use active_memory_callstack_at_event --params '{"event_
 - 按分配调用栈做聚合
 - 对静态内存和 preexisting 内存单独分组，而不是伪造调用栈
 
+零大小的内部排名窗口（`top_n=0`）同样保守地视为不完整：未使用
+`--exact-total` 时，即使返回零行，也有 `has_more=true`、`truncated=true`、
+`total_is_exact=false`。此规则同时适用于单库和 dataset 查询，与是否包含静态组无关。
+`--exact-total` 会统计排名窗口之前的匹配分组，从而确定是否存在被省略的组。
+
 `top_n` 只限制动态调用栈分组的数量；启用包含且实际存在的 `static` 和
 `preexisting_live_at_event` 分组不受这层内部筛选限制。外层 `-n` 仍限制所有
 输出行，可能裁掉特殊组或动态 top 组。对于有限正整数 `top_n=N` 且

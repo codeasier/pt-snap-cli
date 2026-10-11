@@ -16,13 +16,17 @@ from typer.testing import CliRunner
 from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import app
 from pt_snap_cli.core import dataset_attribution
+from pt_snap_cli.core import dataset_lifecycle_scratch as scratch
+from pt_snap_cli.core import dataset_lifecycle_sql as lifecycle_sql
 from pt_snap_cli.core.dataset_contract import validate_dataset
 from pt_snap_cli.core.dataset_sources import QueryBudget
 from pt_snap_cli.core.errors import QueryExecutionError, QueryTimeoutError
 from pt_snap_cli.core.import_service import ImportService
 from pt_snap_cli.core.models import ImportOptions
 from pt_snap_cli.core.query_service import QueryService
-from tests.core.dataset_lifecycle_fixtures import CAPACITY, build, db, member, shapes
+from tests.core.dataset_differential_assertions import compare_case
+from tests.core.dataset_differential_cases import capacity_for_seed, configured_seeds, query_cases
+from tests.core.dataset_lifecycle_fixtures import build, db, member
 from tests.core.test_dataset_attribution import case
 from tests.snapshot.test_sharded_replay import block, event, segment, write_source
 from tests.test_dataset_focus import hashes
@@ -58,44 +62,84 @@ def test_existing_attribution_fixture_has_only_actual_window_members(tmp_path):
     assert -21 in set.intersection(*observed)
 
 
-@pytest.mark.parametrize("seed", [0, 7, 31, 67, 136, 196, 2026, 8191])
-def test_seeded_lifecycle_windows_match_single_database_strictly(tmp_path, seed):
-    root, dataset, single, traces, blocks = build(tmp_path, seed)
+@pytest.mark.parametrize("seed", configured_seeds(), ids=lambda seed: f"seed-{seed}")
+@pytest.mark.parametrize("layout", ("v1", "v2"))
+def test_seeded_lifecycle_windows_match_single_database_strictly(
+    tmp_path, monkeypatch, record_property, seed, layout
+):
+    capacity = capacity_for_seed(seed)
+    root, dataset, single, traces, blocks = build(tmp_path, seed, layout=layout, capacity=capacity)
     before = hashes(root)
     # Every seed contains these cases, rather than relying on probability.
     assert {b["stack"] for b in blocks} >= {None, "", "[missing callstack]", " \n"}
     assert sum(b["address"] == 1000 for b in blocks) == 2
     assert any(b["alloc"] == -1 and b["free"] == -1 for b in blocks)
     assert any(b["alloc"] == -1 and b["free"] >= 0 for b in blocks)
+    assert any(b["request"] >= 0 and b["free"] > b["request"] for b in blocks)
     assert any(
-        b["alloc"] >= 0 and b["free"] >= 0 and b["alloc"] // CAPACITY != b["free"] // CAPACITY
+        b["alloc"] >= 0 and b["free"] >= 0 and b["alloc"] // capacity != b["free"] // capacity
         for b in blocks
     )
-    for entry in json.loads((root / "timeline.json").read_text())["layout"]:
+    windows = json.loads((root / "timeline.json").read_text())["layout"]
+    for entry in windows:
         expected = {b["id"] for b in blocks if member(b, entry["lo"], entry["hi"])}
         assert set(entry["block_ids"]) == expected
+    scratch_builds = []
+    original_build = scratch._ScratchSources.build
+
+    def observed_build(database, items, maximum):
+        result = original_build(database, items, maximum)
+        scratch_builds.append(len(items))
+        return result
+
+    monkeypatch.setattr(scratch._ScratchSources, "build", observed_build)
+    cases = query_cases(seed, capacity)
     with SnapshotAnalyzer(dataset) as actual, SnapshotAnalyzer(single) as reference:
-        for template, params in shapes(seed):
-            got = actual.execute_query(template, params, exact_total=True)
-            want = reference.execute_query(template, params, exact_total=True)
-            omitted = ("state",) if template == "active_blocks_at_event" else ()
-            got_rows, want_rows = common_rows(got["rows"], want["rows"], omit=omitted)
-            assert got_rows == want_rows, (seed, template, params)
-            for key in ("total", "returned", "total_is_exact", "has_more", "truncated"):
-                assert got[key] == want[key], (seed, template, params, key)
-            if template == "active_blocks_at_event":
-                at = params["event_id"]
+        for query in cases:
+            got = compare_case(actual, reference, query, root, seed, layout, capacity)
+            if query.active_oracle:
+                at = query.params["event_id"]
                 expected = {
                     b["id"]
                     for b in blocks
                     if (b["alloc"] == -1 or b["alloc"] <= at)
                     and (b["free"] == -1 or b["free"] > at)
+                    and (query.params["include_static"] or b["alloc"] >= 0)
                 }
-                assert {r["id"] for r in got["rows"]} == expected
-                assert sum(r["size"] for r in got["rows"]) == traces[at][6]
-                assert got["scope"]["source_coverage"]["allocation_source_complete"]
+                context = (seed, layout, query)
+                assert {r["id"] for r in got["rows"]} == expected, context
+                assert sum(r["size"] for r in got["rows"]) == sum(
+                    b["size"] for b in blocks if b["id"] in expected
+                ), context
+                if query.params["include_static"]:
+                    assert sum(r["size"] for r in got["rows"]) == traces[at][6], context
+                assert got["scope"]["source_coverage"]["allocation_source_complete"], context
+                for result in got["rows"]:
+                    block = next(b for b in blocks if b["id"] == result["id"])
+                    assert result["state_scope"] == "slice_observation", context
+                    assert result["state"] == (
+                        0 if 0 <= block["request"] < (at // capacity) * capacity else 1
+                    ), context
+    # Native and compatibility inputs with more owners than SQLite can ATTACH
+    # must actually build the bounded on-disk reducer; shard count alone is not evidence.
+    if len(windows) > lifecycle_sql._attachment_limit() > 0:
+        assert scratch_builds, (seed, layout, capacity, len(windows))
+        assert max(scratch_builds) == len(windows)
     assert hashes(root) == before
-    assert not list(root.rglob("*-wal"))
+    assert not any(root.rglob("*-wal")) and not any(root.rglob("*-journal"))
+    summary = {
+        "seed": seed,
+        "format": layout,
+        "capacity": capacity,
+        "shards": len(windows),
+        "comparisons": len(cases),
+        "unexpected_errors": 0,
+        "templates": sorted({q.template for q in cases}),
+        "scratch_builds": len(scratch_builds),
+    }
+    (root / "coverage.json").write_text(json.dumps(summary, indent=2))
+    for key, value in summary.items():
+        record_property(key, value)
 
 
 def rounding_case(tmp_path, sizes):

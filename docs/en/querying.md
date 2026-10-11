@@ -552,6 +552,12 @@ This query:
 - groups by allocation callstack
 - emits static and preexisting memory as dedicated groups instead of inventing a callstack
 
+A zero-sized inner rank window (`top_n=0`) is also conservatively incomplete:
+without `--exact-total`, `has_more=true`, `truncated=true`, and
+`total_is_exact=false`, even if no rows are returned. This applies to standalone
+and dataset queries, with or without static groups. `--exact-total` counts the
+matching groups before the rank window and resolves whether any were omitted.
+
 `top_n` only bounds dynamic callstack groups; `static` and
 `preexisting_live_at_event` groups, when included and present, are exempt from
 that inner filter. The outer `-n` cap still applies to all output rows and can
