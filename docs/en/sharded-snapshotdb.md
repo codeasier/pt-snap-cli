@@ -307,6 +307,22 @@ validation reads) is:
 | Native-v2 cold | 2B + 2M; one full validator | 2B + 2M; one full validator |
 | Unchanged in-process warm | B + M; no full validator | No hash reads or full validator |
 
+For an unchanged default-mode dataset, `peak_memory_report` inspects once, then
+checks the complete manifest and **all devices' members** after each composed
+query. A normal peak plus attribution therefore hashes **4(B + M) cold** or
+**3(B + M) warm**; a no-peak early return has one guard and hashes **3(B + M) cold**
+or **2(B + M) warm**. Cold reports run one full validator; warm reports run none.
+These are logical hash-read bytes, not physical disk I/O: OS page caching can
+reduce disk reads. They also exclude SQLite/query reads and header preflights.
+The phase/byte regressions in `tests/core/test_report_content_integrity.py` use a
+real sparse native empty range; the compatibility no-peak case injects only that
+result branch after a real query, since finalized v1 requires contiguous IDs and
+non-NULL counters. Both real guards remain covered, including hidden-token
+changes to another device and changes that attribution could otherwise restore.
+This records the existing integrity cost, not a speedup or resolution of
+[issue #238](https://github.com/codeasier/pt-snap-cli/issues/238). Reducing passes
+requires a separately established stable-read boundary or explicit contract change.
+
 Both modes revalidate after manifest/member replacement and evict failed or
 cancelled admissions; a new process starts cold. If a filesystem hides **all**
 change tokens after content tampering, default strong mode detects the changed
