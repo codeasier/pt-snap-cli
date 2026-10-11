@@ -95,10 +95,28 @@ def test_setup_ownership_distinguishes_environments_sharing_an_interpreter(
 
     evidence, status = _run_ownership_probe(selected, cli)
     identities = json.loads(evidence)
-    assert identities["selected"]["executable"] == str(selected)
-    assert identities["cli"]["executable"] == str(cli)
-    if selected_name != cli_name:
-        assert identities["selected"]["prefix"] != identities["cli"]["prefix"]
+    # CPython on macOS may canonicalize a directory alias in sys.executable
+    # and sys.prefix. Check actual interpreter evidence, not the launcher spelling;
+    # importantly, execute the original paths rather than their shared realpath.
+    child_env = os.environ.copy()
+    child_env.pop("__PYVENV_LAUNCHER__", None)
+    for role, interpreter in (("selected", selected), ("cli", cli)):
+        actual = subprocess.run(
+            [
+                interpreter,
+                "-c",
+                "import json, sys; print(json.dumps(dict(executable=sys.executable, prefix=sys.prefix)))",
+            ],
+            check=True,
+            capture_output=True,
+            env=child_env,
+            text=True,
+            timeout=20,
+        )
+        assert identities[role] == json.loads(actual.stdout)
+    selected_prefix = Path(identities["selected"]["prefix"]).resolve()
+    cli_prefix = Path(identities["cli"]["prefix"]).resolve()
+    assert (selected_prefix == cli_prefix) is matches
     assert status == (
         "matches selected Python" if matches else "CLI belongs to another Python environment"
     )
