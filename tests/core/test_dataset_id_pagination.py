@@ -269,6 +269,7 @@ def million_event_dataset(tmp_path_factory):
     return root
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("template", ["event", "allocation"])
 @pytest.mark.parametrize("direction", ["ASC", "DESC"])
 def test_million_offset_keeps_fetched_work_constant(million_event_dataset, template, direction):
