@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.4.1] - 2026-10-12
+
+相对 v0.4.0：分析对象从单库扩展为「单库 + 完整分片数据集」——新增兼容 v1 数据集的只读 focus/寻址、原创 `pt-snap-native-v2` 原生分库导入与显式 msinsight 兼容导出，并把全局内建查询、公开工作预算与私有 scratch 归约纳入同一契约；单库导入保留结构化有序帧，新增 `report memory-tree`（含交互式 HTML）与调用栈字节预算（`stack_bytes`）；同时收口峰值报告完整性、诊断 skill 行为、API 生命周期与 CI/打包审计。本段覆盖 `v0.4.0` 之后已合入 `main` 的全部用户可见变更。
+
+### 新增
+
+- 完整已校验数据集可作为 focus 或显式目标：兼容 v1 目录/`manifest.json` 无需原始 pickle、导入 metadata、引用或扩展表即可只读 focus；`overview.dataset` 输出格式、manifest 版本/状态、内容指纹、真实/边界事件数、逐设备分片路径/范围与能力。事件范围排除负 ID 合成行；外部数据集级 metadata 为 `unavailable` 属正常，原生/兼容导出提供整份证明后才为 `available`。路径/设备优先级不变，CLI focus 不写产物或检测布局。
+- 数据集 `event` 寻址与定点归因：`query`/`SnapshotAnalyzer` 支持真实 ID 路由到所在片、闭区间 `min_id/max_id` 跨片全局筛选/排序/分页，`--slice`（API `slice_index`）限制到单片真实事件；`active_blocks_at_event`/`active_memory_callstack_at_event` 在排名/分页前解析完整跨片 alloc/free 与栈来源，原版无扩展产物同样适用。负 ID 不能作为整份数据集 selector，缺失事件不虚构 event 0。
+- 数据集全局内建查询支持矩阵：`event`/`allocation` 全局合并排序分页；`memory_peak`/`allocator_gap` 使用独立选择的真实全局事件；`block`/`freed_block_lifetime`/`leak_detection` 采用去重生命周期与终片观察语义；`callstack_analysis` 按完整 canonical 来源身份合并后再做全局阈值/排名；`preexisting_live` 为所有者事件占用。数据集明确不支持 runtime override/自定义模板/任意 SQL；单库行形状不变，数据集行新增可选的 `lifecycle_id`、身份/来源证明、`source_stack_id`、`stack_kind`、`stack_event_id`、`frames_status` 等字段。
+- 原生分库导入：`pt-snap import --events-per-slice N`（或显式 `--format pt-snap-native-v2`）发布 `<输出目录>/<输入文件名>.pt-snap-native-v2/`。容量按各设备真实时间顺序位置计数，保留稀疏 ID、OOM 与 workspace 事件；全部设备/分片在同级暂存、回填、关闭、写入 metadata 并校验后以独占目录 rename 发布；缓存复用校验源 SHA-256、设备选择、容量、原生格式/manifest/导入语义/扩展及 metadata 合同版本。已识别但不匹配的目标保留、须 `--force` 才替换（有短暂空档，不是单次原子 swap）；未知目录、无关文件、非法 manifest 与符号链接即使 force 也不接管。请求的项目 focus 纳入补偿，回滚自身失败会保留并报告恢复证据；`--no-focus` 完全跳过。JSON 增加 `dataset_path`、`devices`、`slice_count`、`format`、`omitted_devices`、`reused`、`rebuilt`。
+- 显式 msinsight 兼容导出：`pt-snap import --format msinsight`（别名 `compatibility-v1`）生成 `<输入文件名>.msinsight/`，对齐 `Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5` 固定源码的「同一原始 pickle + 邻接缓存」入口；物理内联 v1 表、metadata `import_format_version=1`，调用栈文本按每个事件复制，磁盘/暂存空间可能明显增加。兼容发布为 no-replace：即使 `--force` 也不覆盖外部/原版/用户缓存，仅完整且身份相同的 pt-snap 缓存可复用；GUI 复用为**待验收/未运行**，hash 相等不代表验收通过。
+- 公开数据集工作预算：`query`、`report peak-memory`、`report memory-tree` 接受 `--max-work-rows`/`--max-work-bytes`/`--max-scratch-db-bytes`（`PT_SNAP_MAX_WORK_ROWS`/`PT_SNAP_MAX_WORK_BYTES`/`PT_SNAP_MAX_SCRATCH_DB_BYTES`），Python API 提供不可变 `QueryLimits`（构造默认与单次覆盖）。默认 100000 工作行 / 64 MiB 工作字节 / 512 MiB scratch 页；工作超限整次失败并报告已消耗行数/字节，不返回冒充完整的部分全局结论。超过 SQLite 附加上限或观察阈值的生命周期查询使用查询专属临时派生库（目录 0700、文件 0600、页数上限、源分片只读，完成/错误/取消均清理）。
+- 数据集变更检测与缓存合同：默认每次对 manifest 和全部成员取内容哈希（有界进程内 LRU 仅在 generation 与完整 fingerprint 相同时复用逐行校验结果）；每次在返回行或计数前复查 generation，检测到并发变更以数据库完整性错误整体失败，不发部分结果。`PT_SNAP_DATASET_CACHE=immutable` 供受控不可变产物启用纯元数据复用（调用方责任合同，不代表工具检测文件系统能力）。
+- 单库结构化帧与内存树：导入格式升级为 3，新增 `frame`/`callstack_frame`/`callstack_frame_manifest` 保留原始有序帧、重复帧与逐栈期望长度；新增 `event_frames`、`active_memory_frame_tree_at_event` 模板和 `pt-snap report memory-tree --event-id <id>`（`--format text|html`、`--json`、`--min-size`、`--include-static/--exclude-static`）。HTML 支持点击缩放、全树搜索与可键盘操作的子节点列表；每个节点满足「总占用 = 自身占用 + 直接子节点占用」，文本/HTML 渲染器拒绝不完整或不守恒的树。帧树仅支持单库格式 3，数据集目录与原生分片明确拒绝。
+- 调用栈字节预算：`event` 与 `active_memory_callstack_at_event` 新增 `stack_bytes` 参数，`report peak-memory` 新增 `--stack-bytes`。默认负数保留完整文本，`0` 仅保留身份，正数返回不超过该 UTF-8 字节数的有效前缀；行内新增 `stack_id`、`stack_kind`、`stack_event_id`、`stack_bytes`、`stack_original_bytes`、`stack_truncated`。`stack_truncated` 只表示文本缩略，与行集合的 `has_more`/`truncated`/`total_is_exact` 相互独立；可用返回的 `stack_event_id` 在同一数据库/设备取回完整文本。
+- `report peak-memory` 扩展：`--start-id/--end-id` 限定峰值选择（归因仍解析所选事件的完整活跃集合），`--timeout` 成为整报告递减 deadline；JSON 新增峰值 `scope`、归因 `source_coverage`、`included_bytes`、`percent_denominator`、`active_bytes_at_event`、`coverage_percent` 与 `budget_scope`。
+- Agent 集成：`pt-snap-helper` 在没有 CLI 时先路由昇腾采集（采集 skill 须由宿主加载，不隐式安装包或 skill）；`pt-snap-setup` 的 `ready` 判据要求所选 Python 与 CLI shebang 解释器的规范化 `sys.executable` 和 `sys.prefix` 都一致；`skill list`/`skill install` 指南明确自定义 `--dir` 复查、范围化 `missing`/`installed` 与宿主加载状态的区别。
+
+### 性能
+
+- 数据集 `event`/`allocation` 按 `id` 排序的深分页改为按逐片匹配行数跳过整片，只在落点片使用局部 SQL OFFSET 再补满窗口；原生稀疏 ID 按实际行数计数，仅最终选中的行解析来源文本与有序帧。减少的是取入 Python 的工作量，不降低数据集校验成本或 SQLite 内部扫描量。
+- 小规模 block/leak/lifetime 查询保持只读 ATTACH 归约（先证明身份、检测冲突、选最新观察再分页）；超过附加上限或启用 scratch 时改用查询专属派生库一次归约，汇总、分页与时长桶复用同一归约表；`active_*_at_event` 先在 SQL 中预归约再补充有界详情。
+- 数据集校验增加进程内复用：完整校验结果按 generation + 完整 fingerprint 复用，跳过重复逐行校验但仍对 manifest/全部成员取内容哈希；`report peak-memory` 只检查一次数据集并在步骤之间复查同一 fingerprint。
+
+### 修复
+
+- 峰值报告保留归因完整性与 active 覆盖：JSON 返回归因 `has_more`/`truncated`/`total_is_exact` 与 `effective_params`，分组百分比以筛选、排名后的 `included_bytes` 为分母；`active_bytes_at_event` 是所选 metric 对应事件的 active counter，`coverage_percent` 在 counter 缺失/非正/无事件时为 `null`（unknown）。覆盖率不是完整性标志：`--exclude-static` 可在无截断时降低覆盖率，满窗口即使 100% 也可能不完整；空 trace 返回空分组、零 included bytes 与未知覆盖率。动态分组填满 `top_n` 窗口时文本输出标记 partial。
+- `active_memory_callstack_at_event` 完整性收敛：零大小内部排名窗口（`top_n=0`）保守标记 `has_more`/`truncated`/非精确（单库与数据集一致）；`static`/`preexisting_live_at_event` 不受动态 `top_n` 限制，但外层 `-n` 仍可裁掉特殊组，有限 `top_n=N` 且包含静态组时建议 `-n N+2`。固定 `top_n` 时增大 `-n` 不改变共有行及其百分比，增大 `top_n` 可能改变分母。
+- 单库 `memory_peak`/`allocator_gap` 语义版本升为 2：仅真实事件（`id >= 0`）参与峰值与同事件计数器，负 ID 合成边界行不再可能成为峰值或参与 gap 计算。
+- `callstack_analysis` 语义版本升为 2：按完整采集文本分组（两种单库布局一致，不再按局部去重 ID 或显示标签），统计全部带栈真实 action（含 free/segment/workspace），负边界排除；v2 布局下缺失/NULL joined 文本保留为独立 missing 组，空文本独立计数组。`alloc_count` 保留字段名但不是分配次数，`avg_size` 不是分片平均值。
+- `leak_detection` 补齐作用域说明与完整窗口流程：单库 SQL 仅检查 `allocEventId >= 0` 与 NULL/负 `freeEventId`；数据集要求已证明的真实分配 + 终片 `state IN (0,1)`，排除 inactive、较早分片和未证明观察。模板无 `offset`；需要完整候选集时先 `--exact-total` 计数，再以正 `-n <total>` 单次替换窗口，不拼接/累加重叠窗口。
+- 查询失败保真：类型化 query/timeout 错误跨执行器边界保留原类型；未知异常只包装一次，保留可操作的 domain 消息与 cause。compatibility 导出器的事件 ID 校验改为按片 count/min/max 连续性检查，不再物化全部 ID 集合。
+- `SnapshotAnalyzer` 生命周期显式化：`close()` 幂等且终结操作（关闭后 focus/发现/metadata/概览/查询与再次进入 `with` 抛 `RuntimeError("SnapshotAnalyzer is closed.")`）；`close()`/`with` 会释放自身缓存，注入的 `context_cache` 为借用、由调用方关闭；显式失效后未关闭的 analyzer 可重新填充缓存。
+- 导入回滚加固：回滚自身失败时保留并报告恢复路径与 checkpoint，不再静默吞掉；补全与查询路径持有的数据库句柄在 teardown 时确定性关闭；`T | None`（PEP 604）与 `Optional[T]` 同样映射到正确的 SQLite affinity。
+- 诊断 skill 修复：峰值/终块按完整身份匹配；leak 候选使用有界替换窗口并要求迭代证据；碎片归因限定所选范围；峰值归因按 `top_n+2` 为 `static`/preexisting 预留特殊行；前置探测统一为 `capabilities` + `overview`；setup 保留原始执行路径、仅对比较做规范化；verl 采集示例保留所选 Python。
+
+### 稳定性与工程
+
+- CLI 模块拆分：`cli_output.py`/`cli_reports.py`/`cli_skills.py`/`cli_limits.py` 从 `cli.py` 分离，根命令与组命令继续共用同一 JSON/错误路径；`TemplateSummaryPayload`/`QueryResultPayload` 与 `object` 动态值使 API/快照边界显式化，不转换值或改变结果键。
+- wheel 审计进入 CI 与 release：新增只读 `.github/scripts/audit_wheel.py`，将 Python 模块的路径与字节内容与 `src/` 比对，并独立检查查询 YAML、内置技能、snapshot 许可证/来源资源；CI 在安装验收前审计 wheel，release 审计实际上传用于发布的 wheel；README 增加「从全新 checkout/worktree 构建」说明。
+- CI 分层与平台覆盖：新增 `platform.yml`（macOS 1 任务 + Windows 4 个确定性分区、Python 3.13、非 slow、20 分钟上限、最多并行 2、执行前验证分区无遗漏/重复并上传分片清单）；`test.yml` 增加 Chromium 浏览器回归（memory-tree HTML）与定时 `dataset-acceptance` 作业，clean-wheel Agent 验收扩展多格式多分片与 `--events-per-slice`；常规套件可用 `pytest -m 'not slow'`。
+- 数据集验收证据落地：新增中英文 `sharded-snapshotdb.md`、`dataset-acceptance.md`、`interop-acceptance.md` 与 JSON 基准记录，覆盖固定目标双向互操作、200-seed 配对差分、150 万事件合成容量、便携三片 fixture 与离线多分片 wheel/技能验收；skill 评测新增最低最终答案有效性门槛。
+- Agent 指南与文档重建：按当前架构重写 AGENTS 层级与 `docs/README.md` 导航，`README`/`README_zh` 增补数据集、内存树、预算与构建审计入口。
+
+### 兼容性提示
+
+- 新导入的单库为格式 3；格式 2 文本库继续支持原有查询，但 `event_frames`、`active_memory_frame_tree_at_event` 与 `report memory-tree` 需从原始快照重新导入，分析器不会从显示文本猜测原始帧，也不迁移数据库（缓存按格式变化自动重建）。
+- `memory_peak`/`allocator_gap` 语义版本 2 与 `callstack_analysis` 语义版本 2 会改变部分结果：负合成行不再参与；`callstack_analysis` 的 `alloc_count` 不再是分配次数、按完整文本分组、missing/空文本为独立组。依赖旧结果或旧字段解释的调用方需重新评估。
+- `report peak-memory` 文本新增 partial 标记，JSON 新增字段（原有 `callstack_groups` 与 `percent_of_active_blocks` 数值不变）；`active_memory_callstack_at_event` 的完整性标志更保守。`stack_bytes` 限制的是 UTF-8 文本前缀，不是模型 token 预算或整包输出硬上限；`stack_truncated` 与行集合完整性独立。
+- 数据集工作预算默认生效且没有「无限」档：`limit`/`-n`/`stack_bytes`/`--timeout` 不提高预算，无界输出、大 offset 或禁用 scratch 的来源读取会明确失败；scratch 设为 0 只禁用派生库，不禁用工作预算。非法预算在访问数据库前失败。
+- 原生数据集 `--force` 会替换已识别的旧产物（发布期间路径有短暂空档）；兼容导出对已有目标 no-replace；`PT_SNAP_DATASET_CACHE=immutable` 是显式调用方合同；数据集不支持自定义 SQL/override 与逐片拼接的全局生命周期结论；原版无扩展数据集的导入 metadata 为 `unavailable` 属正常。GUI 互操作为待验收事项。
+- `import`/`overview`/`capabilities`/`--template-info` 的 JSON 新增数据集相关字段与 `dataset_support`（含生效工作上限）；已发布命令名与既有 JSON 成功/失败信封保持不变。
+
 ## [0.4.0] - 2026-09-24
 
 相对 v0.3.0：关闭 MCP 产品面，Agent 集成入口收敛到 bundled skills 与 CLI；并一次落地 helper、查询参数白名单、字段语义、全命令 `--json`、查询完整性协议，以及 `capabilities` / `overview`。本段覆盖 `v0.3.0` 之后已合入 `main` 的全部用户可见变更。
