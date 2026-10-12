@@ -1,7 +1,8 @@
 """Pinned candidate wheel -> isolated console -> real loopback Chromium acceptance.
 
-Only summary.json and masked screenshots are public artifacts. Raw fixture paths,
-HTML, database and CLI outputs stay in a temporary private directory.
+Public artifacts are summary.json and two explicitly named invented-label privacy
+proof PNGs. Real-fixture screenshots, raw paths, HTML, databases and CLI outputs
+remain runner-private.
 """
 
 from __future__ import annotations
@@ -121,8 +122,8 @@ def compare_tree(nodes, expected):
 
 
 def sanitized_screenshot(page, output, name, nodes):
-    # Mask every surface capable of rendering fixture labels/callstacks or search text.
-    # This leaves chart geometry, controls and numeric totals visible for proof.
+    # Capture-only CSS avoids coordinate-mask drift during full-page scrolling.
+    # Screenshots remain private until this replacement has independent visual proof.
     selectors = [
         "#chart text",
         "#detail",
@@ -141,7 +142,8 @@ def sanitized_screenshot(page, output, name, nodes):
         "Screenshot privacy coverage failed",
     )
     target = output / f"{name}.png"
-    raw = page.screenshot(full_page=True, mask=[page.locator(s) for s in selectors])
+    capture_style = ",".join(selectors) + "{visibility:hidden!important;}"
+    raw = page.screenshot(full_page=True, style=capture_style)
     require(raw.startswith(b"\x89PNG\r\n\x1a\n"), "Invalid screenshot PNG")
     cursor = 8
     while cursor < len(raw):
@@ -164,7 +166,7 @@ def sanitized_screenshot(page, output, name, nodes):
     return {
         "name": target.name,
         "sha256": sha(target),
-        "privacy": "all fixture-text surfaces masked",
+        "privacy": "runner-private; capture-only CSS hides fixture text; visual proof pending",
     }
 
 
@@ -183,6 +185,7 @@ class QuietHandler(SimpleHTTPRequestHandler):
 def browser_checks(html, nodes, output, summary):
     from playwright.sync_api import expect, sync_playwright
 
+    output.mkdir(parents=True, exist_ok=True)
     errors = []
     root = nodes["root"]
     server = ThreadingHTTPServer(
@@ -337,6 +340,69 @@ def browser_checks(html, nodes, output, summary):
         thread.join(timeout=5)
 
 
+def synthetic_privacy_checks(output, summary):
+    """Safe public proof for the capture helper; never uses real fixture labels."""
+    from playwright.sync_api import expect, sync_playwright
+
+    label = "SYNTHETIC_ONLY/release_fixture.py:1 invented_frame"
+    # Intentionally standalone synthetic page, separate from actual installed-CLI evidence.
+    html = """<!doctype html><html><head><style>
+        body { font-family: sans-serif; margin: 24px; }
+        header { height: 480px; } #chart { width: 100%; height: 160px; }
+        #detail, #focus-path, li { padding: 16px; }
+        footer { height: 600px; }
+        </style></head><body><header><h1>Invented-label privacy proof</h1>
+        <p>All labels on this synthetic page are invented and safe to publish.</p></header>
+        <label>Find frame <input id="search"></label>
+        <span id="summary">Showing 40 bytes</span>
+        <svg id="chart" viewBox="0 0 1200 160"><g class="node" data-node-id="root">
+        <rect x="0" y="0" width="1199.4" height="28" fill="#84cc16"></rect>
+        <text x="5" y="20">SYNTHETIC_ONLY/release_fixture.py:1 invented_frame</text></g></svg>
+        <div id="focus-path" tabindex="-1">SYNTHETIC_ONLY/invented_path</div>
+        <pre id="detail">SYNTHETIC_ONLY/invented_detail</pre>
+        <ul id="children-list"><li>SYNTHETIC_ONLY/invented_child</li></ul>
+        <p id="search-status">Search all frames.</p>
+        <ul id="search-results"><li>SYNTHETIC_ONLY/invented_result</li></ul><footer></footer>
+        <script>document.getElementById('search').addEventListener('input',()=>{
+        document.getElementById('search-status').textContent='No matching frames.';
+        document.getElementById('search-results').replaceChildren();});</script></body></html>"""
+    nodes = {"root": {"node_id": "root", "label": label}}
+    proofs = []
+    with sync_playwright() as runtime:
+        with runtime.chromium.launch(headless=True) as browser:
+            context = browser.new_context(viewport={"width": 1440, "height": 800})
+            try:
+                page = context.new_page()
+                page.set_content(html, wait_until="load")
+                expect(page.locator("#chart text")).to_have_text(label)
+                proofs.append(
+                    sanitized_screenshot(page, output, "privacy-synthetic-initial", nodes)
+                )
+                page.locator("#focus-path").focus()
+                page.locator("#search").fill("SYNTHETIC_ONLY_NO_RESULTS")
+                expect(page.locator("#search-status")).to_have_text("No matching frames.")
+                page.evaluate("window.scrollTo(0,180)")
+                require(
+                    page.evaluate("window.scrollY") > 0, "Synthetic privacy scroll not exercised"
+                )
+                require(
+                    page.locator("#search").evaluate("e=>e===document.activeElement"),
+                    "Synthetic privacy focus not exercised",
+                )
+                proofs.append(sanitized_screenshot(page, output, "privacy-synthetic-empty", nodes))
+            finally:
+                context.close()
+    for proof in proofs:
+        proof["privacy"] = "invented labels only; safe by construction; CSS visual review pending"
+    summary["synthetic_privacy_proof"] = {
+        "source": "standalone invented labels; not product/real-fixture UI evidence",
+        "capture_function": "same screenshot-only CSS capture helper as private real screenshots",
+        "scrolled_focused_empty_state": True,
+        "screenshots": proofs,
+        "visual_review": "pending independent inspection",
+    }
+
+
 def run(args, summary):
     source, wheel, wheelhouse, output = (
         getattr(args, key).resolve() for key in ("source", "wheel", "wheelhouse", "output_dir")
@@ -448,9 +514,10 @@ def run(args, summary):
             synthetic_edges="Separate source 12-case browser suite; not installed-wheel evidence",
         )
         summary["checks"].append("installed-cli-import-report-independent-sql-oracle")
-        browser_checks(html, nodes, output, summary)
+        browser_checks(html, nodes, args.private_dir / "screenshots", summary)
         require(sha(db) == before and sha(fixture) == FIXTURE_SHA, "Source/database changed")
         summary["checks"].append("source-database-immutable")
+    synthetic_privacy_checks(output, summary)
 
 
 def main():

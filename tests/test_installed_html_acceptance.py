@@ -8,6 +8,8 @@ import json
 import sqlite3
 from contextlib import closing
 from pathlib import Path
+from types import SimpleNamespace
+from zipfile import ZipFile
 
 import pytest
 
@@ -63,7 +65,9 @@ def test_compare_tree_rejects_missing_nodes(runner):
 
 
 @pytest.mark.parametrize("exception", [RuntimeError, AssertionError])
-def test_failure_summary_never_exposes_private_exception(runner, monkeypatch, tmp_path, exception):
+def test_failure_summary_never_exposes_private_exception(
+    runner, monkeypatch, tmp_path, exception, capsys
+):
     output = tmp_path / "public"
     monkeypatch.setattr(
         "sys.argv",
@@ -89,6 +93,9 @@ def test_failure_summary_never_exposes_private_exception(runner, monkeypatch, tm
     assert "private" not in raw and "secret-user-label" not in raw
     assert json.loads(raw)["failure_type"] == exception.__name__
     assert "secret-user-label" in (tmp_path / "public-private/failure.txt").read_text()
+    captured = capsys.readouterr()
+    assert "secret-user-label" not in captured.out + captured.err
+    assert "/private/person" not in captured.out + captured.err
 
 
 def test_workflow_is_read_only_candidate_pinned_and_artifact_allowlisted():
@@ -98,7 +105,11 @@ def test_workflow_is_read_only_candidate_pinned_and_artifact_allowlisted():
     assert "pull_request_target" not in workflow and "secrets." not in workflow
     assert "persist-credentials: false" in workflow
     assert "html-safe-evidence/summary.json" in workflow
-    assert "html-safe-evidence/*.png" in workflow
+    assert "*.png" not in workflow
+    assert "html-safe-evidence/privacy-synthetic-initial.png" in workflow
+    assert "html-safe-evidence/privacy-synthetic-empty.png" in workflow
+    for real_name in ("initial.png", "search.png", "deep-focus.png", "empty.png"):
+        assert "html-safe-evidence/" + real_name not in workflow
     assert "html-wheel/*.whl" in workflow
 
 
@@ -149,3 +160,105 @@ def test_rejected_screenshot_never_reaches_public_artifacts(runner, tmp_path, ki
             Page(), output, "rejected", {"root": {"node_id": "root", "label": "safe-label"}}
         )
     assert list(output.iterdir()) == []
+
+
+def test_capture_uses_css_not_coordinate_masks(runner, tmp_path):
+    output = tmp_path / "private"
+    output.mkdir()
+
+    class Locator:
+        def all_text_contents(self):
+            return ["synthetic-label"]
+
+        def count(self):
+            return 1
+
+    class Page:
+        def locator(self, _selector):
+            return Locator()
+
+        def screenshot(self, **kwargs):
+            assert "path" not in kwargs and "mask" not in kwargs
+            style = kwargs["style"]
+            assert (
+                style
+                == "#chart text,#detail,#focus-path,#children-list,#search-results,#search{visibility:hidden!important;}"
+            )
+            return b"\x89PNG\r\n\x1a\n" + (0).to_bytes(4, "big") + b"IEND" + b"\0" * 4
+
+    result = runner.sanitized_screenshot(
+        Page(), output, "synthetic", {"root": {"node_id": "root", "label": "synthetic-label"}}
+    )
+    assert (output / "synthetic.png").exists()
+    assert "runner-private" in result["privacy"]
+
+
+def test_actual_browser_failure_routes_screenshots_only_to_private(runner, monkeypatch, tmp_path):
+    public = tmp_path / "public"
+    private = tmp_path / "private"
+    public.mkdir()
+    private.mkdir()
+    fixture = tmp_path / "fixture"
+    fixture.write_bytes(b"unit-only input; never deserialized")
+    wheel = tmp_path / "wheel.whl"
+    with ZipFile(wheel, "w") as archive:
+        archive.writestr("unit.dist-info/METADATA", "Version: 1.0\n")
+    db = tmp_path / "unit.db"
+    with closing(sqlite3.connect(db)) as con, con:
+        con.execute("CREATE TABLE trace_entry_0(id, active)")
+        con.execute("INSERT INTO trace_entry_0 VALUES(1,40)")
+    row = {
+        "node_id": "root",
+        "label": "invented",
+        "depth": 0,
+        "size_bytes": 40,
+        "requested_bytes": 40,
+        "block_count": 1,
+        "self_bytes": 40,
+        "percent_of_total": 100.0,
+    }
+    monkeypatch.setattr(runner, "verify_input", lambda *_: fixture)
+    monkeypatch.setattr(
+        runner,
+        "tree_oracle",
+        lambda *_: {
+            "root": {
+                k: row[k] for k in ("size_bytes", "requested_bytes", "block_count", "self_bytes")
+            }
+        },
+    )
+    monkeypatch.setattr(runner.venv.EnvBuilder, "create", lambda *_: None)
+
+    def fake_run(argv, **_kwargs):
+        if len(argv) > 1 and argv[1] == "-c":
+            prefix = Path(argv[0]).parents[1]
+            raw = json.dumps(
+                {"origin": str(prefix / "lib/pt_snap_cli/__init__.py"), "prefix": str(prefix)}
+            )
+        elif "import" in argv and "--json" in argv:
+            raw = json.dumps({"ok": True, "db_path": str(db)})
+        elif "--format" in argv and "html" in argv:
+            raw = (
+                '<script id="tree-data" type="application/json">'
+                + json.dumps({"nodes": [row]})
+                + "</script>"
+            )
+        else:
+            raw = ""
+        return SimpleNamespace(returncode=0, stdout=raw.encode(), stderr=b"")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    observed = []
+
+    def fail_browser(_html, _nodes, destination, _summary):
+        observed.append(destination)
+        raise RuntimeError("simulated browser failure")
+
+    monkeypatch.setattr(runner, "browser_checks", fail_browser)
+    args = SimpleNamespace(
+        source=tmp_path, wheel=wheel, wheelhouse=tmp_path, output_dir=public, private_dir=private
+    )
+    with pytest.raises(RuntimeError, match="simulated"):
+        runner.run(args, {"checks": [], "screenshots": []})
+    assert observed == [private / "screenshots"]
+    assert list(public.iterdir()) == []

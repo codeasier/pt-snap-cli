@@ -53,13 +53,14 @@ jobs:
             --wheelhouse "$RUNNER_TEMP/html-wheelhouse" \
             --output-dir "$RUNNER_TEMP/html-safe-evidence" \
             --private-dir "$RUNNER_TEMP/html-private-evidence"
-      - name: Upload only sanitized evidence
+      - name: Upload JSON and invented-label privacy proof only
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pinned-installed-html-evidence
           path: |
             ${{ runner.temp }}/html-safe-evidence/summary.json
-            ${{ runner.temp }}/html-safe-evidence/*.png
+            ${{ runner.temp }}/html-safe-evidence/privacy-synthetic-initial.png
+            ${{ runner.temp }}/html-safe-evidence/privacy-synthetic-empty.png
           if-no-files-found: error
           retention-days: 7
