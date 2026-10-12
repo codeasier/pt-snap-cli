@@ -1,0 +1,65 @@
+name: Pinned installed HTML acceptance
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/scripts/run_installed_html_acceptance.py'
+      - '.github/workflows/installed-html-acceptance.yml'
+      - 'tests/test_installed_html_acceptance.py'
+permissions:
+  contents: read
+jobs:
+  installed-html:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout reviewed harness
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: harness
+          persist-credentials: false
+      - name: Checkout exact product candidate
+        uses: actions/checkout@v4
+        with:
+          ref: 07bdf660f10f03a9c13ab313fae149adf62355f8
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install bounded build and browser tooling
+        run: |
+          python -m pip install build==1.6.1 setuptools==84.0.0 setuptools-scm==9.2.2 wheel==0.48.0 playwright==1.63.0 pytest==9.1.1
+          python -m playwright install --with-deps chromium
+      - name: Build and audit exact candidate
+        working-directory: candidate
+        run: |
+          test "$(git rev-parse HEAD)" = 07bdf660f10f03a9c13ab313fae149adf62355f8
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          python -m build --wheel --no-isolation --outdir "$RUNNER_TEMP/html-wheel"
+          python .github/scripts/audit_wheel.py --wheel "$RUNNER_TEMP"/html-wheel/*.whl
+          python -m pip download --only-binary=:all: --dest "$RUNNER_TEMP/html-wheelhouse" "$RUNNER_TEMP"/html-wheel/*.whl
+      - name: Verify harness unit contracts
+        working-directory: harness
+        run: python -m pytest tests/test_installed_html_acceptance.py -c /dev/null
+      - name: Run real installed CLI and browser acceptance
+        run: |
+          python harness/.github/scripts/run_installed_html_acceptance.py \
+            --source "$GITHUB_WORKSPACE/candidate" \
+            --wheel "$RUNNER_TEMP"/html-wheel/*.whl \
+            --wheelhouse "$RUNNER_TEMP/html-wheelhouse" \
+            --output-dir "$RUNNER_TEMP/html-safe-evidence" \
+            --private-dir "$RUNNER_TEMP/html-private-evidence"
+      - name: Upload only sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinned-installed-html-evidence
+          path: |
+            ${{ runner.temp }}/html-safe-evidence/summary.json
+            ${{ runner.temp }}/html-safe-evidence/*.png
+          if-no-files-found: error
+          retention-days: 7

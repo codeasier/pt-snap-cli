@@ -1,0 +1,77 @@
+name: Optional pinned msinsight consumer acceptance
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/scripts/msinsight_acceptance/**"
+      - ".github/workflows/msinsight-acceptance.yml"
+      - "tests/test_msinsight_acceptance.py"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pinned-consumer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/ms-playwright-browsers
+    steps:
+      - name: Checkout reviewed test harness
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: harness
+          persist-credentials: false
+      - name: Checkout frozen product candidate
+        uses: actions/checkout@v4
+        with:
+          ref: 07bdf660f10f03a9c13ab313fae149adf62355f8
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+      - name: Install official build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential strace libssl-dev zlib1g-dev
+          python -m pip install build==1.6.1 setuptools==84.0.0 setuptools-scm==9.2.2 wheel==0.48.0 pytest==9.1.1
+      - name: Verify fast fail-closed harness contracts
+        working-directory: harness
+        run: python -m pytest tests/test_msinsight_acceptance.py -c /dev/null
+      - name: Build and audit separately identified hosted candidate wheel
+        working-directory: candidate
+        run: |
+          test "$(git rev-parse HEAD)" = 07bdf660f10f03a9c13ab313fae149adf62355f8
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          python -m build --wheel --no-isolation --outdir "$RUNNER_TEMP/ms-wheel"
+          python .github/scripts/audit_wheel.py --wheel "$RUNNER_TEMP"/ms-wheel/*.whl
+          python -m pip download --only-binary=:all: --dest "$RUNNER_TEMP/ms-wheelhouse" "$RUNNER_TEMP"/ms-wheel/*.whl
+      - name: Restore pinned original consumer, sequential minimal builds
+        run: |
+          bash harness/.github/scripts/msinsight_acceptance/restore_msinsight.sh "$RUNNER_TEMP/ms-restore" > "$RUNNER_TEMP/ms-restore.log" 2>&1
+          "$RUNNER_TEMP/ms-restore/venv/bin/python" -m pip install --index-url https://pypi.org/simple playwright==1.63.0
+          "$RUNNER_TEMP/ms-restore/venv/bin/python" -m playwright install --with-deps chromium
+      - name: Real GUI, protocol, reuse and preservation gates
+        run: |
+          WHEEL=$(find "$RUNNER_TEMP/ms-wheel" -maxdepth 1 -name '*.whl' -print)
+          test "$(find "$RUNNER_TEMP/ms-wheel" -maxdepth 1 -name '*.whl' | wc -l)" = 1
+          SHA=$(sha256sum "$WHEEL" | cut -d' ' -f1)
+          "$RUNNER_TEMP/ms-restore/venv/bin/python" harness/.github/scripts/msinsight_acceptance/run_consumer.py \
+            --root "$RUNNER_TEMP/ms-restore" --wheel "$WHEEL" --wheel-sha256 "$SHA" \
+            --wheelhouse "$RUNNER_TEMP/ms-wheelhouse" \
+            --fixture "$GITHUB_WORKSPACE/candidate/tests/fixtures/snapshots/snapshot_expandable.pkl" \
+            --output "$RUNNER_TEMP/ms-evidence"
+      - name: Upload sanitized numeric result only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinned-msinsight-safe-summary
+          path: ${{ runner.temp }}/ms-evidence/summary.json
+          if-no-files-found: error
+          retention-days: 7
