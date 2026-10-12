@@ -170,3 +170,54 @@ def test_browser_cache_uses_runner_context_only_at_step_scope():
         s["env"]["PLAYWRIGHT_BROWSERS_PATH"] == "${{ runner.temp }}/ms-playwright-browsers"
         for s in steps
     )
+
+
+def parser_tree(source, name="snapshot_parser"):
+    root = source / "scripts" / name
+    for directory in ("base", "simulate", "tools", "util"):
+        (root / directory).mkdir(parents=True, exist_ok=True)
+    (root / "tools/dump2db.py").write_text("# synthetic parser entrypoint\n")
+    return root
+
+
+def test_parser_discovery_uses_unique_entrypoint_and_module_layout(tmp_path):
+    root = parser_tree(tmp_path)
+    assert module.discover_snapshot_parser(tmp_path) == root
+
+
+def test_parser_discovery_rejects_missing_entrypoint(tmp_path):
+    (tmp_path / "scripts").mkdir()
+    with pytest.raises(ValueError, match="exactly one"):
+        module.discover_snapshot_parser(tmp_path)
+
+
+def test_parser_discovery_rejects_ambiguous_entrypoints(tmp_path):
+    parser_tree(tmp_path, "first")
+    parser_tree(tmp_path, "second")
+    with pytest.raises(ValueError, match="exactly one"):
+        module.discover_snapshot_parser(tmp_path)
+
+
+def test_parser_discovery_rejects_symlinked_entrypoint(tmp_path):
+    root = parser_tree(tmp_path)
+    entry = root / "tools/dump2db.py"
+    entry.unlink()
+    target = tmp_path / "external.py"
+    target.write_text("# external\n")
+    entry.symlink_to(target)
+    with pytest.raises(ValueError, match="symlinks"):
+        module.discover_snapshot_parser(tmp_path)
+
+
+def test_parser_discovery_rejects_symlinked_payload(tmp_path):
+    root = parser_tree(tmp_path)
+    (root / "util/escape.py").symlink_to(tmp_path / "missing.py")
+    with pytest.raises(ValueError, match="symlinks"):
+        module.discover_snapshot_parser(tmp_path)
+
+
+def test_parser_discovery_rejects_incomplete_module(tmp_path):
+    root = parser_tree(tmp_path)
+    (root / "simulate").rmdir()
+    with pytest.raises(ValueError, match="Incomplete"):
+        module.discover_snapshot_parser(tmp_path)

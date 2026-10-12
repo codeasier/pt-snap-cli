@@ -55,6 +55,30 @@ def reuse_logs_valid(logs):
     return "is up-to-date" in logs and re.search(r"parse state changed:\s*4\b", logs) is not None
 
 
+def discover_snapshot_parser(source):
+    """Locate the sole pinned external parser by entrypoint, without brand aliases."""
+    scripts = source / "scripts"
+    if not scripts.is_dir() or scripts.is_symlink():
+        raise ValueError("Require a regular consumer scripts directory")
+    candidates = list(scripts.glob("*/tools/dump2db.py"))
+    if len(candidates) != 1:
+        raise ValueError("Require exactly one snapshot parser entrypoint")
+    entry = candidates[0]
+    parser = entry.parent.parent
+    if not entry.is_file() or parser.parent != scripts:
+        raise ValueError("Invalid parser entrypoint layout")
+    if any(path.is_symlink() for path in (source, scripts, parser, entry.parent, entry)):
+        raise ValueError("Parser entrypoint must not traverse symlinks")
+    if any(path.is_symlink() for path in parser.rglob("*")):
+        raise ValueError("Parser payload must not contain symlinks")
+    for name in ("base", "simulate", "tools", "util"):
+        if not (parser / name).is_dir():
+            raise ValueError("Incomplete snapshot parser module layout")
+    if entry.resolve().parent.parent != parser.resolve():
+        raise ValueError("Parser entrypoint escapes its module root")
+    return parser
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--root", type=Path, required=True, help="Completed restore_msinsight.sh root")
@@ -193,7 +217,7 @@ def main():
         for name in ("profiler_server", "libmsinsight.so", "libsqlite.so"):
             shutil.copy2(binary_root / name, stage / name)
         shutil.copytree(
-            a.root / "source/scripts/MemSnapDump",
+            discover_snapshot_parser(a.root / "source"),
             stage / "mem_snap_dump",
             ignore=shutil.ignore_patterns("__pycache__"),
         )
