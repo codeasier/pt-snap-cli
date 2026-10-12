@@ -14,8 +14,6 @@ jobs:
   pinned-consumer:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    env:
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/ms-playwright-browsers
     steps:
       - name: Checkout reviewed test harness
         uses: actions/checkout@v4
@@ -40,7 +38,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential strace libssl-dev zlib1g-dev
-          python -m pip install build==1.6.1 setuptools==84.0.0 setuptools-scm==9.2.2 wheel==0.48.0 pytest==9.1.1
+          python -m pip install build==1.6.1 setuptools==84.0.0 setuptools-scm==9.2.2 wheel==0.48.0 pytest==9.1.1 PyYAML==6.0.3
       - name: Verify fast fail-closed harness contracts
         working-directory: harness
         run: python -m pytest tests/test_msinsight_acceptance.py -c /dev/null
@@ -53,11 +51,15 @@ jobs:
           python .github/scripts/audit_wheel.py --wheel "$RUNNER_TEMP"/ms-wheel/*.whl
           python -m pip download --only-binary=:all: --dest "$RUNNER_TEMP/ms-wheelhouse" "$RUNNER_TEMP"/ms-wheel/*.whl
       - name: Restore pinned original consumer, sequential minimal builds
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/ms-playwright-browsers
         run: |
           bash harness/.github/scripts/msinsight_acceptance/restore_msinsight.sh "$RUNNER_TEMP/ms-restore" > "$RUNNER_TEMP/ms-restore.log" 2>&1
           "$RUNNER_TEMP/ms-restore/venv/bin/python" -m pip install --index-url https://pypi.org/simple playwright==1.63.0
           "$RUNNER_TEMP/ms-restore/venv/bin/python" -m playwright install --with-deps chromium
       - name: Real GUI, protocol, reuse and preservation gates
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/ms-playwright-browsers
         run: |
           WHEEL=$(find "$RUNNER_TEMP/ms-wheel" -maxdepth 1 -name '*.whl' -print)
           test "$(find "$RUNNER_TEMP/ms-wheel" -maxdepth 1 -name '*.whl' | wc -l)" = 1

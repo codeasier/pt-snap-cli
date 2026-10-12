@@ -152,3 +152,21 @@ def test_reuse_state_accepts_real_log_spacing(line):
 )
 def test_reuse_state_rejects_wrong_or_missing_state(line):
     assert not module.reuse_logs_valid("artifact is up-to-date.\n" + line)
+
+
+def test_browser_cache_uses_runner_context_only_at_step_scope():
+    workflow = SCRIPT.parents[2] / "workflows/msinsight-acceptance.yml"
+    import yaml
+
+    job = yaml.safe_load(workflow.read_text())["jobs"]["pinned-consumer"]
+    assert "runner." not in json.dumps(job.get("env", {}))
+    needed = {
+        "Restore pinned original consumer, sequential minimal builds",
+        "Real GUI, protocol, reuse and preservation gates",
+    }
+    steps = [s for s in job["steps"] if s.get("name") in needed]
+    assert len(steps) == 2
+    assert all(
+        s["env"]["PLAYWRIGHT_BROWSERS_PATH"] == "${{ runner.temp }}/ms-playwright-browsers"
+        for s in steps
+    )
