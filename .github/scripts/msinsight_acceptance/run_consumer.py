@@ -39,6 +39,63 @@ def clean_env(home):
     return env
 
 
+GUI_PHASES = (
+    "browser_launch",
+    "page_open",
+    "import_open",
+    "fixture_input",
+    "import_search",
+    "confirm_ready",
+    "import_confirm",
+    "overview_visible",
+    "window_count",
+    "window_click",
+    "window_selected",
+    "window_ready",
+    "peak_visible",
+    "peak_event",
+    "browser_close",
+    "page_errors",
+    "complete",
+)
+GUI_ERRORS = ("none", "timeout", "assertion", "runtime", "other")
+
+
+def read_gui_diagnostics(path):
+    """Public output uses only fixed tokens and bounded numeric data, never raw input."""
+    invalid = {"phase": "unavailable", "error_kind": "unavailable"}
+    try:
+        if path.stat().st_size > 4096:
+            return invalid
+        raw = json.loads(path.read_text())
+        if not isinstance(raw, dict):
+            return invalid
+        phase, error = raw.get("phase"), raw.get("error_kind")
+        transition = raw.get("transition")
+        windows, count = raw.get("completed_windows"), raw.get("page_error_count")
+        if phase not in GUI_PHASES or error not in GUI_ERRORS:
+            return invalid
+        if type(transition) is not int or not 0 <= transition <= 3:
+            return invalid
+        if not isinstance(windows, list) or len(windows) > 4:
+            return invalid
+        if any(type(value) is not int for value in windows):
+            return invalid
+        if windows != [1, 2, 1, 4][: len(windows)]:
+            return invalid
+        if type(count) is not int or not 0 <= count <= 1000000:
+            return invalid
+        return {
+            "phase": phase,
+            "error_kind": error,
+            "transition": transition,
+            "completed_windows": windows,
+            "page_error_count": count,
+        }
+    except (OSError, ValueError, TypeError, RecursionError):
+        return invalid
+
+
 def finalize_summary(output, private, summary, process):
     try:
         if process is not None and process.poll() is None:
@@ -246,6 +303,7 @@ def main():
                     if time.monotonic() > deadline:
                         raise RuntimeError("Loopback readiness timeout") from None
                     time.sleep(0.25)
+            summary["GUI"] = "FAILED"
             run(
                 [
                     py,
@@ -311,6 +369,8 @@ def main():
         summary["failure_type"] = type(exc).__name__
         (e / "failure.txt").write_text(traceback.format_exc())
     finally:
+        if summary["GUI"] != "NOT_RUN":
+            summary["gui_diagnostics"] = read_gui_diagnostics(e / "gui-summary.json")
         finalize_summary(a.output, e, summary, process)
     print(json.dumps({"status": summary["status"], "failure_type": summary.get("failure_type")}))
     return 0 if summary["status"] == "passed" else 1

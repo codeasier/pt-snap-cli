@@ -222,3 +222,142 @@ def test_parser_discovery_rejects_incomplete_module(tmp_path):
     (root / "simulate").rmdir()
     with pytest.raises(ValueError, match="Incomplete"):
         module.discover_snapshot_parser(tmp_path)
+
+
+def gui_module():
+    spec = importlib.util.spec_from_file_location("ms_gui", SCRIPT.with_name("gui_navigation.py"))
+    gui = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gui)
+    return gui
+
+
+@pytest.mark.parametrize(
+    "exception,kind",
+    [
+        (TimeoutError, "timeout"),
+        (AssertionError, "assertion"),
+        (RuntimeError, "runtime"),
+        (ValueError, "other"),
+    ],
+)
+def test_gui_failure_breadcrumbs_never_include_exception_text(tmp_path, exception, kind):
+    gui = gui_module()
+    output = tmp_path / "gui.json"
+    secret = "/private/session/source.py DOM secret_value"
+
+    def fail(state, checks, errors):
+        state["phase"] = "window_selected"
+        state["transition"] = 1
+        checks.append({"window": 1})
+        errors.append(secret)
+        raise exception(secret)
+
+    with pytest.raises(exception):
+        gui.record_navigation(output, fail)
+    raw = output.read_text()
+    assert secret not in raw and "private" not in raw
+    safe = module.read_gui_diagnostics(output)
+    assert safe == {
+        "phase": "window_selected",
+        "error_kind": kind,
+        "transition": 1,
+        "completed_windows": [1],
+        "page_error_count": 1,
+    }
+    assert gui.GUI_PHASES == module.GUI_PHASES
+    assert gui.GUI_ERRORS == module.GUI_ERRORS
+
+
+def test_gui_success_breadcrumbs(tmp_path):
+    output = tmp_path / "gui.json"
+    gui_module().record_navigation(
+        output, lambda state, checks, errors: checks.extend({"window": n} for n in [1, 2, 1, 4])
+    )
+    safe = module.read_gui_diagnostics(output)
+    assert safe["phase"] == "complete"
+    assert safe["error_kind"] == "none"
+    assert safe["completed_windows"] == [1, 2, 1, 4]
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("phase", "/private/DOM"),
+        ("error_kind", "SecretException"),
+        ("transition", True),
+        ("transition", 4),
+        ("completed_windows", [1, "/private/DOM"]),
+        ("completed_windows", [True]),
+        ("completed_windows", [2]),
+        ("page_error_count", "/private/DOM"),
+        ("page_error_count", -1),
+    ],
+)
+def test_gui_diagnostic_input_is_fail_closed(tmp_path, field, value):
+    output = tmp_path / "gui.json"
+    raw = {
+        "phase": "complete",
+        "error_kind": "none",
+        "transition": 3,
+        "completed_windows": [1, 2, 1, 4],
+        "page_error_count": 0,
+    }
+    raw[field] = value
+    output.write_text(json.dumps(raw))
+    assert module.read_gui_diagnostics(output) == {
+        "phase": "unavailable",
+        "error_kind": "unavailable",
+    }
+
+
+@pytest.mark.parametrize("payload", ["not json /private/DOM", "[]", "x" * 4097])
+def test_gui_missing_or_malformed_diagnostics_are_safe(tmp_path, payload):
+    output = tmp_path / "gui.json"
+    assert module.read_gui_diagnostics(output)["phase"] == "unavailable"
+    output.write_text(payload)
+    assert module.read_gui_diagnostics(output)["phase"] == "unavailable"
+
+
+def test_gui_extra_fields_and_custom_exception_name_are_not_published(tmp_path):
+    gui = gui_module()
+    secret = "/private/DOM-secret"
+    assert gui.error_kind(type(secret, (Exception,), {})(secret)) == "other"
+    output = tmp_path / "gui.json"
+    output.write_text(
+        json.dumps(
+            {
+                "phase": "confirm_ready",
+                "error_kind": "timeout",
+                "transition": 0,
+                "completed_windows": [],
+                "page_error_count": 0,
+                "raw_traceback": secret,
+            }
+        )
+    )
+    safe = module.read_gui_diagnostics(output)
+    assert "raw_traceback" not in safe and secret not in json.dumps(safe)
+
+
+def test_gui_deeply_nested_json_cannot_bypass_final_summary(tmp_path):
+    output = tmp_path / "gui.json"
+    output.write_text("[" * 1100 + "0" + "]" * 1100)
+    assert output.stat().st_size < 4096
+    assert module.read_gui_diagnostics(output) == {
+        "phase": "unavailable",
+        "error_kind": "unavailable",
+    }
+
+
+def test_gui_decoder_recursion_error_is_fail_closed(tmp_path, monkeypatch):
+    output = tmp_path / "gui.json"
+    output.write_text("{}")
+
+    def fail(_):
+        raise RecursionError("private decoder context")
+
+    monkeypatch.setattr(module.json, "loads", fail)
+    assert module.read_gui_diagnostics(output) == {
+        "phase": "unavailable",
+        "error_kind": "unavailable",
+    }
