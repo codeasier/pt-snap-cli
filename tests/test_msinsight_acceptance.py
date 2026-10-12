@@ -198,20 +198,21 @@ def test_parser_discovery_rejects_ambiguous_entrypoints(tmp_path):
         module.discover_snapshot_parser(tmp_path)
 
 
-def test_parser_discovery_rejects_symlinked_entrypoint(tmp_path):
+def test_parser_discovery_rejects_symlinked_entrypoint(tmp_path, monkeypatch):
     root = parser_tree(tmp_path)
     entry = root / "tools/dump2db.py"
-    entry.unlink()
-    target = tmp_path / "external.py"
-    target.write_text("# external\n")
-    entry.symlink_to(target)
+    original = Path.is_symlink
+    monkeypatch.setattr(Path, "is_symlink", lambda path: path == entry or original(path))
     with pytest.raises(ValueError, match="symlinks"):
         module.discover_snapshot_parser(tmp_path)
 
 
-def test_parser_discovery_rejects_symlinked_payload(tmp_path):
+def test_parser_discovery_rejects_symlinked_payload(tmp_path, monkeypatch):
     root = parser_tree(tmp_path)
-    (root / "util/escape.py").symlink_to(tmp_path / "missing.py")
+    link = root / "util/escape.py"
+    link.write_text("# simulated link entry for a platform-independent guard check\n")
+    original = Path.is_symlink
+    monkeypatch.setattr(Path, "is_symlink", lambda path: path == link or original(path))
     with pytest.raises(ValueError, match="symlinks"):
         module.discover_snapshot_parser(tmp_path)
 
