@@ -350,7 +350,7 @@ def _schema(
     _need(kind == ("table",), loc, "table", f"{table} must be an actual table, not a view")
     rows = conn.execute(f'PRAGMA table_info("{table}")').fetchall()
     _need(
-        tuple((row[1], row[2].upper()) for row in rows) == columns,
+        tuple((row[1], row[2].upper()) for row in rows[: len(columns)]) == columns,
         loc,
         "columns",
         f"{table} column order/types differ from base contract",
@@ -428,7 +428,8 @@ def _validate_slice(
     ).fetchone()
     _need(bad is None, loc, "event_values", "invalid scalar type or negative byte metric")
     boundary_count = conn.execute(f'SELECT COUNT(*) FROM "{trace}" WHERE id<0').fetchone()[0]
-    for row in checked_rows(conn.execute(f'SELECT * FROM "{block}"'), budget):
+    selected = ",".join(f'"{name}"' for name, _ in BLOCK_COLUMNS)
+    for row in checked_rows(conn.execute(f'SELECT {selected} FROM "{block}"'), budget):
         block_id, address, size, requested, state, alloc, free = row
         for name, value in zip(
             ("id", "address", "size", "requestedSize", "state", "allocEventId", "freeEventId"),
@@ -522,5 +523,5 @@ def validate_dataset(
         return DatasetValidation(
             manifest, sum(item.event_count for item in manifest.devices), boundaries
         )
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError, RecursionError) as exc:
         raise DatasetContractError("manifest.json", "read", str(exc)) from exc

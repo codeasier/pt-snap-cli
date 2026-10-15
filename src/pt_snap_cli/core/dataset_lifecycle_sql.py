@@ -13,6 +13,7 @@ import sqlite3
 from contextlib import closing
 from typing import cast
 
+from pt_snap_cli.core.dataset_contract import BLOCK_COLUMNS
 from pt_snap_cli.core.dataset_lifecycle_connection import _AttachedSources
 from pt_snap_cli.core.errors import QueryExecutionError
 
@@ -98,8 +99,9 @@ def _large_observation_set(sources, items):
 def _lifecycle_cte(sources, items, proof_items):
     allocated = _proof(sources, proof_items, "allocEventId", 4)
     completed = _proof(sources, proof_items, "freeEventId", 6)
+    selected = ",".join(f'b."{name}"' for name, _ in BLOCK_COLUMNS)
     observations = " UNION ALL ".join(
-        f"SELECT b.*, {item.index} AS observation_slice_index, "
+        f"SELECT {selected}, {item.index} AS observation_slice_index, "
         f"{allocated} AS allocation_proved, "
         f"CASE WHEN {completed} THEN b.freeEventId END AS completed_free "
         f'FROM "s{item.index}"."block_{sources.device.device_id}" b'

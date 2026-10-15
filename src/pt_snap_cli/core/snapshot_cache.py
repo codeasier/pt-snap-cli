@@ -13,6 +13,14 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+from .validation_budget import (
+    ValidationBudget,
+    check_budget,
+    checked_rows,
+    sqlite_timeout,
+    validation_progress,
+)
+
 PARSER_HASH_SALT = b"mem_snapshot_parser_v2"
 CACHE_CONTRACT_VERSION = 1
 TRACE_COLUMNS = (
@@ -126,11 +134,15 @@ def _table_rows(
     selected = ",".join(f'"{column}"' for column in columns)
     order = '"id"' if "id" in columns else selected
     # Identifiers and the optional predicate are internal constants/validated device IDs.
-    return conn.execute(f'SELECT {selected} FROM "{name}" {where} ORDER BY {order}', parameters)  # nosec B608
+    return conn.execute(
+        f'SELECT {selected} FROM "{name}" {where} ORDER BY {order}', parameters
+    )  # nosec B608
 
 
-def member_digest(path: Path, device: str, start: int, end: int) -> str:
-    """Hash ordered base rows only; extra tables, indexes and dictionary entries are allowed."""
+def member_digest(
+    path: Path, device: str, start: int, end: int, *, budget: ValidationBudget | None = None
+) -> str:
+    """Hash fixed base columns; consumer columns, tables, indexes, views and triggers are allowed."""
     if re.fullmatch(r"0|[1-9][0-9]*", str(device)) is None:
         raise ValueError("Invalid device ID")
     digest = hashlib.sha256()
@@ -143,13 +155,18 @@ def member_digest(path: Path, device: str, start: int, end: int) -> str:
     immutable = not any(item.exists() for item in sidecars)
     before = path.stat()
     uri = path.resolve().as_uri() + "?mode=ro" + ("&immutable=1" if immutable else "")
-    with closing(sqlite3.connect(uri, uri=True)) as conn:
+    with (
+        closing(sqlite3.connect(uri, uri=True, timeout=sqlite_timeout(budget))) as conn,
+        validation_progress(conn, budget),
+    ):
         conn.execute("PRAGMA query_only=ON")
         conn.execute("BEGIN")
+        if conn.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
+            raise ValueError("Snapshot member failed integrity check")
         tables = ((f"trace_entry_{device}", TRACE_COLUMNS), (f"block_{device}", BLOCK_COLUMNS))
         for table, columns in tables:
             digest.update(json.dumps((table, columns), separators=(",", ":")).encode())
-            for row in _table_rows(conn, table, columns):
+            for row in checked_rows(_table_rows(conn, table, columns), budget):
                 digest.update(encoder.encode(row, columns == TRACE_COLUMNS))
                 digest.update(b"\n")
         count, low, high = conn.execute(
@@ -166,6 +183,16 @@ def member_digest(path: Path, device: str, start: int, end: int) -> str:
         ):
             digest.update(json.dumps(row, ensure_ascii=True, separators=(",", ":")).encode())
             digest.update(b"\n")
+        for table, column in ((f"trace_entry_{device}", "action"), (f"block_{device}", "state")):
+            # Identifiers are internal constants with the device validated above.
+            missing = conn.execute(
+                f'SELECT 1 FROM (SELECT DISTINCT "{column}" AS value FROM "{table}") AS base WHERE NOT EXISTS '  # nosec B608
+                '(SELECT 1 FROM dictionary AS dict WHERE dict."table"=? AND dict."column"=? '
+                'AND dict."key"=CAST(base.value AS TEXT)) LIMIT 1',
+                (table, column),
+            ).fetchone()
+            if missing:
+                raise ValueError("Snapshot dictionary reference is missing")
     after = path.stat()
     if immutable and (
         any(item.exists() for item in sidecars)
@@ -176,7 +203,9 @@ def member_digest(path: Path, device: str, start: int, end: int) -> str:
     return digest.hexdigest()
 
 
-def parser_members(directory: Path, manifest: dict[str, Any]) -> dict[str, str]:
+def parser_members(
+    directory: Path, manifest: dict[str, Any], *, budget: ValidationBudget | None = None
+) -> dict[str, str]:
     """Validate the complete manifest and all DBs; never deserialize the source."""
     if _integer(manifest.get("schemaVersion"), 1) != 1:
         raise ValueError("Unsupported snapshot manifest version")
@@ -203,6 +232,9 @@ def parser_members(directory: Path, manifest: dict[str, Any]) -> dict[str, str]:
         if sorted(_integer(index) for index in data["readySlices"]) != list(range(size)):
             raise ValueError("Snapshot slices are not ready")
         for index, item in enumerate(data["slices"]):
+            check_budget(budget)
+            if not isinstance(item, dict):
+                raise ValueError(f"manifest.devices.{device}.slices[{index}]: expected object")
             start, end = index * capacity, min((index + 1) * capacity, count) - 1
             if (
                 _integer(item["index"]),
@@ -213,7 +245,9 @@ def parser_members(directory: Path, manifest: dict[str, Any]) -> dict[str, str]:
             relative = item["file"]
             if relative in members:
                 raise ValueError("Duplicate snapshot member")
-            members[relative] = member_digest(_member(directory, relative), device, start, end)
+            members[relative] = member_digest(
+                _member(directory, relative), device, start, end, budget=budget
+            )
     return members
 
 
@@ -234,12 +268,27 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def validate_cache(directory: Path, cache_hash: str, device: int | None = None) -> dict[str, Any]:
-    path = directory / "manifest.json"
-    original = path.read_bytes()
-    manifest = json.loads(original, object_pairs_hook=_unique_object)
+def parse_cache_manifest(raw: bytes) -> dict[str, Any]:
+    """Normalize malformed/deep JSON consistently at every compatible import entry."""
+    try:
+        manifest = json.loads(raw, object_pairs_hook=_unique_object)
+    except RecursionError as error:
+        raise ValueError("Snapshot manifest nesting is too deep") from error
     if not isinstance(manifest, dict):
         raise ValueError("Invalid snapshot manifest")
+    return manifest
+
+
+def validate_cache(
+    directory: Path,
+    cache_hash: str,
+    device: int | None = None,
+    *,
+    budget: ValidationBudget | None = None,
+) -> dict[str, Any]:
+    path = directory / "manifest.json"
+    original = path.read_bytes()
+    manifest = parse_cache_manifest(original)
     if not cache_hash or manifest.get("cacheHash") != cache_hash:
         raise ValueError("Snapshot source hash or parser salt changed")
     if device is not None and set(manifest["devices"]) != {str(device)}:
@@ -254,7 +303,7 @@ def validate_cache(directory: Path, cache_hash: str, device: int | None = None) 
     )
     if device is None and selected_device is not None:
         raise ValueError("Snapshot cache contains only a selected device")
-    members = parser_members(directory, manifest)
+    members = parser_members(directory, manifest, budget=budget)
     attestation = manifest.get("parserCache")
     # Legacy producers have no logical attestation; still validate every base table and range.
     if attestation is not None and (

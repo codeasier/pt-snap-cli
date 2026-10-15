@@ -44,7 +44,7 @@ from pt_snap_cli.core.native_dataset_contract import (
     cache_identity,
 )
 from pt_snap_cli.core.sharded_replay_service import ShardedReplayResult
-from pt_snap_cli.core.snapshot_cache import source_hashes, validate_cache
+from pt_snap_cli.core.snapshot_cache import parse_cache_manifest, source_hashes, validate_cache
 from pt_snap_cli.core.snapshot_import_backend import SnapshotImportBackend
 
 logger = logging.getLogger(__name__)
@@ -296,8 +296,7 @@ class ImportService:
             raise ImportExecutionError(f"Cannot calculate msinsight cacheHash: {exc}") from exc
         if target.exists():
             try:
-                with (target / "manifest.json").open(encoding="utf-8") as file:
-                    external_manifest = json.load(file)
+                external_manifest = parse_cache_manifest((target / "manifest.json").read_bytes())
                 if isinstance(external_manifest, dict) and "ptSnap" not in external_manifest:
                     # A compatible producer is not pt-snap-owned. Reuse read-only;
                     # never invent provenance metadata or replace it under force.
@@ -328,6 +327,11 @@ class ImportService:
                     or owned.metadata.source_size != options.snapshot_file.stat().st_size
                 ):
                     raise ValueError("Source/options/format identity changed")
+            except FileNotFoundError as exc:
+                raise ImportExecutionError(
+                    f"Existing compatible output is not reusable; preserved even under --force. "
+                    f"Required artifact file is missing: {exc.filename}. Choose a new output directory."
+                ) from exc
             except (
                 ValueError,
                 KeyError,

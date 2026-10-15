@@ -10,7 +10,6 @@ never mutated, even under force. This is not GUI acceptance.
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from contextlib import closing
 from dataclasses import asdict, dataclass
@@ -24,7 +23,6 @@ from .dataset_contract import (
     TRACE_COLUMNS,
     DatasetContractError,
     DatasetManifest,
-    _unique_object,
     parse_manifest,
     validate_dataset,
 )
@@ -34,7 +32,7 @@ from .errors import ImportExecutionError
 from .import_metadata_contract import metadata_from_mapping
 from .models import ImportMetadata
 from .sharded_replay_service import ShardedReplayResult
-from .snapshot_cache import seal_manifest, source_hashes, validate_cache
+from .snapshot_cache import parse_cache_manifest, seal_manifest, source_hashes, validate_cache
 
 COMPATIBILITY_FORMAT = "compatibility-v1"
 DEFAULT_CAPACITY = 500000
@@ -276,8 +274,23 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
     Base tables are attested logically. Consumer-owned tables and indexes may
     change without invalidating parser data. Legacy exports retain byte checks.
     """
-    with (target / "manifest.json").open(encoding="utf-8") as file:
-        data = json.load(file, object_pairs_hook=_unique_object)
+    data = parse_cache_manifest((target / "manifest.json").read_bytes())
+    extension = data.get("ptSnap")
+    if not isinstance(extension, dict):
+        raise ValueError("manifest.ptSnap: expected object")
+    identity = extension.get("identity")
+    if not isinstance(identity, dict):
+        raise ValueError("manifest.ptSnap.identity: expected object")
+    for key in ("metadata", "members"):
+        if not isinstance(extension.get(key), dict):
+            raise ValueError(f"manifest.ptSnap.{key}: expected object")
+    if not isinstance(extension.get("omittedDevices"), list):
+        raise ValueError("manifest.ptSnap.omittedDevices: expected array")
+    version = identity.get("exportContractVersion")
+    if type(version) is int and version < EXPORT_VERSION:
+        raise ValueError(
+            f"Legacy export contract v{version}; choose a new --output-dir to re-export as v{EXPORT_VERSION}"
+        )
     # Sealed base rows are already fully scanned by validate_cache below. Avoid
     # a second expensive callstack/row walk and keep live WAL reads transactional.
     manifest = parse_manifest(data)
@@ -300,6 +313,10 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
     ):
         raise ValueError("Metadata must match physical v1 layout")
     paths = {s.file for d in manifest.devices for s in d.slices}
+    if any((target / (relative + "-journal")).exists() for relative in paths):
+        raise ValueError(
+            "Snapshot member has a rollback journal; a writer or recovery may be active, retry later"
+        )
     if set(extension["members"]) != paths:
         raise ValueError("Incomplete member attestation")
     expected = {"manifest.json", "parse.log", *paths, *(str(Path(p).parent) for p in paths)}
@@ -323,6 +340,13 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
         require_readonly_member(target, member, immutable=True)
         with closing(sqlite3.connect(readonly_member_uri(member), uri=True)) as conn:
             conn.row_factory = sqlite3.Row
+            if (
+                conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='pt_snap_metadata'"
+                ).fetchone()
+                is None
+            ):
+                raise ValueError(f"{relative}.pt_snap_metadata: required metadata table is missing")
             rows = conn.execute("SELECT * FROM pt_snap_metadata").fetchall()
             if (
                 len(rows) != 1

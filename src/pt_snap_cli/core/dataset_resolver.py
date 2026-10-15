@@ -11,6 +11,7 @@ import copy
 import hashlib
 import json
 import os
+import sqlite3
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +45,7 @@ from pt_snap_cli.core.native_dataset_contract import (
     validate_native_dataset,
     validate_native_scope,
 )
+from pt_snap_cli.core.snapshot_cache import validate_cache
 from pt_snap_cli.core.validation_budget import ValidationBudget, check_budget, checked_rows
 
 _FileStamp = tuple[int, int, int, int, int, int, int]
@@ -347,6 +349,24 @@ class DatasetResolver:
                 if isinstance(planned, NativeManifest)
                 else validate_dataset(root, budget=budget)
             )
+            if (
+                strong_cache
+                and not isinstance(planned, NativeManifest)
+                and isinstance(raw, dict)
+                and "parserCache" in raw
+            ):
+                try:
+                    attestation = raw["parserCache"]
+                    if not isinstance(attestation, dict):
+                        raise ValueError("parserCache: expected object")
+                    selected = attestation.get("requestedDevice")
+                    if selected is not None and (type(selected) is not int or selected < 0):
+                        raise ValueError(
+                            "parserCache.requestedDevice: expected nonnegative integer"
+                        )
+                    validate_cache(root, raw["cacheHash"], selected, budget=budget)
+                except (ValueError, KeyError, TypeError, sqlite3.DatabaseError) as exc:
+                    raise DatasetContractError("parserCache", "seal", str(exc)) from exc
             digest = hashlib.sha256()
             digest.update(before.encode("ascii"))
             for device in checked_rows(validation.manifest.devices, budget):
@@ -394,7 +414,13 @@ class DatasetResolver:
                     while len(_VALIDATED) > _CACHE_LIMIT:
                         _ = _VALIDATED.popitem(last=False)
             return result
-        except (DatasetContractError, OSError, UnicodeError, json.JSONDecodeError) as exc:
+        except (
+            DatasetContractError,
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+            RecursionError,
+        ) as exc:
             with _CACHE_LOCK:
                 _ = _VALIDATED.pop(cache_key, None)
             raise DatabaseSchemaError(f"Invalid dataset: {exc}") from exc

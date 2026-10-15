@@ -49,6 +49,7 @@ class SnapshotCacheTest(unittest.TestCase):
                 "INSERT INTO trace_entry_0 VALUES(0,4,100,10,0,10,10,20,'stack');"
                 "INSERT INTO block_0 VALUES(0,100,10,10,1,0,-1);"
                 "INSERT INTO dictionary VALUES('trace_entry_0','action','4','alloc');"
+                "INSERT INTO dictionary VALUES('block_0','state','1','active_allocated');"
             )
         self.manifest = {
             "schemaVersion": 1,
@@ -92,6 +93,9 @@ class SnapshotCacheTest(unittest.TestCase):
                 "CREATE TABLE memory_allocation_cache_v1_0(value INTEGER);"
                 "CREATE TABLE arbitrary_consumer_data(value TEXT);"
                 "CREATE INDEX consumer_index ON block_0(address);"
+                "ALTER TABLE trace_entry_0 ADD COLUMN consumer_note TEXT;"
+                "CREATE VIEW consumer_view AS SELECT id FROM block_0;"
+                "CREATE TRIGGER consumer_trigger AFTER UPDATE ON block_0 BEGIN SELECT 1; END;"
                 "INSERT INTO arbitrary_consumer_data VALUES('extra');"
                 "INSERT INTO dictionary VALUES('arbitrary_consumer_data','value','1','extra');"
             )
@@ -211,8 +215,8 @@ class SnapshotCacheTest(unittest.TestCase):
 
         original = snapshot_cache.parser_members
 
-        def change_manifest(directory, manifest):
-            members = original(directory, manifest)
+        def change_manifest(directory, manifest, **kwargs):
+            members = original(directory, manifest, **kwargs)
             self.manifest["consumerRevision"] = 1
             self.save()
             return members
@@ -229,3 +233,43 @@ class SnapshotCacheTest(unittest.TestCase):
         with patch.object(snapshot_cache, "PARSER_HASH_SALT", b"another-parser-version"):
             with self.assertRaises(ValueError):
                 validate_cache(self.directory, source_hashes(self.source)[1])
+
+    def test_corrupt_secondary_index_is_rejected(self):
+        with closing(sqlite3.connect(self.db)) as conn:
+            conn.execute("CREATE INDEX block_address ON block_0(address)")
+            page_size = conn.execute("PRAGMA page_size").fetchone()[0]
+            root = conn.execute(
+                "SELECT rootpage FROM sqlite_master WHERE name='block_address'"
+            ).fetchone()[0]
+        with self.db.open("r+b") as file:
+            file.seek((root - 1) * page_size)
+            file.write(b"\xff" * page_size)
+        with self.assertRaises((ValueError, sqlite3.DatabaseError)):
+            validate_cache(self.directory, self.hash)
+
+    def test_deep_manifest_is_a_validation_error(self):
+        (self.directory / "manifest.json").write_text("[" * 200000 + "0" + "]" * 200000)
+        with self.assertRaisesRegex(ValueError, "nesting"):
+            validate_cache(self.directory, self.hash)
+
+    def test_legacy_dictionary_references_are_required(self):
+        del self.manifest["parserCache"]
+        for table in ("trace_entry_0", "block_0"):
+            with self.subTest(table=table):
+                with closing(sqlite3.connect(self.db)) as conn, conn:
+                    original = conn.execute(
+                        'SELECT * FROM dictionary WHERE "table"=?', (table,)
+                    ).fetchall()
+                    conn.execute('DELETE FROM dictionary WHERE "table"=?', (table,))
+                self.save()
+                with self.assertRaisesRegex(ValueError, "dictionary reference"):
+                    validate_cache(self.directory, self.hash)
+                with closing(sqlite3.connect(self.db)) as conn, conn:
+                    conn.executemany("INSERT INTO dictionary VALUES(?,?,?,?)", original)
+
+    def test_cross_window_lifetime_references_remain_valid(self):
+        with closing(sqlite3.connect(self.db)) as conn, conn:
+            conn.execute("UPDATE block_0 SET allocEventId=-1, freeEventId=999")
+        seal_manifest(self.directory, self.manifest)
+        self.save()
+        self.assertEqual(validate_cache(self.directory, self.hash), self.manifest)
