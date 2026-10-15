@@ -96,7 +96,14 @@ class ImportMetadataService:
             if "ptSnap" in raw:
                 try:
                     owned = inspect_owned_cache(dataset.root)
-                except (ValueError, KeyError, TypeError, OSError, sqlite3.DatabaseError):
+                except (
+                    ValueError,
+                    KeyError,
+                    TypeError,
+                    OSError,
+                    sqlite3.DatabaseError,
+                    DatabaseSchemaError,
+                ):
                     return MetadataInspection(path, "invalid", reason="metadata_invalid")
                 return MetadataInspection(path, "available", owned.metadata)
             return MetadataInspection(path, "unavailable", reason="metadata_missing")

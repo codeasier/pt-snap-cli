@@ -25,6 +25,7 @@ from .dataset_contract import (
     DatasetContractError,
     DatasetManifest,
     _unique_object,
+    parse_manifest,
     validate_dataset,
 )
 from .dataset_files import hash_file, require_readonly_member
@@ -32,6 +33,12 @@ from .dataset_import_backend import DatasetImportBackend
 from .errors import ImportExecutionError
 from .import_metadata_contract import metadata_from_mapping
 from .models import ImportMetadata
+from .msinsight_content_proof import (
+    CONTENT_VERSION,
+    compare_member_content,
+    member_content,
+    validate_member_content,
+)
 from .sharded_replay_service import ShardedReplayResult
 
 COMPATIBILITY_FORMAT = "compatibility-v1"
@@ -193,6 +200,7 @@ def build_compatible_manifest(
 ) -> dict[str, object]:
     devices: dict[str, object] = {}
     files: dict[str, str] = {}
+    contents: dict[str, object] = {}
     for device in sorted({s.device for s in result.slices}):
         slices = [s for s in result.slices if s.device == device]
         devices[str(device)] = {
@@ -211,7 +219,14 @@ def build_compatible_manifest(
             ],
         }
         for item in slices:
-            files[item.file.relative_to(result.directory).as_posix()] = hash_file(item.file)
+            relative = item.file.relative_to(result.directory).as_posix()
+            require_readonly_member(result.directory, item.file, immutable=True)
+            before = hash_file(item.file)
+            contents[relative] = member_content(item.file)
+            require_readonly_member(result.directory, item.file, immutable=True)
+            if hash_file(item.file) != before:
+                raise ValueError("Compatible member changed while building proof")
+            files[relative] = before
     return {
         "schemaVersion": MANIFEST_SCHEMA_VERSION,
         "status": "complete",
@@ -226,6 +241,7 @@ def build_compatible_manifest(
             "metadata": asdict(metadata),
             "omittedDevices": list(result.omitted_devices),
             "members": files,
+            "memberContent": {"version": CONTENT_VERSION, "members": contents},
         },
     }
 
@@ -238,16 +254,48 @@ class CompatibleCache:
     omitted_devices: tuple[int, ...]
 
 
-def inspect_owned_cache(target: Path) -> CompatibleCache:
-    """Whole valid recognized identity only; salted hash alone is never ownership.
+def _cache_inventory(target: Path) -> dict[str, tuple[int, ...]]:
+    """Snapshot identity of the entire owned tree without following aliases."""
+    if target.resolve() != target or target.is_symlink() or not target.is_dir():
+        raise ValueError("Compatible cache must be a canonical directory")
+    result = {}
+    for path in (target, *target.rglob("*")):
+        if path.is_symlink() or not (path.is_file() or path.is_dir()):
+            raise ValueError("Unrecognized files or aliases in compatible cache")
+        stat = path.stat()
+        result[path.relative_to(target).as_posix()] = (
+            stat.st_dev,
+            stat.st_ino,
+            stat.st_size,
+            stat.st_mtime_ns,
+            stat.st_ctime_ns,
+            stat.st_mode,
+            stat.st_nlink,
+        )
+    return result
 
-    Reject unexpected files/aliases rather than adopt them. GUI may change
-    derived tables: that invalidates pt-snap's immutable cache attestation, and
-    requires a new output, never repair or force-replacement.
+
+def inspect_owned_cache(target: Path) -> CompatibleCache:
+    """Recognized identity plus byte or versioned base-content attestation.
+
+    Stable cache-only changes can reuse new proofs. Legacy byte drift cannot be
+    classified retrospectively. Bracketing detects changes, not a writer lock.
     """
-    validation = validate_dataset(target)
-    with (target / "manifest.json").open(encoding="utf-8") as file:
+    generation = _cache_inventory(target)
+    manifest_path = target / "manifest.json"
+    manifest_hash = hash_file(manifest_path)
+    with manifest_path.open(encoding="utf-8") as file:
         data = json.load(file, object_pairs_hook=_unique_object)
+    planned = parse_manifest(data)
+    paths = {s.file: d.device_id for d in planned.devices for s in d.slices}
+    expected = {".", "manifest.json", *paths, *(str(Path(p).parent) for p in paths)}
+    if set(generation) != expected:
+        raise ValueError("Unrecognized files or aliases in compatible cache")
+    before = {}
+    for relative in paths:
+        require_readonly_member(target, target / relative, immutable=True)
+        before[relative] = hash_file(target / relative)
+    validation = validate_dataset(target)
     extension = data["ptSnap"]
     metadata = metadata_from_mapping(extension["metadata"])
     identity = extension["identity"]
@@ -264,17 +312,32 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
         or metadata.metadata_schema_version != 1
     ):
         raise ValueError("Metadata must match physical v1 layout")
-    paths = {s.file for d in validation.manifest.devices for s in d.slices}
-    if set(extension["members"]) != paths:
+    if set(extension["members"]) != set(paths):
         raise ValueError("Incomplete member attestation")
-    expected = {"manifest.json", *paths, *(str(Path(p).parent) for p in paths)}
-    actual = {p.relative_to(target).as_posix() for p in target.rglob("*")}
-    if actual != expected or any(p.is_symlink() for p in target.rglob("*")):
-        raise ValueError("Unrecognized files or aliases in compatible cache")
-    for relative in paths:
+    proofs = None
+    if "memberContent" in extension:
+        content = extension["memberContent"]
+        if (
+            not isinstance(content, dict)
+            or set(content) != {"version", "members"}
+            or type(content["version"]) is not int
+            or content["version"] != CONTENT_VERSION
+            or not isinstance(content["members"], dict)
+            or set(content["members"]) != set(paths)
+        ):
+            raise ValueError("Unsupported or incomplete compatible base-content proof")
+        proofs = content["members"]
+        for proof in proofs.values():
+            validate_member_content(proof)
+    for relative, device in paths.items():
         member = target / relative
-        if hash_file(member) != extension["members"][relative]:
-            raise ValueError("Compatible member hash changed")
+        if before[relative] != extension["members"][relative]:
+            if proofs is None:
+                raise ValueError(
+                    "Compatible member hash changed; legacy integrity proof invalidated. "
+                    "No prior base-content proof is available; base-data corruption is not established."
+                )
+            compare_member_content(member, proofs[relative], device)
         with closing(sqlite3.connect(member.as_uri() + "?mode=ro&immutable=1", uri=True)) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute("SELECT * FROM pt_snap_metadata").fetchall()
@@ -296,4 +359,10 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
         raise ValueError("Device selection disagrees with identity")
     if Path(validation.manifest.source_file).name != metadata.source_name:
         raise ValueError("Source path disagrees with metadata")
+    for relative in paths:
+        require_readonly_member(target, target / relative, immutable=True)
+        if hash_file(target / relative) != before[relative]:
+            raise ValueError("Compatible member changed during inspection")
+    if hash_file(manifest_path) != manifest_hash or _cache_inventory(target) != generation:
+        raise ValueError("Compatible cache changed during inspection")
     return CompatibleCache(validation.manifest, identity, metadata, tuple(omitted))

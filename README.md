@@ -79,8 +79,10 @@ Explicit `pt-snap import snapshot.pkl --format msinsight --json` produces
 `snapshot.pkl.msinsight/` for the fixed msinsight revision's **same original
 pickle + adjacent cache** entrance. Inline stacks cost more space than native
 interning. Existing compatible targets are never replaced, even with `--force`;
-only fully validated identical pt-snap caches are reused. GUI acceptance remains
-**pending/not run**; hash equality alone is not acceptance. See
+only fully validated pt-snap caches are reused. New exports attest base content so
+known device-local Insight cache tables can change without losing reuse; changed
+legacy caches without that proof still fail closed. Hash equality alone is not GUI
+acceptance; dated fixed-version results and their limits are recorded below. See
 [compatible export and limits](docs/en/sharded-snapshotdb.md#explicit-msinsight-compatible-export-p2).
 
 See [offline interoperability acceptance and bounded performance](docs/en/interop-acceptance.md)

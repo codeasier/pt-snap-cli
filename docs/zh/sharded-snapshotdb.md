@@ -407,13 +407,27 @@ raw-frame 丢失与字符串 OOM action 强制转换属于已知局限，不应�
 `outputFormat=compatibility-v1`、`manifestContractVersion=1`、`exportContractVersion=1`、
 `referenceContractVersion=1`、`metadataSchemaVersion=1`、`importFormatVersion=1`、完整
 `targetRevision`。`ptSnap` 另含 `metadata`、`omittedDevices` 和 `members`（规范相对路径
-→ 最终化 SHA256）。整体已校验所有权/身份要求每个成员/哈希及逐片 metadata 相同；
-不接管未知/外部缓存或无关文件。CLI 版本变化本身不使缓存失效。
+→ 最终化 SHA256）。新导出还保存 `memberContent = {"version": 1, "members": {相对路径: proof}}`。
+proof 记录全部原始 SQLite schema 对象的 type/name/table/SQL（不含物理 rootpage），
+以及每张原表的行数和 SHA256，包括 dictionary、metadata、生命周期引用和内部表。
+行按带类型标签和长度分隔的 NULL/整数/IEEE-754 浮点/UTF-8 文本/blob 编码，再按 BLOB
+排序；重复行仍计入。声明的 ID 被保护，隐式 rowid 和物理行顺序不作为语义。SQLite
+负责排序，Python 流式消费；排序可能使用临时存储，不是常数工作量导入。
 
-兼容发布 **force 也 no-replace**。已识别、身份相同的 pt-snap 缓存不加载 pickle 即复用，
-force 不绕过该规则。源路径/内容、选项/合同变化、成员损坏或 GUI 修改 DB 后须换新
-`--output-dir`，不修复、不覆盖、不删除旧产物。排他发布与 focus 补偿使用已有受检事务，
-发布/复用前再次核对源 SHA256；原生 force 替换与恢复语义不变。
+成员字节相同时保留快速路径，不扫描逻辑内容。字节改变时，必须有事前 version-1 proof
+且全部基础 schema/行匹配；只允许新增普通表 `memory_allocation_cache_v1_<该片 deviceId>`，
+其他表、版本、设备名、索引、视图和 trigger 均拒绝。原本已纳入证明的同名缓存表仍受保护。
+基础证明全量相同时，稳定的文件头/物理布局变化也可通过。未知或非法 proof 即使字节未变
+也拒绝。旧产物无 proof 时仍须整文件 hash 相同；字节变化表示完整性证据失效，不等于基础
+数据损坏，不从已修改现状补造历史证明。证明是完整性基线，不认证不可信 manifest 或来源。
+
+兼容发布 **force 也 no-replace**。已识别、源/选项/身份相同、字节或基础内容证明匹配的
+pt-snap 缓存不加载 pickle 即复用；force 不绕过检查。源/选项变化、基础内容变化、未知对象、
+旧产物未被证明的字节变化须换新 `--output-dir`。不修复、不覆盖、不删除、不改写 manifest。
+逐片 metadata 仍须与 manifest 身份相符。检查前后核对 manifest/成员字节、完整文件 generation、
+目录身份、精确成员清单及 alias/sidecar；writer 必须已停止、成员已最终化。这是变更检测，
+不是文件系统锁或 live-writer 支持。普通兼容数据集只读查询保留独立校验合同。
+排他发布、focus 补偿、发布/复用前源 SHA256 复查及原生 force 替换/恢复语义不变。
 
 内联文本成本按每个事件的 UTF-8 调用栈字节求和，不按不同栈各存一份；原生去重仍可用。
 转换暂时并存两种布局，可能留下 SQLite free pages；容量不是 RSS/registry/block/磁盘

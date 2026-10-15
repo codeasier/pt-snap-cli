@@ -510,17 +510,40 @@ additional ID-validation memory, not snapshot loading, replay, or total import R
 `manifestContractVersion=1`, `exportContractVersion=1`, `referenceContractVersion=1`,
 `metadataSchemaVersion=1`, `importFormatVersion=1`, and full `targetRevision`.
 The `ptSnap` object also contains `metadata`, `omittedDevices`, and `members`
-(canonical relative path → finalized SHA256). Whole validated ownership/identity
-requires every member/hash and identical per-slice metadata; unknown/external
-caches and unrelated files are not adopted. CLI version alone does not invalidate.
+(canonical relative path → finalized SHA256). New exports additionally store
+`memberContent = {"version": 1, "members": {relative_path: proof}}`. Each proof
+records every original SQLite schema object's type/name/table/SQL (not physical
+rootpage) and every original table's row count and SHA256. This includes dictionary,
+metadata, lifecycle references and internal tables. Rows use type-tagged,
+length-framed NULL/integer/IEEE-754 real/UTF-8 text/blob encoding, sorted as BLOBs;
+duplicates remain significant. Declared IDs are included; incidental hidden rowid
+and physical row order are not. SQLite performs the sort; Python streams rows,
+but sorting can require temporary storage. This is not a constant-work import.
 
-Compatible publication is **no-replace even with force**. Identical recognized
-pt-snap caches reuse without loading pickle (force does not bypass this rule).
-Changed source path/content, options/contracts, corrupted members or GUI-modified
-DBs require a new `--output-dir`; no repair, overwrite or deletion of the old
-artifact occurs. Exclusive publication and focus compensation use the existing
-checked transaction; source SHA256 is rechecked immediately before publish/reuse.
-Native force replacement and recovery semantics are untouched.
+Byte-identical members retain the fast path without logical scans. On byte drift,
+a prior version-1 proof must match every base schema object and row. Only a newly
+added ordinary table exactly named `memory_allocation_cache_v1_<member deviceId>`
+is permitted; other tables, versions, devices, indexes, views and triggers are
+rejected. An originally attested cache-named table is still protected. Stable
+header/layout-only changes can also pass when the entire base proof matches.
+Unknown/malformed proofs fail closed, including on the byte fast path. Old exports
+without a proof remain reusable only with exact member hashes: changed bytes mean
+lost integrity evidence, not a diagnosis of corrupted base data. No proof is
+backfilled from already modified content. Attestations are integrity baselines,
+not authentication of untrusted manifests or origins.
+
+Compatible publication is **no-replace even with force**. Recognized caches with
+matching source/options/identity and byte or base-content proof reuse without
+loading pickle; force cannot bypass these checks. Source/options changes, base
+changes, unrecognized objects and unproved legacy drift require a new
+`--output-dir`. No repair, overwrite, deletion or manifest rewrite occurs.
+Per-member metadata still must agree with manifest identity. Manifest/member bytes,
+full file generation, directory identities, exact inventory and alias/sidecar checks
+bracket inspection; writers must already be stopped and members finalized. This
+is change detection, not a filesystem lock or live-writer support. Ordinary
+read-only compatibility queries retain their separate validation contract.
+Exclusive publication/focus compensation and the final source SHA256 recheck are
+unchanged, as are native force replacement and recovery semantics.
 
 Inline text costs `sum(len(callstack.encode("utf-8")) for each event)` rather than
 one copy per distinct stack. Existing native interning remains available. Conversion
