@@ -10,12 +10,11 @@ never mutated, even under force. This is not GUI acceptance.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import sqlite3
 from contextlib import closing
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 from .dataset_contract import (
     ACTION_NAMES,
@@ -24,30 +23,26 @@ from .dataset_contract import (
     TRACE_COLUMNS,
     DatasetContractError,
     DatasetManifest,
-    _unique_object,
+    parse_manifest,
     validate_dataset,
 )
-from .dataset_files import hash_file, require_readonly_member
+from .dataset_files import hash_file, readonly_member_uri, require_readonly_member
 from .dataset_import_backend import DatasetImportBackend
 from .errors import ImportExecutionError
 from .import_metadata_contract import metadata_from_mapping
 from .models import ImportMetadata
 from .sharded_replay_service import ShardedReplayResult
+from .snapshot_cache import parse_cache_manifest, seal_manifest, source_hashes, validate_cache
 
 COMPATIBILITY_FORMAT = "compatibility-v1"
 DEFAULT_CAPACITY = 500000
-SALT = b"mem_snapshot_parser_v2"
 # Independent semantic versions, not the installed CLI version or GUI cacheHash.
-EXPORT_VERSION = 1
+EXPORT_VERSION = 2
 REFERENCE_VERSION = 1
 
 
 def salted_hash(source: Path) -> str:
-    digest = hashlib.sha256(SALT)
-    with source.open("rb") as file:
-        for chunk in iter(lambda: file.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    return source_hashes(source)[1]
 
 
 def compatible_identity(source_hash: str, device: int | None, capacity: int) -> dict[str, object]:
@@ -141,18 +136,51 @@ def _validate_shards(result: ShardedReplayResult) -> None:
             )
 
 
+def _compact_compatible_block_ids(result: ShardedReplayResult) -> None:
+    """Match Insight's continuous preexisting-block IDs without changing native shards."""
+    for device in sorted({item.device for item in result.slices}):
+        items = [item for item in result.slices if item.device == device]
+        tokens: set[int] = set()
+        for item in items:
+            with closing(sqlite3.connect(item.file.as_uri() + "?mode=ro", uri=True)) as conn:
+                tokens.update(
+                    row[0] for row in conn.execute(f"SELECT id FROM block_{device} WHERE id<0")
+                )
+        if not tokens:
+            continue
+        ordered = sorted(tokens, reverse=True)
+        floor = min(tokens) - len(tokens)
+        # Move every key out of the final range before assigning compact IDs.
+        phases = (
+            [(floor - index, token) for index, token in enumerate(ordered, 1)],
+            [(-index, floor - index) for index in range(1, len(ordered) + 1)],
+        )
+        for item in items:
+            with closing(sqlite3.connect(item.file.as_uri() + "?mode=rw", uri=True)) as conn, conn:
+                for updates in phases:
+                    conn.executemany(f"UPDATE block_{device} SET id=? WHERE id=?", updates)
+                    conn.executemany(
+                        "UPDATE pt_snap_block_reference SET blockId=? WHERE blockId=?", updates
+                    )
+
+
 def convert_shards(result: ShardedReplayResult) -> None:
     """Preserve event/stream/lifecycle values, materialize inline ninth column.
 
     First validate all selected IDs/actions, without inventing event zero or
-    coercing unsupported OOM. Block/reference tables are left byte-semantically
-    intact; no foreign real events are copied into the slice window.
+    coercing unsupported OOM. Negative block IDs and boundary IDs are normalized
+    to Insight numbering; no foreign real events are copied into the slice window.
     """
     _validate_shards(result)
-    for item in result.slices:
+    _compact_compatible_block_ids(result)
+    boundary_count = 0
+    for item in sorted(result.slices, key=lambda item: (item.device, -item.index)):
         device = item.device
         trace = f"trace_entry_{device}"
         with closing(sqlite3.connect(item.file.as_uri() + "?mode=rw", uri=True)) as conn, conn:
+            count = conn.execute(f"SELECT COUNT(*) FROM {trace} WHERE id<0").fetchone()[0]
+            conn.execute(f"UPDATE {trace} SET id=id-? WHERE id<0", (boundary_count,))
+            boundary_count += count
             # A missing stack reference must fail, not silently erase an event.
             if (
                 conn.execute(
@@ -210,9 +238,7 @@ def build_compatible_manifest(
                 for s in slices
             ],
         }
-        for item in slices:
-            files[item.file.relative_to(result.directory).as_posix()] = hash_file(item.file)
-    return {
+    manifest: dict[str, Any] = {
         "schemaVersion": MANIFEST_SCHEMA_VERSION,
         "status": "complete",
         "sourceFile": str(source.resolve()),
@@ -228,6 +254,10 @@ def build_compatible_manifest(
             "members": files,
         },
     }
+    seal_manifest(result.directory, manifest, metadata.requested_device)
+    manifest["ptSnap"]["members"] = manifest["parserCache"]["members"]
+    manifest["ptSnap"]["memberHashKind"] = "parser-v1"
+    return manifest
 
 
 @dataclass(frozen=True)
@@ -241,18 +271,36 @@ class CompatibleCache:
 def inspect_owned_cache(target: Path) -> CompatibleCache:
     """Whole valid recognized identity only; salted hash alone is never ownership.
 
-    Reject unexpected files/aliases rather than adopt them. GUI may change
-    derived tables: that invalidates pt-snap's immutable cache attestation, and
-    requires a new output, never repair or force-replacement.
+    Base tables are attested logically. Consumer-owned tables and indexes may
+    change without invalidating parser data. Legacy exports retain byte checks.
     """
-    validation = validate_dataset(target)
-    with (target / "manifest.json").open(encoding="utf-8") as file:
-        data = json.load(file, object_pairs_hook=_unique_object)
+    data = parse_cache_manifest((target / "manifest.json").read_bytes())
+    extension = data.get("ptSnap")
+    if not isinstance(extension, dict):
+        raise ValueError("manifest.ptSnap: expected object")
+    identity = extension.get("identity")
+    if not isinstance(identity, dict):
+        raise ValueError("manifest.ptSnap.identity: expected object")
+    for key in ("metadata", "members"):
+        if not isinstance(extension.get(key), dict):
+            raise ValueError(f"manifest.ptSnap.{key}: expected object")
+    if not isinstance(extension.get("omittedDevices"), list):
+        raise ValueError("manifest.ptSnap.omittedDevices: expected array")
+    version = identity.get("exportContractVersion")
+    if type(version) is int and version < EXPORT_VERSION:
+        raise ValueError(
+            f"Legacy export contract v{version}; choose a new --output-dir to re-export as v{EXPORT_VERSION}"
+        )
+    # Sealed base rows are already fully scanned by validate_cache below. Avoid
+    # a second expensive callstack/row walk and keep live WAL reads transactional.
+    manifest = parse_manifest(data)
+    if data.get("ptSnap", {}).get("memberHashKind") != "parser-v1":
+        manifest = validate_dataset(target).manifest
     extension = data["ptSnap"]
     metadata = metadata_from_mapping(extension["metadata"])
     identity = extension["identity"]
     expected_identity = compatible_identity(
-        metadata.source_sha256, metadata.requested_device, validation.manifest.events_per_slice
+        metadata.source_sha256, metadata.requested_device, manifest.events_per_slice
     )
     if identity != expected_identity or any(
         type(identity[key]) is not type(value) for key, value in expected_identity.items()
@@ -264,19 +312,41 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
         or metadata.metadata_schema_version != 1
     ):
         raise ValueError("Metadata must match physical v1 layout")
-    paths = {s.file for d in validation.manifest.devices for s in d.slices}
+    paths = {s.file for d in manifest.devices for s in d.slices}
+    if any((target / (relative + "-journal")).exists() for relative in paths):
+        raise ValueError(
+            "Snapshot member has a rollback journal; a writer or recovery may be active, retry later"
+        )
     if set(extension["members"]) != paths:
         raise ValueError("Incomplete member attestation")
-    expected = {"manifest.json", *paths, *(str(Path(p).parent) for p in paths)}
+    expected = {"manifest.json", "parse.log", *paths, *(str(Path(p).parent) for p in paths)}
+    expected.update(relative + suffix for relative in paths for suffix in ("-wal", "-shm"))
     actual = {p.relative_to(target).as_posix() for p in target.rglob("*")}
-    if actual != expected or any(p.is_symlink() for p in target.rglob("*")):
+    if not actual <= expected or any(p.is_symlink() for p in target.rglob("*")):
         raise ValueError("Unrecognized files or aliases in compatible cache")
+    logical_members = None
+    if extension.get("memberHashKind") == "parser-v1":
+        checked = validate_cache(target, data["cacheHash"], metadata.requested_device)
+        if checked != data:
+            raise ValueError("Compatible manifest changed during inspection")
+        logical_members = checked["parserCache"]["members"]
+    elif "memberHashKind" in extension:
+        raise ValueError("Unsupported member hash contract")
     for relative in paths:
         member = target / relative
-        if hash_file(member) != extension["members"][relative]:
+        digest = logical_members[relative] if logical_members is not None else hash_file(member)
+        if digest != extension["members"][relative]:
             raise ValueError("Compatible member hash changed")
-        with closing(sqlite3.connect(member.as_uri() + "?mode=ro&immutable=1", uri=True)) as conn:
+        require_readonly_member(target, member, immutable=True)
+        with closing(sqlite3.connect(readonly_member_uri(member), uri=True)) as conn:
             conn.row_factory = sqlite3.Row
+            if (
+                conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='pt_snap_metadata'"
+                ).fetchone()
+                is None
+            ):
+                raise ValueError(f"{relative}.pt_snap_metadata: required metadata table is missing")
             rows = conn.execute("SELECT * FROM pt_snap_metadata").fetchall()
             if (
                 len(rows) != 1
@@ -285,7 +355,7 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
             ):
                 raise ValueError("Member metadata disagrees with identity")
     omitted = extension["omittedDevices"]
-    devices = {d.device_id for d in validation.manifest.devices}
+    devices = {d.device_id for d in manifest.devices}
     if (
         not isinstance(omitted, list)
         or any(type(v) is not int or v < 0 or v in devices for v in omitted)
@@ -294,6 +364,6 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
         raise ValueError("Invalid omitted device inventory")
     if metadata.requested_device is not None and devices != {metadata.requested_device}:
         raise ValueError("Device selection disagrees with identity")
-    if Path(validation.manifest.source_file).name != metadata.source_name:
+    if Path(manifest.source_file).name != metadata.source_name:
         raise ValueError("Source path disagrees with metadata")
-    return CompatibleCache(validation.manifest, identity, metadata, tuple(omitted))
+    return CompatibleCache(manifest, identity, metadata, tuple(omitted))

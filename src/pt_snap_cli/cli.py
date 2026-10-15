@@ -148,7 +148,7 @@ def _import_json(result: ImportResult) -> dict[str, JsonValue]:
         device_id=result.device_id,
         reused=result.reused,
         cache_miss_reason=result.cache_miss_reason,
-        metadata=asdict(result.metadata),
+        metadata=asdict(result.metadata) if result.metadata is not None else None,
         focus_state=focus_state,
         focus_source=result.focus_state.source if result.focus_state is not None else None,
         **(

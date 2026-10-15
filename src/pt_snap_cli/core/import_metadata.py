@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import sqlite3
 from contextlib import closing
 from dataclasses import asdict
@@ -24,6 +23,7 @@ from pt_snap_cli.core.models import (
 )
 from pt_snap_cli.core.msinsight_export import inspect_owned_cache
 from pt_snap_cli.core.native_dataset_contract import NativeManifest
+from pt_snap_cli.core.snapshot_cache import parse_cache_manifest
 
 METADATA_TABLE = "pt_snap_metadata"
 METADATA_SCHEMA_VERSION = 1
@@ -91,8 +91,10 @@ class ImportMetadataService:
                 return MetadataInspection(path, "available", dataset.validation.manifest.metadata)
             # External P0 metadata remains optional. Only a recognized complete
             # pt-snap manifest attestation can provide dataset-wide metadata.
-            with (dataset.root / "manifest.json").open(encoding="utf-8") as source:
-                raw = json.load(source)
+            try:
+                raw = parse_cache_manifest((dataset.root / "manifest.json").read_bytes())
+            except (OSError, ValueError):
+                return MetadataInspection(path, "invalid", reason="metadata_invalid")
             if "ptSnap" in raw:
                 try:
                     owned = inspect_owned_cache(dataset.root)
