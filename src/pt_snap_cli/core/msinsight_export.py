@@ -10,12 +10,16 @@ never mutated, even under force. This is not GUI acceptance.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import sqlite3
+from collections import OrderedDict
 from contextlib import closing
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from threading import RLock
+from typing import TYPE_CHECKING
 
 from .dataset_contract import (
     ACTION_NAMES,
@@ -40,6 +44,10 @@ from .msinsight_content_proof import (
     validate_member_content,
 )
 from .sharded_replay_service import ShardedReplayResult
+
+if TYPE_CHECKING:
+    from .dataset_resolver import ResolvedDataset
+
 
 COMPATIBILITY_FORMAT = "compatibility-v1"
 DEFAULT_CAPACITY = 500000
@@ -254,6 +262,13 @@ class CompatibleCache:
     omitted_devices: tuple[int, ...]
 
 
+# No persisted receipt, live connection or stat-only reuse. Every hit is bracketed
+# by current manifest/member byte hashes and transport/generation checks.
+_OWNED_CACHE_LIMIT = 16
+_OWNED_CACHE: OrderedDict[Path, tuple[str, CompatibleCache]] = OrderedDict()
+_OWNED_CACHE_LOCK = RLock()
+
+
 def _cache_inventory(target: Path) -> dict[str, tuple[int, ...]]:
     """Snapshot identity of the entire owned tree without following aliases."""
     if target.resolve() != target or target.is_symlink() or not target.is_dir():
@@ -263,6 +278,8 @@ def _cache_inventory(target: Path) -> dict[str, tuple[int, ...]]:
         if path.is_symlink() or not (path.is_file() or path.is_dir()):
             raise ValueError("Unrecognized files or aliases in compatible cache")
         stat = path.stat()
+        if path.is_file() and stat.st_nlink != 1:
+            raise ValueError("Compatible cache files must not have hard-link aliases")
         result[path.relative_to(target).as_posix()] = (
             stat.st_dev,
             stat.st_ino,
@@ -275,7 +292,21 @@ def _cache_inventory(target: Path) -> dict[str, tuple[int, ...]]:
     return result
 
 
-def inspect_owned_cache(target: Path) -> CompatibleCache:
+def inspect_owned_cache(
+    target: Path, *, _resolved: ResolvedDataset | None = None
+) -> CompatibleCache:
+    """Inspect complete ownership evidence, evicting any failed admission."""
+    try:
+        return _inspect_owned_cache(target, _resolved=_resolved)
+    except BaseException:
+        with _OWNED_CACHE_LOCK:
+            _OWNED_CACHE.pop(target, None)
+        raise
+
+
+def _inspect_owned_cache(
+    target: Path, *, _resolved: ResolvedDataset | None = None
+) -> CompatibleCache:
     """Recognized identity plus byte or versioned base-content attestation.
 
     Stable cache-only changes can reuse new proofs. Legacy byte drift cannot be
@@ -295,7 +326,42 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
     for relative in paths:
         require_readonly_member(target, target / relative, immutable=True)
         before[relative] = hash_file(target / relative)
-    validation = validate_dataset(target)
+    digest = hashlib.sha256(manifest_hash.encode("ascii"))
+    for relative, content_hash in before.items():
+        digest.update(relative.encode("utf-8"))
+        digest.update(content_hash.encode("ascii"))
+    fingerprint = digest.hexdigest()
+
+    def require_unchanged() -> None:
+        for relative in paths:
+            require_readonly_member(target, target / relative, immutable=True)
+            if hash_file(target / relative) != before[relative]:
+                raise ValueError("Compatible member changed during inspection")
+        if hash_file(manifest_path) != manifest_hash or _cache_inventory(target) != generation:
+            raise ValueError("Compatible cache changed during inspection")
+
+    # A resolver result proves only the P0 contract, never ownership. Bind it to
+    # these current bytes before reusing that base validation; the remaining
+    # identity, logical proof and metadata checks still run on a cold admission.
+    if _resolved is not None and (
+        _resolved.root != target
+        or _resolved.fingerprint != fingerprint
+        or _resolved.validation.manifest != planned
+        or dict(_resolved.generation or ()) != generation
+    ):
+        raise ValueError("Compatible cache changed since dataset resolution")
+    with _OWNED_CACHE_LOCK:
+        cached = _OWNED_CACHE.get(target)
+        if cached is not None and cached[0] == fingerprint:
+            result = copy.deepcopy(cached[1])
+            _OWNED_CACHE.move_to_end(target)
+        else:
+            result = None
+            _OWNED_CACHE.pop(target, None)
+    if result is not None:
+        require_unchanged()
+        return result
+    validation = _resolved.validation if _resolved is not None else validate_dataset(target)
     extension = data["ptSnap"]
     metadata = metadata_from_mapping(extension["metadata"])
     identity = extension["identity"]
@@ -359,10 +425,12 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
         raise ValueError("Device selection disagrees with identity")
     if Path(validation.manifest.source_file).name != metadata.source_name:
         raise ValueError("Source path disagrees with metadata")
-    for relative in paths:
-        require_readonly_member(target, target / relative, immutable=True)
-        if hash_file(target / relative) != before[relative]:
-            raise ValueError("Compatible member changed during inspection")
-    if hash_file(manifest_path) != manifest_hash or _cache_inventory(target) != generation:
-        raise ValueError("Compatible cache changed during inspection")
-    return CompatibleCache(validation.manifest, identity, metadata, tuple(omitted))
+    require_unchanged()
+    result = CompatibleCache(validation.manifest, identity, metadata, tuple(omitted))
+    admitted = copy.deepcopy(result)
+    with _OWNED_CACHE_LOCK:
+        _OWNED_CACHE[target] = (fingerprint, admitted)
+        _OWNED_CACHE.move_to_end(target)
+        while len(_OWNED_CACHE) > _OWNED_CACHE_LIMIT:
+            _OWNED_CACHE.popitem(last=False)
+    return result

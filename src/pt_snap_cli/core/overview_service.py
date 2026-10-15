@@ -65,7 +65,7 @@ class OverviewService:
                         dataset.validation.manifest.devices, key=lambda d: d.device_id
                     )
                 ],
-                metadata=self._metadata_service.inspect(db_path),
+                metadata=self._metadata_service.inspect(db_path, _resolved=dataset),
                 dataset=dataset.to_dict(),
             )
         ctx = self._validated_context(db_path)

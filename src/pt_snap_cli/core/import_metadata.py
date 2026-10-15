@@ -11,7 +11,7 @@ from typing import Any
 
 from pt_snap_cli import __version__
 from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionError
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.dataset_resolver import DatasetResolver, ResolvedDataset
 from pt_snap_cli.core.errors import DatabaseMissingError, DatabaseSchemaError, ImportMetadataError
 from pt_snap_cli.core.import_metadata_contract import (
     metadata_from_mapping,
@@ -83,11 +83,16 @@ class ImportMetadataService:
             completed_at=datetime.now(timezone.utc).isoformat(),
         )
 
-    def inspect(self, db_path: Path | str) -> MetadataInspection:
-        dataset = DatasetResolver().inspect(db_path)
+    def inspect(
+        self, db_path: Path | str, *, _resolved: ResolvedDataset | None = None
+    ) -> MetadataInspection:
+        dataset = _resolved if _resolved is not None else DatasetResolver().inspect(db_path)
         path = Path(db_path).expanduser().resolve()
         if dataset is not None:
+            if path not in (dataset.root, dataset.root / "manifest.json"):
+                raise DatabaseSchemaError("Dataset resolution does not match metadata path")
             if isinstance(dataset.validation.manifest, NativeManifest):
+                dataset.require_unchanged()
                 return MetadataInspection(path, "available", dataset.validation.manifest.metadata)
             # External P0 metadata remains optional. Only a recognized complete
             # pt-snap manifest attestation can provide dataset-wide metadata.
@@ -95,7 +100,7 @@ class ImportMetadataService:
                 raw = json.load(source)
             if "ptSnap" in raw:
                 try:
-                    owned = inspect_owned_cache(dataset.root)
+                    owned = inspect_owned_cache(dataset.root, _resolved=dataset)
                 except (
                     ValueError,
                     KeyError,
@@ -104,8 +109,10 @@ class ImportMetadataService:
                     sqlite3.DatabaseError,
                     DatabaseSchemaError,
                 ):
+                    dataset.require_unchanged()
                     return MetadataInspection(path, "invalid", reason="metadata_invalid")
                 return MetadataInspection(path, "available", owned.metadata)
+            dataset.require_unchanged()
             return MetadataInspection(path, "unavailable", reason="metadata_missing")
         try:
             context = Context(path)

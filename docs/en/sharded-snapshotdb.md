@@ -532,6 +532,26 @@ lost integrity evidence, not a diagnosis of corrupted base data. No proof is
 backfilled from already modified content. Attestations are integrity baselines,
 not authentication of untrusted manifests or origins.
 
+Owned-proof reuse also has a bounded, process-local 16-root LRU. It stores only
+completed ownership results, keyed by the canonical root plus complete manifest
+and member-byte fingerprint. Warm hits still read/hash every member and manifest
+before and after the operation, recheck transport, inventory and full generation,
+and return defensive copies; failures evict the entry. `immutable` resolver mode
+never makes this ownership cache stat-only. Nothing is written to the dataset,
+manifest, sidecars or a persistent receipt. Overview passes its validated dataset
+to metadata/ownership checks; the base validation can be reused only after binding
+it to the current full content fingerprint. A resolver result alone never proves
+ownership or supplies a missing logical proof. Hard-linked files are rejected.
+
+**Cold-process cost remains:** Insight byte changes do not update the original
+manifest hash. A new CLI process must therefore scan/sort the base content again
+for import reuse and recognized dataset `metadata`/`overview`; the ordinary query
+resolver does not perform this ownership proof. Repeated API calls in one process
+can avoid logical rescans while retaining byte verification, but that benefit must
+not be presented as a speedup for separate CLI invocations. Deep stacks, table size
+and SQLite temporary sorting storage affect cold cost; no large-scale latency
+bound is promised. Source proof generation likewise scans every original table.
+
 Compatible publication is **no-replace even with force**. Recognized caches with
 matching source/options/identity and byte or base-content proof reuse without
 loading pickle; force cannot bypass these checks. Source/options changes, base

@@ -421,6 +421,20 @@ proof 记录全部原始 SQLite schema 对象的 type/name/table/SQL（不含物
 也拒绝。旧产物无 proof 时仍须整文件 hash 相同；字节变化表示完整性证据失效，不等于基础
 数据损坏，不从已修改现状补造历史证明。证明是完整性基线，不认证不可信 manifest 或来源。
 
+所有权证明另有进程内最多 16 个 root 的有界 LRU，只缓存完整成功结果；key 绑定规范 root、
+完整 manifest 和全部成员字节 fingerprint。warm 命中仍在操作前后读取并 hash 全部文件，
+复查 transport、精确清单和完整 generation，返回深拷贝；失败驱逐缓存。resolver 的
+`immutable` 模式也不把此所有权缓存降级成仅 stat 信任。不写数据集、manifest、sidecar 或
+持久凭据。overview 把已校验数据集传给 metadata/ownership；重新绑定当前完整内容
+fingerprint 后才复用基础校验。普通 resolver 结果不代表所有权，也不能补缺失的逻辑证明。
+有硬链接别名的文件拒绝复用。
+
+**冷进程成本仍存在：** Insight 修改字节后，原 manifest hash 不会刷新；每个新的 CLI
+进程在 import 复用以及可信数据集 `metadata`/`overview` 时仍须重新扫描/排序基础内容。
+普通查询 resolver 不做这项所有权证明。同进程重复 API 调用可省逻辑扫描，但仍全量校验
+文件字节；不能把 warm API 收益声称为多个独立 CLI 调用的提速。深栈、表大小、SQLite
+排序临时存储都会影响冷成本，不承诺大型数据延迟上界。新导出的 proof 生成也扫描全部原表。
+
 兼容发布 **force 也 no-replace**。已识别、源/选项/身份相同、字节或基础内容证明匹配的
 pt-snap 缓存不加载 pickle 即复用；force 不绕过检查。源/选项变化、基础内容变化、未知对象、
 旧产物未被证明的字节变化须换新 `--output-dir`。不修复、不覆盖、不删除、不改写 manifest。
