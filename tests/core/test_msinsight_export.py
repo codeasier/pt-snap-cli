@@ -108,7 +108,12 @@ def test_physical_schema_inline_events_streams_stable_references_and_native_pari
                 native.db_path / native_shard.file,
                 f"SELECT t.id,t.action,t.address,t.size,t.stream,t.allocated,t.active,t.reserved,c.callstack FROM trace_entry_{device} t JOIN callstack c ON c.id=t.callstackId ORDER BY t.id",
             )
-            assert actual == expected
+            assert [row for row in actual if row[0] >= 0] == [
+                row for row in expected if row[0] >= 0
+            ]
+            assert sorted(row[1:] for row in actual if row[0] < 0) == sorted(
+                row[1:] for row in expected if row[0] < 0
+            )
             assert [r[0] for r in actual if r[0] >= 0] == list(
                 range(shard.start_event_id, shard.end_event_id + 1)
             )
@@ -159,6 +164,129 @@ def test_identical_complete_cache_reuses_without_loading_even_force(tmp_path, mo
         assert reused.reused and reused.metadata == first.metadata
     assert hashes(first.db_path) == before
     assert not (tmp_path / ".pt-snap").exists()
+
+
+def test_consumer_tables_do_not_invalidate_compatible_cache(tmp_path, monkeypatch):
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    first = service.import_snapshot(request)
+    member = first.db_path / "device_0/slice_00000.db"
+    with closing(sqlite3.connect(member)) as conn, conn:
+        conn.executescript(
+            "CREATE TABLE memory_allocation_cache_v1_0(value TEXT);"
+            "CREATE TABLE unrelated_consumer_cache(value TEXT);"
+            "INSERT INTO unrelated_consumer_cache VALUES('keep');"
+            "CREATE INDEX consumer_block_index ON block_0(address);"
+        )
+    (first.db_path / "parse.log").write_text("Insight log")
+    monkeypatch.setattr(
+        service._msinsight_backend.replay,
+        "stage",
+        lambda *a, **k: pytest.fail("cache hit must not replay"),
+    )
+    assert service.import_snapshot(request).reused
+    assert rows(member, "SELECT value FROM unrelated_consumer_cache") == [("keep",)]
+    with closing(sqlite3.connect(member)) as conn, conn:
+        conn.execute("UPDATE block_0 SET size=size+1")
+    with pytest.raises(ImportExecutionError, match="preserved"):
+        service.import_snapshot(request)
+
+
+def test_external_insight_artifact_reuses_without_claiming_metadata(tmp_path, monkeypatch):
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    first = service.import_snapshot(request)
+    path = first.db_path / "manifest.json"
+    manifest = json.loads(path.read_text())
+    del manifest["ptSnap"]
+    path.write_text(json.dumps(manifest))
+    before = hashes(first.db_path)
+    monkeypatch.setattr(
+        service._msinsight_backend.replay,
+        "stage",
+        lambda *a, **k: pytest.fail("external cache hit must not replay"),
+    )
+    reused = service.import_snapshot(request)
+    assert reused.reused and reused.metadata is None
+    assert hashes(first.db_path) == before
+    output = CliRunner().invoke(
+        app,
+        [
+            "import",
+            str(request.snapshot_file),
+            "--format",
+            "msinsight",
+            "--output-dir",
+            str(request.output_dir),
+            "--no-focus",
+            "--json",
+        ],
+    )
+    assert output.exit_code == 0, output.output
+    assert json.loads(output.output)["metadata"] is None
+    assert hashes(first.db_path) == before
+
+
+@pytest.mark.parametrize("external", [False, True])
+def test_live_consumer_wal_reuses_and_queries_committed_data(tmp_path, monkeypatch, external):
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    result = service.import_snapshot(request)
+    if external:
+        path = result.db_path / "manifest.json"
+        manifest = json.loads(path.read_text())
+        del manifest["ptSnap"]
+        path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(
+        service._msinsight_backend.replay, "stage", lambda *a, **k: pytest.fail("must reuse")
+    )
+    member = result.db_path / "device_0/slice_00000.db"
+    with closing(sqlite3.connect(member)) as writer:
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.executescript(
+            "CREATE TABLE consumer_data(value TEXT); INSERT INTO consumer_data VALUES('committed');"
+        )
+        assert Path(str(member) + "-wal").exists()
+        reused = service.import_snapshot(request)
+        assert reused.reused and reused.metadata == (None if external else result.metadata)
+        with SnapshotAnalyzer(result.db_path) as analyzer:
+            assert analyzer.execute_query("event", {"id": 0}, device_id=0)["rows"]
+        assert writer.execute("SELECT value FROM consumer_data").fetchall() == [("committed",)]
+        # Base-table writes cannot masquerade as consumer-only additions.
+        writer.execute("UPDATE block_0 SET size=size+1")
+        writer.commit()
+        with pytest.raises(ImportExecutionError, match="preserved"):
+            service.import_snapshot(request)
+
+
+def test_compatible_negative_ids_are_compact_and_boundary_ids_are_global(tmp_path):
+    result = ImportService().import_snapshot(
+        options(tmp_path, multiple=True, capacity=1, focus=False)
+    )
+    manifest = json.loads((result.db_path / "manifest.json").read_text())
+    boundary_ids = []
+    for device, data in manifest["devices"].items():
+        block_ids = set()
+        for item in reversed(data["slices"]):
+            path = result.db_path / item["file"]
+            block_ids.update(
+                row[0] for row in rows(path, f"SELECT id FROM block_{device} WHERE id<0")
+            )
+            boundary_ids.extend(
+                row[0]
+                for row in rows(
+                    path, f"SELECT id FROM trace_entry_{device} WHERE id<0 ORDER BY id DESC"
+                )
+            )
+            assert (
+                rows(
+                    path,
+                    f"SELECT id FROM block_{device} EXCEPT SELECT blockId FROM pt_snap_block_reference",
+                )
+                == []
+            )
+        assert block_ids == set(range(-len(block_ids), 0))
+    assert boundary_ids == list(range(-1, -len(boundary_ids) - 1, -1))
 
 
 @pytest.mark.parametrize(

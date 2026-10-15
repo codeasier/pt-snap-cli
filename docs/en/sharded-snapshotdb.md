@@ -510,14 +510,15 @@ additional ID-validation memory, not snapshot loading, replay, or total import R
 `manifestContractVersion=1`, `exportContractVersion=1`, `referenceContractVersion=1`,
 `metadataSchemaVersion=1`, `importFormatVersion=1`, and full `targetRevision`.
 The `ptSnap` object also contains `metadata`, `omittedDevices`, and `members`
-(canonical relative path → finalized SHA256). Whole validated ownership/identity
+(canonical relative path → finalized parser-data SHA256 for new exports). Whole validated ownership/identity
 requires every member/hash and identical per-slice metadata; unknown/external
-caches and unrelated files are not adopted. CLI version alone does not invalidate.
+caches and unrelated files are not claimed as owned. Valid Insight caches can be
+reused read-only without producer metadata. CLI version alone does not invalidate.
 
 Compatible publication is **no-replace even with force**. Identical recognized
 pt-snap caches reuse without loading pickle (force does not bypass this rule).
-Changed source path/content, options/contracts, corrupted members or GUI-modified
-DBs require a new `--output-dir`; no repair, overwrite or deletion of the old
+Changed source path/content, options/contracts, corrupted parser data or legacy
+byte-attested DBs changed by a consumer require a new `--output-dir`; no repair, overwrite or deletion of the old
 artifact occurs. Exclusive publication and focus compensation use the existing
 checked transaction; source SHA256 is rechecked immediately before publish/reuse.
 Native force replacement and recovery semantics are untouched.

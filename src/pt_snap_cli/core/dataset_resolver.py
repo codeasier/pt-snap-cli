@@ -215,6 +215,9 @@ def _generation(
                 root, member, immutable=not isinstance(manifest, NativeManifest)
             )
             stamps.append((item.file, _stamp(member)))
+            wal = Path(str(member) + "-wal")
+            if wal.exists():
+                stamps.append((item.file + "-wal", _stamp(wal)))
     check_budget(budget)
     return tuple(stamps)
 
@@ -245,6 +248,10 @@ def _content_fingerprint(
         for item in checked_rows(device.slices, budget):
             digest.update(item.file.encode("utf-8"))
             digest.update(_hash_file(root / item.file, budget=budget).encode("ascii"))
+            wal = root / (item.file + "-wal")
+            if wal.exists():
+                digest.update(b"-wal")
+                digest.update(_hash_file(wal, budget=budget).encode("ascii"))
     return digest.hexdigest()
 
 
@@ -353,6 +360,10 @@ class DatasetResolver:
                         else _hash_file(root / item.file, budget=budget)
                     )
                     digest.update(content_hash.encode("ascii"))
+                    wal = root / (item.file + "-wal")
+                    if wal.exists():
+                        digest.update(b"-wal")
+                        digest.update(_hash_file(wal, budget=budget).encode("ascii"))
             fingerprint = digest.hexdigest()
             if compatibility_before is not None and compatibility_before != fingerprint:
                 raise DatabaseSchemaError("Dataset content changed during inspection; retry.")

@@ -7,7 +7,7 @@ import sqlite3
 import time
 
 from pt_snap_cli.core.dataset_contract import SliceRecord
-from pt_snap_cli.core.dataset_files import require_readonly_member
+from pt_snap_cli.core.dataset_files import readonly_member_uri, require_readonly_member
 from pt_snap_cli.core.dataset_sources import DatasetSourceResolver
 from pt_snap_cli.core.errors import QueryExecutionError
 
@@ -48,7 +48,7 @@ class _AttachedSources:
                 path = self.sources.dataset.root / item.file
                 immutable = self.sources.dataset.callstack_layout == "v1"
                 require_readonly_member(self.sources.dataset.root, path, immutable=immutable)
-                uri = path.as_uri() + "?mode=ro" + ("&immutable=1" if immutable else "")
+                uri = readonly_member_uri(path, immutable)
                 self.connection.execute(f'ATTACH DATABASE ? AS "s{item.index}"', [uri])
             self.connection.execute("PRAGMA query_only=ON")
             self.sources.budget.remaining()

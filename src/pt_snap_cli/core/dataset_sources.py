@@ -21,7 +21,7 @@ from typing import cast
 from pt_snap_cli.context import DatabaseNotFoundError, SchemaVersionError
 from pt_snap_cli.core.context_cache import ContextCache
 from pt_snap_cli.core.dataset_contract import SliceRecord, _unique_object
-from pt_snap_cli.core.dataset_files import require_readonly_member
+from pt_snap_cli.core.dataset_files import member_is_immutable, require_readonly_member
 from pt_snap_cli.core.dataset_resolver import ResolvedDataset
 from pt_snap_cli.core.errors import (
     DatabaseSchemaError,
@@ -224,7 +224,7 @@ class DatasetSourceResolver:
             context = self.cache.get(
                 path,
                 generation=self.dataset.fingerprint,
-                immutable=self.dataset.callstack_layout == "v1",
+                immutable=member_is_immutable(path, self.dataset.callstack_layout == "v1"),
             )
             self.query_count += 1
             return QueryExecutor(context).execute(

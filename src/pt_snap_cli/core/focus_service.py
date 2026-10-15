@@ -96,7 +96,11 @@ class FocusService:
                 if written <= 0:
                     raise OSError("Could not write focus recovery checkpoint")
                 remaining = remaining[written:]
-            os.fchmod(fd, mode)
+            if hasattr(os, "fchmod"):
+                os.fchmod(fd, mode)
+            else:
+                FocusService._verify_checkpoint(backup, (identity.st_dev, identity.st_ino))
+                os.chmod(backup, mode)
             os.fsync(fd)
             FocusService._verify_checkpoint(backup, (identity.st_dev, identity.st_ino))
         except BaseException:

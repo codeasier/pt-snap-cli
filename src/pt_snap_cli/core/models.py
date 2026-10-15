@@ -207,7 +207,7 @@ class ImportResult:
     device_id: int | None
     focus_state: FocusState | None
     reused: bool
-    metadata: ImportMetadata
+    metadata: ImportMetadata | None
     cache_miss_reason: CacheMissReason | None
     dataset_path: Path | None = None
     devices: tuple[int, ...] = ()

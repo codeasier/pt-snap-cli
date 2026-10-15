@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
-from .dataset_files import require_readonly_member
+from .dataset_files import readonly_member_uri, require_readonly_member
 from .errors import DatabaseSchemaError
 from .validation_budget import (
     ValidationBudget,
@@ -507,7 +507,7 @@ def validate_dataset(
                     with (
                         closing(
                             sqlite3.connect(
-                                db_path.as_uri() + "?mode=ro&immutable=1",
+                                readonly_member_uri(db_path),
                                 uri=True,
                                 timeout=sqlite_timeout(budget),
                             )
@@ -515,6 +515,7 @@ def validate_dataset(
                         validation_progress(conn, budget),
                     ):
                         conn.execute("PRAGMA query_only=ON")
+                        conn.execute("BEGIN")
                         boundaries += _validate_slice(conn, device, item, identities, budget)
                 except sqlite3.DatabaseError as exc:
                     raise DatasetContractError(item.file, "sqlite", str(exc)) from exc
