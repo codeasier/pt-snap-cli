@@ -289,11 +289,20 @@ def validate_cache(
             raise ValueError("Invalid snapshot extension")
     if not isinstance(manifest.get("ptSnap", {}).get("identity", {}), dict):
         raise ValueError("Invalid producer identity")
-    selected_device = manifest.get("parserCache", {}).get(
-        "requestedDevice", manifest.get("ptSnap", {}).get("identity", {}).get("requestedDevice")
-    )
-    if device is None and selected_device is not None:
-        raise ValueError("Snapshot cache contains only a selected device")
+    # Validate each declaration independently; an absent selection in one seal
+    # must not mask a producer's device-filtered export.
+    for selection in (
+        manifest.get("parserCache", {}),
+        manifest.get("ptSnap", {}).get("identity", {}),
+    ):
+        selected_device = selection.get("requestedDevice")
+        if selected_device is None:
+            continue
+        _integer(selected_device)
+        if device is None:
+            raise ValueError("Snapshot cache contains only a selected device")
+        if selected_device != device or set(manifest["devices"]) != {str(selected_device)}:
+            raise ValueError("Snapshot device selection changed")
     members = parser_members(directory, manifest, budget=budget)
     attestation = manifest.get("parserCache")
     # Legacy producers have no logical attestation; still validate every base table and range.

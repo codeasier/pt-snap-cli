@@ -295,6 +295,21 @@ class SnapshotCacheTest(unittest.TestCase):
         self.save()
         self.assertEqual(validate_cache(self.directory, self.hash), self.manifest)
 
+    def test_parser_device_selection_does_not_hide_producer_selection(self):
+        self.manifest["ptSnap"] = {"identity": {"requestedDevice": 0}}
+        self.save()
+        with self.assertRaisesRegex(ValueError, "selected device"):
+            validate_cache(self.directory, self.hash)
+        self.assertEqual(validate_cache(self.directory, self.hash, device=0), self.manifest)
+
+    def test_declared_device_must_match_inventory_and_request(self):
+        for selected in (1, True, "0", -1):
+            with self.subTest(selected=selected):
+                self.manifest["parserCache"]["requestedDevice"] = selected
+                self.save()
+                with self.assertRaises(ValueError):
+                    validate_cache(self.directory, self.hash, device=0)
+
     def test_device_filtered_cache_cannot_satisfy_all_devices(self):
         seal_manifest(self.directory, self.manifest, device=0)
         self.save()

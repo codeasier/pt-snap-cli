@@ -13,6 +13,7 @@ import json
 import os
 import sqlite3
 from collections import OrderedDict
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from threading import RLock
@@ -28,6 +29,7 @@ from pt_snap_cli.core.dataset_contract import (
     validate_dataset,
 )
 from pt_snap_cli.core.dataset_files import hash_file as _hash_file
+from pt_snap_cli.core.dataset_files import readonly_member_uri
 from pt_snap_cli.core.dataset_files import require_readonly_member as _require_readonly_member
 from pt_snap_cli.core.dataset_support import DATASET_SUPPORT
 from pt_snap_cli.core.errors import (
@@ -46,7 +48,13 @@ from pt_snap_cli.core.native_dataset_contract import (
     validate_native_scope,
 )
 from pt_snap_cli.core.snapshot_cache import validate_cache
-from pt_snap_cli.core.validation_budget import ValidationBudget, check_budget, checked_rows
+from pt_snap_cli.core.validation_budget import (
+    ValidationBudget,
+    check_budget,
+    checked_rows,
+    sqlite_timeout,
+    validation_progress,
+)
 
 _FileStamp = tuple[int, int, int, int, int, int, int]
 _Generation = tuple[tuple[str, _FileStamp], ...]
@@ -224,6 +232,31 @@ def _generation(
     return tuple(stamps)
 
 
+def _prepare_compatibility_transport(
+    root: Path, manifest: DatasetManifest, budget: ValidationBudget | None
+) -> None:
+    """Establish read-only WAL sidecars before capturing physical change tokens."""
+    for device in checked_rows(manifest.devices, budget):
+        for item in checked_rows(device.slices, budget):
+            member = root / item.file
+            with member.open("rb") as source:
+                header = source.read(20)
+            if header[18:20] != b"\x02\x02" or Path(str(member) + "-wal").exists():
+                continue
+            try:
+                with (
+                    closing(
+                        sqlite3.connect(
+                            readonly_member_uri(member), uri=True, timeout=sqlite_timeout(budget)
+                        )
+                    ) as conn,
+                    validation_progress(conn, budget),
+                ):
+                    conn.execute("SELECT name FROM sqlite_master LIMIT 1").fetchone()
+            except sqlite3.DatabaseError as exc:
+                raise DatabaseSchemaError(f"Cannot open dataset member: {exc}") from exc
+
+
 def _cacheable(generation: _Generation) -> bool:
     # This is a caller contract, not an automatic inference from OS or filesystem
     # metadata. Windows ctime historically means creation time, so stay strong.
@@ -334,6 +367,12 @@ class DatasetResolver:
             # Preflight every member before the first SQLite open. Capturing
             # both ends also refuses publication during validation or hashing.
             generation = _generation(root, planned, budget)
+            if not isinstance(planned, NativeManifest):
+                # Read-only SQLite may create WAL/SHM for a closed WAL-mode DB.
+                # Do this only after all paths pass preflight, then capture the
+                # actual transport. Subsequent content changes still fail below.
+                _prepare_compatibility_transport(root, planned, budget)
+                generation = _generation(root, planned, budget)
             if manifest_stamp != _stamp(manifest_path):
                 raise DatabaseSchemaError("Dataset manifest changed during inspection; retry.")
             # Compatibility manifests contain no shard digests. Bracket row
@@ -350,23 +389,32 @@ class DatasetResolver:
                 else validate_dataset(root, budget=budget)
             )
             if (
-                strong_cache
-                and not isinstance(planned, NativeManifest)
+                not isinstance(planned, NativeManifest)
                 and isinstance(raw, dict)
-                and "parserCache" in raw
+                and ("parserCache" in raw or "ptSnap" in raw)
             ):
                 try:
-                    attestation = raw["parserCache"]
+                    attestation = raw.get("parserCache", {})
                     if not isinstance(attestation, dict):
                         raise ValueError("parserCache: expected object")
+                    producer = raw.get("ptSnap", {})
+                    if not isinstance(producer, dict):
+                        raise ValueError("ptSnap: expected object")
+                    identity = producer.get("identity", {})
+                    if not isinstance(identity, dict):
+                        raise ValueError("ptSnap.identity: expected object")
                     selected = attestation.get("requestedDevice")
+                    if selected is None:
+                        selected = identity.get("requestedDevice")
                     if selected is not None and (type(selected) is not int or selected < 0):
                         raise ValueError(
                             "parserCache.requestedDevice: expected nonnegative integer"
                         )
                     validate_cache(root, raw["cacheHash"], selected, budget=budget)
                 except (ValueError, KeyError, TypeError, sqlite3.DatabaseError) as exc:
-                    raise DatasetContractError("parserCache", "seal", str(exc)) from exc
+                    raise DatasetContractError(
+                        "parserCache" if "parserCache" in raw else "ptSnap", "seal", str(exc)
+                    ) from exc
             digest = hashlib.sha256()
             digest.update(before.encode("ascii"))
             for device in checked_rows(validation.manifest.devices, budget):

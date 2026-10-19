@@ -395,7 +395,7 @@ def test_live_sidecar_rejected_before_any_sqlite_open(
 
 @pytest.mark.parametrize("manifest_path", [False, True])
 @pytest.mark.parametrize("operation", ["inspect", "p0", "focus", "api", "cli"])
-def test_checkpointed_wal_read_without_artifact_changes(
+def test_checkpointed_wal_read_preserves_database_bytes(
     tmp_path, monkeypatch, manifest_path, operation
 ):
     root = make_dataset(tmp_path / "dataset")
@@ -408,7 +408,6 @@ def test_checkpointed_wal_read_without_artifact_changes(
         assert source.read(20)[18:20] == b"\x02\x02"
     assert not list(root.rglob("*-wal")) and not list(root.rglob("*-shm"))
     before = hashes(root)
-    inventory = sorted(str(p.relative_to(root)) for p in root.rglob("*"))
     opened = []
     original = sqlite3.connect
 
@@ -445,10 +444,15 @@ def test_checkpointed_wal_read_without_artifact_changes(
         )
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["rows"][0]["id"] == 5
-    assert before == hashes(root)
-    assert inventory == sorted(str(p.relative_to(root)) for p in root.rglob("*"))
-    assert opened and all("mode=ro&immutable=1" in str(uri) for uri in opened)
-    assert not list(root.rglob("*-wal")) and not list(root.rglob("*-shm"))
+    after = hashes(root)
+    assert before == {name: after[name] for name in before}
+    # SQLite's read-only WAL protocol may create transport sidecars, but must
+    # neither modify a source DB/manifest nor commit any pages to the WAL.
+    relative = str(member.relative_to(root))
+    assert set(after) - set(before) <= {relative + "-wal", relative + "-shm"}
+    wal = Path(str(member) + "-wal")
+    assert not wal.exists() or wal.stat().st_size == 0
+    assert opened and all("mode=ro" in str(uri) and "immutable=1" not in str(uri) for uri in opened)
 
 
 @pytest.mark.parametrize("alias_parent", [False, True])
