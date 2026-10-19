@@ -189,6 +189,25 @@ class SnapshotCacheTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "member hash"):
             validate_cache(self.directory, self.hash)
 
+    def test_legacy_physical_seal_accepts_closed_wal_database(self):
+        with closing(sqlite3.connect(self.db)) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+        self.manifest["ptSnap"] = {"members": {"slice.db": source_hashes(self.db)[0]}}
+        self.save()
+        self.assertEqual(validate_cache(self.directory, self.hash), self.manifest)
+        self.assertEqual(validate_cache(self.directory, self.hash), self.manifest)
+
+    def test_legacy_physical_seal_rejects_committed_wal(self):
+        with closing(sqlite3.connect(self.db)) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+        self.manifest["ptSnap"] = {"members": {"slice.db": source_hashes(self.db)[0]}}
+        self.save()
+        with closing(sqlite3.connect(self.db)) as writer:
+            writer.execute("CREATE TABLE consumer_cache(value INTEGER)")
+            writer.commit()
+            with self.assertRaisesRegex(ValueError, "sidecars"):
+                validate_cache(self.directory, self.hash)
+
     def test_source_hash_matches_shared_salt(self):
         raw, salted = source_hashes(self.source)
         self.assertEqual(raw, hashlib.sha256(self.source.read_bytes()).hexdigest())

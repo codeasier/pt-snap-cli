@@ -329,7 +329,8 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
         checked = validate_cache(target, data["cacheHash"], metadata.requested_device)
         if checked != data:
             raise ValueError("Compatible manifest changed during inspection")
-        logical_members = checked["parserCache"]["members"]
+        # validate_cache checks the producer seal even without parserCache.
+        logical_members = checked["ptSnap"]["members"]
     elif "memberHashKind" in extension:
         raise ValueError("Unsupported member hash contract")
     for relative in paths:

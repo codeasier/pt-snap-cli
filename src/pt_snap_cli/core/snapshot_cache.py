@@ -325,7 +325,10 @@ def validate_cache(
 
         for relative, expected in physical.items():
             member = _member(directory, relative)
-            if any(Path(str(member) + suffix).exists() for suffix in ("-wal", "-shm", "-journal")):
+            wal = Path(str(member) + "-wal")
+            # A read-only open can create an empty WAL and SHM. They contain no
+            # committed rows; only the DB bytes need the legacy physical digest.
+            if Path(str(member) + "-journal").exists() or (wal.exists() and wal.stat().st_size):
                 raise ValueError("Legacy physical snapshot hash cannot validate live sidecars")
             if hash_file(member, budget=budget) != expected:
                 raise ValueError("Legacy snapshot member hash changed")

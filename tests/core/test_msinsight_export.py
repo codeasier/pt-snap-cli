@@ -198,6 +198,31 @@ def test_consumer_tables_do_not_invalidate_compatible_cache(tmp_path, monkeypatc
         service.import_snapshot(request)
 
 
+def test_producer_only_logical_seal_reuses_without_replaying(tmp_path, monkeypatch):
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    first = service.import_snapshot(request)
+    path = first.db_path / "manifest.json"
+    manifest = json.loads(path.read_text())
+    del manifest["parserCache"]
+    path.write_text(json.dumps(manifest))
+    before = hashes(first.db_path)
+    monkeypatch.setattr(
+        service._msinsight_backend.replay,
+        "stage",
+        lambda *a, **k: pytest.fail("producer seal cache hit must not replay"),
+    )
+    reused = service.import_snapshot(request)
+    assert reused.reused and reused.metadata == first.metadata
+    assert hashes(first.db_path) == before
+    with SnapshotAnalyzer(first.db_path) as analyzer:
+        assert analyzer.get_database_metadata()["status"] == "available"
+    with closing(sqlite3.connect(first.db_path / "device_0/slice_00000.db")) as conn, conn:
+        conn.execute("UPDATE block_0 SET size=size+1")
+    with pytest.raises(ImportExecutionError, match="preserved"):
+        service.import_snapshot(request)
+
+
 def test_external_insight_artifact_reuses_without_claiming_metadata(tmp_path, monkeypatch):
     request = options(tmp_path, focus=False)
     service = ImportService()
