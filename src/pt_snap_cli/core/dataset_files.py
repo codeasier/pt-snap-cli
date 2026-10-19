@@ -33,17 +33,15 @@ def require_readonly_member(root: Path, member: Path, *, immutable: bool = False
             if magic not in (b"", b"\x37\x7f\x06\x82", b"\x37\x7f\x06\x83"):
                 raise DatabaseSchemaError(f"Invalid SQLite WAL header: {member}")
     # The immutable flag identifies finalized compatibility members here. The
-    # connection helper still disables immutable transport when WAL is present.
+    # connection helper always uses SQLite locking for compatibility members.
     # Native datasets retain their non-WAL contract; no repair/checkpoint occurs.
     if not immutable and header[:16] == b"SQLite format 3\x00" and 2 in header[18:20]:
         raise DatabaseSchemaError(f"Dataset member uses persistent WAL mode: {member}")
 
 
 def member_is_immutable(member: Path, compatibility: bool = True) -> bool:
-    """Never bypass SQLite's WAL/locking protocol for a live compatible member."""
-    return compatibility and not any(
-        Path(str(member) + suffix).exists() for suffix in ("-wal", "-shm", "-journal")
-    )
+    """Sidecar absence cannot prove immutability: a consumer may start writing."""
+    return False
 
 
 def readonly_member_uri(member: Path, compatibility: bool = True) -> str:

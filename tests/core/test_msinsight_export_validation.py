@@ -39,6 +39,8 @@ def shard(
         )
         conn.execute("CREATE TABLE callstack (id INTEGER PRIMARY KEY, callstack TEXT)")
         conn.execute("INSERT INTO callstack VALUES (0, 'synthetic stack')")
+        # Conversion also compacts preexisting block IDs, even in trace-only tests.
+        conn.execute(f"CREATE TABLE block_{device} (id INTEGER PRIMARY KEY)")
         conn.execute('CREATE TABLE dictionary ("table" TEXT, "column" TEXT, key TEXT, value TEXT)')
     real = [value for value in ids if value is not None and value >= 0]
     return ReplaySlice(

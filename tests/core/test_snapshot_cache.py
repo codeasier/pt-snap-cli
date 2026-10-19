@@ -80,6 +80,115 @@ class SnapshotCacheTest(unittest.TestCase):
     def save(self):
         (self.directory / "manifest.json").write_text(json.dumps(self.manifest), encoding="utf-8")
 
+    def test_readonly_transport_observes_writer_started_after_uri_creation(self):
+        from pt_snap_cli.core.dataset_files import member_is_immutable, readonly_member_uri
+
+        uri = readonly_member_uri(self.db)
+        self.assertNotIn("immutable=1", uri)
+        self.assertFalse(member_is_immutable(self.db))
+        with closing(sqlite3.connect(self.db)) as writer:
+            writer.execute("PRAGMA journal_mode=WAL")
+            writer.execute("UPDATE block_0 SET size=42")
+            writer.commit()
+            with closing(sqlite3.connect(uri, uri=True)) as reader:
+                self.assertEqual(reader.execute("SELECT size FROM block_0").fetchone(), (42,))
+
+    def test_consumer_write_after_sidecar_check_is_allowed(self):
+        from unittest.mock import patch
+
+        from pt_snap_cli.core import snapshot_cache
+
+        connect = sqlite3.connect
+        writers = []
+        self.addCleanup(lambda: [writer.close() for writer in writers])
+
+        def open_during_write(*args, **kwargs):
+            # Start the consumer after preflight, when no sidecars existed.
+            writer = connect(self.db)
+            writers.append(writer)
+            writer.execute("PRAGMA journal_mode=WAL")
+            writer.execute("CREATE TABLE consumer_cache(value INTEGER)")
+            writer.commit()
+            return connect(*args, **kwargs)
+
+        with patch.object(snapshot_cache.sqlite3, "connect", side_effect=open_during_write):
+            self.assertEqual(validate_cache(self.directory, self.hash), self.manifest)
+
+    def test_base_write_after_sidecar_check_is_detected(self):
+        from unittest.mock import patch
+
+        from pt_snap_cli.core import snapshot_cache
+
+        connect = sqlite3.connect
+        writers = []
+        self.addCleanup(lambda: [writer.close() for writer in writers])
+
+        def open_after_base_write(*args, **kwargs):
+            writer = connect(self.db)
+            writers.append(writer)
+            writer.execute("PRAGMA journal_mode=WAL")
+            writer.execute("UPDATE block_0 SET size=size+1")
+            writer.commit()
+            return connect(*args, **kwargs)
+
+        with patch.object(snapshot_cache.sqlite3, "connect", side_effect=open_after_base_write):
+            with self.assertRaisesRegex(ValueError, "parser data"):
+                validate_cache(self.directory, self.hash)
+
+    def test_consumer_commit_during_row_scan_is_allowed(self):
+        from unittest.mock import patch
+
+        from pt_snap_cli.core import snapshot_cache
+
+        with closing(sqlite3.connect(self.db)) as writer:
+            writer.execute("PRAGMA journal_mode=WAL")
+            encode = snapshot_cache._RowEncoder.encode
+            committed = False
+
+            def encode_while_writing(encoder, row, inline_stack):
+                nonlocal committed
+                if not committed:
+                    writer.execute("CREATE TABLE consumer_cache(value INTEGER)")
+                    writer.commit()
+                    writer.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                    committed = True
+                return encode(encoder, row, inline_stack)
+
+            with patch.object(snapshot_cache._RowEncoder, "encode", encode_while_writing):
+                self.assertEqual(validate_cache(self.directory, self.hash), self.manifest)
+            self.assertTrue(committed)
+
+    def test_parser_seal_does_not_override_producer_seal(self):
+        self.manifest["ptSnap"] = {
+            "memberHashKind": "parser-v1",
+            "members": {"slice.db": "0" * 64},
+        }
+        self.save()
+        with self.assertRaisesRegex(ValueError, "member hash"):
+            validate_cache(self.directory, self.hash)
+
+    def test_logical_producer_seal_without_parser_seal_is_checked(self):
+        self.manifest["ptSnap"] = {
+            "memberHashKind": "parser-v1",
+            "members": self.manifest.pop("parserCache")["members"],
+        }
+        self.save()
+        self.assertEqual(validate_cache(self.directory, self.hash), self.manifest)
+        with closing(sqlite3.connect(self.db)) as conn:
+            conn.execute("UPDATE block_0 SET size=size+1")
+            conn.commit()
+        with self.assertRaisesRegex(ValueError, "member hash"):
+            validate_cache(self.directory, self.hash)
+
+    def test_legacy_producer_seal_is_not_overridden_by_parser_seal(self):
+        self.manifest["ptSnap"] = {"members": {"slice.db": source_hashes(self.db)[0]}}
+        self.save()
+        self.assertEqual(validate_cache(self.directory, self.hash), self.manifest)
+        with closing(sqlite3.connect(self.db)) as conn:
+            conn.execute("CREATE TABLE consumer_extra(value INTEGER)")
+        with self.assertRaisesRegex(ValueError, "member hash"):
+            validate_cache(self.directory, self.hash)
+
     def test_source_hash_matches_shared_salt(self):
         raw, salted = source_hashes(self.source)
         self.assertEqual(raw, hashlib.sha256(self.source.read_bytes()).hexdigest())
@@ -124,12 +233,13 @@ class SnapshotCacheTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_cache(self.directory, source_hashes(self.source)[1])
 
-    def test_closed_wal_cache_does_not_create_sidecars(self):
+    def test_closed_wal_cache_preserves_database_bytes(self):
         with closing(sqlite3.connect(self.db)) as conn:
             conn.execute("PRAGMA journal_mode=WAL")
+        before = self.db.read_bytes()
         self.assertEqual(validate_cache(self.directory, self.hash), self.manifest)
-        self.assertFalse(Path(str(self.db) + "-wal").exists())
-        self.assertFalse(Path(str(self.db) + "-shm").exists())
+        self.assertEqual(self.db.read_bytes(), before)
+        self.assertEqual(validate_cache(self.directory, self.hash), self.manifest)
 
     def test_rollback_journal_is_rejected(self):
         Path(str(self.db) + "-journal").write_bytes(b"")

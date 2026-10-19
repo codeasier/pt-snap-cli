@@ -147,14 +147,12 @@ def member_digest(
         raise ValueError("Invalid device ID")
     digest = hashlib.sha256()
     encoder = _RowEncoder()
-    # A closed WAL-mode DB can be read without creating new WAL/SHM sidecars.
-    # Existing WALs must instead be read transactionally so committed rows are visible.
+    # Consumers may start writing after the sidecar check. Always use SQLite's
+    # locking/WAL protocol and one read snapshot, even for a currently closed DB.
     sidecars = [Path(str(path) + suffix) for suffix in ("-wal", "-shm", "-journal")]
     if any(item.is_symlink() for item in sidecars) or sidecars[2].exists():
         raise ValueError("Snapshot has an aliased sidecar or rollback journal")
-    immutable = not any(item.exists() for item in sidecars)
-    before = path.stat()
-    uri = path.resolve().as_uri() + "?mode=ro" + ("&immutable=1" if immutable else "")
+    uri = path.resolve().as_uri() + "?mode=ro"
     with (
         closing(sqlite3.connect(uri, uri=True, timeout=sqlite_timeout(budget))) as conn,
         validation_progress(conn, budget),
@@ -193,13 +191,6 @@ def member_digest(
             ).fetchone()
             if missing:
                 raise ValueError("Snapshot dictionary reference is missing")
-    after = path.stat()
-    if immutable and (
-        any(item.exists() for item in sidecars)
-        or (before.st_ino, before.st_size, before.st_mtime_ns)
-        != (after.st_ino, after.st_size, after.st_mtime_ns)
-    ):
-        raise ValueError("Snapshot member changed during validation")
     return digest.hexdigest()
 
 
@@ -311,6 +302,24 @@ def validate_cache(
         or attestation.get("members") != members
     ):
         raise ValueError("Snapshot parser data changed")
+    # Both attestations must hold; parserCache must not hide an older producer seal.
+    producer = manifest.get("ptSnap", {})
+    if "memberHashKind" in producer and producer["memberHashKind"] != "parser-v1":
+        raise ValueError("Unsupported member hash contract")
+    if producer.get("memberHashKind") == "parser-v1" and producer.get("members") != members:
+        raise ValueError("Snapshot producer member hash changed")
+    if "members" in producer and producer.get("memberHashKind") != "parser-v1":
+        physical = producer["members"]
+        if not isinstance(physical, dict) or set(physical) != set(members):
+            raise ValueError("Invalid legacy snapshot member inventory")
+        from .dataset_files import hash_file
+
+        for relative, expected in physical.items():
+            member = _member(directory, relative)
+            if any(Path(str(member) + suffix).exists() for suffix in ("-wal", "-shm", "-journal")):
+                raise ValueError("Legacy physical snapshot hash cannot validate live sidecars")
+            if hash_file(member, budget=budget) != expected:
+                raise ValueError("Legacy snapshot member hash changed")
     if path.read_bytes() != original:
         raise ValueError("Snapshot manifest changed during validation")
     return manifest
