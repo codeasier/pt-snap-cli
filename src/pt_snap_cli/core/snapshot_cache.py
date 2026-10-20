@@ -150,8 +150,12 @@ def member_digest(
     # Consumers may start writing after the sidecar check. Always use SQLite's
     # locking/WAL protocol and one read snapshot, even for a currently closed DB.
     sidecars = [Path(str(path) + suffix) for suffix in ("-wal", "-shm", "-journal")]
-    if any(item.is_symlink() for item in sidecars) or sidecars[2].exists():
-        raise ValueError("Snapshot has an aliased sidecar or rollback journal")
+    if any(item.is_symlink() for item in sidecars):
+        raise ValueError("Snapshot has an aliased sidecar")
+    if sidecars[2].exists():
+        raise ValueError(
+            "Snapshot has a rollback journal; a writer or recovery may be active, retry later"
+        )
     uri = path.resolve().as_uri() + "?mode=ro"
     with (
         closing(sqlite3.connect(uri, uri=True, timeout=sqlite_timeout(budget))) as conn,

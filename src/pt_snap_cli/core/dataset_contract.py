@@ -344,13 +344,19 @@ def _safe_file(root: Path, relative: str) -> Path:
 
 
 def _schema(
-    conn: sqlite3.Connection, table: str, columns: tuple[tuple[str, str], ...], loc: str
+    conn: sqlite3.Connection,
+    table: str,
+    columns: tuple[tuple[str, str], ...],
+    loc: str,
+    *,
+    allow_extra_columns: bool = False,
 ) -> None:
     kind = conn.execute("SELECT type FROM sqlite_master WHERE name=?", (table,)).fetchone()
     _need(kind == ("table",), loc, "table", f"{table} must be an actual table, not a view")
     rows = conn.execute(f'PRAGMA table_info("{table}")').fetchall()
     _need(
-        tuple((row[1], row[2].upper()) for row in rows[: len(columns)]) == columns,
+        tuple((row[1], row[2].upper()) for row in rows[: len(columns)]) == columns
+        and (allow_extra_columns or len(rows) == len(columns)),
         loc,
         "columns",
         f"{table} column order/types differ from base contract",
@@ -390,7 +396,7 @@ def _validate_slice(
         (block, BLOCK_COLUMNS),
         ("dictionary", DICTIONARY_COLUMNS),
     ):
-        _schema(conn, table, columns, loc)
+        _schema(conn, table, columns, loc, allow_extra_columns=True)
     for table, column, values in (
         (trace, "action", tuple(enumerate(ACTION_NAMES))),
         (block, "state", BLOCK_STATES),
@@ -517,11 +523,19 @@ def validate_dataset(
                     ):
                         conn.execute("PRAGMA query_only=ON")
                         conn.execute("BEGIN")
+                        _need(
+                            conn.execute("PRAGMA quick_check").fetchall() == [("ok",)],
+                            item.file,
+                            "integrity",
+                            "SQLite member failed integrity check",
+                        )
                         boundaries += _validate_slice(conn, device, item, identities, budget)
                 except sqlite3.DatabaseError as exc:
                     raise DatasetContractError(item.file, "sqlite", str(exc)) from exc
         return DatasetValidation(
             manifest, sum(item.event_count for item in manifest.devices), boundaries
         )
-    except (OSError, UnicodeError, json.JSONDecodeError, RecursionError) as exc:
+    except RecursionError as exc:
+        raise DatasetContractError("manifest.json", "read", "manifest nesting is too deep") from exc
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise DatasetContractError("manifest.json", "read", str(exc)) from exc

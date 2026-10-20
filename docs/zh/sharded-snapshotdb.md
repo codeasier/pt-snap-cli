@@ -119,7 +119,8 @@ dictionary 的十进制整数 key 以文本存储，使用真实带设备后缀�
 ## 扩展、scope 与能力
 
 可选 metadata、去重 stack、有序 frame 使用隔离的 `pt_snap_*` 扩展表或 sidecar，
-不能向按位置读取的基础表追加列。尤其**不能给内联 v1 附加未命名隔离的原生
+兼容 v1 允许在必需基础列末尾追加消费者列，但基础列的顺序、类型和唯一主键不得改变；
+原生 v2 仍严格校验完整列集合。尤其**不能给内联 v1 附加未命名隔离的原生
 `callstack` 表**：现有布局检测会正确报告 v1/v2 冲突。原生 v2 仍是独立单库布局，
 不是本兼容基础格式。这里不要求 `pt_snap_metadata` 或辅助引用表。
 
@@ -286,10 +287,10 @@ Context LRU 默认最多四个；数据集内容 generation 变化在下次 look
 
 building、缺片/矛盾片、未知基础版本、不安全路径在 focus 写入或查询前拒绝。
 **任何** SQLite 打开之前，裸 P0 validator 与 resolver 均先检查**全部**成员/父目录别名及
-存活/悬空 WAL、journal、SHM sidecar。最终化、已关闭的兼容 v1 成员使用
-`mode=ro&immutable=1`，缓存查询的 Context 连接也一样；接受固定原始生产端已 checkpoint、
-无 sidecar 的 WAL header，不创建 sidecar、不改变字节。immutable 只适用于已关闭最终化
-产物，**不是读取 live WAL 的捷径**，不保证并发 writer 安全。不修复、不 checkpoint、
+WAL、journal、SHM 传输。兼容 v1 成员使用 SQLite 锁和不带 `immutable=1` 的
+`mode=ro`，缓存查询的 Context 连接也一样；在事务中读取已提交的 WAL 数据，拒绝别名
+sidecar 和回滚日志。只读打开可能在可写目录中创建空 WAL/SHM 协议文件，但不修改基础行。
+并发 checkpoint/发布可能被安全拒绝，应等待写入稳定后重试。不修复、不 checkpoint、
 不改变 journal mode、不迁移、不删除。原生数据集仍拒绝持久 WAL，单库 Context 默认仍
 为不带 immutable 的 `mode=ro`。Cache 身份包含传输模式与 generation。这是只读校验，
 不是文件系统沙箱或生产端锁。
@@ -404,11 +405,18 @@ raw-frame 丢失与字符串 OOM action 强制转换属于已知局限，不应�
 
 `cacheHash = SHA256(b"mem_snapshot_parser_v2" + 原始_pickle_字节)`，salt **前置**。
 独立 `ptSnap.identity` 字段为 `sourceSha256`、`requestedDevice`、`eventsPerSlice`、
-`outputFormat=compatibility-v1`、`manifestContractVersion=1`、`exportContractVersion=1`、
+`outputFormat=compatibility-v1`、`manifestContractVersion=1`、`exportContractVersion=2`、
 `referenceContractVersion=1`、`metadataSchemaVersion=1`、`importFormatVersion=1`、完整
 `targetRevision`。`ptSnap` 另含 `metadata`、`omittedDevices` 和 `members`（规范相对路径
-→ 最终化 SHA256）。整体已校验所有权/身份要求每个成员/哈希及逐片 metadata 相同；
+→ 基础解析数据逻辑 SHA256，`memberHashKind=parser-v1`）。整体已校验所有权/身份要求每个成员/哈希及逐片 metadata 相同；
 不接管未知/外部缓存或无关文件。CLI 版本变化本身不使缓存失效。
+
+逻辑摘要覆盖解析器基础行及对应字典项，不覆盖消费者表、索引和追加列。导入和数据集查询
+均校验已声明的摘要；无摘要的旧产物仅执行结构、事件范围、字典引用及 `quick_check`
+校验。缺少历史摘要时，不能追溯证明任意字段未改动或 block 行未被删除。摘要不是签名，
+`quick_check` 可检测物理损坏，但不能证明刻意使用 `writable_schema` 篡改后的索引与表
+仍然一致。默认 resolver 热缓存仍读取全部成员字节核对 generation，冷准入还会扫描行，
+因此校验耗时随数据量增长。
 
 兼容发布 **force 也 no-replace**。已识别、身份相同的 pt-snap 缓存不加载 pickle 即复用，
 force 不绕过该规则。源路径/内容、选项/合同变化、基础解析数据损坏，或旧物理摘要产物被调用方修改后须换新

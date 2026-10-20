@@ -24,7 +24,12 @@ def require_readonly_member(root: Path, member: Path, *, immutable: bool = False
         if sidecar.is_symlink():
             raise DatabaseSchemaError(f"Dataset member has an aliased SQLite sidecar: {member}")
         if sidecar.exists():
-            if not immutable or suffix == "-journal" or header[18:20] != b"\x02\x02":
+            if suffix == "-journal":
+                raise DatabaseSchemaError(
+                    f"Dataset member has a rollback journal (live SQLite sidecar); "
+                    f"a writer or recovery may be active, retry later: {member}"
+                )
+            if not immutable or header[18:20] != b"\x02\x02":
                 raise DatabaseSchemaError(f"Dataset member has a live SQLite sidecar: {member}")
             if not sidecar.is_file() or not wal.is_file():
                 raise DatabaseSchemaError(f"Invalid SQLite WAL transport: {member}")

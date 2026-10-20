@@ -383,7 +383,8 @@ def test_live_sidecar_rejected_before_any_sqlite_open(
 
     monkeypatch.setattr(sqlite3, "connect", forbidden)
     with pytest.raises(
-        DatasetContractError if bare else DatabaseSchemaError, match="live SQLite sidecar"
+        DatasetContractError if bare else DatabaseSchemaError,
+        match="aliased SQLite sidecar" if dangling else "live SQLite sidecar",
     ):
         validate_dataset(root) if bare else DatasetResolver().inspect(root)
     assert before == hashes(root)

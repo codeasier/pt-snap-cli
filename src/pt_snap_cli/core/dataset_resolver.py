@@ -467,11 +467,14 @@ class DatasetResolver:
             OSError,
             UnicodeError,
             json.JSONDecodeError,
-            RecursionError,
         ) as exc:
             with _CACHE_LOCK:
                 _ = _VALIDATED.pop(cache_key, None)
             raise DatabaseSchemaError(f"Invalid dataset: {exc}") from exc
+        except RecursionError as exc:
+            with _CACHE_LOCK:
+                _ = _VALIDATED.pop(cache_key, None)
+            raise DatabaseSchemaError("Invalid dataset: manifest nesting is too deep") from exc
         except (DatabaseSchemaError, QueryTimeoutError):
             with _CACHE_LOCK:
                 _ = _VALIDATED.pop(cache_key, None)
