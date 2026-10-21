@@ -23,7 +23,6 @@ from .dataset_contract import (
     TRACE_COLUMNS,
     DatasetContractError,
     DatasetManifest,
-    parse_manifest,
     validate_dataset,
 )
 from .dataset_files import hash_file, readonly_member_uri, require_readonly_member
@@ -291,11 +290,9 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
         raise ValueError(
             f"Legacy export contract v{version}; choose a new --output-dir to re-export as v{EXPORT_VERSION}"
         )
-    # Sealed base rows are already fully scanned by validate_cache below. Avoid
-    # a second expensive callstack/row walk and keep live WAL reads transactional.
-    manifest = parse_manifest(data)
-    if data.get("ptSnap", {}).get("memberHashKind") != "parser-v1":
-        manifest = validate_dataset(target).manifest
+    # Logical seals establish consistency, not semantic validity. Keep shared P0
+    # checks for every producer, including imports that do not register focus.
+    manifest = validate_dataset(target).manifest
     extension = data["ptSnap"]
     metadata = metadata_from_mapping(extension["metadata"])
     identity = extension["identity"]

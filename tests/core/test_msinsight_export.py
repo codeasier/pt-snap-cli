@@ -223,7 +223,10 @@ def test_producer_only_logical_seal_reuses_without_replaying(tmp_path, monkeypat
         service.import_snapshot(request)
 
 
-def test_external_insight_artifact_reuses_without_claiming_metadata(tmp_path, monkeypatch):
+@pytest.mark.parametrize("cli_capacity", [None, 2])
+def test_external_insight_artifact_reuses_without_claiming_metadata(
+    tmp_path, monkeypatch, cli_capacity
+):
     request = options(tmp_path, focus=False)
     service = ImportService()
     first = service.import_snapshot(request)
@@ -240,22 +243,172 @@ def test_external_insight_artifact_reuses_without_claiming_metadata(tmp_path, mo
     reused = service.import_snapshot(request)
     assert reused.reused and reused.metadata is None
     assert hashes(first.db_path) == before
-    output = CliRunner().invoke(
-        app,
-        [
-            "import",
-            str(request.snapshot_file),
-            "--format",
-            "msinsight",
-            "--output-dir",
-            str(request.output_dir),
-            "--no-focus",
-            "--json",
-        ],
-    )
+    args = [
+        "import",
+        str(request.snapshot_file),
+        "--format",
+        "msinsight",
+        "--output-dir",
+        str(request.output_dir),
+        "--no-focus",
+        "--json",
+    ]
+    if cli_capacity is not None:
+        args.extend(["--events-per-slice", str(cli_capacity)])
+    output = CliRunner().invoke(app, args)
     assert output.exit_code == 0, output.output
-    assert json.loads(output.output)["metadata"] is None
+    payload = json.loads(output.stdout)
+    assert payload["metadata"] is None and payload["reused"] and payload["slice_count"] == 3
+    with SnapshotAnalyzer(first.db_path) as analyzer:
+        assert analyzer.execute_query("event", {"id": 4}, device_id=0)["rows"]
+        assert analyzer.execute_query("block", {}, device_id=0)["rows"]
     assert hashes(first.db_path) == before
+
+
+@pytest.mark.parametrize("sealed", [False, True])
+@pytest.mark.parametrize("external", [False, True])
+@pytest.mark.parametrize("set_focus", [False, True])
+@pytest.mark.parametrize(
+    "slice_index,mutation,diagnostic",
+    [
+        (0, "UPDATE trace_entry_0 SET allocated=-1 WHERE id=0", "event_values"),
+        (0, "UPDATE trace_entry_0 SET action=4 WHERE id<0", "event_action"),
+        (0, "UPDATE block_0 SET requestedSize=-1", "block: invalid state/size"),
+        (0, "UPDATE block_0 SET freeEventId=-2", "lifecycle"),
+        (1, "UPDATE block_0 SET address=address+1 WHERE id=0", "block_identity"),
+        (2, "UPDATE trace_entry_0 SET reserved=-1 WHERE id=4", "event_values"),
+    ],
+    ids=[
+        "negative-bytes",
+        "boundary-action",
+        "block-size",
+        "lifetime",
+        "cross-slice",
+        "last-slice",
+    ],
+)
+def test_compatible_cache_requires_semantic_validation(
+    tmp_path, monkeypatch, sealed, external, set_focus, slice_index, mutation, diagnostic
+):
+    from pt_snap_cli.core.errors import DatabaseSchemaError
+    from pt_snap_cli.core.snapshot_cache import seal_manifest, validate_cache
+
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    result = service.import_snapshot(request)
+    path = result.db_path / "manifest.json"
+    manifest = json.loads(path.read_text())
+    if external:
+        del manifest["ptSnap"]
+    member = result.db_path / f"device_0/slice_{slice_index:05d}.db"
+    with closing(sqlite3.connect(member)) as conn, conn:
+        assert conn.execute(mutation).rowcount > 0
+    seal_manifest(result.db_path, manifest)
+    if not external:
+        manifest["ptSnap"]["members"] = manifest["parserCache"]["members"]
+    if not sealed:
+        del manifest["parserCache"]
+    path.write_text(json.dumps(manifest))
+    # The digest is self-consistent, but must not replace shared P0 validation.
+    validate_cache(result.db_path, manifest["cacheHash"])
+    with pytest.raises(DatabaseSchemaError, match=diagnostic):
+        DatasetResolver().inspect(result.db_path)
+    before = hashes(result.db_path)
+    source_before = request.snapshot_file.read_bytes()
+    focus = tmp_path / ".pt-snap/focus.json"
+    focus.parent.mkdir()
+    focus.write_bytes(b'{"db_path":"/previous/project.db","device_id":0}')
+    focus_before = focus.read_bytes()
+    monkeypatch.setattr(
+        service._msinsight_backend.replay, "stage", lambda *a, **k: pytest.fail("must preserve")
+    )
+    for force in (False, True):
+        with pytest.raises(ImportExecutionError, match=diagnostic):
+            service.import_snapshot(dataclasses.replace(request, force=force, set_focus=set_focus))
+        assert hashes(result.db_path) == before
+        assert request.snapshot_file.read_bytes() == source_before
+        assert focus.read_bytes() == focus_before
+
+
+@pytest.mark.parametrize("capacity", [None, 2, 3])
+@pytest.mark.parametrize("force", [False, True])
+@pytest.mark.parametrize("sealed", [False, True])
+def test_external_cache_honors_explicit_capacity(tmp_path, monkeypatch, capacity, force, sealed):
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    result = service.import_snapshot(request)
+    path = result.db_path / "manifest.json"
+    manifest = json.loads(path.read_text())
+    del manifest["ptSnap"]
+    if not sealed:
+        del manifest["parserCache"]
+    path.write_text(json.dumps(manifest))
+    before = hashes(result.db_path)
+    monkeypatch.setattr(
+        service._msinsight_backend.replay, "stage", lambda *a, **k: pytest.fail("must not replay")
+    )
+    updated = dataclasses.replace(request, events_per_slice=capacity, force=force)
+    if capacity == 3:
+        with pytest.raises(ImportExecutionError, match="events_per_slice.*new output directory"):
+            service.import_snapshot(updated)
+    else:
+        reused = service.import_snapshot(updated)
+        assert reused.reused and reused.metadata is None and reused.slice_count == 3
+    assert hashes(result.db_path) == before
+    assert not (tmp_path / ".pt-snap").exists()
+
+
+@pytest.mark.parametrize("force", [False, True])
+@pytest.mark.parametrize("failure", ["semantic", "capacity"])
+def test_external_cache_cli_failure_preserves_artifact_and_focus(
+    tmp_path, monkeypatch, force, failure
+):
+    from pt_snap_cli.core.snapshot_cache import seal_manifest
+
+    request = options(tmp_path, focus=False)
+    result = ImportService().import_snapshot(request)
+    path = result.db_path / "manifest.json"
+    manifest = json.loads(path.read_text())
+    del manifest["ptSnap"]
+    if failure == "semantic":
+        with closing(sqlite3.connect(result.db_path / "device_0/slice_00000.db")) as conn, conn:
+            conn.execute("UPDATE trace_entry_0 SET allocated=-1 WHERE id=0")
+        seal_manifest(result.db_path, manifest)
+    path.write_text(json.dumps(manifest))
+    before = hashes(result.db_path)
+    source_before = request.snapshot_file.read_bytes()
+    focus = tmp_path / ".pt-snap/focus.json"
+    focus.parent.mkdir()
+    focus.write_bytes(b'{"db_path":"/previous/project.db","device_id":0}')
+    focus_before = focus.read_bytes()
+    monkeypatch.setattr(
+        "pt_snap_cli.core.msinsight_export.MsinsightImportBackend.dump_to_dataset",
+        lambda *a, **k: pytest.fail("rejected external cache must not replay or publish"),
+    )
+    args = [
+        "import",
+        str(request.snapshot_file),
+        "--format",
+        "msinsight",
+        "--output-dir",
+        str(request.output_dir),
+        "--json",
+    ]
+    if failure == "capacity":
+        args.extend(["--events-per-slice", "3"])
+    if force:
+        args.append("--force")
+    response = CliRunner().invoke(app, args)
+    assert response.exit_code == 1, response.output
+    assert response.stdout == ""
+    error = json.loads(response.stderr)
+    assert error["ok"] is False and error["error"]["code"] == "IMPORT_FAILED"
+    diagnostic = "event_values" if failure == "semantic" else "events_per_slice"
+    assert diagnostic in error["error"]["message"]
+    assert "Traceback" not in response.stderr
+    assert hashes(result.db_path) == before
+    assert request.snapshot_file.read_bytes() == source_before
+    assert focus.read_bytes() == focus_before
 
 
 @pytest.mark.parametrize("external", [False, True])

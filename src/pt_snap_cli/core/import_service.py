@@ -7,7 +7,7 @@ from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 
-from pt_snap_cli.core.dataset_contract import parse_manifest
+from pt_snap_cli.core.dataset_contract import parse_manifest, validate_dataset
 from pt_snap_cli.core.dataset_import_backend import DatasetImportBackend
 from pt_snap_cli.core.dataset_resolver import DatasetResolver, _require_readonly_member
 from pt_snap_cli.core.errors import (
@@ -302,10 +302,17 @@ class ImportService:
                     # never invent provenance metadata or replace it under force.
                     checked = validate_cache(target, cache_hash, options.device)
                     manifest = parse_manifest(checked)
-                    if "parserCache" not in checked:
-                        dataset = DatasetResolver().inspect(target)
-                        if dataset is None:
-                            raise ValueError("Invalid external compatible dataset")
+                    if (
+                        options.events_per_slice is not None
+                        and options.events_per_slice != manifest.events_per_slice
+                    ):
+                        raise ValueError(
+                            "Explicit events_per_slice does not match the existing compatible "
+                            "cache; choose a new output directory."
+                        )
+                    # A self-consistent seal is not proof of semantic validity.
+                    # Use shared P0 without repeating the resolver's seal scan.
+                    validate_dataset(target)
                     self._recheck_source(options.snapshot_file, source_hash)
                     return ImportResult(
                         target,
