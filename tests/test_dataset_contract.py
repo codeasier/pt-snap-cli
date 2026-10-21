@@ -281,7 +281,6 @@ def test_multiple_devices_and_short_slices_are_legal():
         ("ALTER TABLE block_0 RENAME TO block_1;", "device_tables"),
         ("CREATE TABLE callstack (id INTEGER, callstack TEXT);", "layout"),
         ("ALTER TABLE trace_entry_0 RENAME COLUMN callstack TO callstackId;", "columns"),
-        ("ALTER TABLE trace_entry_0 ADD COLUMN extra INTEGER;", "columns"),
         (
             "ALTER TABLE trace_entry_0 RENAME TO saved; CREATE VIEW trace_entry_0 AS SELECT * FROM saved;",
             "table",
@@ -312,6 +311,52 @@ def test_missing_slice_does_not_create_database(tmp_path):
     with pytest.raises(DatasetContractError, match="missing"):
         validate_dataset(root)
     assert not path.exists()
+
+
+def test_compatibility_appended_columns_do_not_relax_native_schema(tmp_path):
+    from pt_snap_cli.core.dataset_contract import TRACE_COLUMNS, _schema
+
+    root = make_dataset(tmp_path / "dataset")
+    mutate_db(root, "ALTER TABLE trace_entry_0 ADD COLUMN consumer_note TEXT")
+    assert validate_dataset(root).real_event_count == 4
+    with closing(sqlite3.connect(root / "device_0/slice_00001.db")) as conn:
+        with pytest.raises(DatasetContractError, match="columns"):
+            _schema(conn, "trace_entry_0", TRACE_COLUMNS, "native-member")
+
+
+def test_unsealed_index_corruption_is_rejected_before_query(tmp_path):
+    from pt_snap_cli.core.dataset_resolver import DatasetResolver
+    from pt_snap_cli.core.errors import DatabaseSchemaError
+
+    root = make_dataset(tmp_path / "dataset")
+    member = root / "device_0/slice_00001.db"
+    with closing(sqlite3.connect(member)) as conn:
+        conn.execute("CREATE INDEX consumer_index ON block_0(address)")
+        page_size = conn.execute("PRAGMA page_size").fetchone()[0]
+        page = conn.execute(
+            "SELECT rootpage FROM sqlite_master WHERE name='consumer_index'"
+        ).fetchone()[0]
+    with member.open("r+b") as source:
+        source.seek((page - 1) * page_size)
+        source.write(b"\xff" * page_size)
+    with pytest.raises(DatasetContractError, match="integrity|sqlite"):
+        validate_dataset(root)
+    with pytest.raises(DatabaseSchemaError, match="integrity|sqlite"):
+        DatasetResolver().inspect(root)
+
+
+@pytest.mark.parametrize("resolver", [False, True])
+def test_deep_manifest_uses_domain_diagnostic(tmp_path, resolver):
+    from pt_snap_cli.core.dataset_resolver import DatasetResolver
+    from pt_snap_cli.core.errors import DatabaseSchemaError
+
+    root = make_dataset(tmp_path / "dataset")
+    (root / "manifest.json").write_text("[" * 200000 + "0" + "]" * 200000)
+    with pytest.raises(
+        DatabaseSchemaError if resolver else DatasetContractError,
+        match="manifest nesting is too deep",
+    ):
+        DatasetResolver().inspect(root) if resolver else validate_dataset(root)
 
 
 def test_symlink_artifact_member_rejected(tmp_path):

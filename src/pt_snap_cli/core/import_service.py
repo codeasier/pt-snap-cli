@@ -7,6 +7,7 @@ from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 
+from pt_snap_cli.core.dataset_contract import parse_manifest, validate_dataset
 from pt_snap_cli.core.dataset_import_backend import DatasetImportBackend
 from pt_snap_cli.core.dataset_resolver import DatasetResolver, _require_readonly_member
 from pt_snap_cli.core.errors import (
@@ -36,7 +37,6 @@ from pt_snap_cli.core.msinsight_export import (
     compatible_identity,
     convert_shards,
     inspect_owned_cache,
-    salted_hash,
 )
 from pt_snap_cli.core.native_dataset_contract import (
     NATIVE_FORMAT,
@@ -44,6 +44,7 @@ from pt_snap_cli.core.native_dataset_contract import (
     cache_identity,
 )
 from pt_snap_cli.core.sharded_replay_service import ShardedReplayResult
+from pt_snap_cli.core.snapshot_cache import parse_cache_manifest, source_hashes, validate_cache
 from pt_snap_cli.core.snapshot_import_backend import SnapshotImportBackend
 
 logger = logging.getLogger(__name__)
@@ -289,13 +290,42 @@ class ImportService:
         target = self._msinsight_backend.target_path(options.snapshot_file, output)
         if target.resolve() != target or target.is_symlink():
             raise ImportExecutionError("Compatible output must be canonical and non-symlink.")
-        source_hash = self._hash_source(options.snapshot_file)
         try:
-            cache_hash = salted_hash(options.snapshot_file)
-        except OSError as exc:
+            source_hash, cache_hash = source_hashes(options.snapshot_file)
+        except (OSError, ValueError) as exc:
             raise ImportExecutionError(f"Cannot calculate msinsight cacheHash: {exc}") from exc
         if target.exists():
             try:
+                external_manifest = parse_cache_manifest((target / "manifest.json").read_bytes())
+                if isinstance(external_manifest, dict) and "ptSnap" not in external_manifest:
+                    # A compatible producer is not pt-snap-owned. Reuse read-only;
+                    # never invent provenance metadata or replace it under force.
+                    checked = validate_cache(target, cache_hash, options.device)
+                    manifest = parse_manifest(checked)
+                    if (
+                        options.events_per_slice is not None
+                        and options.events_per_slice != manifest.events_per_slice
+                    ):
+                        raise ValueError(
+                            "Explicit events_per_slice does not match the existing compatible "
+                            "cache; choose a new output directory."
+                        )
+                    # A self-consistent seal is not proof of semantic validity.
+                    # Use shared P0 without repeating the resolver's seal scan.
+                    validate_dataset(target)
+                    self._recheck_source(options.snapshot_file, source_hash)
+                    return ImportResult(
+                        target,
+                        options.device,
+                        self._set_focus_if_requested(target, options),
+                        True,
+                        None,
+                        None,
+                        target,
+                        tuple(sorted(d.device_id for d in manifest.devices)),
+                        sum(len(d.slices) for d in manifest.devices),
+                        COMPATIBILITY_FORMAT,
+                    )
                 owned = inspect_owned_cache(target)
                 if (
                     owned.identity != compatible_identity(source_hash, options.device, capacity)
@@ -304,6 +334,11 @@ class ImportService:
                     or owned.metadata.source_size != options.snapshot_file.stat().st_size
                 ):
                     raise ValueError("Source/options/format identity changed")
+            except FileNotFoundError as exc:
+                raise ImportExecutionError(
+                    f"Existing compatible output is not reusable; preserved even under --force. "
+                    f"Required artifact file is missing: {exc.filename}. Choose a new output directory."
+                ) from exc
             except (
                 ValueError,
                 KeyError,

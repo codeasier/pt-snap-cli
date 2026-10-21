@@ -32,6 +32,65 @@ def artifact(tmp_path, request):
     return native_dataset(tmp_path) if request.param else make_dataset(tmp_path / "dataset")
 
 
+def test_closed_wal_compatibility_dataset_opens_on_first_inspection(tmp_path, monkeypatch):
+    monkeypatch.delenv("PT_SNAP_DATASET_CACHE", raising=False)
+    root = make_dataset(tmp_path / "dataset")
+    for member in root.glob("*/*.db"):
+        with closing(sqlite3.connect(member)) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+        assert not Path(str(member) + "-wal").exists()
+    resolved = DatasetResolver().inspect(root)
+    assert resolved is not None
+    resolved.require_unchanged()
+    assert DatasetResolver().inspect(root).fingerprint == resolved.fingerprint
+
+
+def test_wal_preparation_does_not_hide_subsequent_content_changes(tmp_path, monkeypatch):
+    monkeypatch.delenv("PT_SNAP_DATASET_CACHE", raising=False)
+    root = make_dataset(tmp_path / "dataset", devices=(0,), slices=1)
+    member = root / "device_0/slice_00000.db"
+    with closing(sqlite3.connect(member)) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+    validate = dataset_resolver.validate_dataset
+
+    def changed(*args, **kwargs):
+        result = validate(*args, **kwargs)
+        with closing(sqlite3.connect(member)) as writer, writer:
+            writer.execute("UPDATE trace_entry_0 SET callstack='changed after validation'")
+        return result
+
+    monkeypatch.setattr(dataset_resolver, "validate_dataset", changed)
+    with pytest.raises(DatabaseSchemaError, match="changed during inspection"):
+        DatasetResolver().inspect(root)
+
+
+@pytest.mark.parametrize("cache_mode", [None, "immutable", "disabled"])
+@pytest.mark.parametrize("seal", ["parserCache", "ptSnap"])
+def test_declared_seals_are_checked_in_every_cache_mode(tmp_path, monkeypatch, cache_mode, seal):
+    from pt_snap_cli.core.snapshot_cache import seal_manifest
+
+    if cache_mode is None:
+        monkeypatch.delenv("PT_SNAP_DATASET_CACHE", raising=False)
+    else:
+        monkeypatch.setenv("PT_SNAP_DATASET_CACHE", cache_mode)
+    root = make_dataset(tmp_path / "dataset", devices=(0,), slices=1)
+    manifest_path = root / "manifest.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    manifest["cacheHash"] = "a" * 64
+    seal_manifest(root, manifest)
+    if seal == "ptSnap":
+        manifest["ptSnap"] = {
+            "memberHashKind": "parser-v1",
+            "members": manifest.pop("parserCache")["members"],
+        }
+    manifest_path.write_text(json.dumps(manifest))
+    assert DatasetResolver().inspect(root) is not None
+    with closing(sqlite3.connect(root / "device_0/slice_00000.db")) as conn, conn:
+        conn.execute("UPDATE trace_entry_0 SET allocated=allocated+1")
+    with pytest.raises(DatabaseSchemaError, match="seal"):
+        DatasetResolver().inspect(root)
+
+
 def forbidden(*args, **kwargs):
     pytest.fail("warm resolution must not hash or validate shard contents")
 

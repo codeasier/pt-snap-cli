@@ -14,7 +14,7 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
-from pt_snap_cli.core.dataset_files import require_readonly_member
+from pt_snap_cli.core.dataset_files import readonly_member_uri, require_readonly_member
 from pt_snap_cli.core.dataset_lifecycle_connection import _AttachedSources
 from pt_snap_cli.core.errors import QueryExecutionError
 from pt_snap_cli.core.query_limits import MAX_SCRATCH_DB_BYTES, MIN_SCRATCH_DB_BYTES
@@ -50,7 +50,7 @@ class _ScratchSources(_AttachedSources):
         path = self.sources.dataset.root / item.file
         immutable = self.sources.dataset.callstack_layout == "v1"
         require_readonly_member(self.sources.dataset.root, path, immutable=immutable)
-        uri = path.as_uri() + "?mode=ro" + ("&immutable=1" if immutable else "")
+        uri = readonly_member_uri(path, immutable)
         self.execute("ATTACH DATABASE ? AS src", [uri])
         try:
             # Bound each source's independent page cache too. URI mode=ro is the

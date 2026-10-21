@@ -163,9 +163,16 @@ def test_compatible_owned_cache_reuse_and_external_force_preserve_actual_bytes(t
     raw.pop("ptSnap")  # external original-shaped cache, not our ownership attestation
     manifest.write_text(json.dumps(raw))
     external = inventory(result.db_path)
+    reused = service.import_snapshot(dataclasses.replace(request, force=True))
+    assert reused.reused and reused.metadata is None
+    assert inventory(result.db_path) == external
+    # Invalid external artifacts must still be preserved, including under force.
+    with closing(sqlite3.connect(result.db_path / "device_0/slice_00000.db")) as conn, conn:
+        conn.execute("UPDATE block_0 SET size=size+1")
+    invalid = inventory(result.db_path)
     with pytest.raises(ImportExecutionError, match="preserv"):
         service.import_snapshot(dataclasses.replace(request, force=True))
-    assert inventory(result.db_path) == external
+    assert inventory(result.db_path) == invalid
     assert before != external
 
 

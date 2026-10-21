@@ -11,7 +11,9 @@ import copy
 import hashlib
 import json
 import os
+import sqlite3
 from collections import OrderedDict
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from threading import RLock
@@ -27,6 +29,7 @@ from pt_snap_cli.core.dataset_contract import (
     validate_dataset,
 )
 from pt_snap_cli.core.dataset_files import hash_file as _hash_file
+from pt_snap_cli.core.dataset_files import readonly_member_uri
 from pt_snap_cli.core.dataset_files import require_readonly_member as _require_readonly_member
 from pt_snap_cli.core.dataset_support import DATASET_SUPPORT
 from pt_snap_cli.core.errors import (
@@ -44,7 +47,14 @@ from pt_snap_cli.core.native_dataset_contract import (
     validate_native_dataset,
     validate_native_scope,
 )
-from pt_snap_cli.core.validation_budget import ValidationBudget, check_budget, checked_rows
+from pt_snap_cli.core.snapshot_cache import validate_cache
+from pt_snap_cli.core.validation_budget import (
+    ValidationBudget,
+    check_budget,
+    checked_rows,
+    sqlite_timeout,
+    validation_progress,
+)
 
 _FileStamp = tuple[int, int, int, int, int, int, int]
 _Generation = tuple[tuple[str, _FileStamp], ...]
@@ -215,8 +225,36 @@ def _generation(
                 root, member, immutable=not isinstance(manifest, NativeManifest)
             )
             stamps.append((item.file, _stamp(member)))
+            wal = Path(str(member) + "-wal")
+            if wal.exists():
+                stamps.append((item.file + "-wal", _stamp(wal)))
     check_budget(budget)
     return tuple(stamps)
+
+
+def _prepare_compatibility_transport(
+    root: Path, manifest: DatasetManifest, budget: ValidationBudget | None
+) -> None:
+    """Establish read-only WAL sidecars before capturing physical change tokens."""
+    for device in checked_rows(manifest.devices, budget):
+        for item in checked_rows(device.slices, budget):
+            member = root / item.file
+            with member.open("rb") as source:
+                header = source.read(20)
+            if header[18:20] != b"\x02\x02" or Path(str(member) + "-wal").exists():
+                continue
+            try:
+                with (
+                    closing(
+                        sqlite3.connect(
+                            readonly_member_uri(member), uri=True, timeout=sqlite_timeout(budget)
+                        )
+                    ) as conn,
+                    validation_progress(conn, budget),
+                ):
+                    conn.execute("SELECT name FROM sqlite_master LIMIT 1").fetchone()
+            except sqlite3.DatabaseError as exc:
+                raise DatabaseSchemaError(f"Cannot open dataset member: {exc}") from exc
 
 
 def _cacheable(generation: _Generation) -> bool:
@@ -245,6 +283,10 @@ def _content_fingerprint(
         for item in checked_rows(device.slices, budget):
             digest.update(item.file.encode("utf-8"))
             digest.update(_hash_file(root / item.file, budget=budget).encode("ascii"))
+            wal = root / (item.file + "-wal")
+            if wal.exists():
+                digest.update(b"-wal")
+                digest.update(_hash_file(wal, budget=budget).encode("ascii"))
     return digest.hexdigest()
 
 
@@ -325,6 +367,12 @@ class DatasetResolver:
             # Preflight every member before the first SQLite open. Capturing
             # both ends also refuses publication during validation or hashing.
             generation = _generation(root, planned, budget)
+            if not isinstance(planned, NativeManifest):
+                # Read-only SQLite may create WAL/SHM for a closed WAL-mode DB.
+                # Do this only after all paths pass preflight, then capture the
+                # actual transport. Subsequent content changes still fail below.
+                _prepare_compatibility_transport(root, planned, budget)
+                generation = _generation(root, planned, budget)
             if manifest_stamp != _stamp(manifest_path):
                 raise DatabaseSchemaError("Dataset manifest changed during inspection; retry.")
             # Compatibility manifests contain no shard digests. Bracket row
@@ -340,6 +388,33 @@ class DatasetResolver:
                 if isinstance(planned, NativeManifest)
                 else validate_dataset(root, budget=budget)
             )
+            if (
+                not isinstance(planned, NativeManifest)
+                and isinstance(raw, dict)
+                and ("parserCache" in raw or "ptSnap" in raw)
+            ):
+                try:
+                    attestation = raw.get("parserCache", {})
+                    if not isinstance(attestation, dict):
+                        raise ValueError("parserCache: expected object")
+                    producer = raw.get("ptSnap", {})
+                    if not isinstance(producer, dict):
+                        raise ValueError("ptSnap: expected object")
+                    identity = producer.get("identity", {})
+                    if not isinstance(identity, dict):
+                        raise ValueError("ptSnap.identity: expected object")
+                    selected = attestation.get("requestedDevice")
+                    if selected is None:
+                        selected = identity.get("requestedDevice")
+                    if selected is not None and (type(selected) is not int or selected < 0):
+                        raise ValueError(
+                            "parserCache.requestedDevice: expected nonnegative integer"
+                        )
+                    validate_cache(root, raw["cacheHash"], selected, budget=budget)
+                except (ValueError, KeyError, TypeError, sqlite3.DatabaseError) as exc:
+                    raise DatasetContractError(
+                        "parserCache" if "parserCache" in raw else "ptSnap", "seal", str(exc)
+                    ) from exc
             digest = hashlib.sha256()
             digest.update(before.encode("ascii"))
             for device in checked_rows(validation.manifest.devices, budget):
@@ -353,6 +428,10 @@ class DatasetResolver:
                         else _hash_file(root / item.file, budget=budget)
                     )
                     digest.update(content_hash.encode("ascii"))
+                    wal = root / (item.file + "-wal")
+                    if wal.exists():
+                        digest.update(b"-wal")
+                        digest.update(_hash_file(wal, budget=budget).encode("ascii"))
             fingerprint = digest.hexdigest()
             if compatibility_before is not None and compatibility_before != fingerprint:
                 raise DatabaseSchemaError("Dataset content changed during inspection; retry.")
@@ -383,10 +462,19 @@ class DatasetResolver:
                     while len(_VALIDATED) > _CACHE_LIMIT:
                         _ = _VALIDATED.popitem(last=False)
             return result
-        except (DatasetContractError, OSError, UnicodeError, json.JSONDecodeError) as exc:
+        except (
+            DatasetContractError,
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+        ) as exc:
             with _CACHE_LOCK:
                 _ = _VALIDATED.pop(cache_key, None)
             raise DatabaseSchemaError(f"Invalid dataset: {exc}") from exc
+        except RecursionError as exc:
+            with _CACHE_LOCK:
+                _ = _VALIDATED.pop(cache_key, None)
+            raise DatabaseSchemaError("Invalid dataset: manifest nesting is too deep") from exc
         except (DatabaseSchemaError, QueryTimeoutError):
             with _CACHE_LOCK:
                 _ = _VALIDATED.pop(cache_key, None)

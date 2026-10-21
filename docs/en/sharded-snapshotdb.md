@@ -147,8 +147,9 @@ if a producer has discarded their identity; correct producer tracking is require
 ## Extensions, scopes and capabilities
 
 Keep optional metadata, deduplicated stacks and ordered frames in isolated
-`pt_snap_*` extension tables or sidecars, never append columns to positional base
-tables. In particular, **do not attach an unprefixed native `callstack` table to
+`pt_snap_*` extension tables or sidecars. Compatibility-v1 allows consumer columns
+after the required base columns; their order, types and sole primary key must stay
+unchanged. Native-v2 retains exact-column validation. In particular, **do not attach an unprefixed native `callstack` table to
 inline v1**: the existing pt-snap layout detector correctly considers it a v1/v2
 conflict. Native v2 remains a separate single-DB layout, not this compatibility
 base. `pt_snap_metadata` and auxiliary reference tables are optional here.
@@ -357,11 +358,12 @@ sequentially.
 Building, missing/inconsistent slices, unknown base versions and unsafe paths
 are rejected before focus writes or query execution. Before **any** SQLite open,
 both the bare P0 validator and resolver check **all** member/parent aliases and
-live/dangling WAL, journal and SHM sidecars. Finalized, closed compatibility-v1
-members use `mode=ro&immutable=1`, including cached query Context connections.
-This accepts the fixed original producer's checkpointed, sidecar-free WAL headers
-without creating sidecars or changing bytes. The immutable flag assumes a closed
-finalized artifact, **not a live-WAL shortcut** or concurrent-writer guarantee.
+WAL, journal and SHM transport. Compatibility-v1 members use SQLite locking and
+`mode=ro` without `immutable=1`, including cached query Context connections.
+Committed WAL data is read transactionally; alias sidecars and rollback journals
+are rejected. A read-only open may create empty WAL/SHM protocol files in a writable
+directory, but does not modify base rows. Concurrent checkpoint/publication may
+be rejected safely; wait for the writer to settle and retry.
 No repair, checkpoint, journal-mode change, migration or deletion occurs.
 Native datasets retain persistent-WAL rejection; standalone Context defaults stay
 `mode=ro` without immutable. Cache identity includes transport mode and generation.
@@ -507,17 +509,29 @@ additional ID-validation memory, not snapshot loading, replay, or total import R
 `cacheHash = SHA256(b"mem_snapshot_parser_v2" + raw_pickle_bytes)`: the salt is
 **prepended**. Independent `ptSnap.identity` fields are `sourceSha256`,
 `requestedDevice`, `eventsPerSlice`, `outputFormat=compatibility-v1`,
-`manifestContractVersion=1`, `exportContractVersion=1`, `referenceContractVersion=1`,
+`manifestContractVersion=1`, `exportContractVersion=2`, `referenceContractVersion=1`,
 `metadataSchemaVersion=1`, `importFormatVersion=1`, and full `targetRevision`.
 The `ptSnap` object also contains `metadata`, `omittedDevices`, and `members`
-(canonical relative path → finalized SHA256). Whole validated ownership/identity
+(canonical relative path → logical parser-data SHA256 with `memberHashKind=parser-v1`
+for new exports). Whole validated ownership/identity
 requires every member/hash and identical per-slice metadata; unknown/external
-caches and unrelated files are not adopted. CLI version alone does not invalidate.
+caches and unrelated files are not claimed as owned. Valid Insight caches can be
+reused read-only without producer metadata. CLI version alone does not invalidate.
+
+Logical seals cover parser-owned base rows and their dictionary entries, not
+consumer tables, indexes or appended columns. Both import and dataset queries
+check declared seals; unsealed legacy artifacts receive structural, range,
+dictionary-reference and `quick_check` validation only. Without a historical seal,
+arbitrary changed values or deleted block rows cannot be proven unchanged.
+Digests are not signatures. `quick_check` detects physical damage but does not
+prove index/table equivalence against deliberate `writable_schema` tampering.
+Default warm resolver reuse still reads all member bytes to verify the generation;
+cold admission additionally scans rows. Validation time grows with dataset size.
 
 Compatible publication is **no-replace even with force**. Identical recognized
 pt-snap caches reuse without loading pickle (force does not bypass this rule).
-Changed source path/content, options/contracts, corrupted members or GUI-modified
-DBs require a new `--output-dir`; no repair, overwrite or deletion of the old
+Changed source path/content, options/contracts, corrupted parser data or legacy
+byte-attested DBs changed by a consumer require a new `--output-dir`; no repair, overwrite or deletion of the old
 artifact occurs. Exclusive publication and focus compensation use the existing
 checked transaction; source SHA256 is rechecked immediately before publish/reuse.
 Native force replacement and recovery semantics are untouched.

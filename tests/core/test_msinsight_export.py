@@ -108,7 +108,12 @@ def test_physical_schema_inline_events_streams_stable_references_and_native_pari
                 native.db_path / native_shard.file,
                 f"SELECT t.id,t.action,t.address,t.size,t.stream,t.allocated,t.active,t.reserved,c.callstack FROM trace_entry_{device} t JOIN callstack c ON c.id=t.callstackId ORDER BY t.id",
             )
-            assert actual == expected
+            assert [row for row in actual if row[0] >= 0] == [
+                row for row in expected if row[0] >= 0
+            ]
+            assert sorted(row[1:] for row in actual if row[0] < 0) == sorted(
+                row[1:] for row in expected if row[0] < 0
+            )
             assert [r[0] for r in actual if r[0] >= 0] == list(
                 range(shard.start_event_id, shard.end_event_id + 1)
             )
@@ -159,6 +164,450 @@ def test_identical_complete_cache_reuses_without_loading_even_force(tmp_path, mo
         assert reused.reused and reused.metadata == first.metadata
     assert hashes(first.db_path) == before
     assert not (tmp_path / ".pt-snap").exists()
+
+
+def test_consumer_tables_do_not_invalidate_compatible_cache(tmp_path, monkeypatch):
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    first = service.import_snapshot(request)
+    member = first.db_path / "device_0/slice_00000.db"
+    with closing(sqlite3.connect(member)) as conn, conn:
+        conn.executescript(
+            "CREATE TABLE memory_allocation_cache_v1_0(value TEXT);"
+            "CREATE TABLE unrelated_consumer_cache(value TEXT);"
+            "INSERT INTO unrelated_consumer_cache VALUES('keep');"
+            "CREATE INDEX consumer_block_index ON block_0(address);"
+            "ALTER TABLE trace_entry_0 ADD COLUMN consumer_note TEXT;"
+            "ALTER TABLE block_0 ADD COLUMN consumer_note TEXT;"
+        )
+    (first.db_path / "parse.log").write_text("Insight log")
+    monkeypatch.setattr(
+        service._msinsight_backend.replay,
+        "stage",
+        lambda *a, **k: pytest.fail("cache hit must not replay"),
+    )
+    assert service.import_snapshot(request).reused
+    with SnapshotAnalyzer(first.db_path) as analyzer:
+        assert analyzer.execute_query("event", {"id": 0}, device_id=0)["rows"]
+        assert analyzer.execute_query("block", {}, device_id=0)["rows"]
+        assert analyzer.get_database_metadata()["status"] == "available"
+    assert rows(member, "SELECT value FROM unrelated_consumer_cache") == [("keep",)]
+    with closing(sqlite3.connect(member)) as conn, conn:
+        conn.execute("UPDATE block_0 SET size=size+1")
+    with pytest.raises(ImportExecutionError, match="preserved"):
+        service.import_snapshot(request)
+
+
+def test_producer_only_logical_seal_reuses_without_replaying(tmp_path, monkeypatch):
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    first = service.import_snapshot(request)
+    path = first.db_path / "manifest.json"
+    manifest = json.loads(path.read_text())
+    del manifest["parserCache"]
+    path.write_text(json.dumps(manifest))
+    before = hashes(first.db_path)
+    monkeypatch.setattr(
+        service._msinsight_backend.replay,
+        "stage",
+        lambda *a, **k: pytest.fail("producer seal cache hit must not replay"),
+    )
+    reused = service.import_snapshot(request)
+    assert reused.reused and reused.metadata == first.metadata
+    assert hashes(first.db_path) == before
+    with SnapshotAnalyzer(first.db_path) as analyzer:
+        assert analyzer.get_database_metadata()["status"] == "available"
+    with closing(sqlite3.connect(first.db_path / "device_0/slice_00000.db")) as conn, conn:
+        conn.execute("UPDATE block_0 SET size=size+1")
+    with pytest.raises(ImportExecutionError, match="preserved"):
+        service.import_snapshot(request)
+
+
+@pytest.mark.parametrize("cli_capacity", [None, 2])
+def test_external_insight_artifact_reuses_without_claiming_metadata(
+    tmp_path, monkeypatch, cli_capacity
+):
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    first = service.import_snapshot(request)
+    path = first.db_path / "manifest.json"
+    manifest = json.loads(path.read_text())
+    del manifest["ptSnap"]
+    path.write_text(json.dumps(manifest))
+    before = hashes(first.db_path)
+    monkeypatch.setattr(
+        service._msinsight_backend.replay,
+        "stage",
+        lambda *a, **k: pytest.fail("external cache hit must not replay"),
+    )
+    reused = service.import_snapshot(request)
+    assert reused.reused and reused.metadata is None
+    assert hashes(first.db_path) == before
+    args = [
+        "import",
+        str(request.snapshot_file),
+        "--format",
+        "msinsight",
+        "--output-dir",
+        str(request.output_dir),
+        "--no-focus",
+        "--json",
+    ]
+    if cli_capacity is not None:
+        args.extend(["--events-per-slice", str(cli_capacity)])
+    output = CliRunner().invoke(app, args)
+    assert output.exit_code == 0, output.output
+    payload = json.loads(output.stdout)
+    assert payload["metadata"] is None and payload["reused"] and payload["slice_count"] == 3
+    with SnapshotAnalyzer(first.db_path) as analyzer:
+        assert analyzer.execute_query("event", {"id": 4}, device_id=0)["rows"]
+        assert analyzer.execute_query("block", {}, device_id=0)["rows"]
+    assert hashes(first.db_path) == before
+
+
+@pytest.mark.parametrize("sealed", [False, True])
+@pytest.mark.parametrize("external", [False, True])
+@pytest.mark.parametrize("set_focus", [False, True])
+@pytest.mark.parametrize(
+    "slice_index,mutation,diagnostic",
+    [
+        (0, "UPDATE trace_entry_0 SET allocated=-1 WHERE id=0", "event_values"),
+        (0, "UPDATE trace_entry_0 SET action=4 WHERE id<0", "event_action"),
+        (0, "UPDATE block_0 SET requestedSize=-1", "block: invalid state/size"),
+        (0, "UPDATE block_0 SET freeEventId=-2", "lifecycle"),
+        (1, "UPDATE block_0 SET address=address+1 WHERE id=0", "block_identity"),
+        (2, "UPDATE trace_entry_0 SET reserved=-1 WHERE id=4", "event_values"),
+    ],
+    ids=[
+        "negative-bytes",
+        "boundary-action",
+        "block-size",
+        "lifetime",
+        "cross-slice",
+        "last-slice",
+    ],
+)
+def test_compatible_cache_requires_semantic_validation(
+    tmp_path, monkeypatch, sealed, external, set_focus, slice_index, mutation, diagnostic
+):
+    from pt_snap_cli.core.errors import DatabaseSchemaError
+    from pt_snap_cli.core.snapshot_cache import seal_manifest, validate_cache
+
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    result = service.import_snapshot(request)
+    path = result.db_path / "manifest.json"
+    manifest = json.loads(path.read_text())
+    if external:
+        del manifest["ptSnap"]
+    member = result.db_path / f"device_0/slice_{slice_index:05d}.db"
+    with closing(sqlite3.connect(member)) as conn, conn:
+        assert conn.execute(mutation).rowcount > 0
+    seal_manifest(result.db_path, manifest)
+    if not external:
+        manifest["ptSnap"]["members"] = manifest["parserCache"]["members"]
+    if not sealed:
+        del manifest["parserCache"]
+    path.write_text(json.dumps(manifest))
+    # The digest is self-consistent, but must not replace shared P0 validation.
+    validate_cache(result.db_path, manifest["cacheHash"])
+    with pytest.raises(DatabaseSchemaError, match=diagnostic):
+        DatasetResolver().inspect(result.db_path)
+    before = hashes(result.db_path)
+    source_before = request.snapshot_file.read_bytes()
+    focus = tmp_path / ".pt-snap/focus.json"
+    focus.parent.mkdir()
+    focus.write_bytes(b'{"db_path":"/previous/project.db","device_id":0}')
+    focus_before = focus.read_bytes()
+    monkeypatch.setattr(
+        service._msinsight_backend.replay, "stage", lambda *a, **k: pytest.fail("must preserve")
+    )
+    for force in (False, True):
+        with pytest.raises(ImportExecutionError, match=diagnostic):
+            service.import_snapshot(dataclasses.replace(request, force=force, set_focus=set_focus))
+        assert hashes(result.db_path) == before
+        assert request.snapshot_file.read_bytes() == source_before
+        assert focus.read_bytes() == focus_before
+
+
+@pytest.mark.parametrize("capacity", [None, 2, 3])
+@pytest.mark.parametrize("force", [False, True])
+@pytest.mark.parametrize("sealed", [False, True])
+def test_external_cache_honors_explicit_capacity(tmp_path, monkeypatch, capacity, force, sealed):
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    result = service.import_snapshot(request)
+    path = result.db_path / "manifest.json"
+    manifest = json.loads(path.read_text())
+    del manifest["ptSnap"]
+    if not sealed:
+        del manifest["parserCache"]
+    path.write_text(json.dumps(manifest))
+    before = hashes(result.db_path)
+    monkeypatch.setattr(
+        service._msinsight_backend.replay, "stage", lambda *a, **k: pytest.fail("must not replay")
+    )
+    updated = dataclasses.replace(request, events_per_slice=capacity, force=force)
+    if capacity == 3:
+        with pytest.raises(ImportExecutionError, match="events_per_slice.*new output directory"):
+            service.import_snapshot(updated)
+    else:
+        reused = service.import_snapshot(updated)
+        assert reused.reused and reused.metadata is None and reused.slice_count == 3
+    assert hashes(result.db_path) == before
+    assert not (tmp_path / ".pt-snap").exists()
+
+
+@pytest.mark.parametrize("force", [False, True])
+@pytest.mark.parametrize("failure", ["semantic", "capacity"])
+def test_external_cache_cli_failure_preserves_artifact_and_focus(
+    tmp_path, monkeypatch, force, failure
+):
+    from pt_snap_cli.core.snapshot_cache import seal_manifest
+
+    request = options(tmp_path, focus=False)
+    result = ImportService().import_snapshot(request)
+    path = result.db_path / "manifest.json"
+    manifest = json.loads(path.read_text())
+    del manifest["ptSnap"]
+    if failure == "semantic":
+        with closing(sqlite3.connect(result.db_path / "device_0/slice_00000.db")) as conn, conn:
+            conn.execute("UPDATE trace_entry_0 SET allocated=-1 WHERE id=0")
+        seal_manifest(result.db_path, manifest)
+    path.write_text(json.dumps(manifest))
+    before = hashes(result.db_path)
+    source_before = request.snapshot_file.read_bytes()
+    focus = tmp_path / ".pt-snap/focus.json"
+    focus.parent.mkdir()
+    focus.write_bytes(b'{"db_path":"/previous/project.db","device_id":0}')
+    focus_before = focus.read_bytes()
+    monkeypatch.setattr(
+        "pt_snap_cli.core.msinsight_export.MsinsightImportBackend.dump_to_dataset",
+        lambda *a, **k: pytest.fail("rejected external cache must not replay or publish"),
+    )
+    args = [
+        "import",
+        str(request.snapshot_file),
+        "--format",
+        "msinsight",
+        "--output-dir",
+        str(request.output_dir),
+        "--json",
+    ]
+    if failure == "capacity":
+        args.extend(["--events-per-slice", "3"])
+    if force:
+        args.append("--force")
+    response = CliRunner().invoke(app, args)
+    assert response.exit_code == 1, response.output
+    assert response.stdout == ""
+    error = json.loads(response.stderr)
+    assert error["ok"] is False and error["error"]["code"] == "IMPORT_FAILED"
+    diagnostic = "event_values" if failure == "semantic" else "events_per_slice"
+    assert diagnostic in error["error"]["message"]
+    assert "Traceback" not in response.stderr
+    assert hashes(result.db_path) == before
+    assert request.snapshot_file.read_bytes() == source_before
+    assert focus.read_bytes() == focus_before
+
+
+@pytest.mark.parametrize("external", [False, True])
+@pytest.mark.parametrize("failure", ["index", "dictionary", "deep-json"])
+def test_invalid_compatible_cache_is_preserved(tmp_path, monkeypatch, external, failure):
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    result = service.import_snapshot(request)
+    path = result.db_path / "manifest.json"
+    manifest = json.loads(path.read_text())
+    if external:
+        del manifest["ptSnap"]
+    member = result.db_path / "device_0/slice_00000.db"
+    if failure == "index":
+        with closing(sqlite3.connect(member)) as conn:
+            conn.execute("CREATE INDEX block_address ON block_0(address)")
+            page_size = conn.execute("PRAGMA page_size").fetchone()[0]
+            root = conn.execute(
+                "SELECT rootpage FROM sqlite_master WHERE name='block_address'"
+            ).fetchone()[0]
+        with member.open("r+b") as file:
+            file.seek((root - 1) * page_size)
+            file.write(b"\xff" * page_size)
+    elif failure == "dictionary":
+        del manifest["parserCache"]
+        with closing(sqlite3.connect(member)) as conn, conn:
+            conn.execute("DELETE FROM dictionary WHERE \"table\"='block_0'")
+    path.write_text(
+        "[" * 200000 + "0" + "]" * 200000 if failure == "deep-json" else json.dumps(manifest)
+    )
+    before = hashes(result.db_path)
+    monkeypatch.setattr(
+        service._msinsight_backend.replay, "stage", lambda *a, **k: pytest.fail("must preserve")
+    )
+    for force in (False, True):
+        with pytest.raises(ImportExecutionError, match="preserved"):
+            service.import_snapshot(dataclasses.replace(request, force=force))
+        assert hashes(result.db_path) == before
+
+
+def test_owned_cache_inspection_normalizes_deep_json(tmp_path):
+    from pt_snap_cli.core.msinsight_export import inspect_owned_cache
+
+    (tmp_path / "manifest.json").write_text("[" * 200000 + "0" + "]" * 200000)
+    with pytest.raises(ValueError, match="nesting"):
+        inspect_owned_cache(tmp_path)
+
+
+def test_query_and_metadata_reject_deep_manifest_without_traceback(tmp_path):
+    from pt_snap_cli.core.errors import DatabaseSchemaError
+    from pt_snap_cli.core.import_metadata import ImportMetadataService
+
+    result = ImportService().import_snapshot(options(tmp_path, focus=False))
+    path = result.db_path / "manifest.json"
+    path.write_text("[" * 200000 + "0" + "]" * 200000)
+    before = hashes(result.db_path)
+    with pytest.raises(DatabaseSchemaError):
+        DatasetResolver().inspect(result.db_path)
+    with pytest.raises(DatabaseSchemaError):
+        ImportMetadataService().inspect(result.db_path)
+    for command in ("overview", "metadata"):
+        response = CliRunner().invoke(app, [command, str(result.db_path), "--json"])
+        assert response.exit_code != 0
+        assert "Traceback" not in response.output
+    assert hashes(result.db_path) == before
+
+
+def test_rollback_journal_has_an_explicit_diagnostic(tmp_path):
+    request = options(tmp_path, focus=False)
+    result = ImportService().import_snapshot(request)
+    journal = result.db_path / "device_0/slice_00000.db-journal"
+    journal.write_bytes(b"")
+    before = hashes(result.db_path)
+    with pytest.raises(ImportExecutionError, match="rollback journal.*retry later"):
+        ImportService().import_snapshot(request)
+    assert hashes(result.db_path) == before
+
+
+def test_selected_device_export_still_supports_sealed_queries(tmp_path):
+    request = dataclasses.replace(options(tmp_path, multiple=True, focus=False), device=1)
+    result = ImportService().import_snapshot(request)
+    assert result.devices == (1,)
+    with SnapshotAnalyzer(result.db_path) as analyzer:
+        assert analyzer.execute_query("event", {"id": 0}, device_id=1)["rows"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("ptSnap", [], "manifest.ptSnap: expected object"),
+        ("identity", [], "manifest.ptSnap.identity: expected object"),
+        ("exportContractVersion", 1, "Legacy export contract v1"),
+    ],
+)
+def test_invalid_producer_extension_reports_context(tmp_path, field, value, message):
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    result = service.import_snapshot(request)
+    path = result.db_path / "manifest.json"
+    manifest = json.loads(path.read_text())
+    if field == "ptSnap":
+        manifest[field] = value
+    elif field == "identity":
+        manifest["ptSnap"][field] = value
+    else:
+        manifest["ptSnap"]["identity"][field] = value
+    path.write_text(json.dumps(manifest))
+    before = hashes(result.db_path)
+    with pytest.raises(ImportExecutionError, match=message):
+        service.import_snapshot(request)
+    assert hashes(result.db_path) == before
+
+
+@pytest.mark.parametrize("external", [False, True])
+@pytest.mark.parametrize("mutation", ["block", "trace"])
+def test_resolver_rejects_seal_mismatch_after_prior_query(tmp_path, external, mutation):
+    result = ImportService().import_snapshot(options(tmp_path, focus=False))
+    if external:
+        path = result.db_path / "manifest.json"
+        manifest = json.loads(path.read_text())
+        del manifest["ptSnap"]
+        path.write_text(json.dumps(manifest))
+    resolver = DatasetResolver()
+    assert resolver.inspect(result.db_path) is not None
+    member = result.db_path / "device_0/slice_00000.db"
+    with closing(sqlite3.connect(member)) as conn, conn:
+        conn.execute(
+            "DELETE FROM block_0 WHERE id=(SELECT MIN(id) FROM block_0)"
+            if mutation == "block"
+            else "UPDATE trace_entry_0 SET allocated=allocated+1"
+        )
+    before = hashes(result.db_path)
+    from pt_snap_cli.core.errors import DatabaseSchemaError
+
+    with pytest.raises(DatabaseSchemaError, match="parserCache.*seal"):
+        resolver.inspect(result.db_path)
+    assert hashes(result.db_path) == before
+
+
+@pytest.mark.parametrize("external", [False, True])
+def test_live_consumer_wal_reuses_and_queries_committed_data(tmp_path, monkeypatch, external):
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    result = service.import_snapshot(request)
+    if external:
+        path = result.db_path / "manifest.json"
+        manifest = json.loads(path.read_text())
+        del manifest["ptSnap"]
+        path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(
+        service._msinsight_backend.replay, "stage", lambda *a, **k: pytest.fail("must reuse")
+    )
+    member = result.db_path / "device_0/slice_00000.db"
+    with closing(sqlite3.connect(member)) as writer:
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.executescript(
+            "CREATE TABLE consumer_data(value TEXT); INSERT INTO consumer_data VALUES('committed');"
+        )
+        assert Path(str(member) + "-wal").exists()
+        reused = service.import_snapshot(request)
+        assert reused.reused and reused.metadata == (None if external else result.metadata)
+        with SnapshotAnalyzer(result.db_path) as analyzer:
+            assert analyzer.execute_query("event", {"id": 0}, device_id=0)["rows"]
+        assert writer.execute("SELECT value FROM consumer_data").fetchall() == [("committed",)]
+        # Base-table writes cannot masquerade as consumer-only additions.
+        writer.execute("UPDATE block_0 SET size=size+1")
+        writer.commit()
+        with pytest.raises(ImportExecutionError, match="preserved"):
+            service.import_snapshot(request)
+
+
+def test_compatible_negative_ids_are_compact_and_boundary_ids_are_global(tmp_path):
+    result = ImportService().import_snapshot(
+        options(tmp_path, multiple=True, capacity=1, focus=False)
+    )
+    manifest = json.loads((result.db_path / "manifest.json").read_text())
+    boundary_ids = []
+    for device, data in manifest["devices"].items():
+        block_ids = set()
+        for item in reversed(data["slices"]):
+            path = result.db_path / item["file"]
+            block_ids.update(
+                row[0] for row in rows(path, f"SELECT id FROM block_{device} WHERE id<0")
+            )
+            boundary_ids.extend(
+                row[0]
+                for row in rows(
+                    path, f"SELECT id FROM trace_entry_{device} WHERE id<0 ORDER BY id DESC"
+                )
+            )
+            assert (
+                rows(
+                    path,
+                    f"SELECT id FROM block_{device} EXCEPT SELECT blockId FROM pt_snap_block_reference",
+                )
+                == []
+            )
+        assert block_ids == set(range(-len(block_ids), 0))
+    assert boundary_ids == list(range(-1, -len(boundary_ids) - 1, -1))
 
 
 @pytest.mark.parametrize(
