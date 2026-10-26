@@ -155,6 +155,12 @@ conflict. Native v2 remains a separate single-DB layout, not this compatibility
 base. `pt_snap_metadata` and auxiliary reference tables are optional here.
 
 Unknown `extensions` declarations/tables are ignored by base validation.
+Compatible cache reuse checks the ordered-frame declaration version, not frame-table
+contents or stored digests. Queries independently validate the frame evidence they use.
+Legacy and external text-only caches retain their read-only degradation behavior.
+Unencodable optional event evidence may remain uncovered; source coverage is reported
+separately.
+
 `DatasetValidation.text_callstacks=True` means an inline text column is available,
 not that every event has a stack. `structured_frames=False` remains false even
 when a manifest claims frames: complete structured-frame capability requires a
@@ -506,40 +512,46 @@ next expected ID, after verifying a unique integer primary key; negative boundar
 rows are excluded. It does not collect the device's event IDs in Python. This bounds
 additional ID-validation memory, not snapshot loading, replay, or total import RSS.
 
-`cacheHash = SHA256(b"mem_snapshot_parser_v2" + raw_pickle_bytes)`: the salt is
-**prepended**. Independent `ptSnap.identity` fields are `sourceSha256`,
+`cacheHash = SHA256(b"mem_snapshot_parser_v3" + raw_pickle_bytes)`: the salt is
+**prepended**. Caches using the former `mem_snapshot_parser_v2` salt do not match;
+export to a new output directory instead of replacing the old cache.
+Independent `ptSnap.identity` fields are `sourceSha256`,
 `requestedDevice`, `eventsPerSlice`, `outputFormat=compatibility-v1`,
-`manifestContractVersion=1`, `exportContractVersion=2`, `referenceContractVersion=1`,
+`manifestContractVersion=1`, `exportContractVersion=3`, `referenceContractVersion=1`,
 `metadataSchemaVersion=1`, `importFormatVersion=1`, and full `targetRevision`.
-The `ptSnap` object also contains `metadata`, `omittedDevices`, and `members`
-(canonical relative path → logical parser-data SHA256 with `memberHashKind=parser-v1`
-for new exports). Whole validated ownership/identity
-requires every member/hash and identical per-slice metadata; unknown/external
+The `ptSnap` object also contains `metadata` and `omittedDevices`. Ownership/identity
+requires a complete member inventory and identical per-slice metadata; unknown/external
 caches and unrelated files are not claimed as owned. Valid Insight caches can be
 reused read-only without producer metadata. CLI version alone does not invalidate.
 
-Logical seals cover parser-owned base rows and their dictionary entries, not
-consumer tables, indexes or appended columns. Both import and dataset queries
-check declared seals; unsealed legacy artifacts receive structural, range,
-dictionary-reference and `quick_check` validation only. Without a historical seal,
-arbitrary changed values or deleted block rows cannot be proven unchanged.
-Digests are not signatures. `quick_check` detects physical damage but does not
-prove index/table equivalence against deliberate `writable_schema` tampering.
-Default warm resolver reuse still reads all member bytes to verify the generation;
-cold admission additionally scans rows. Validation time grows with dataset size.
+Compatible imports check source SHA256, complete manifest/member inventory, read-only
+database schema and indexed event endpoints. They do not scan base/frame rows, run
+`quick_check`, or hash database bytes. Historical digest fields are accepted as member
+inventories only; their values are not compared and new exports do not generate content
+digests. New `parserCache.members` entries use empty strings as structural inventory values.
+There is no strict-cache option. These checks do not detect arbitrary edited values,
+internal event gaps or damaged secondary indexes. Ordinary dataset queries and explicit
+validators retain their independent admission checks; lightweight import results never
+seed their validation cache or receipts.
+
+Native dataset imports retain disposable validation receipts under
+`~/.cache/pt-snap-cli/validation-v1/`. They hash manifest/member bytes and validate
+native data independently of compatible-cache reuse. Missing or invalid receipts fall
+back to full native validation; `PT_SNAP_DATASET_CACHE=off` disables receipt reuse.
 
 Compatible publication is **no-replace even with force**. Identical recognized
 pt-snap caches reuse without loading pickle (force does not bypass this rule).
-Changed source path/content, options/contracts, corrupted parser data or legacy
-byte-attested DBs changed by a consumer require a new `--output-dir`; no repair, overwrite or deletion of the old
-artifact occurs. Exclusive publication and focus compensation use the existing
+Changed source path/content or options/contracts require a new `--output-dir`.
+The old artifact is never repaired, overwritten or deleted. Exclusive publication
+and focus compensation use the existing
 checked transaction; source SHA256 is rechecked immediately before publish/reuse.
 Native force replacement and recovery semantics are untouched.
 
 Inline text costs `sum(len(callstack.encode("utf-8")) for each event)` rather than
 one copy per distinct stack. Existing native interning remains available. Conversion
 temporarily holds both layouts and can leave free SQLite pages; capacity is not an
-RSS/registry/block/disk bound. No optional frame enhancement is emitted.
+RSS/registry/block/disk bound. New exports also retain the optional version-2
+ordered-frame extension described above.
 
 **The artifact-only runner still reports its own GUI stage as pending/not-run.**
 The separate fixed-version real GUI/C++ acceptance on 2026-10-11 is recorded in

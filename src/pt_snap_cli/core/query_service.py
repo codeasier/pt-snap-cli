@@ -12,6 +12,7 @@ from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionErr
 from pt_snap_cli.core.context_cache import ContextCache
 from pt_snap_cli.core.dataset_attribution import event_attribution, summarize_dataset_stacks
 from pt_snap_cli.core.dataset_contract import QueryScope
+from pt_snap_cli.core.dataset_frame_tree import frame_tree
 from pt_snap_cli.core.dataset_global import global_query
 from pt_snap_cli.core.dataset_resolver import DatasetResolver, ResolvedDataset
 from pt_snap_cli.core.dataset_sources import DatasetSourceResolver, QueryBudget
@@ -285,9 +286,13 @@ class QueryService:
             if slice_index is not None:
                 dataset.paths(QueryScope("slice", selected.device_id, slice_index))
             implementation = (
-                event_attribution
-                if template in ("active_blocks_at_event", "active_memory_callstack_at_event")
-                else global_query
+                frame_tree
+                if template == "active_memory_frame_tree_at_event"
+                else (
+                    event_attribution
+                    if template in ("active_blocks_at_event", "active_memory_callstack_at_event")
+                    else global_query
+                )
             )
             result = implementation(
                 sources,

@@ -375,7 +375,7 @@ def test_installed_trusted_producer_default_export_cli_and_api(
     assert {case["template"] for case in cases} == set(by_name)
     supported = {name for name, entry in by_name.items() if entry["dataset_support"]["supported"]}
     unsupported = set(by_name) - supported
-    assert unsupported == {"event_frames", "active_memory_frame_tree_at_event"}
+    assert unsupported == {"event_frames"}
     cases_file = runtime.cwd / "cases.json"
     cases_file.write_text(json.dumps(cases))
     api = runtime.python_json("api", API_QUERIES, root, cases_file, boundary - 1)
@@ -419,10 +419,12 @@ def test_installed_trusted_producer_default_export_cli_and_api(
         "--event-id",
         boundary - 1,
         "--json",
-        expected=1,
+        expected=0,
     )
-    assert tree["error"]["code"] == api["tree_report"]["code"] == "QUERY_FAILED"
-    assert "Unsupported dataset-global" in tree["error"]["message"]
+    assert tree["rows"] == api["tree_report"]["rows"]
+    assert tree["rows"] == cli_queries["active_memory_frame_tree_at_event"]["rows"]
+    assert tree["rows"][0]["size_bytes"] == 176
+    assert sum(row["self_bytes"] for row in tree["rows"]) == 176
     assert hashes(root) == before
     assert sha256(source) == source_hash
     assert not (runtime.cwd / ".pt-snap").exists()
@@ -438,7 +440,7 @@ def test_installed_trusted_producer_default_export_cli_and_api(
         "slices": 2,
         "templates_supported": sorted(supported),
         "templates_expected_rejections": sorted(unsupported),
-        "reports": {"peak-memory": "passed", "memory-tree": "expected dataset rejection"},
+        "reports": {"peak-memory": "passed", "memory-tree": "passed"},
         "commands": runtime.commands,
         "read_only_verified": True,
     }

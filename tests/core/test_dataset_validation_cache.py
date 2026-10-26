@@ -66,7 +66,9 @@ def test_wal_preparation_does_not_hide_subsequent_content_changes(tmp_path, monk
 
 @pytest.mark.parametrize("cache_mode", [None, "immutable", "disabled"])
 @pytest.mark.parametrize("seal", ["parserCache", "ptSnap"])
-def test_declared_seals_are_checked_in_every_cache_mode(tmp_path, monkeypatch, cache_mode, seal):
+def test_historical_digests_do_not_reject_valid_content_changes(
+    tmp_path, monkeypatch, cache_mode, seal
+):
     from pt_snap_cli.core.snapshot_cache import seal_manifest
 
     if cache_mode is None:
@@ -87,8 +89,7 @@ def test_declared_seals_are_checked_in_every_cache_mode(tmp_path, monkeypatch, c
     assert DatasetResolver().inspect(root) is not None
     with closing(sqlite3.connect(root / "device_0/slice_00000.db")) as conn, conn:
         conn.execute("UPDATE trace_entry_0 SET allocated=allocated+1")
-    with pytest.raises(DatabaseSchemaError, match="seal"):
-        DatasetResolver().inspect(root)
+    assert DatasetResolver().inspect(root) is not None
 
 
 def forbidden(*args, **kwargs):

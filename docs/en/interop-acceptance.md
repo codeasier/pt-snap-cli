@@ -25,6 +25,10 @@ pickle trust is a SEPARATE fixture review; no new committed pickle is added here
 
 ## Forward chain: trusted source → physical export → real GUI
 
+The pinned historical acceptance below used `mem_snapshot_parser_v2`. Current
+exports use `mem_snapshot_parser_v3`; the historical GUI result does not verify
+the new parser version. Re-export v2 caches to a new output directory for v3 reuse.
+
 1. Review/trust the source separately: pickle is executable input, not a sandbox.
    Record exact source SHA256, size, selected device and capacity. Default import
    stays single-db; native and compatible outputs are explicit distinct modes.
