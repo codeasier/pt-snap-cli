@@ -3,15 +3,19 @@
 import dataclasses
 import json
 import sqlite3
+import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from pathlib import Path
+from threading import Event
 
 import pytest
 from typer.testing import CliRunner
 
+import pt_snap_cli.core.query_service as query_service_module
 from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import app
-from pt_snap_cli.core.errors import InvalidParameterError, QueryExecutionError
+from pt_snap_cli.core.errors import InvalidParameterError, QueryCancelledError, QueryExecutionError
 from pt_snap_cli.core.import_service import ImportService
 from pt_snap_cli.core.models import ImportOptions
 from pt_snap_cli.core.query_limits import QueryLimits
@@ -38,6 +42,73 @@ STACKS = {
     6: [],
     11: [LEAF, SHARED, ROOT],
 }
+
+
+@pytest.mark.parametrize("reset", [False, True])
+def test_new_frame_tree_or_close_interrupts_old_work_and_releases_connections(
+    tmp_path, monkeypatch, reset
+):
+    root = framed_dataset(tmp_path)
+    before = hashes(root)
+    started = Event()
+    original = query_service_module.frame_tree
+    old_caches = []
+
+    def slow_tree(sources, template, params, *args):
+        if params["event_id"] == 8:
+            old_caches.append(sources.cache)
+            started.set()
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                sources.budget.remaining()
+                Event().wait(0.005)
+            pytest.fail("The obsolete tree was not cancelled")
+        return original(sources, template, params, *args)
+
+    monkeypatch.setattr(query_service_module, "frame_tree", slow_tree)
+    with closing(QueryService()) as service, ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(
+            service.execute_query, TEMPLATE, {"event_id": 8}, db_path=root, timeout_s=0
+        )
+        assert started.wait(3)
+        if reset:
+            service.close()
+        second = pool.submit(service.execute_query, TEMPLATE, {"event_id": 9}, db_path=root)
+        with pytest.raises(QueryCancelledError):
+            first.result(timeout=5)
+        result = second.result(timeout=5)
+        assert_conserved(result.rows)
+        assert all(len(cache) == 0 for cache in old_caches)
+        # Completion must not leave cancellation installed for the next call.
+        assert service.execute_query(TEMPLATE, {"event_id": 9}, db_path=root).rows == result.rows
+    assert hashes(root) == before
+
+
+@pytest.mark.parametrize("reset", ["close", "invalidate_context_cache"])
+def test_analyzer_reset_cancels_its_inflight_tree(tmp_path, monkeypatch, reset):
+    root = framed_dataset(tmp_path)
+    started = Event()
+    original = query_service_module.frame_tree
+
+    def slow_tree(sources, template, params, *args):
+        if params["event_id"] == 8:
+            started.set()
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                sources.budget.remaining()
+                Event().wait(0.005)
+            pytest.fail("Analyzer reset did not cancel the obsolete tree")
+        return original(sources, template, params, *args)
+
+    monkeypatch.setattr(query_service_module, "frame_tree", slow_tree)
+    with SnapshotAnalyzer(root) as analyzer, ThreadPoolExecutor(max_workers=1) as pool:
+        first = pool.submit(analyzer.execute_query, TEMPLATE, {"event_id": 8}, timeout_s=0)
+        assert started.wait(3)
+        getattr(analyzer, reset)()
+        with pytest.raises(QueryCancelledError):
+            first.result(timeout=5)
+        if reset == "invalidate_context_cache":
+            assert_conserved(analyzer.execute_query(TEMPLATE, {"event_id": 9})["rows"])
 
 
 @pytest.fixture(autouse=True)

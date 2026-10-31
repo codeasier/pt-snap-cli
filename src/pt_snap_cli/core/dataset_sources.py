@@ -12,7 +12,7 @@ import sqlite3
 import time
 from bisect import bisect_right
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -25,6 +25,7 @@ from pt_snap_cli.core.dataset_resolver import ResolvedDataset
 from pt_snap_cli.core.errors import (
     DatabaseSchemaError,
     InvalidParameterError,
+    QueryCancelledError,
     QueryExecutionError,
     QueryTimeoutError,
 )
@@ -36,7 +37,7 @@ from pt_snap_cli.core.query_limits import (
     QueryLimits,
 )
 from pt_snap_cli.query.executor import QueryExecutionError as ExecutorError
-from pt_snap_cli.query.executor import QueryExecutor
+from pt_snap_cli.query.executor import QueryExecutor, cancellation_options
 from pt_snap_cli.query.executor import QueryTimeoutError as ExecutorTimeout
 
 SOURCE_BATCH_SIZE = 256
@@ -53,6 +54,7 @@ class QueryBudget:
     # Per-operation derived database pages, not total SQLite temp space or RSS.
     # Zero retains the bounded in-Python fallback.
     max_scratch_db_bytes: int = DEFAULT_MAX_SCRATCH_DB_BYTES
+    cancelled: Callable[[], bool] | None = None
 
     @classmethod
     def from_limits(
@@ -97,6 +99,8 @@ class QueryBudget:
             )
 
     def remaining(self) -> float | None:
+        if self.cancelled is not None and self.cancelled():
+            raise QueryCancelledError("Frame tree query cancelled by a newer request or reset.")
         if self.timeout_s is None:
             return None
         left = self.timeout_s - (time.monotonic() - self.started)
@@ -204,13 +208,19 @@ class DatasetSourceResolver:
             )
             self.query_count += 1
             return QueryExecutor(context).execute(
-                sql, values, timeout_s=self.budget.remaining(), consume=self._consume
+                sql,
+                values,
+                timeout_s=self.budget.remaining(),
+                consume=self._consume,
+                **cancellation_options(self.budget.cancelled),
             )
         except ExecutorTimeout as exc:
+            self.budget.remaining()
             raise QueryTimeoutError(
                 f"Query timed out after {self.budget.timeout_s} seconds"
             ) from exc
         except ExecutorError as exc:
+            self.budget.remaining()
             raise QueryExecutionError(str(exc)) from exc
         except (DatabaseNotFoundError, SchemaVersionError, sqlite3.DatabaseError) as exc:
             raise DatabaseSchemaError(str(exc)) from exc
