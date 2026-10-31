@@ -1,5 +1,10 @@
 # pt-snap-cli
 
+[![PyPI](https://img.shields.io/pypi/v/pt-snap-cli?logo=pypi&logoColor=FFE873&label=PyPI&color=3775A9)](https://pypi.org/project/pt-snap-cli/)
+[![Python](https://img.shields.io/pypi/pyversions/pt-snap-cli?logo=python&logoColor=white)](https://pypi.org/project/pt-snap-cli/)
+[![MIT License](https://img.shields.io/github/license/codeasier/pt-snap-cli)](LICENSE)
+[![Tests](https://github.com/codeasier/pt-snap-cli/actions/workflows/test.yml/badge.svg)](https://github.com/codeasier/pt-snap-cli/actions/workflows/test.yml)
+
 [中文文档](README_zh.md) | English
 
 A command-line tool for analyzing PyTorch memory snapshots. Set a snapshot database, run built-in queries, and inspect memory usage, leaks, and timelines.
