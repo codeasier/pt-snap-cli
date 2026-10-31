@@ -53,7 +53,11 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 
 用 `pt-snap import snapshot.pkl --events-per-slice 50000 --output-dir captures --json`
 显式生成**原生、非 msinsight 兼容**数据集 `captures/snapshot.pkl.pt-snap-native-v2/`。
-默认单库导入不变；复用校验全部片及内容/选项/语义版本。不匹配的已识别目标须
+默认单库导入不变；原生复用校验全部片及内容/选项/语义版本。重复原生导入时，完整
+内容哈希一致即可通过本地校验记录跳过逐行扫描，支持跨 CLI 进程复用，详见
+[校验缓存说明](docs/zh/sharded-snapshotdb.md)。兼容导入检查源身份、manifest/成员清单及
+数据库结构，不计算数据库字节哈希或扫描其内容，也不提供严格缓存校验选项；查询保留独立的准入校验。
+不匹配的已识别目标须
 `--force`，未知目标保留。发布/focus 失败会补偿，回滚自身失败则保留并报告恢复证据
 （force 不是单次崩溃原子 swap）。详见
 [原生分库导入](docs/zh/quickstart.md#可选导入原生分库数据集)。数据集 `event` 寻址及定点
@@ -67,7 +71,7 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 
 显式 `pt-snap import snapshot.pkl --format msinsight --json` 生成
 `snapshot.pkl.msinsight/`，对齐固定 msinsight 版本的**同一原始 pickle + 邻接缓存**入口。
-内联栈比原生去重占更多空间；即使 `--force` 也不替换已有兼容目标，只复用完整校验且
+内联栈比原生去重占更多空间；即使 `--force` 也不替换已有兼容目标，只复用结构检查通过且
 身份相同的 pt-snap 缓存。GUI **待验收/未运行**，hash 相等不代表验收通过。详见
 [兼容导出及限制](docs/zh/sharded-snapshotdb.md#显式-msinsight-兼容导出p2)。
 
@@ -97,7 +101,8 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 included bytes 为分母。解读有上限的分组结果前，请参阅
 [报告指南](docs/zh/querying.md#report-命令)。
 
-单库导入时保留结构化调用栈帧及原始顺序。用 `event_frames` 查看帧，或执行
+单库及新导入的原生/兼容分片数据集均保留去重有序帧。单库用 `event_frames`、
+数据集用 `event` 的 `frames` 查看帧，或执行
 `report memory-tree --event-id 100 --format html > memory-tree.html`
 按调用路径查看事件时刻的占用。详见[调用栈帧内存拆解](docs/zh/querying.md#调用栈帧内存拆解)；
 旧文本数据库需要从原始快照重新导入。
@@ -108,6 +113,9 @@ included bytes 为分母。解读有上限的分组结果前，请参阅
 `--max-scratch-db-bytes`、环境变量或不可变 Python `QueryLimits` 配置。
 默认仍为 100000 工作行 / 64 MiB 工作字节 / 512 MiB scratch 页；优先级、
 深分页成本和整次失败语义见[公开数据集预算](docs/zh/querying.md#公开数据集预算)。
+
+同一 Python analyzer 的并发帧树查询以最新请求为准，旧请求抛出 `QueryCancelledError`。
+详见 [API 取消语义](docs/zh/snapshot-analyzer-api.md#错误与范围)。
 
 ## Agent Skills
 

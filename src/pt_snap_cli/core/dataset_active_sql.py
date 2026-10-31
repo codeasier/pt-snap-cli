@@ -95,7 +95,7 @@ def reduce_active(
     used only to obtain their owning shard's full text, never as global identity.
     A frame extension, even partially covered, must use ordered-frame attribution.
     """
-    if sources.dataset.ordered_frames_version == 1:
+    if sources.dataset.ordered_frames_version in (1, 2):
         return None
     required = _required_slices(sources, [item], _attachment_limit())
     if required is None:

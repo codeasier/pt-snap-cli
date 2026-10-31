@@ -279,6 +279,17 @@ metadata schema version returns `status="invalid"`.
 
 ## Errors and Scope
 
+Concurrent `active_memory_frame_tree_at_event` requests on the same analyzer
+use latest-request-wins semantics. A new request interrupts the previous tree's
+Python work and SQLite statements; superseded queued requests do not compute.
+The old call raises `pt_snap_cli.core.QueryCancelledError` (`QUERY_CANCELLED`
+in JSON), never a partial successful tree. Closing the analyzer or invalidating
+its context cache also cancels outstanding tree work. Worker-owned connections
+are closed in the executing thread before the next tree runs. Other templates
+retain their existing concurrency contract; separate analyzers/services and
+separate CLI processes do not cancel one another. This does not introduce a
+persistent tree-result cache.
+
 - `set_focus()` raises `FileNotFoundError` for a missing database and
   `ValueError` for an invalid SnapshotDB schema. Device validation uses the shared
   `InvalidDeviceError`; selecting a device without any resolvable database raises

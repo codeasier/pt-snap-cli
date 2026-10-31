@@ -124,6 +124,10 @@ dictionary 的十进制整数 key 以文本存储，使用真实带设备后缀�
 `callstack` 表**：现有布局检测会正确报告 v1/v2 冲突。原生 v2 仍是独立单库布局，
 不是本兼容基础格式。这里不要求 `pt_snap_metadata` 或辅助引用表。
 
+兼容缓存复用只检查有序帧扩展声明版本，不扫描帧表内容或比较历史摘要。
+查询独立校验其使用的帧证据。旧缓存和外部纯文本缓存保留只读降级行为；
+无法编码的可选事件帧仍可不覆盖，查询继续独立报告 source coverage。
+
 基础校验忽略未知 `extensions` 声明/表。`DatasetValidation.text_callstacks=True`
 表示有内联文本列，不保证每个事件有栈。即使 manifest 声称 frames，
 `structured_frames=False` 仍为假：完整结构化 frame 能力要求已识别的独立扩展版本、
@@ -403,29 +407,34 @@ raw-frame 丢失与字符串 OOM action 强制转换属于已知局限，不应�
 边界行，不再在 Python 中收集整个设备的事件 ID。这只限制额外的 ID 校验内存，
 不代表快照加载、回放或完整导入的 RSS 有界。
 
-`cacheHash = SHA256(b"mem_snapshot_parser_v2" + 原始_pickle_字节)`，salt **前置**。
+`cacheHash = SHA256(b"mem_snapshot_parser_v3" + 原始_pickle_字节)`，salt **前置**。
+旧 `mem_snapshot_parser_v2` 缓存不再匹配，请指定新的输出目录重新导出，不覆盖旧缓存。
 独立 `ptSnap.identity` 字段为 `sourceSha256`、`requestedDevice`、`eventsPerSlice`、
-`outputFormat=compatibility-v1`、`manifestContractVersion=1`、`exportContractVersion=2`、
+`outputFormat=compatibility-v1`、`manifestContractVersion=1`、`exportContractVersion=3`、
 `referenceContractVersion=1`、`metadataSchemaVersion=1`、`importFormatVersion=1`、完整
-`targetRevision`。`ptSnap` 另含 `metadata`、`omittedDevices` 和 `members`（规范相对路径
-→ 基础解析数据逻辑 SHA256，`memberHashKind=parser-v1`）。整体已校验所有权/身份要求每个成员/哈希及逐片 metadata 相同；
-不接管未知/外部缓存或无关文件。CLI 版本变化本身不使缓存失效。
+`targetRevision`。`ptSnap` 另含 `metadata` 和 `omittedDevices`。所有权/身份校验
+要求成员清单完整且逐片 metadata 相同，不接管未知/外部缓存或无关文件。
+有效 Insight 缓存可以只读复用，不伪造生产者 metadata。CLI 版本变化本身不使缓存失效。
 
-逻辑摘要覆盖解析器基础行及对应字典项，不覆盖消费者表、索引和追加列。导入和数据集查询
-均校验已声明的摘要；无摘要的旧产物仅执行结构、事件范围、字典引用及 `quick_check`
-校验。缺少历史摘要时，不能追溯证明任意字段未改动或 block 行未被删除。摘要不是签名，
-`quick_check` 可检测物理损坏，但不能证明刻意使用 `writable_schema` 篡改后的索引与表
-仍然一致。默认 resolver 热缓存仍读取全部成员字节核对 generation，冷准入还会扫描行，
-因此校验耗时随数据量增长。
+兼容产物导入检查源文件 SHA256、完整 manifest/成员清单、只读数据库表结构及
+索引上的事件端点；不扫描基础行或 frame 行、不执行 `quick_check`，也不读取全部
+DB 字节计算摘要。历史摘要字段仅作为成员清单兼容，不比较摘要值，新产物不再生成
+内容摘要。新的 `parserCache.members` 使用空字符串作为结构清单的值。
+不再提供缓存强校验开关。这些检查不保证发现任意字段修改、区间内部事件
+缺失或二级索引损坏。正常数据集查询和显式校验器保留独立准入检查，轻量导入结果
+不会写入其校验缓存或持久化校验记录。
+
+原生数据集导入保留 `~/.cache/pt-snap-cli/validation-v1/` 下可丢弃的校验记录，
+独立执行原生格式的文件摘要及内容校验，不属于兼容缓存复用逻辑。记录缺失或无效时
+回退完整原生校验，`PT_SNAP_DATASET_CACHE=off` 禁用记录复用。
 
 兼容发布 **force 也 no-replace**。已识别、身份相同的 pt-snap 缓存不加载 pickle 即复用，
-force 不绕过该规则。源路径/内容、选项/合同变化、基础解析数据损坏，或旧物理摘要产物被调用方修改后须换新
-`--output-dir`，不修复、不覆盖、不删除旧产物。排他发布与 focus 补偿使用已有受检事务，
+force 不绕过该规则。源路径/内容、选项/合同变化后须换新 `--output-dir`。不修复、不覆盖、不删除旧产物。排他发布与 focus 补偿使用已有受检事务，
 发布/复用前再次核对源 SHA256；原生 force 替换与恢复语义不变。
 
 内联文本成本按每个事件的 UTF-8 调用栈字节求和，不按不同栈各存一份；原生去重仍可用。
 转换暂时并存两种布局，可能留下 SQLite free pages；容量不是 RSS/registry/block/磁盘
-上限。不生成可选 frame 增强。
+上限。另保留独立的版本 2 去重 frame 扩展，详见[查询指南](querying.md#数据集去重帧扩展版本-2)。
 
 **仅检查已有产物的 runner 仍将自身 GUI 阶段标为待验收/not-run。**
 2026-10-11 独立固定版本真实 GUI/C++ 实测见[互操作验收](interop-acceptance.md)，

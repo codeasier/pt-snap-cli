@@ -40,10 +40,12 @@ def isolate(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("device", [0, 2])
-def test_all_eleven_contracts_against_independent_physical_reference(tmp_path, device):
+def test_text_contracts_against_independent_physical_reference(tmp_path, device):
     root = case(tmp_path)
     result = compare_artifact(root, device, tmp_path / "reference.db")
-    assert set(result["templates"]) == set(DATASET_SUPPORT)
+    # This independent physical reference has text stacks only. Frame paths
+    # have separate real-import differential coverage against a structured DB.
+    assert set(result["templates"]) == set(DATASET_SUPPORT) - {"active_memory_frame_tree_at_event"}
     assert result["real_events"] == 16 and result["canonical_lifecycles"] == 10
     assert result["raw_block_rows"] == 61 and result["repeated_block_rows"] == 51
     assert result["GUI"] == "human-deferred/pending/not-run"

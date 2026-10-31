@@ -13,7 +13,7 @@ from pt_snap_cli.core import dataset_contract, dataset_resolver, native_dataset_
 from pt_snap_cli.core.dataset_contract import validate_dataset
 from pt_snap_cli.core.dataset_files import hash_file
 from pt_snap_cli.core.dataset_resolver import DatasetResolver
-from pt_snap_cli.core.errors import DatabaseSchemaError, QueryTimeoutError
+from pt_snap_cli.core.errors import DatabaseSchemaError, QueryCancelledError, QueryTimeoutError
 from pt_snap_cli.core.validation_budget import validation_progress
 from tests.test_dataset_focus import make_dataset
 from tests.test_native_dataset import dataset as native_dataset
@@ -66,7 +66,9 @@ def test_wal_preparation_does_not_hide_subsequent_content_changes(tmp_path, monk
 
 @pytest.mark.parametrize("cache_mode", [None, "immutable", "disabled"])
 @pytest.mark.parametrize("seal", ["parserCache", "ptSnap"])
-def test_declared_seals_are_checked_in_every_cache_mode(tmp_path, monkeypatch, cache_mode, seal):
+def test_historical_digests_do_not_reject_valid_content_changes(
+    tmp_path, monkeypatch, cache_mode, seal
+):
     from pt_snap_cli.core.snapshot_cache import seal_manifest
 
     if cache_mode is None:
@@ -87,8 +89,7 @@ def test_declared_seals_are_checked_in_every_cache_mode(tmp_path, monkeypatch, c
     assert DatasetResolver().inspect(root) is not None
     with closing(sqlite3.connect(root / "device_0/slice_00000.db")) as conn, conn:
         conn.execute("UPDATE trace_entry_0 SET allocated=allocated+1")
-    with pytest.raises(DatabaseSchemaError, match="seal"):
-        DatasetResolver().inspect(root)
+    assert DatasetResolver().inspect(root) is not None
 
 
 def forbidden(*args, **kwargs):
@@ -460,6 +461,22 @@ def test_strong_operation_guard_hashes_even_when_filesystem_tokens_look_unchange
     monkeypatch.setattr(dataset_resolver, "_generation", lambda *args: resolved.generation)
     with pytest.raises(DatabaseSchemaError, match="content changed"):
         resolved.require_unchanged()
+
+
+@pytest.mark.parametrize("error", [QueryTimeoutError, QueryCancelledError])
+def test_cancelled_admission_evicts_an_existing_entry(tmp_path, monkeypatch, error):
+    monkeypatch.delenv("PT_SNAP_DATASET_CACHE")
+    root = make_dataset(tmp_path / "dataset", devices=(0,), slices=1)
+    DatasetResolver().inspect(root)
+    assert root in dataset_resolver._VALIDATED
+
+    class Budget:
+        def remaining(self):
+            raise error("interrupted admission")
+
+    with pytest.raises(error, match="interrupted admission"):
+        DatasetResolver().inspect(root, budget=Budget())
+    assert root not in dataset_resolver._VALIDATED
 
 
 def test_disabling_cache_does_not_reuse_an_existing_entry(tmp_path, monkeypatch):

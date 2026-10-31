@@ -60,6 +60,12 @@ Opt into a **native, not msinsight-compatible** dataset with
 `pt-snap import snapshot.pkl --events-per-slice 50000 --output-dir captures --json`.
 The output is `captures/snapshot.pkl.pt-snap-native-v2/`; default standalone import
 is unchanged. Reuse validates all shards and content/options/semantic versions.
+Repeated native imports use local validation receipts to skip row
+scans after verifying complete content hashes, including across CLI processes;
+see [validation caching](docs/en/sharded-snapshotdb.md).
+Compatible imports check source identity, manifest/member inventory and database
+structure without hashing database bytes or scanning their contents. No strict-cache
+option is provided; queries retain independent admission checks.
 Nonmatching recognized targets require `--force`; unknown targets are preserved.
 Publication/focus failures are compensated, with explicit recovery evidence if
 rollback fails (force is not a single crash-atomic swap). See the
@@ -79,7 +85,7 @@ Explicit `pt-snap import snapshot.pkl --format msinsight --json` produces
 `snapshot.pkl.msinsight/` for the fixed msinsight revision's **same original
 pickle + adjacent cache** entrance. Inline stacks cost more space than native
 interning. Existing compatible targets are never replaced, even with `--force`;
-only fully validated identical pt-snap caches are reused. GUI acceptance remains
+only pt-snap caches with matching identity and valid structure are reused. GUI acceptance remains
 **pending/not run**; hash equality alone is not acceptance. See
 [compatible export and limits](docs/en/sharded-snapshotdb.md#explicit-msinsight-compatible-export-p2).
 
@@ -110,8 +116,8 @@ Peak reports expose attribution completeness and same-event active-byte coverage
 group percentages use included bytes after filtering and ranking. See the
 [report guide](docs/en/querying.md#report-command) before interpreting a capped breakdown.
 
-Standalone imports preserve ordered structured callstack frames. Use `event_frames` to
-inspect them, or `report memory-tree --event-id 100 --format html > memory-tree.html`
+Standalone imports and new native/compatible datasets preserve ordered frames.
+Use standalone `event_frames` (dataset `event` exposes `frames`), or `report memory-tree --event-id 100 --format html > memory-tree.html`
 to explore event-time occupancy by caller path. See
 [frame memory breakdown](docs/en/querying.md#frame-memory-breakdown); older
 text-only databases require re-importing the original snapshot.
@@ -123,6 +129,9 @@ Dataset work limits are configurable with `--max-work-rows`, `--max-work-bytes`,
 Defaults remain 100000 work rows / 64 MiB work bytes / 512 MiB scratch pages; see
 [public dataset limits](docs/en/querying.md#public-dataset-limits) for precedence,
 deep-pagination costs and all-or-error semantics.
+
+Concurrent frame-tree queries on one Python analyzer use the latest request;
+superseded queries raise `QueryCancelledError`. See [API cancellation semantics](docs/en/snapshot-analyzer-api.md#errors-and-scope).
 
 ## Agent Skills
 

@@ -182,7 +182,7 @@ def test_inline_text_database_retains_queries_but_cannot_supply_original_frames(
     assert query(path, "event", {"id": 1}).rows[0]["callstack"] == "train.py:10"
 
 
-@pytest.mark.parametrize("name", ["event_frames", "active_memory_frame_tree_at_event"])
+@pytest.mark.parametrize("name", ["event_frames"])
 @pytest.mark.parametrize("slice_index", [None, 0])
 def test_dataset_root_never_implicitly_selects_a_shard(tmp_path: Path, name: str, slice_index):
     from pt_snap_cli.core.dataset_support import DATASET_SUPPORT

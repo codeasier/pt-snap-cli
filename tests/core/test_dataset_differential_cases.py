@@ -12,6 +12,7 @@ from pt_snap_cli.core.errors import QueryExecutionError
 from pt_snap_cli.query import registry
 from tests.core.dataset_differential_assertions import compare_case
 from tests.core.dataset_differential_cases import (
+    FRAME_TEMPLATES,
     REGRESSION_SEEDS,
     SUPPORTED_TEMPLATES,
     UNSUPPORTED_TEMPLATES,
@@ -61,7 +62,9 @@ def test_invalid_seed_configuration_fails_instead_of_silently_skipping(name, val
 
 
 def test_query_bank_preserves_original_shapes_and_all_supported_templates(monkeypatch):
-    assert set(DATASET_SUPPORT) == SUPPORTED_TEMPLATES
+    # Text-only SQL differential fixtures cannot serve the structured single-DB
+    # oracle; frame paths have their own real-import differential suite.
+    assert set(DATASET_SUPPORT) == SUPPORTED_TEMPLATES | FRAME_TEMPLATES
     # Other suites legitimately register custom SQL. Check packaged discovery
     # in a fresh registry, and restore both singleton and identity bookkeeping.
     with monkeypatch.context() as patch:
@@ -69,7 +72,10 @@ def test_query_bank_preserves_original_shapes_and_all_supported_templates(monkey
         patch.setattr(registry, "_registry", registry.QueryRegistry())
         patch.setattr(registry, "_packaged", {})
         registry._load_all_templates()
-        assert set(registry.list_queries()) == SUPPORTED_TEMPLATES | UNSUPPORTED_TEMPLATES
+        assert (
+            set(registry.list_queries())
+            == SUPPORTED_TEMPLATES | FRAME_TEMPLATES | UNSUPPORTED_TEMPLATES
+        )
     for seed in configured_seeds({"PT_SNAP_DIFFERENTIAL_SEEDS": "200"}):
         capacity = capacity_for_seed(seed)
         cases = query_cases(seed, capacity)
