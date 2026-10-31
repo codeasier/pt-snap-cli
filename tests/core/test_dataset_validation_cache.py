@@ -13,7 +13,7 @@ from pt_snap_cli.core import dataset_contract, dataset_resolver, native_dataset_
 from pt_snap_cli.core.dataset_contract import validate_dataset
 from pt_snap_cli.core.dataset_files import hash_file
 from pt_snap_cli.core.dataset_resolver import DatasetResolver
-from pt_snap_cli.core.errors import DatabaseSchemaError, QueryTimeoutError
+from pt_snap_cli.core.errors import DatabaseSchemaError, QueryCancelledError, QueryTimeoutError
 from pt_snap_cli.core.validation_budget import validation_progress
 from tests.test_dataset_focus import make_dataset
 from tests.test_native_dataset import dataset as native_dataset
@@ -461,6 +461,22 @@ def test_strong_operation_guard_hashes_even_when_filesystem_tokens_look_unchange
     monkeypatch.setattr(dataset_resolver, "_generation", lambda *args: resolved.generation)
     with pytest.raises(DatabaseSchemaError, match="content changed"):
         resolved.require_unchanged()
+
+
+@pytest.mark.parametrize("error", [QueryTimeoutError, QueryCancelledError])
+def test_cancelled_admission_evicts_an_existing_entry(tmp_path, monkeypatch, error):
+    monkeypatch.delenv("PT_SNAP_DATASET_CACHE")
+    root = make_dataset(tmp_path / "dataset", devices=(0,), slices=1)
+    DatasetResolver().inspect(root)
+    assert root in dataset_resolver._VALIDATED
+
+    class Budget:
+        def remaining(self):
+            raise error("interrupted admission")
+
+    with pytest.raises(error, match="interrupted admission"):
+        DatasetResolver().inspect(root, budget=Budget())
+    assert root not in dataset_resolver._VALIDATED
 
 
 def test_disabling_cache_does_not_reuse_an_existing_entry(tmp_path, monkeypatch):

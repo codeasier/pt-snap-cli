@@ -130,6 +130,9 @@ Defaults remain 100000 work rows / 64 MiB work bytes / 512 MiB scratch pages; se
 [public dataset limits](docs/en/querying.md#public-dataset-limits) for precedence,
 deep-pagination costs and all-or-error semantics.
 
+Concurrent frame-tree queries on one Python analyzer use the latest request;
+superseded queries raise `QueryCancelledError`. See [API cancellation semantics](docs/en/snapshot-analyzer-api.md#errors-and-scope).
+
 ## Agent Skills
 
 For long diagnostic stacks, opt into `stack_bytes` on `event` or

@@ -36,6 +36,7 @@ from pt_snap_cli.core.errors import (
     DatabaseSchemaError,
     InvalidDeviceError,
     InvalidParameterError,
+    QueryCancelledError,
     QueryTimeoutError,
 )
 from pt_snap_cli.core.native_dataset_contract import (
@@ -519,7 +520,7 @@ class DatasetResolver:
             with _CACHE_LOCK:
                 _ = _VALIDATED.pop(cache_key, None)
             raise DatabaseSchemaError("Invalid dataset: manifest nesting is too deep") from exc
-        except (DatabaseSchemaError, QueryTimeoutError):
+        except (DatabaseSchemaError, QueryTimeoutError, QueryCancelledError):
             with _CACHE_LOCK:
                 _ = _VALIDATED.pop(cache_key, None)
             raise

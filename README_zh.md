@@ -114,6 +114,9 @@ included bytes 为分母。解读有上限的分组结果前，请参阅
 默认仍为 100000 工作行 / 64 MiB 工作字节 / 512 MiB scratch 页；优先级、
 深分页成本和整次失败语义见[公开数据集预算](docs/zh/querying.md#公开数据集预算)。
 
+同一 Python analyzer 的并发帧树查询以最新请求为准，旧请求抛出 `QueryCancelledError`。
+详见 [API 取消语义](docs/zh/snapshot-analyzer-api.md#错误与范围)。
+
 ## Agent Skills
 
 诊断长调用栈时，可在 `event` 或 `active_memory_callstack_at_event` 上显式设置
