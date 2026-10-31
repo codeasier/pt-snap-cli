@@ -381,8 +381,8 @@ format and rebuilds the cache; read-only analysis never migrates a database.
 ### Standalone frame capability boundary
 
 Format 3 applies only to standalone imports. Native sharded imports remain format 2
-and compatible exports remain format 1; neither claims the standalone frame-tree
-capability. `callstack_frame_manifest(callstackId INTEGER PRIMARY KEY,
+and compatible exports remain format 1. A separate version-2 deduplicated frame
+extension supports dataset trees; see [querying](querying.md#deduplicated-dataset-frame-extension-version-2). `callstack_frame_manifest(callstackId INTEGER PRIMARY KEY,
 frameCount INTEGER NOT NULL)` records the expected length of every captured stack,
 including zero. Frame fields must be text filename/name and an integer line.
 `event_frames` returns no rows for absent, known-empty or corrupt arrays, never a
@@ -468,9 +468,8 @@ P0 compatibility-v1 table order, inline layout and manifest semantics are unchan
 `trace_entry_<device>` tables with the ninth column `callstack TEXT`, not views,
 with the exact positional block/dictionary schema. It removes staging's unprefixed
 `callstack` table and writes `pt_snap_metadata.import_format_version=1`, retaining
-isolated `pt_snap_block_reference` text lifecycle sources. Native standalone and
-native datasets keep their interning and v2 metadata. Structured ordered frames
-are not emitted or inferred from text.
+isolated `pt_snap_block_reference` text lifecycle sources. Native datasets keep their text interning and v2 metadata, plus the separate
+version-2 deduplicated frame extension; standalone imports use format 3. Frames are never inferred from text.
 
 Inline stack bytes scale with the sum of stack text **over every event**, not
 unique stacks; conversion temporarily holds native and inline tables and may leave

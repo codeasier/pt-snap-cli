@@ -24,7 +24,8 @@ from pt_snap_cli.api import FocusState, SnapshotAnalyzer
 from pt_snap_cli.cli import app
 from pt_snap_cli.core import InvalidDeviceError, QueryExecutionError, TemplateRenderError
 from pt_snap_cli.core.dataset_sources import QueryBudget
-from pt_snap_cli.core.errors import QueryTimeoutError
+from pt_snap_cli.core.error_codes import classify_error
+from pt_snap_cli.core.errors import QueryCancelledError, QueryTimeoutError
 from pt_snap_cli.core.json_codec import JSON_SCHEMA_VERSION
 from pt_snap_cli.core.query_service import QueryService
 from pt_snap_cli.core.report_service import ReportService
@@ -35,6 +36,36 @@ from tests.test_dataset_focus import make_dataset
 runner = CliRunner()
 
 pytestmark = pytest.mark.usefixtures("owned_service_instances")
+
+
+def test_cancelled_query_has_a_distinct_non_timeout_error_code(tmp_path, monkeypatch):
+    error = QueryCancelledError("Frame tree query cancelled by a newer request or reset.")
+    assert isinstance(error, QueryExecutionError)
+    assert classify_error(error)[0] == "QUERY_CANCELLED"
+    root = make_dataset(tmp_path / "cancelled", devices=(0,))
+
+    def cancelled_tree(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr("pt_snap_cli.core.query_service.frame_tree", cancelled_tree)
+    with SnapshotAnalyzer(root) as analyzer:
+        with pytest.raises(QueryCancelledError):
+            analyzer.execute_query("active_memory_frame_tree_at_event", {"event_id": 1})
+    result = runner.invoke(
+        app,
+        [
+            "query",
+            str(root),
+            "--template-use",
+            "active_memory_frame_tree_at_event",
+            "--params",
+            '{"event_id":1}',
+            "--json",
+        ],
+    )
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert json.loads(result.stderr)["error"]["code"] == "QUERY_CANCELLED"
 
 
 @pytest.mark.parametrize("template", ["event", "block"])

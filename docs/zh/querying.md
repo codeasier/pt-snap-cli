@@ -89,6 +89,7 @@ pt-snap query '<db_path>' --device 0 --template-use event --params '{"id":123}' 
 | `memory_peak` | allocated/active/reserved 独立真实峰值；同值选最早真实 ID；`start_id/end_id` 可跨片 |
 | `allocator_gap` | 使用同样独立选择的全局事件，每个 gap 由**该事件**计数器计算 |
 | `active_blocks_at_event`, `active_memory_callstack_at_event` | 路由实际事件到所有者片，分组/top_n 前解析完整跨片来源（见下文） |
+| `active_memory_frame_tree_at_event` | 事件所属片的存活集合，跨片解析分配帧后按完整调用路径聚合；根节点与自身占用守恒，不做 top_n 剪枝 |
 | `preexisting_live` | 所有者事件的 preexisting 占用，不是泄漏数 |
 | `block` | 已证明的分配事件生命周期及稳定负 token 去重后筛选/排序/分页；最新出现片 state 是观察，不是任意 E 的状态 |
 | `freed_block_lifetime` | 已采集分配与已证明 `free_completed` 来源的去重生命周期；event-ID 距离桶，不是时间 |
@@ -300,8 +301,8 @@ cache 仍由调用者所有。不生成合并临时数据库。`ReportService.ev
 
 ### 可选有序 frame reader 合同
 
-这是新增的仅 reader pt-snap 扩展，不是原版 producer 已有功能。当前原生/兼容 writer
-**不生成**有序 frame 表。manifest 声明 `extensions.ptSnapOrderedFrames={"version":1}`，
+此 pt-snap 扩展独立于原版 producer 能力。新原生/兼容导入生成下文的去重版本 2
+扩展；保留版本 1 原始数组读取兼容。manifest 声明 `extensions.ptSnapOrderedFrames={"version":1}`，
 并在有覆盖的来源片使用隔离的实际表：
 
 - `pt_snap_frame_coverage(eventId INTEGER PRIMARY KEY, frameCount INTEGER)`
@@ -699,13 +700,35 @@ HTML 图始终按字节比例绘制。即使帧过小或占用为零，也可以
 列表包含全部匹配项，支持 Tab 定位后按 Enter/空格进入。Parent frame 返回父节点，
 Reset zoom 回到根节点且保留搜索；清空搜索框可清除搜索结果。
 
-帧树模板和 `report memory-tree` 仅支持单库格式 3 数据库。dataset 根目录会
-明确拒绝，分析器不会隐式选取分片。直接访问原生分片也没有这些单库帧表；
-使用新模板须将原始 snapshot 重新导入为单库。已有 `pt_snap_frame`/coverage
-读取能力不变。`--timeout` 使用共享查询截止时间。文本和 HTML 渲染器拒绝
-不完整或不守恒的树。已知空栈使用 `empty_callstack` 合成叶节点，缺失/损坏
-调用栈使用 `missing` 叶节点。`event_frames` 对缺失事件/栈、已知空栈以及
-无效帧数组返回零行。
+`active_memory_frame_tree_at_event` 和 `report memory-tree` 支持单库格式 3
+以及完整的原生/兼容分片数据集。查询数据集根目录：事件所属片提供存活块集合，
+分配事件所属片提供原始帧，可追溯到更早分片。局部 ID 和显示文本不能作为跨片分组身份。
+`frame_id` 仅在本次查询有效，`node_id` 是完整有序 `(filename, line, name)` 调用路径的哈希。
+`scope.source_coverage.ordered_frames_complete` 单独报告帧证据完整性，与输出行完整性不同。
+缺失、未知版本或损坏证据保留在 `missing` 的占用中；重新导入原始快照可获得采集帧。
+已知空数组使用 `empty_callstack` 叶节点。工作预算和共享截止时间覆盖整个操作，
+失败不返回部分树；文本和 HTML 拒绝截断或不守恒的树。
+`event_frames` 仍仅支持单库；数据集使用 `event` 的 `id` 参数读取覆盖的原始 `frames`。
+直接访问原生分片没有单库帧表，应查询数据集根目录，以跨片解析分配来源。
+
+### 数据集去重帧扩展（版本 2）
+
+新导入声明 `extensions.ptSnapOrderedFrames={"version":2}`，使用以下表：
+
+| 表 | 列 |
+| --- | --- |
+| `pt_snap_frame_value` | `id INTEGER PRIMARY KEY, frameJson TEXT` |
+| `pt_snap_stack` | `stackId INTEGER PRIMARY KEY, frameCount INTEGER` |
+| `pt_snap_stack_frame` | `stackId INTEGER, frameIndex INTEGER, frameId INTEGER, PRIMARY KEY(stackId,frameIndex)` |
+| `pt_snap_event_stack` | `eventId INTEGER PRIMARY KEY, stackId INTEGER` |
+
+每个 canonical 原始帧 JSON（包括额外类型字段）和每个不同的有序帧 ID 序列在每片只存一份。
+重复帧保留位置，空栈有明确的零 frameCount，仅真实事件保存引用。
+独立 ID 不改变原生文本去重或兼容内联 schema。原生扩展缓存身份更新为 2，兼容导出身份为 3，
+避免把旧文本产物复用成帧能力产物。保留版本 1/2 读取兼容，校验精确 schema、连续位置、
+数量、引用以及深度至多 128 的有限数字 JSON。帧树要求 filename/name 为文本、line 为整数，
+不合规帧降级为缺失叶，不从文本重建。`callstack_analysis` 对版本 2 先在 SQLite 中按
+局部栈和文本归约，再解析代表数组并合并全局身份，重复栈无需将每个事件取入 Python。
 
 Python API 使用相同模板和契约：
 

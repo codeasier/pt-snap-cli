@@ -74,7 +74,7 @@ def test_physical_schema_inline_events_streams_stable_references_and_native_pari
     assert manifest["sourceFile"] == str(request.snapshot_file.resolve())
     assert manifest["eventsPerSlice"] == (capacity or 500000)
     raw = request.snapshot_file.read_bytes()
-    assert manifest["cacheHash"] == hashlib.sha256(b"mem_snapshot_parser_v2" + raw).hexdigest()
+    assert manifest["cacheHash"] == hashlib.sha256(b"mem_snapshot_parser_v3" + raw).hexdigest()
     assert result.metadata.source_sha256 == hashlib.sha256(raw).hexdigest() != manifest["cacheHash"]
     assert manifest["ptSnap"]["identity"]["targetRevision"] == MSINSIGHT_REVISION
     native = service.import_snapshot(
@@ -139,12 +139,19 @@ def test_physical_schema_inline_events_streams_stable_references_and_native_pari
         assert analyzer.get_focus().callstack_layout == "v1"
         for device in (0, 1):
             for event in range(5):
-                assert (
-                    analyzer.execute_query("event", {"id": event}, device_id=device)["rows"]
-                    == native_analyzer.execute_query("event", {"id": event}, device_id=device)[
-                        "rows"
-                    ]
-                )
+                compatible_rows = analyzer.execute_query("event", {"id": event}, device_id=device)[
+                    "rows"
+                ]
+                native_rows = native_analyzer.execute_query(
+                    "event", {"id": event}, device_id=device
+                )["rows"]
+                # Generation namespaces differ across physical formats; frame
+                # digests and every event/frame value must remain equivalent.
+                for event_rows in (compatible_rows, native_rows):
+                    for row in event_rows:
+                        for key in ("stack_id", "source_stack_id"):
+                            row[key] = row[key].split(":frames:", 1)[-1]
+                assert compatible_rows == native_rows
         assert not hasattr(analyzer, "import_snapshot")
     assert hashes(result.db_path) == before
 
@@ -194,11 +201,10 @@ def test_consumer_tables_do_not_invalidate_compatible_cache(tmp_path, monkeypatc
     assert rows(member, "SELECT value FROM unrelated_consumer_cache") == [("keep",)]
     with closing(sqlite3.connect(member)) as conn, conn:
         conn.execute("UPDATE block_0 SET size=size+1")
-    with pytest.raises(ImportExecutionError, match="preserved"):
-        service.import_snapshot(request)
+    assert service.import_snapshot(request).reused
 
 
-def test_producer_only_logical_seal_reuses_without_replaying(tmp_path, monkeypatch):
+def test_producer_metadata_reuses_without_replaying(tmp_path, monkeypatch):
     request = options(tmp_path, focus=False)
     service = ImportService()
     first = service.import_snapshot(request)
@@ -219,8 +225,7 @@ def test_producer_only_logical_seal_reuses_without_replaying(tmp_path, monkeypat
         assert analyzer.get_database_metadata()["status"] == "available"
     with closing(sqlite3.connect(first.db_path / "device_0/slice_00000.db")) as conn, conn:
         conn.execute("UPDATE block_0 SET size=size+1")
-    with pytest.raises(ImportExecutionError, match="preserved"):
-        service.import_snapshot(request)
+    assert service.import_snapshot(request).reused
 
 
 @pytest.mark.parametrize("cli_capacity", [None, 2])
@@ -287,7 +292,7 @@ def test_external_insight_artifact_reuses_without_claiming_metadata(
         "last-slice",
     ],
 )
-def test_compatible_cache_requires_semantic_validation(
+def test_queries_validate_semantics_but_cache_import_does_not_scan(
     tmp_path, monkeypatch, sealed, external, set_focus, slice_index, mutation, diagnostic
 ):
     from pt_snap_cli.core.errors import DatabaseSchemaError
@@ -309,7 +314,7 @@ def test_compatible_cache_requires_semantic_validation(
     if not sealed:
         del manifest["parserCache"]
     path.write_text(json.dumps(manifest))
-    # The digest is self-consistent, but must not replace shared P0 validation.
+    # Cache admission checks structure; queries independently validate semantics.
     validate_cache(result.db_path, manifest["cacheHash"])
     with pytest.raises(DatabaseSchemaError, match=diagnostic):
         DatasetResolver().inspect(result.db_path)
@@ -323,11 +328,13 @@ def test_compatible_cache_requires_semantic_validation(
         service._msinsight_backend.replay, "stage", lambda *a, **k: pytest.fail("must preserve")
     )
     for force in (False, True):
-        with pytest.raises(ImportExecutionError, match=diagnostic):
-            service.import_snapshot(dataclasses.replace(request, force=force, set_focus=set_focus))
+        assert service.import_snapshot(
+            dataclasses.replace(request, force=force, set_focus=set_focus)
+        ).reused
         assert hashes(result.db_path) == before
         assert request.snapshot_file.read_bytes() == source_before
-        assert focus.read_bytes() == focus_before
+        if not set_focus:
+            assert focus.read_bytes() == focus_before
 
 
 @pytest.mark.parametrize("capacity", [None, 2, 3])
@@ -359,21 +366,12 @@ def test_external_cache_honors_explicit_capacity(tmp_path, monkeypatch, capacity
 
 
 @pytest.mark.parametrize("force", [False, True])
-@pytest.mark.parametrize("failure", ["semantic", "capacity"])
-def test_external_cache_cli_failure_preserves_artifact_and_focus(
-    tmp_path, monkeypatch, force, failure
-):
-    from pt_snap_cli.core.snapshot_cache import seal_manifest
-
+def test_external_cache_cli_failure_preserves_artifact_and_focus(tmp_path, monkeypatch, force):
     request = options(tmp_path, focus=False)
     result = ImportService().import_snapshot(request)
     path = result.db_path / "manifest.json"
     manifest = json.loads(path.read_text())
     del manifest["ptSnap"]
-    if failure == "semantic":
-        with closing(sqlite3.connect(result.db_path / "device_0/slice_00000.db")) as conn, conn:
-            conn.execute("UPDATE trace_entry_0 SET allocated=-1 WHERE id=0")
-        seal_manifest(result.db_path, manifest)
     path.write_text(json.dumps(manifest))
     before = hashes(result.db_path)
     source_before = request.snapshot_file.read_bytes()
@@ -394,8 +392,7 @@ def test_external_cache_cli_failure_preserves_artifact_and_focus(
         str(request.output_dir),
         "--json",
     ]
-    if failure == "capacity":
-        args.extend(["--events-per-slice", "3"])
+    args.extend(["--events-per-slice", "3"])
     if force:
         args.append("--force")
     response = CliRunner().invoke(app, args)
@@ -403,8 +400,7 @@ def test_external_cache_cli_failure_preserves_artifact_and_focus(
     assert response.stdout == ""
     error = json.loads(response.stderr)
     assert error["ok"] is False and error["error"]["code"] == "IMPORT_FAILED"
-    diagnostic = "event_values" if failure == "semantic" else "events_per_slice"
-    assert diagnostic in error["error"]["message"]
+    assert "events_per_slice" in error["error"]["message"]
     assert "Traceback" not in response.stderr
     assert hashes(result.db_path) == before
     assert request.snapshot_file.read_bytes() == source_before
@@ -412,8 +408,7 @@ def test_external_cache_cli_failure_preserves_artifact_and_focus(
 
 
 @pytest.mark.parametrize("external", [False, True])
-@pytest.mark.parametrize("failure", ["index", "dictionary", "deep-json"])
-def test_invalid_compatible_cache_is_preserved(tmp_path, monkeypatch, external, failure):
+def test_invalid_compatible_cache_is_preserved(tmp_path, monkeypatch, external):
     request = options(tmp_path, focus=False)
     service = ImportService()
     result = service.import_snapshot(request)
@@ -421,24 +416,7 @@ def test_invalid_compatible_cache_is_preserved(tmp_path, monkeypatch, external, 
     manifest = json.loads(path.read_text())
     if external:
         del manifest["ptSnap"]
-    member = result.db_path / "device_0/slice_00000.db"
-    if failure == "index":
-        with closing(sqlite3.connect(member)) as conn:
-            conn.execute("CREATE INDEX block_address ON block_0(address)")
-            page_size = conn.execute("PRAGMA page_size").fetchone()[0]
-            root = conn.execute(
-                "SELECT rootpage FROM sqlite_master WHERE name='block_address'"
-            ).fetchone()[0]
-        with member.open("r+b") as file:
-            file.seek((root - 1) * page_size)
-            file.write(b"\xff" * page_size)
-    elif failure == "dictionary":
-        del manifest["parserCache"]
-        with closing(sqlite3.connect(member)) as conn, conn:
-            conn.execute("DELETE FROM dictionary WHERE \"table\"='block_0'")
-    path.write_text(
-        "[" * 200000 + "0" + "]" * 200000 if failure == "deep-json" else json.dumps(manifest)
-    )
+    path.write_text("[" * 200000 + "0" + "]" * 200000)
     before = hashes(result.db_path)
     monkeypatch.setattr(
         service._msinsight_backend.replay, "stage", lambda *a, **k: pytest.fail("must preserve")
@@ -524,7 +502,7 @@ def test_invalid_producer_extension_reports_context(tmp_path, field, value, mess
 
 @pytest.mark.parametrize("external", [False, True])
 @pytest.mark.parametrize("mutation", ["block", "trace"])
-def test_resolver_rejects_seal_mismatch_after_prior_query(tmp_path, external, mutation):
+def test_resolver_accepts_valid_edits_without_digest_comparison(tmp_path, external, mutation):
     result = ImportService().import_snapshot(options(tmp_path, focus=False))
     if external:
         path = result.db_path / "manifest.json"
@@ -541,10 +519,7 @@ def test_resolver_rejects_seal_mismatch_after_prior_query(tmp_path, external, mu
             else "UPDATE trace_entry_0 SET allocated=allocated+1"
         )
     before = hashes(result.db_path)
-    from pt_snap_cli.core.errors import DatabaseSchemaError
-
-    with pytest.raises(DatabaseSchemaError, match="parserCache.*seal"):
-        resolver.inspect(result.db_path)
+    assert resolver.inspect(result.db_path) is not None
     assert hashes(result.db_path) == before
 
 
@@ -573,11 +548,10 @@ def test_live_consumer_wal_reuses_and_queries_committed_data(tmp_path, monkeypat
         with SnapshotAnalyzer(result.db_path) as analyzer:
             assert analyzer.execute_query("event", {"id": 0}, device_id=0)["rows"]
         assert writer.execute("SELECT value FROM consumer_data").fetchall() == [("committed",)]
-        # Base-table writes cannot masquerade as consumer-only additions.
+        # Cache reuse no longer scans base-table contents, including committed WAL.
         writer.execute("UPDATE block_0 SET size=size+1")
         writer.commit()
-        with pytest.raises(ImportExecutionError, match="preserved"):
-            service.import_snapshot(request)
+        assert service.import_snapshot(request).reused
 
 
 def test_compatible_negative_ids_are_compact_and_boundary_ids_are_global(tmp_path):

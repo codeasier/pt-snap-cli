@@ -9,6 +9,7 @@ DATASET_SUPPORT: dict[str, str] = {
     "allocator_gap": "global_peaks_same_event_counters",
     "active_blocks_at_event": "owner_event_active_set_cross_slice_sources",
     "active_memory_callstack_at_event": "owner_event_global_source_groups_before_top_n",
+    "active_memory_frame_tree_at_event": "owner_event_caller_paths_cross_slice_ordered_frames",
     "preexisting_live": "owner_event_preexisting_occupancy",
     "block": "proved_lifecycles_dedup_latest_observation",
     "freed_block_lifetime": "proved_completed_lifecycles_once",

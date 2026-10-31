@@ -50,6 +50,11 @@ allocated/active/reserved 指标、预期输出和报告不完整的情况。
 - [可回放 pickle 拆分](docs/zh/splitting.md)：只选一种拆分策略并使用新目录，与数据集导入不同。
 - [完整数据集寻址](docs/zh/sharded-snapshotdb.md#完整数据集-focus-与寻址p1)、[全局内建支持](docs/zh/querying.md#数据集全局内建支持p3)和[已记录的互操作验收](docs/zh/interop-acceptance.md)：按需查看高级合同与证据，不是第一份报告的前置条件。
 
+原生复用保留内容校验与可丢弃的校验记录。兼容复用检查源身份、完整成员清单、必需
+schema 和事件端点，不验证数据库字节或任意行值；查询仍独立进行准入校验。
+parser-v2 缓存须换新输出目录导出 parser-v3，不会被替换。详见
+[缓存及保留合同](docs/zh/sharded-snapshotdb.md)。
+
 ## 命令
 
 | 命令 | 说明 |
@@ -72,7 +77,8 @@ allocated/active/reserved 指标、预期输出和报告不完整的情况。
 included bytes 为分母。解读有上限的分组结果前，请参阅
 [报告指南](docs/zh/querying.md#report-命令)。
 
-单库导入时保留结构化调用栈帧及原始顺序。用 `event_frames` 查看帧，或执行
+单库及新导入的原生/兼容分片数据集均保留去重有序帧。单库用 `event_frames`、
+数据集用 `event` 的 `frames` 查看帧，或执行
 `report memory-tree --event-id 100 --format html > memory-tree.html`
 按调用路径查看事件时刻的占用。详见[调用栈帧内存拆解](docs/zh/querying.md#调用栈帧内存拆解)；
 旧文本数据库需要从原始快照重新导入。
@@ -83,6 +89,9 @@ included bytes 为分母。解读有上限的分组结果前，请参阅
 `--max-scratch-db-bytes`、环境变量或不可变 Python `QueryLimits` 配置。
 默认仍为 100000 工作行 / 64 MiB 工作字节 / 512 MiB scratch 页；优先级、
 深分页成本和整次失败语义见[公开数据集预算](docs/zh/querying.md#公开数据集预算)。
+
+同一 Python analyzer 的并发帧树查询以最新请求为准，旧请求抛出 `QueryCancelledError`。
+详见 [API 取消语义](docs/zh/snapshot-analyzer-api.md#错误与范围)。
 
 ## Agent Skills
 

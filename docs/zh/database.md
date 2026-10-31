@@ -360,7 +360,7 @@ CREATE UNIQUE INDEX idx_callstack_frame_position
 ### 单库帧能力边界
 
 格式 3 仅用于单库导入。原生分片导入保持格式 2，兼容导出保持格式 1；
-它们不会声称支持单库帧树。新增 `callstack_frame_manifest(callstackId INTEGER PRIMARY KEY,
+它们通过独立的版本 2 去重帧扩展支持数据集帧树，详见[查询指南](querying.md#数据集去重帧扩展版本-2)。新增 `callstack_frame_manifest(callstackId INTEGER PRIMARY KEY,
 frameCount INTEGER NOT NULL)` 保存每个采集调用栈的预期长度，包括零。
 filename/name 必须是文本，line 必须是整数。`event_frames` 对缺失、已知空数组
 或损坏数组返回零行，不输出部分重建的数组。树将已知空栈与缺失/损坏证据分开。
@@ -437,7 +437,7 @@ P0 兼容 v1 表序、内联布局和 manifest 语义不变。
 `trace_entry_<device>` 表，第九列为 `callstack TEXT`，不是 VIEW；block/dictionary
 位置 schema 精确匹配。转换去除暂存的未隔离 `callstack` 表，写入
 `pt_snap_metadata.import_format_version=1`，保留隔离的 `pt_snap_block_reference`
-文本生命周期来源。原生单库/数据集仍使用去重和 v2 metadata，不生成或从文本推断有序 frames。
+文本生命周期来源。原生数据集保留独立的版本 2 帧扩展，不从文本推断有序 frames。
 
 内联调用栈字节按**所有事件**的文本总和增长，不按不同栈计数；转换暂时并存原生与内联表，
 可能保留 SQLite free pages。容量不限制 block、加载 RSS 或总磁盘。兼容 manifest 的

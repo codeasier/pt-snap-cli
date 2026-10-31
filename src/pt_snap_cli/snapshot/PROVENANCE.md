@@ -299,3 +299,16 @@ Read-only queries preserve path identity, classify absent/corrupt evidence, and
 conserve live block, requested-byte and occupancy totals. No upstream code or
 new executable fixtures were incorporated; source mappings and licenses remain
 unchanged. This supersedes the unmerged implementation proposed in PR #207.
+
+## 2026-10-21: deduplicated dataset frames and cross-shard occupancy trees
+
+First-party ordered-frame evidence is now retained by sharded replay in an
+isolated version-2 extension: raw frame JSON and ordered frame sequences are
+interned independently of native text callstack IDs, with references only for
+real events. Compatible conversion preserves these extension tables without
+changing base inline trace columns or boundary-event normalization. Native
+extension and compatible export cache identities advance; old native text-only
+artifacts remain readable. Dataset trees resolve allocation owners before
+caller-path grouping and preserve missing/empty/static/preexisting occupancy.
+No allocator transition, event ID, source mapping, license or executable fixture
+was changed, and no external implementation was incorporated.
