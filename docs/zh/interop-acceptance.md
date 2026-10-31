@@ -27,7 +27,7 @@
 v3 hash 不匹配时**必然重解析**；该路径先删除 manifest/log，再调用生产者。
 不要让旧 GUI 打开唯一的源/缓存副本。历史字段 `ptSnap.identity.targetRevision`
 是 schema/接口参考身份，不是消费端支持证明。已核上游 master
-[`5c722719e1d288106f8d18588b0a33d979a4065b`](https://gitcode.com/Ascend/msinsight/blob/5c722719e1d288106f8d18588b0a33d979a4065b/scripts/MemSnapDump/util/snapshot_cache.py)
+[`5c722719e1d288106f8d18588b0a33d979a4065b`](https://api.github.com/repos/Ascend/msinsight/git/blobs/20254ee06471a4acb3757893263d042dd5df47e8)
 也仍计算 v2 salt 并拒绝不匹配的 cache hash。因此与这些已核消费端的复用是确定不兼容，
 不只是尚未实测；尚未选择任何已验证的 v3 消费端目标。
 

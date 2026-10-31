@@ -33,7 +33,7 @@ removes the manifest/log before invoking the producer. Do not point that old GUI
 at the only source/cache copy. The legacy `ptSnap.identity.targetRevision` field
 is a schema/reference identity anchor, not proof of consumer support.
 The reviewed upstream master
-[`5c722719e1d288106f8d18588b0a33d979a4065b`](https://gitcode.com/Ascend/msinsight/blob/5c722719e1d288106f8d18588b0a33d979a4065b/scripts/MemSnapDump/util/snapshot_cache.py)
+[`5c722719e1d288106f8d18588b0a33d979a4065b`](https://api.github.com/repos/Ascend/msinsight/git/blobs/20254ee06471a4acb3757893263d042dd5df47e8)
 also still computes the v2 salt and rejects a mismatched cache hash. Reuse with
 these reviewed consumers is therefore incompatible, not merely untested. No
 verified v3 consumer target has been selected.
