@@ -4,21 +4,54 @@
 
 `pt-snap-cli` 附带用于路由（`pt-snap-helper`）、环境安装、昇腾 NPU 采集和内存诊断的 agent skill。Agent 应先使用 `pt-snap-helper`，并在支持 `--json` 的命令上优先使用该选项。`pt-snap skill` 命令会把这些 skill 复制到共享的 Agent Skills 目录，以及 Claude Code 仍然需要的独立目录。
 
-## CLI 缺失时的采集路由
+## 首次 Agent 会话
 
-对于昇腾 NPU 采集，`pt-snap-helper` 会选择 `pt-snap-ascend-npu-collect`，无需先走
-`pt-snap-setup`。该采集 skill 必须已被宿主加载，或通过宿主支持的加载器成功加载；
-TorchNPU 与环境验证由采集 skill 负责。缺少 CLI 时，目录源和安装目录状态记为
-`unchecked`（未检查），与宿主加载证据分别报告。源码可读不能证明已加载。
+1. **安装 CLI**：如尚未安装，在 Python 3.10+ 环境运行 `python -m pip install pt-snap-cli`。
+   Agent 安装软件包前仍须单独取得 setup 授权。
+2. **安装 skill**：选择你使用的宿主。常规默认写用户级共享 `agents` 和 Claude 目录：
 
-如果加载失败或没有可用的加载方式，helper 会暂停采集交接，说明如何让宿主发现已知的
-skill 目录并重启，或使用支持的加载器。获取缺失的 skill 是独立的用户选择；helper
-不会隐式安装 Python 包或 skill。
+   ```bash
+   pt-snap skill install
+   ```
 
-已有 SnapshotDB 的分析任务在缺 CLI 时仍先交给 setup。先采集再分析的任务先完成采集，
-之后若 CLI 仍缺失再走 setup。仅有 pickle 的分析任务需要独立的可信导入决定；批准
-setup 不代表批准导入。只有 SnapshotDB 已存在时才交给诊断 skill，并执行正常的
-capabilities/overview 前置检查。
+   这会复制文件，不是只读探测。项目级可用
+   `pt-snap skill install --project --target agents`。需要自定义/宿主原生路径时，先看下面的安装位置。
+3. 文件有变化后**重启 Agent 宿主**，运行中的会话可能仍加载旧内容。
+4. **分别验证磁盘状态与宿主加载**：
+
+   ```bash
+   pt-snap --help
+   pt-snap skill list --json
+   ```
+
+   检查预期位置为 `installed`，再通过宿主的 skill 列表/加载器确认可以加载
+   `pt-snap-helper` 和所选诊断 skill。CLI 状态只证明已检查文件，不证明宿主已加载。
+5. **提出一个分析请求**，给出已有 DB/完整数据集和设备。仅有 pickle 或尚需采集时，
+   先看[准备输入](quickstart.md#准备输入)。
+
+请求示例（替换为你的路径与设备）：
+
+- “用 pt-snap-helper 分析 `snapshot.pkl.db` 的 device 0，解释 active 峰值时存活的
+  blocks 和调用栈，并说明覆盖率与未知项。”
+- “检查 `snapshot.pkl.db` 的 device 0 在 trace 末尾的泄漏**候选**，区分保留、
+  pending free 与已证实泄漏，不要修改 focus。”
+- “为 `snapshot.pkl.db` 的 device 0、事件范围 100–700 收集碎片证据，比较同事件的
+  分配器差值与 segment 行为，不要仅凭差值推断 OOM 根因。”
+
+诊断保持只读：不导入 pickle、不安装包/skill、不持久化 focus、不写报告文件。
+查询前验证完整 capabilities 和 overview；即使 `ok` 为 true，也要检查
+`overview.import_metadata.status`。已加载的 helper 只路由到一个 skill，不同时跑所有诊断。
+
+## 工作流分层与输出恢复
+
+- **常规路径：** 每个 skill 先给短路线图，再进入必需输入/预检和有界证据工作流。
+  复用完整且仍有效的 capabilities/overview，不重复输出整个目录。
+- **完整合同：** 保留必需模板参数/语义、数据库与设备身份、嵌套 metadata 状态、
+  完整性和归因边界。调用更少不等于输出字节更少。
+- **仅遇到异常时恢复：** focus 缺失、自定义安装位置、CLI 缺失有独立分支。
+  工具截断 JSON 时，使用随包的[完整输出恢复流程](../../skills/pt-snap-helper/references/output-recovery.md)：
+  保留完整对象，可在内存中压缩空白后重取；宿主无法提供完整输出时停止。
+  不得用 `head`、grep、逐模板替代、原始 SQL 或 scratch 文件绕过预检。
 
 ## 列出 skill
 
@@ -145,3 +178,19 @@ Skill 管理只通过 CLI 提供。
 开始前分配、但在所选事件仍存活的块仍纳入归因。`report peak-memory` 会选择
 未过滤的全 trace 峰值，因此仅在用户明确要求全 trace 对照、且峰值事件已通过
 校验时使用，并单独标注；其结果不能替代范围内证据。
+
+## CLI 缺失时的采集路由
+
+对于昇腾 NPU 采集，`pt-snap-helper` 会选择 `pt-snap-ascend-npu-collect`，无需先走
+`pt-snap-setup`。该采集 skill 必须已被宿主加载，或通过宿主支持的加载器成功加载；
+TorchNPU 与环境验证由采集 skill 负责。缺少 CLI 时，目录源和安装目录状态记为
+`unchecked`（未检查），与宿主加载证据分别报告。源码可读不能证明已加载。
+
+如果加载失败或没有可用的加载方式，helper 会暂停采集交接，说明如何让宿主发现已知的
+skill 目录并重启，或使用支持的加载器。获取缺失的 skill 是独立的用户选择；helper
+不会隐式安装 Python 包或 skill。
+
+已有 SnapshotDB 的分析任务在缺 CLI 时仍先交给 setup。先采集再分析的任务先完成采集，
+之后若 CLI 仍缺失再走 setup。仅有 pickle 的分析任务需要独立的可信导入决定；批准
+setup 不代表批准导入。只有 SnapshotDB 已存在时才交给诊断 skill，并执行正常的
+capabilities/overview 前置检查。

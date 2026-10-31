@@ -2,209 +2,196 @@
 
 [中文](../zh/quickstart.md) | English
 
-Get up and running with `pt-snap-cli` in a few minutes.
-
-For explicit native/compatible import acceptance, the SAME reviewed-fixture
-three-mode baseline and the pending GUI checklist, see
-[interoperability acceptance](interop-acceptance.md). Default import remains one
-standalone DB; `--events-per-slice` opts into native, `--format msinsight` into
-compatibility-v1. Trusted import consent is separate from read-only diagnosis.
+Go from an existing input to a readable peak-memory report. The default path is
+one SnapshotDB; you do not need to choose a sharded format to start.
 
 ## Installation
 
+Use **Python 3.10 or newer** in the environment where you want the CLI:
+
 ```bash
-pip install pt-snap-cli
+python -m pip install pt-snap-cli
+pt-snap --help
 ```
 
-This installs the `pt-snap` CLI. Contributors working from a source checkout can
-use `pip install -e ".[dev]"`; see [Development](../../README.md#development)
-in the repository README.
+Offline import and analysis do not require PyTorch, TorchNPU, CUDA, or accelerator
+hardware. Collection is different: it runs beside the workload in a compatible
+PyTorch/CUDA or TorchNPU/Ascend environment. Contributors should use the separate
+[Development and Checks entry](../../AGENTS.md#development-and-checks).
+
+## Prepare Your Input
+
+| What you have | Shortest next step |
+| --- | --- |
+| An existing SnapshotDB `.db` | Skip import; use its path in Step 2. |
+| A complete native or compatibility-v1 dataset directory / `manifest.json` | Skip import; use that explicit target in Step 2. Keep every member, not just one ready shard. |
+| A trusted `.pkl` / `.pickle` snapshot | Use Step 1, then analyze the generated DB. |
+| No snapshot yet | Follow the collection entry below, then make a separate trusted-import decision. |
+
+### Need to Collect a Snapshot?
+
+- **CUDA/PyTorch:** collect allocator history in your workload's GPU environment
+  using the [official PyTorch snapshot guide](https://docs.pytorch.org/docs/stable/torch_cuda_memory.html).
+  Verify the APIs for your installed PyTorch version, choose a bounded history
+  window, and dump the snapshot after the relevant workload section. Installing
+  this offline CLI does not instrument or start your training job.
+- **Ascend NPU:** use [pt-snap-ascend-npu-collect](../../skills/pt-snap-ascend-npu-collect/SKILL.md)
+  for TorchNPU API/environment checks and the framework-specific capture route.
+  Choose the capture ranks, step window and output location. The skill can guide
+  collection without the CLI if the host has loaded it; see [Agent Skills](skills.md).
+- A CSV, SVG or screenshot is not a SnapshotDB. Obtain the database or the
+  original trusted pickle; do not rename a visualization to `.db`.
+
+Collection changes the workload's recording behavior and writes a pickle; it is
+not read-only analysis. Review that plan separately. Copying a pickle to an
+offline machine does not make it safe to deserialize.
 
 ## Your First Analysis
 
-### Optional: Import a PyTorch Snapshot
+### Step 1: Import Only If Needed
 
-If you have a raw `.pkl` memory snapshot, import it first with the built-in backend:
-
-> **Security warning:** Use trusted pickle input only. Deserializing a pickle can
-> execute arbitrary code. The loader rejects non-`builtins` global objects, but
-> `pt-snap import` is not a sandbox.
+> **Security warning:** Import only pickle snapshots you trust. Deserialization
+> can execute arbitrary code. The loader rejects non-`builtins` global objects,
+> but `pt-snap import` is not a sandbox. Agent setup or collection approval is
+> not approval to import a pickle.
 
 ```bash
 pt-snap import snapshot.pkl
-pt-snap metadata snapshot.pkl.db
-pt-snap query --list
 ```
 
-The import command stores a SHA-256 source fingerprint and import compatibility metadata inside the
-generated database. Repeating the same import with the same device selection reuses the existing DB.
-Use `--force` when you intentionally need to rebuild it:
+By default this creates `snapshot.pkl.db` **beside the source pickle** and
+updates `.pt-snap/focus.json` in the current working directory (project focus).
+`--output-dir captures` changes the output parent, not the filename. To create
+or reuse the DB **without changing focus**, use:
 
 ```bash
-pt-snap import snapshot.pkl --force
+pt-snap import snapshot.pkl --no-focus
 ```
 
-Import currently loads the entire pickle before processing it, so peak memory can be
-substantially larger than the input file depending on its object graph and frame count.
-Run large imports with sufficient memory headroom. `--device` limits subsequent replay
-and database writes, but does not reduce the initial pickle-loading memory peak.
+**`--no-focus` is not no-replace:** a standalone cache miss or `--force` can
+replace an existing same-named `.db`. Confirm that output is disposable, or use
+a different `--output-dir` before importing.
 
-During import, pt-snap replays the selected device's allocator history instead of
-copying raw events directly. The resulting SnapshotDB records event-by-event
-`allocated`, `active`, and `reserved` totals plus block lifecycles, which makes it
-the supported input for `pt-snap query` and `pt-snap report`. This replay behavior
-is part of the command workflow; snapshot runtime Python modules are not a public API.
+The remaining examples pass an explicit path and device and work with either
+choice. Replace `snapshot.pkl.db` with your actual DB or complete dataset path.
+Import is a write operation; `overview`, built-in queries, and reports do not
+change source data or persist focus. Dataset queries may use private temporary
+scratch storage within their [work limits](querying.md#public-dataset-limits).
 
-### Optional: Import a Native Sharded Dataset
+### Step 2: Inspect the Target and Choose a Device
 
 ```bash
-pt-snap import snapshot.pkl --events-per-slice 50000 --output-dir captures --json
-pt-snap overview captures/snapshot.pkl.pt-snap-native-v2 --json
-pt-snap query --template-use event --slice 0 --json
+pt-snap overview snapshot.pkl.db --json
 ```
 
-Without `--events-per-slice`, import still produces the existing single DB. With
-it, the output is `<output-dir>/<full-input-filename>.pt-snap-native-v2/`, or the
-same directory beside the source if `--output-dir` is omitted. `--format
-pt-snap-native-v2` is optional in this mode; `--format single-db` forbids a capacity.
-Native output is **not** an msinsight-compatible export. Explicit `--format
-msinsight` (alias `compatibility-v1`) selects the separate compatible mode below.
+Check `db_path` and choose a `device_id` from `devices`. Below we use `0` as an
+example; substitute a device that was actually returned. For a dataset also
+check `dataset.status`, format and fingerprint. Stop on an invalid target or
+`import_metadata.status: "invalid"`; legacy `"unavailable"` with reason
+`"metadata_missing"` means unknown import provenance, not known corruption.
+Other unknown statuses/reasons need investigation before diagnosis.
 
-Capacity counts real chronological positions **per device**, not `max(id)+1` or
-negative synthetic boundaries. Original sparse/nonzero IDs, OOM and workspace
-events remain native. `--device` selects one event-bearing device; otherwise all
-such devices are imported. Empty/static-only and unselected device positions are
-reported in `omitted_devices`; selecting an empty device or an all-empty input
-fails. Sharding does not bound pickle loading, registry/block rows or peak RSS.
-
-Reuse requires a validated complete manifest and **every** closed member, with
-matching source SHA256, device selection, capacity, native format, manifest,
-semantic import, extension and metadata/layout contracts. CLI release version
-changes alone do not rebuild. Native identity is separate from future compatible
-format identities and from msinsight's salted `cacheHash`. JSON adds `dataset_path`,
-`devices`, `slice_count`, `format`, `omitted_devices`, `reused` and `rebuilt`;
-`db_path` denotes the dataset directory in this mode.
-
-A matching target is reused. A different/corrupt recognized native artifact is
-preserved unless `--force` explicitly requests replacement. Unknown directories,
-extra unrelated files, malformed manifests and symlink targets are never adopted
-or deleted, even with force: choose a new `--output-dir`. All devices/shards are
-staged beside the target, finalized, closed, metadata-attested and validated; the
-source is hashed again before publication. No partial shard is a reusable cache.
-
-New publication uses an exclusive directory rename. Force replacement first
-renames the old artifact into an owned recovery directory, then publishes the
-new one; **there is a transient path gap, not a single atomic swap**. Requested
-project focus is part of compensation, including a focus write that mutates
-before raising: ordinary failure restores old artifact and exact old focus
-bytes/state (or previous absence). `--no-focus` skips focus entirely. If rollback
-itself fails, recovery paths are preserved and explicitly reported. Do not delete
-them before inspecting the evidence. Arbitrary I/O failures, concurrent writers
-and crashes do not have unconditional atomic restoration guarantees.
-
-Dataset focus supports bounded `event` addressing and point-event active block/
-callstack attribution with shared cross-shard sources. Dataset-global peak/list/leak
-aggregates remain explicit errors, not one-shard approximations. See
-[point-event coverage](querying.md#dataset-point-event-attribution) and the
-[native manifest contract](sharded-snapshotdb.md#published-native-dataset-p2).
-`SnapshotAnalyzer` remains analysis-only, without import/split methods.
-
-### Optional: Export an msinsight-Compatible Dataset
+### Step 3: Read the Counters
 
 ```bash
-pt-snap import snapshot.pkl --format msinsight --json
-pt-snap overview snapshot.pkl.msinsight --json
-pt-snap query --template-use event --slice 0 --json
+pt-snap query snapshot.pkl.db --device 0 --template-use memory_peak --json
 ```
 
-This **explicit** mode targets `Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5`
-and its original-pickle import entrance, not direct directory import. Keep the
-same original pickle beside `<full-input-filename>.msinsight/` for GUI discovery;
-pt-snap itself can analyze a relocated complete artifact without pickle. Optional
-`--events-per-slice N` defaults to `500000`; `--output-dir` selects another parent,
-not an independently supported GUI entrance. `--device` selects an event-bearing
-device and omissions are reported. Nonzero/sparse real IDs, OOM/unknown actions,
-empty/static-only selections fail, without silent remapping. Native mode still
-preserves sparse IDs/OOM/workspace. Trusted pickle and full-input memory costs apply.
+An **illustrative** `rows[0]` (not a promised result for your snapshot):
 
-Base tables are physical inline-v1 tables; metadata has import format `1`.
-Callstack text is copied once **per event**, not once per distinct stack, so disk
-and temporary conversion space can grow substantially. Native interning remains
-unchanged. No ordered structured-frame capability is invented from formatted text.
-Bounded `event` and point-event active block/callstack dataset queries are
-available; global aggregate/report selection remains unsupported.
+```json
+{
+  "peak_allocated": 8388608,
+  "peak_allocated_event_id": 10,
+  "peak_active": 10485760,
+  "peak_active_event_id": 12,
+  "peak_reserved": 16777216,
+  "peak_reserved_event_id": 10
+}
+```
 
-Compatible publication is **no-replace**: external/original/user caches are never
-overwritten or deleted, even under `--force`. A complete, attested, identical
-pt-snap cache is reused (also with force); otherwise choose a new `--output-dir`.
-Source content, sourceFile, options, all member hashes and contract versions must
-match independently of salted `cacheHash`. A GUI-derived cache modification can
-invalidate this attestation, without implying producer rerun. All staged members
-close/finalize/validate before exclusive publication and requested focus; ordinary
-failure compensates exact old focus bytes, with recovery evidence if rollback fails.
-Standalone/native force policies remain unchanged. `SnapshotAnalyzer` is analysis-only.
+All three sizes are **bytes**: here 8, 10 and 16 MiB (`1 MiB = 1048576 bytes`).
 
-**GUI acceptance is pending/not run.** Complete/ready, safe paths/device tables,
-and derived allocation-cache availability/buildability also matter; matching hash
-alone proves neither GUI reuse nor display parity. Details and fixed source evidence:
-[compatible protocol](sharded-snapshotdb.md#explicit-msinsight-compatible-export-p2).
+| Counter | Meaning in the replayed allocator history |
+| --- | --- |
+| `allocated` | Bytes in allocated blocks, excluding blocks already marked pending free. This is block size, not requested tensor payload size. |
+| `active` | Allocated plus pending-free block bytes that are not yet reusable. |
+| `reserved` | Total segment bytes held by the allocator, including inactive capacity; not all process/device memory. |
 
-### Optional: Split a Snapshot
+Each metric has its own earliest peak event; event IDs are ordering markers,
+not timestamps. Do not subtract independent peaks as if they were simultaneous.
+Empty real-event ranges return null peaks: do not invent an event. A large
+reserved/active gap alone does not prove fragmentation, a leak or OOM causality.
 
-Use `pt-snap split` when you need smaller, independently replayable files. Split
-does not read or change focus:
+### Step 4: Generate a Readable Report
 
 ```bash
-pt-snap split snapshot.pkl --max-entries 50000 --output snapshot-slices
+pt-snap report peak-memory snapshot.pkl.db --device 0 --metric active --limit 20
 ```
 
-Use exactly one of `--slices` and `--max-entries`. See
-[Splitting Snapshots](splitting.md) for all-device behavior, formats, names, and
-atomic publication guarantees.
+Expect **Peak memory report**, the selected device/metric/event, separate peak
+counters, same-event allocator gaps, and **Active memory by callstack**. The
+report explains active blocks at the selected peak, not every reserved byte.
+Check the attribution completeness label and active-byte coverage before making
+claims: group percentages use `included_bytes` after filtering/ranking, not all
+active memory. A capped report can be partial; a budget error is not a partial
+successful analysis. Add `--json` for automation. See the
+[report contract](querying.md#report-command) for limits and denominators.
 
-### Step 1: Set the Snapshot Database and Device
-
-Point `pt-snap` to your SQLite snapshot database file:
+### Optional: Remember This Target
 
 ```bash
 pt-snap focus snapshot.pkl.db --device 0
+pt-snap report peak-memory
 ```
 
-This validates the database and saves the path and device ID to `.pt-snap/focus.json` in your current directory, so you don't need to repeat it.
+Unlike the explicit-path analysis above, `focus <path>` writes project focus.
+Skip it if you do not want shared project state. The import default may already
+have selected the DB; this command also selects your chosen device. See
+[focus precedence and session isolation](focus-management.md).
 
-If you only want to set the database (no device yet):
+## Advanced Input Options
 
-```bash
-pt-snap focus snapshot.pkl.db
-```
+These are optional, not prerequisites for the first report.
 
-### Step 2: List Available Queries
+### Optional: Import a Native Sharded Dataset
 
-```bash
-pt-snap query --list
-```
+`--events-per-slice` opts into a native dataset; it does not make pickle loading
+streaming or bound peak RSS. For output paths, complete-member validation,
+force/recovery behavior and supported built-ins, read the
+[native import contract](sharded-snapshotdb.md#published-native-dataset-p2) and
+[global support matrix](querying.md#dataset-global-built-in-support-p3).
+Native output is not msinsight-compatible.
 
-### Step 3: Run a Query
+### Optional: Export an msinsight-Compatible Dataset
 
-```bash
-pt-snap query --template-use memory_peak
-```
+`--format msinsight` is explicit opt-in. Existing compatible targets are never
+replaced, even with `--force`; compatibility, cache validation, GUI entrance and
+fixed-version evidence have their own [protocol contract](sharded-snapshotdb.md#explicit-msinsight-compatible-export-p2).
+Read [recorded interoperability acceptance](interop-acceptance.md) before claiming
+GUI reuse. A matching hash alone is not GUI acceptance.
 
-### Step 4: Try Advanced Queries
+### Optional: Split a Snapshot
 
-```bash
-# Detect potential memory leaks
-pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
+`pt-snap split` creates independently replayable files, not a queried dataset.
+It also requires trusted pickle input, exactly one split strategy, and an absent
+output directory. It does not change focus. See [Splitting Snapshots](splitting.md).
 
-# Query automatically uses the focused device, or you can override it
-pt-snap query --template-use block --device 0 --params '{"min_size": 1048576}'
-```
+### Reuse, Rebuild and Memory Costs
+
+Standalone import stores source SHA-256 and compatibility metadata. Identical
+content/options can reuse the DB; cache misses (including missing/invalid
+metadata) and `--force` rebuild and can replace the same-named standalone DB.
+Unlike native/compatible directory policies, this is not an unknown-target
+protection gate. Confirm ownership or choose another `--output-dir` first.
+Do not force a rebuild merely because analysis failed; inspect the error. Import loads the entire
+pickle before replay; `--device` reduces subsequent work, not that initial peak.
+Use sufficient memory headroom. Snapshot runtime modules are not a public API.
 
 ## What's Next
 
-- [Focus Management](focus-management.md) — Learn how to manage database and device focus across projects and sessions
-- [Querying](querying.md) — Query workflows, template discovery, parameters, and output
-- [Splitting Snapshots](splitting.md) — Create independently replayable per-device slices
-- [Agent Skills](skills.md) — Install bundled agent workflows into the shared agents directory and Claude
-- [Database Schema](database.md) — Understand the SnapshotDB format
-- [SnapshotAnalyzer API](snapshot-analyzer-api.md) — Query SnapshotDB files from Python
+- [Agent Skills](skills.md) — install, restart, verify and ask for a diagnosis
+- [Querying](querying.md) — templates, bounded results, stack detail and reports
+- [Focus Management](focus-management.md) — optional persisted/session targets
+- [Database Schema](database.md) — counters, metadata and sentinel meanings
+- [SnapshotAnalyzer API](snapshot-analyzer-api.md) — analysis with owned Python resources

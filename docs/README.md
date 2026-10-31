@@ -1,5 +1,17 @@
 # pt-snap-cli Documentation
 
+## Start by Goal / 按目标开始
+
+| Goal / 目标 | English | 中文 |
+| --- | --- | --- |
+| Prepare or collect input / 准备或采集输入 | [Input choices](en/quickstart.md#prepare-your-input) | [输入分流](zh/quickstart.md#准备输入) |
+| First read-only report / 首份只读报告 | [Inspect, query, report](en/quickstart.md#step-2-inspect-the-target-and-choose-a-device) | [检查、查询、报告](zh/quickstart.md#第二步检查目标并选择设备) |
+| First agent session / 首次 Agent 接入 | [Install, restart, verify, ask](en/skills.md#first-agent-session) | [安装、重启、验证、提问](zh/skills.md#首次-agent-会话) |
+| Contributor checks / 贡献者检查 | [Canonical checklist](../AGENTS.md#development-and-checks) | [统一完整清单](../AGENTS.md#development-and-checks) |
+
+Advanced protocols and evidence are indexed below; they are not prerequisites
+for the default single-DB workflow. 高级协议与证据见下表，不是默认单库流程的前置阅读。
+
 ## English
 
 | Topic | File |

@@ -4,76 +4,51 @@
 
 用于分析 PyTorch 内存快照的命令行工具。设置快照数据库，运行内置查询，检查内存使用、泄漏和时间线。
 
+## 从这里开始
+
+| 你的输入或目标 | 下一步 |
+| --- | --- |
+| 已有 `.db` 或完整数据集 | [检查 → 查询 → 报告](docs/zh/quickstart.md#第二步检查目标并选择设备)，无需导入 |
+| 可信 pickle | [默认单库导入](docs/zh/quickstart.md#第一步仅在需要时导入) |
+| 尚无快照 | [采集前提与入口](docs/zh/quickstart.md#尚需采集快照) |
+| 让 Agent 帮忙分析 | [安装 → 重启 → 验证 → 提问](docs/zh/skills.md#首次-agent-会话) |
+
 ## 安装
 
+需要 **Python 3.10+**。离线导入/分析无需 PyTorch 或加速器；采集则在工作负载对应的
+兼容 GPU/NPU 环境中进行。
+
 ```bash
-pip install pt-snap-cli
+python -m pip install pt-snap-cli
 ```
 
 源码 checkout 与贡献者安装见[开发](#开发)。
 
 ## 快速开始
 
-> **安全警告：** 只导入来自可信来源的 pickle 快照。反序列化 pickle 可能执行任意代码；
-> 实现会拒绝非 builtins 全局对象，但 `pt-snap import` 不是沙箱。
+已有 DB 就跳过导入；否则只使用**可信** pickle。反序列化可能执行任意代码，
+`builtins` 限制不代表 `pt-snap import` 是沙箱。
 
 ```bash
-# 从原始 pickle 导入；相同内容和配置会自动复用已有 DB
 pt-snap import snapshot.pkl
-pt-snap metadata snapshot.pkl.db
-
-# 设置快照数据库和设备
-pt-snap focus snapshot.pkl.db --device 0
-
-# 列出可用查询
-pt-snap query --list
-
-# 运行查询（自动使用 focus 中设置的设备）
-pt-snap query --template-use memory_peak
-
-# 检测潜在内存泄漏
-pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
+pt-snap overview snapshot.pkl.db --json
+# 将 0 替换为 overview 实际返回的设备。
+pt-snap query snapshot.pkl.db --device 0 --template-use memory_peak --json
+pt-snap report peak-memory snapshot.pkl.db --device 0 --metric active --limit 20
 ```
 
-如需先把大型快照拆成可独立回放的文件，请只选择一种拆分策略，并指定一个尚不存在的
-输出目录：
+默认导入在 pickle 旁写出 `snapshot.pkl.db`，并更新当前目录的项目
+`.pt-snap/focus.json`；加 `--no-focus` 只避免 focus 变化，不防止 DB 替换：单库缓存
+未命中或 `--force` 可能替换同名 DB，必要时选择其他 `--output-dir`。显式路径的检查/查询/报告
+不持久化 focus，也不修改源数据。[完整示例](docs/zh/quickstart.md)解释字节单位、
+allocated/active/reserved 指标、预期输出和报告不完整的情况。
 
-```bash
-pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
-```
+### 其他输入格式
 
-设备选择、JSON 输出、确定性命名、回放验证和失败安全发布见
-[拆分快照](docs/zh/splitting.md)。
-
-完整的入门指南见 [Quick Start](docs/zh/quickstart.md)。
-
-完整兼容 v1 分片产物可以目录或 `manifest.json` 为 focus，无需已归档 pickle。
-只读 overview、事件路由、`--slice` 和跨片限制见
-[完整数据集 focus 与寻址](docs/zh/sharded-snapshotdb.md#完整数据集-focus-与寻址p1)。
-
-用 `pt-snap import snapshot.pkl --events-per-slice 50000 --output-dir captures --json`
-显式生成**原生、非 msinsight 兼容**数据集 `captures/snapshot.pkl.pt-snap-native-v2/`。
-默认单库导入不变；复用校验全部片及内容/选项/语义版本。不匹配的已识别目标须
-`--force`，未知目标保留。发布/focus 失败会补偿，回滚自身失败则保留并报告恢复证据
-（force 不是单次崩溃原子 swap）。详见
-[原生分库导入](docs/zh/quickstart.md#可选导入原生分库数据集)。数据集 `event` 寻址及定点
-`active_blocks_at_event` / `active_memory_callstack_at_event` 共用跨片 alloc/free 批量来源，
-原版无扩展产物也适用。内建全局峰值、事件分页、canonical 栈统计、去重生命周期、
-终片泄漏候选及 `report peak-memory` 共用有界 core 语义；数据集仍不支持自定义 SQL/override。
-详见[全局支持矩阵](docs/zh/querying.md#数据集全局内建支持p3)及
-[数据集定点归因与覆盖](docs/zh/querying.md#数据集定点事件归因)。
-超过 SQLite 附加上限的生命周期查询使用私有、限制主库页数空间的临时派生数据库，源分片
-保持只读；存储限额、清理及内存边界见全局支持矩阵。
-
-显式 `pt-snap import snapshot.pkl --format msinsight --json` 生成
-`snapshot.pkl.msinsight/`，对齐固定 msinsight 版本的**同一原始 pickle + 邻接缓存**入口。
-内联栈比原生去重占更多空间；即使 `--force` 也不替换已有兼容目标，只复用完整校验且
-身份相同的 pt-snap 缓存。GUI **待验收/未运行**，hash 相等不代表验收通过。详见
-[兼容导出及限制](docs/zh/sharded-snapshotdb.md#显式-msinsight-兼容导出p2)。
-
-[离线双向验收与有界性能](docs/zh/interop-acceptance.md) 提供固定版本两条链路、
-确定性独立参考工具、真实三模式测量及明确**待验收/not-run 的 GUI 清单**。
-诊断 skills 接受显式选择的完整已校验数据集，不接受任意目录。
+- [原生分库导入](docs/zh/quickstart.md#可选导入原生分库数据集)：用 `--events-per-slice` 显式启用，不是 msinsight 兼容格式。
+- [显式 msinsight 导出](docs/zh/quickstart.md#可选导出-msinsight-兼容数据集)：独立的兼容合同与 no-replace 规则，`--force` 也不替换。
+- [可回放 pickle 拆分](docs/zh/splitting.md)：只选一种拆分策略并使用新目录，与数据集导入不同。
+- [完整数据集寻址](docs/zh/sharded-snapshotdb.md#完整数据集-focus-与寻址p1)、[全局内建支持](docs/zh/querying.md#数据集全局内建支持p3)和[已记录的互操作验收](docs/zh/interop-acceptance.md)：按需查看高级合同与证据，不是第一份报告的前置条件。
 
 ## 命令
 
@@ -138,11 +113,14 @@ helper 会先路由采集，无需先安装 CLI。分析仍需要 CLI 和 Snapsh
 
 ## 开发
 
+统一使用根 [Development and Checks 检查清单](AGENTS.md#development-and-checks)：
+fixture provenance、pytest、Ruff、Black、**basedpyright** 和 `git diff --check`，
+并在同一入口查看环境隔离、浏览器测试与覆盖率门槛。
+
 ```bash
-pip install -e ".[dev]"         # 安装开发依赖
-pytest                           # 运行所有测试
-black --check . && ruff check .  # 检查格式和 lint
+python -m pip install -e ".[dev]"
 ```
+
 
 常规套件可用 `pytest -m 'not slow'`。默认容量规模及非 editable 安装包导出测试见
 [数据集验收指南](docs/zh/dataset-acceptance.md)。

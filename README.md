@@ -4,89 +4,54 @@
 
 A command-line tool for analyzing PyTorch memory snapshots. Set a snapshot database, run built-in queries, and inspect memory usage, leaks, and timelines.
 
+## Start Here
+
+| Your input or goal | Next step |
+| --- | --- |
+| Existing `.db` or complete dataset | [Inspect → query → report](docs/en/quickstart.md#step-2-inspect-the-target-and-choose-a-device); no import required |
+| Trusted pickle | [Default single-DB import](docs/en/quickstart.md#step-1-import-only-if-needed) |
+| No snapshot yet | [Collection prerequisites and entry points](docs/en/quickstart.md#need-to-collect-a-snapshot) |
+| Ask an agent to analyze | [Install → restart → verify → ask](docs/en/skills.md#first-agent-session) |
+
 ## Installation
 
+Requires **Python 3.10+**. Offline import/analysis needs no PyTorch or accelerator;
+collection uses the workload's compatible GPU/NPU environment.
+
 ```bash
-pip install pt-snap-cli
+python -m pip install pt-snap-cli
 ```
 
 For a source checkout and contributor setup, see [Development](#development).
 
 ## Quick Start
 
-To start from a raw PyTorch memory snapshot, import the pickle into a SnapshotDB with pt-snap's built-in snapshot support, then list the available query templates:
-
-> **Security warning:** Import only pickle snapshots from a trusted source. Pickle
-> deserialization can execute arbitrary code. The loader rejects non-`builtins`
-> global objects, but `pt-snap import` is not a sandbox.
+If you already have a DB, skip import. Otherwise use only a **trusted** pickle:
+its deserialization can execute arbitrary code; the `builtins` restriction does
+not make `pt-snap import` a sandbox.
 
 ```bash
 pt-snap import snapshot.pkl
-pt-snap metadata snapshot.pkl.db
-pt-snap query --list
+pt-snap overview snapshot.pkl.db --json
+# Replace 0 with a device returned by overview.
+pt-snap query snapshot.pkl.db --device 0 --template-use memory_peak --json
+pt-snap report peak-memory snapshot.pkl.db --device 0 --metric active --limit 20
 ```
 
-```bash
-# Set the snapshot database and device
-pt-snap focus snapshot.pkl.db --device 0
+Default import writes `snapshot.pkl.db` beside the pickle and updates project
+`.pt-snap/focus.json` in the current directory. Add `--no-focus` to avoid that
+focus change, not to prevent DB replacement: a standalone cache miss/`--force`
+can replace an existing same-named DB; choose another `--output-dir` if needed.
+The explicit-path inspection/query/report commands do not persist
+focus or modify source data. The [walkthrough](docs/en/quickstart.md) explains
+byte units, allocated/active/reserved counters, expected output and partial reports.
 
-# List available queries
-pt-snap query --list
+### Other Input Formats
 
-# Run a query (automatically uses the focused device)
-pt-snap query --template-use memory_peak
-
-# Detect potential memory leaks
-pt-snap query --template-use leak_detection --params '{"min_size": 1024}'
-```
-
-To divide a large snapshot into independently replayable files before import,
-use exactly one split strategy and an output directory that does not exist:
-
-```bash
-pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
-```
-
-See [Splitting Snapshots](docs/en/splitting.md) for device selection, JSON output,
-deterministic names, replay validation, and failure-safe publication.
-
-See the [full quick start guide](docs/en/quickstart.md) for a walkthrough.
-
-Complete compatibility-v1 sharded artifacts can be focused by directory or
-`manifest.json`, without the archived pickle. See [dataset focus and addressing](docs/en/sharded-snapshotdb.md#complete-dataset-focus-and-addressing-p1)
-for read-only overview, event routing, `--slice`, and explicit cross-slice limits.
-
-Opt into a **native, not msinsight-compatible** dataset with
-`pt-snap import snapshot.pkl --events-per-slice 50000 --output-dir captures --json`.
-The output is `captures/snapshot.pkl.pt-snap-native-v2/`; default standalone import
-is unchanged. Reuse validates all shards and content/options/semantic versions.
-Nonmatching recognized targets require `--force`; unknown targets are preserved.
-Publication/focus failures are compensated, with explicit recovery evidence if
-rollback fails (force is not a single crash-atomic swap). See the
-[native import guide](docs/en/quickstart.md#optional-import-a-native-sharded-dataset).
-Dataset `event` addressing and point-event `active_blocks_at_event` /
-`active_memory_callstack_at_event` share batched cross-shard alloc/free sources,
-including original artifacts without extensions. Built-in global peaks, event pages,
-canonical stack statistics, deduplicated lifecycles, terminal leak candidates and
-`report peak-memory` share bounded core semantics; custom SQL/overrides remain unsupported
-on datasets. See the [global support matrix](docs/en/querying.md#dataset-global-built-in-support-p3)
-and [dataset attribution and coverage](docs/en/querying.md#dataset-point-event-attribution).
-Lifecycle queries exceeding SQLite's attachment limit use a private, page-limited
-temporary derived database; source shards stay read-only. See the global support
-matrix for storage limits, cleanup and memory caveats.
-
-Explicit `pt-snap import snapshot.pkl --format msinsight --json` produces
-`snapshot.pkl.msinsight/` for the fixed msinsight revision's **same original
-pickle + adjacent cache** entrance. Inline stacks cost more space than native
-interning. Existing compatible targets are never replaced, even with `--force`;
-only fully validated identical pt-snap caches are reused. GUI acceptance remains
-**pending/not run**; hash equality alone is not acceptance. See
-[compatible export and limits](docs/en/sharded-snapshotdb.md#explicit-msinsight-compatible-export-p2).
-
-See [offline interoperability acceptance and bounded performance](docs/en/interop-acceptance.md)
-for the two fixed-version chains, deterministic reference tools, honest three-mode
-measurements and the explicitly **pending/not-run GUI checklist**. Diagnostic skills
-accept explicitly selected complete validated datasets, not arbitrary directories.
+- [Native sharded import](docs/en/quickstart.md#optional-import-a-native-sharded-dataset): opt in with `--events-per-slice`; not msinsight-compatible.
+- [Explicit msinsight export](docs/en/quickstart.md#optional-export-an-msinsight-compatible-dataset): separate compatibility and no-replace rules, even with `--force`.
+- [Replayable pickle splitting](docs/en/splitting.md): one split strategy and a new output directory; separate from dataset import.
+- [Complete-dataset addressing](docs/en/sharded-snapshotdb.md#complete-dataset-focus-and-addressing-p1), [global built-in support](docs/en/querying.md#dataset-global-built-in-support-p3), and [recorded interoperability acceptance](docs/en/interop-acceptance.md): advanced contracts and evidence, not prerequisites for a first report.
 
 ## Commands
 
@@ -155,11 +120,14 @@ See the [documentation index](docs/README.md) for all English and Chinese guides
 
 ## Development
 
+Use the repository's single [Development and Checks checklist](AGENTS.md#development-and-checks):
+fixture provenance, pytest, Ruff, Black, **basedpyright**, and `git diff --check`.
+It also explains environment isolation, browser tests and coverage gates.
+
 ```bash
-pip install -e ".[dev]"         # Install development dependencies
-pytest                           # Run all tests
-black --check . && ruff check .  # Check formatting and lint
+python -m pip install -e ".[dev]"
 ```
+
 
 For the regular suite use `pytest -m 'not slow'`. Default-capacity scale and
 non-editable installed exporter tests are described in the

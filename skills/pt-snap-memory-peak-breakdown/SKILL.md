@@ -15,6 +15,20 @@ Use only an existing standalone SnapshotDB (`.db`) or an explicitly selected,
 complete validated dataset directory or `manifest.json`. Never open, import, inspect, or
 deserialize pickle (`.pkl` or `.pickle`) input.
 
+## Normal path and reading order
+
+1. Validate the explicit DB/device and [required inputs](#required-inputs).
+2. Complete [mandatory preflight](#mandatory-preflight), reusing only full, current
+   capabilities/overview results. This applies even without helper routing.
+3. Follow the [bounded evidence workflow](#full-trace-workflow), then the output and
+   [guardrails](#guardrails). Separate observations, inference and unknowns.
+
+The full contracts below remain mandatory. Dataset and compact-stack sections
+apply only to those inputs/options; missing-focus recovery applies only to a
+missing effective target. If a host tool truncates JSON, read
+[complete-output recovery](references/output-recovery.md) before proceeding;
+do not bypass preflight or write files to recover output.
+
 ## Required Inputs
 
 Require one coherent database/device pair:

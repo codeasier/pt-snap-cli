@@ -32,6 +32,10 @@ follow the hierarchy rather than copying local rules into this file.
 
 ## Development and Checks
 
+This is the canonical contributor checklist linked from both READMEs. Keep new
+required checks here and in the owning CI workflow rather than maintaining a
+shorter, divergent checklist in user onboarding docs.
+
 Run from the repository root using the intended Python environment. Installing
 changes that environment and may download dependencies:
 
