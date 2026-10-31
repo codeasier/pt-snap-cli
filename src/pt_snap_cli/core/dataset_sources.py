@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from pt_snap_cli._frame_json import _bounded_depth, _finite_float, _invalid_constant
 from pt_snap_cli.context import DatabaseNotFoundError, SchemaVersionError
 from pt_snap_cli.core.context_cache import ContextCache
 from pt_snap_cli.core.dataset_contract import SliceRecord, _unique_object
@@ -29,7 +30,6 @@ from pt_snap_cli.core.errors import (
     QueryExecutionError,
     QueryTimeoutError,
 )
-from pt_snap_cli.core.frame_json import _bounded_depth, _finite_float, _invalid_constant
 from pt_snap_cli.core.query_limits import (
     DEFAULT_MAX_SCRATCH_DB_BYTES,
     DEFAULT_MAX_WORK_BYTES,

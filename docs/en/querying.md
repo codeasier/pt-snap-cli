@@ -864,7 +864,9 @@ references. These independent IDs preserve native text interning and compatible
 inline schemas. Native extension cache identity is 2; compatible export identity
 is 3, preventing reuse of old text-only exports as frame-capable artifacts.
 Readers support versions 1/2 and validate exact schemas, contiguous positions,
-counts, references and finite JSON with nesting depth at most 128. Tree frames
+counts, references and finite JSON with nesting depth at most 128. Writers omit
+an event's optional evidence as a whole if it cannot encode within those bounds;
+text import and other events remain usable. Tree frames
 require text filename/name and integer line; invalid fields degrade to missing.
 No text reconstruction occurs. `callstack_analysis` reduces version-2 events by
 local stack and text in SQLite before resolving representative arrays and merging

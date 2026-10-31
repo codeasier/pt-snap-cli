@@ -8,10 +8,11 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
+from pt_snap_cli._frame_json import _bounded_depth, _finite_float, _invalid_constant
+
 from .dataset_contract import _unique_object
 from .dataset_files import readonly_member_uri, require_readonly_member
 from .dataset_frames import SCHEMA
-from .frame_json import _bounded_depth, _finite_float, _invalid_constant
 
 
 def require_frame_declaration(manifest: dict[str, object]) -> None:

@@ -183,9 +183,7 @@ def test_compatible_owned_cache_reuse_and_external_force_preserve_actual_bytes(t
 
 @pytest.mark.parametrize("external", [False, True])
 @pytest.mark.parametrize("damage", ["member", "schema", "endpoint"])
-def test_compatible_structural_rejection_preserves_every_remaining_byte(
-    tmp_path, external, damage
-):
+def test_compatible_structural_rejection_preserves_every_remaining_byte(tmp_path, external, damage):
     request = options(tmp_path, focus=False)
     service = ImportService()
     result = service.import_snapshot(request)

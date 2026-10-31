@@ -8,8 +8,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Protocol, cast
 
+from pt_snap_cli._frame_json import _bounded_depth, _finite_float, _invalid_constant
+
 from .dataset_contract import _unique_object
-from .frame_json import _bounded_depth, _finite_float, _invalid_constant
 
 
 class FrameBudget(Protocol):

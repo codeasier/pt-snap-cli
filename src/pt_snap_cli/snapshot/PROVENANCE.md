@@ -312,3 +312,14 @@ artifacts remain readable. Dataset trees resolve allocation owners before
 caller-path grouping and preserve missing/empty/static/preexisting occupancy.
 No allocator transition, event ID, source mapping, license or executable fixture
 was changed, and no external implementation was incorporated.
+
+
+## 2026-10-31: preserve text import when optional frame evidence exceeds reader bounds
+
+First-party sharded frame writing now applies the same bounded JSON-depth check
+as readers before inserting any rows for an event's optional stack. Evidence
+outside that contract is omitted as a whole, preserving native text-input
+acceptance and subsequent events instead of failing publication. The small
+stdlib-only validation helpers are shared outside the snapshot/core dependency
+boundary. No allocator transition, event ID, base schema, license, source mapping
+or executable fixture changes; no external implementation was incorporated.

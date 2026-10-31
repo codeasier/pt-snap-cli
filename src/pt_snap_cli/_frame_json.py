@@ -1,4 +1,4 @@
-"""Strict JSON validation shared by optional ordered frame readers."""
+"""Strict JSON validation shared by optional ordered frame writers and readers."""
 
 import math
 

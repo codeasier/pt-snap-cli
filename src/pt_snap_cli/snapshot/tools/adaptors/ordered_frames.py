@@ -3,6 +3,8 @@
 import json
 import sqlite3
 
+from pt_snap_cli._frame_json import _bounded_depth
+
 from ...base import Frame, TraceEntry
 
 
@@ -40,6 +42,13 @@ class OrderedFrameWriter:
                     )
                     for frame in frames
                 ]
+                # Apply the reader's depth contract to normalized JSON, including
+                # tuples converted to arrays, before inserting any partial stack.
+                decoded = [json.loads(value) for value in encoded]
+                if not all(isinstance(frame, dict) for frame in decoded) or not _bounded_depth(
+                    decoded
+                ):
+                    return
             except (ValueError, TypeError, RecursionError, OverflowError):
                 # Optional evidence must not change acceptance of native text inputs.
                 return

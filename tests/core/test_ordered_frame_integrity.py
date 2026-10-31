@@ -9,11 +9,13 @@ from pathlib import Path
 
 import pytest
 
+from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.core import import_service
 from pt_snap_cli.core.errors import ImportExecutionError
 from pt_snap_cli.core.import_service import ImportService
 from tests.core.test_dataset_import import hashes
 from tests.core.test_msinsight_export import options
+from tests.snapshot.test_sharded_replay import lifecycle_data, write_source
 
 
 @pytest.fixture(autouse=True)
@@ -111,3 +113,40 @@ def test_repeat_import_rejects_changed_frames_without_overwriting(tmp_path, fmt,
         rebuilt = service.import_snapshot(dataclasses.replace(request, force=True))
         assert not rebuilt.reused
         assert service.import_snapshot(request).reused
+
+
+@pytest.mark.parametrize("fmt", [None, "msinsight"])
+@pytest.mark.parametrize("nested_lists,covered", [(126, True), (127, False)])
+def test_optional_frame_depth_does_not_reject_text_import(tmp_path, fmt, nested_lists, covered):
+    request = dataclasses.replace(options(tmp_path, focus=False), format=fmt)
+    data = lifecycle_data()
+    data["device_traces"][0] = [e for e in data["device_traces"][0] if e["action"] != "oom"]
+    extra = 0
+    for _ in range(nested_lists):
+        extra = [extra]
+    frames = [
+        {"filename": "valid.py", "line": 2, "name": "valid"},
+        {"filename": "edge.py", "line": 3, "name": "edge", "extra": extra},
+    ]
+    data["device_traces"][0][0]["frames"] = frames
+    write_source(tmp_path, data)
+    service = ImportService()
+    first = service.import_snapshot(request)
+    assert not first.reused
+    if not covered:
+        member = first.db_path / "device_0/slice_00000.db"
+        with closing(sqlite3.connect(member.as_uri() + "?mode=ro", uri=True)) as conn:
+            assert not conn.execute("SELECT 1 FROM pt_snap_event_stack WHERE eventId=0").fetchall()
+            assert not conn.execute(
+                "SELECT 1 FROM pt_snap_frame_value WHERE frameJson LIKE '%valid.py%'"
+            ).fetchall()
+    before = hashes(first.db_path)
+    assert service.import_snapshot(request).reused
+    with SnapshotAnalyzer(first.db_path) as analyzer:
+        row = analyzer.execute_query("event", {"id": 0})["rows"][0]
+        assert row["callstack"] == "edge.py:3 edge\nvalid.py:2 valid"
+        assert row["frames_status"] == ("ordered" if covered else "text_only")
+        assert row["frames"] == (frames if covered else None)
+        following = analyzer.execute_query("event", {"id": 1})["rows"][0]
+        assert following["frames_status"] == "ordered"
+    assert hashes(first.db_path) == before
