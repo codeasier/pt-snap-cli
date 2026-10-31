@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -197,6 +198,190 @@ def _dataset_query(
     return scope
 
 
+EVENT_FIELDS = (
+    "id",
+    "action",
+    "address",
+    "size",
+    "stream",
+    "allocated",
+    "active",
+    "reserved",
+    "callstack",
+)
+EVENT_SOURCE_FIELDS = (
+    "source_stack_id",
+    "stack_id",
+    "stack_kind",
+    "text_kind",
+    "stack_event_id",
+    "frames",
+    "frames_status",
+)
+FRAME_FIELDS = ("filename", "line", "name")
+
+
+def _standalone_rows(
+    query: dict[str, Any], standalone: Path, device: int, template: str
+) -> list[dict[str, Any]]:
+    label = f"Standalone {template} reference"
+    _require(_path_value(query, "db_path", label) == standalone, f"{label} changed target")
+    _require(query.get("focus_source") == "explicit", f"{label} did not use explicit target")
+    _require(
+        type(query.get("device_id")) is int and query["device_id"] == device,
+        f"{label} changed device",
+    )
+    _require(query.get("template") == template, f"{label} changed template")
+    rows = query.get("rows")
+    _require(
+        isinstance(rows, list) and all(isinstance(row, dict) for row in rows),
+        f"{label} has invalid rows",
+    )
+    _require(
+        type(query.get("returned")) is int
+        and query["returned"] == len(rows)
+        and type(query.get("total")) is int
+        and query["total"] == len(rows)
+        and query.get("total_is_exact") is True
+        and query.get("has_more") is False
+        and query.get("truncated") is False,
+        f"{label} is incomplete",
+    )
+    return rows
+
+
+def _event_parity(
+    crossing: dict[str, Any],
+    reference: dict[str, Any],
+    frame_references: dict[int, dict[str, Any]],
+    *,
+    standalone: Path,
+    fingerprint: str,
+    device: int,
+    event_ids: list[int],
+) -> int:
+    """Check base events and ordered public frame fields, not local stack IDs.
+
+    Standalone event_frames exposes filename/line/name, not arbitrary raw extras.
+    The full raw-array digest below attests internal identity consistency only;
+    independent extra-field preservation remains covered by the core tests.
+    """
+    expected = _standalone_rows(reference, standalone, device, "event")
+    rows = crossing.get("rows")
+    _require(
+        crossing.get("template") == "event"
+        and isinstance(rows, list)
+        and len(rows) == len(expected) == len(event_ids)
+        and set(frame_references) == set(event_ids),
+        "Cross-shard event/reference counts or template differ",
+    )
+    _require(
+        type(crossing.get("returned")) is int
+        and crossing["returned"] == len(rows)
+        and type(crossing.get("total")) is int
+        and crossing["total"] == len(rows)
+        and crossing.get("total_is_exact") is True
+        and crossing.get("has_more") is False
+        and crossing.get("truncated") is False,
+        "Cross-shard event rows are incomplete",
+    )
+    coverage = crossing.get("scope", {}).get("source_coverage", {})
+    _require(isinstance(coverage, dict), "Cross-shard source coverage is invalid")
+    for field, value in {
+        "range_complete": True,
+        "event_position": "after",
+        "coverage_scope": "returned_events",
+        "events_resolved": len(event_ids),
+        "ordered_frame_events": len(event_ids),
+    }.items():
+        _require(
+            type(coverage.get(field)) is type(value) and coverage[field] == value,
+            f"Cross-shard source coverage differs: {field}",
+        )
+    _require(
+        type(coverage.get("source_queries")) is int and coverage["source_queries"] > 0,
+        "Cross-shard source coverage differs: source_queries",
+    )
+    frame_count = 0
+    for row, original, event_id in zip(rows, expected, event_ids, strict=True):
+        label = f"Event {event_id}"
+        _require(set(original) == set(EVENT_FIELDS), f"{label} standalone base fields differ")
+        _require(
+            isinstance(row, dict) and set(row) == set(EVENT_FIELDS + EVENT_SOURCE_FIELDS),
+            f"{label} dataset event fields differ",
+        )
+        _require(
+            type(original["id"]) is int and original["id"] == event_id,
+            f"{label} standalone event order differs",
+        )
+        for field in EVENT_FIELDS:
+            _require(
+                type(row[field]) is type(original[field]) and row[field] == original[field],
+                f"{label} base field differs: {field}",
+            )
+        frames = row["frames"]
+        _require(
+            isinstance(frames, list)
+            and all(isinstance(frame, dict) for frame in frames)
+            and row["frames_status"] == "ordered"
+            and row["stack_kind"] == "captured",
+            f"{label} lost ordered frame evidence",
+        )
+        _require(
+            row["text_kind"] == ("captured" if original["callstack"] else "missing")
+            and type(row["stack_event_id"]) is int
+            and row["stack_event_id"] == event_id,
+            f"{label} source attribution differs",
+        )
+        try:
+            canonical = json.dumps(
+                frames, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False
+            )
+        except (TypeError, ValueError, RecursionError, OverflowError) as exc:
+            raise AcceptanceError(f"{label} has invalid raw frame JSON") from exc
+        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        identity = f"dataset:{fingerprint}:device:{device}:frames:sha256:{digest}"
+        _require(
+            row["source_stack_id"] == row["stack_id"] == identity,
+            f"{label} ordered frame identity/namespace differs",
+        )
+        frame_rows = _standalone_rows(
+            frame_references[event_id], standalone, device, "event_frames"
+        )
+        _require(len(frames) == len(frame_rows), f"{label} ordered frame count differs")
+        local_stack_id = None
+        for position, (frame, original_frame) in enumerate(zip(frames, frame_rows, strict=True)):
+            _require(
+                set(original_frame)
+                == set(FRAME_FIELDS + ("event_id", "stack_id", "position", "frame_id")),
+                f"{label} standalone frame fields differ",
+            )
+            _require(
+                type(original_frame["event_id"]) is int
+                and original_frame["event_id"] == event_id
+                and type(original_frame["position"]) is int
+                and original_frame["position"] == position,
+                f"{label} standalone frame event/order differs at position {position}",
+            )
+            _require(
+                all(
+                    type(original_frame[key]) is int and original_frame[key] >= 0
+                    for key in ("stack_id", "frame_id")
+                )
+                and local_stack_id in (None, original_frame["stack_id"]),
+                f"{label} standalone frame local identity differs at position {position}",
+            )
+            local_stack_id = original_frame["stack_id"]
+            for field, field_type in (("filename", str), ("line", int), ("name", str)):
+                _require(
+                    type(frame.get(field)) is type(original_frame[field]) is field_type
+                    and frame[field] == original_frame[field],
+                    f"{label} ordered frame field differs at position {position}: {field}",
+                )
+        frame_count += len(frames)
+    return frame_count
+
+
 def _sharded_acceptance(
     pt_snap: Path,
     fixture: Path,
@@ -358,10 +543,89 @@ def _sharded_acceptance(
             scope.get("slice_indices") == [slices[0]["index"], slices[1]["index"]],
             "Event range did not cross shards",
         )
-        _require(
-            crossing["rows"] == reference["rows"] and len(crossing["rows"]) == 2,
-            "Cross-shard real events differ from standalone",
+
+        def check_events(actual, original, event_ids, *, name=format_name, generation=fingerprint):
+            frame_references = {
+                event_id: cli(
+                    f"{name} standalone frames {event_id}",
+                    "query",
+                    standalone,
+                    "--device",
+                    device,
+                    "--template-use",
+                    "event_frames",
+                    "--params",
+                    json.dumps({"event_id": event_id, "frame_order": "original"}),
+                    "--exact-total",
+                )
+                for event_id in event_ids
+            }
+            return _event_parity(
+                actual,
+                original,
+                frame_references,
+                standalone=standalone,
+                fingerprint=generation,
+                device=device,
+                event_ids=event_ids,
+            )
+
+        frame_count = check_events(
+            crossing, reference, [slices[0]["last_event_id"], slices[1]["first_event_id"]]
         )
+        if frame_count == 0:
+            # A shard boundary can legitimately fall between two empty stacks.
+            # Select one real captured event, then prove its frames independently;
+            # formatted text is only a locator, never reconstructed frame evidence.
+            candidate = cli(
+                f"{format_name} captured event locator",
+                "query",
+                standalone,
+                "--device",
+                device,
+                "--template-use",
+                "event",
+                "--params",
+                json.dumps({"min_id": 0, "order_by": "callstack", "order_dir": "DESC", "limit": 1}),
+            )
+            candidates = candidate.get("rows")
+            _require(
+                _path_value(candidate, "db_path", "captured event locator") == standalone
+                and candidate.get("focus_source") == "explicit"
+                and type(candidate.get("device_id")) is int
+                and candidate["device_id"] == device
+                and candidate.get("template") == "event"
+                and type(candidate.get("returned")) is int
+                and candidate["returned"] == 1
+                and isinstance(candidates, list)
+                and len(candidates) == 1
+                and isinstance(candidates[0], dict),
+                "Invalid captured event locator",
+            )
+            event_id = candidates[0].get("id")
+            _require(
+                type(event_id) is int
+                and slices[0]["first_event_id"] <= event_id <= slices[-1]["last_event_id"]
+                and isinstance(candidates[0].get("callstack"), str)
+                and bool(candidates[0]["callstack"]),
+                "Fixture has no real captured event for nonempty frame acceptance",
+            )
+            point_args = (
+                "--device",
+                device,
+                "--template-use",
+                "event",
+                "--params",
+                json.dumps({"id": event_id}),
+                "--exact-total",
+            )
+            captured = cli(f"{format_name} captured event", "query", dataset, *point_args)
+            original = cli(
+                f"{format_name} standalone captured event", "query", standalone, *point_args
+            )
+            _dataset_query(captured, dataset, dataset, fingerprint, device)
+            frame_count = check_events(captured, original, [event_id])
+        _require(frame_count > 0, "Ordered frame acceptance has no nonempty frame evidence")
         _require(
             crossing.get("total_is_exact") is True and crossing.get("total") == 2,
             "Cross-shard exact total is invalid",
@@ -380,6 +644,9 @@ def _sharded_acceptance(
                 "reused": True,
                 "standalone_peak_parity": True,
                 "cross_shard_event_parity": True,
+                "ordered_frame_field_parity": True,
+                "ordered_frame_identity_checked": True,
+                "nonempty_ordered_frames_checked": True,
                 "focus_unchanged": True,
             }
         )

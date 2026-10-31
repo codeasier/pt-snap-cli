@@ -1,11 +1,12 @@
-"""Original interface-facts converter for fixed msinsight 101f65b8 compatibility.
+"""Original converter using the historical msinsight 101f65b8 physical schema.
 
 No Ascend implementation is copied (its source is Mulan PSL v2). Physical
-schema/hash facts: blobs 1fe50a5136f85365db55f4632d58f3cf7090431e,
+schema and historical salt-order facts: blobs 1fe50a5136f85365db55f4632d58f3cf7090431e,
 95612509ef990ac6b7034919dae4938cc6acf3ad and
 ca421c7b33f3a0050df9e7a01e666f558801bc2f. See sharded-snapshotdb docs.
 Only caller-owned finalized native staging is converted; existing caches are
-never mutated, even under force. This is not GUI acceptance.
+never mutated, even under force. Current exports use parser-v3 hashes; the pinned
+parser-v2 consumer reparses them. No current v3 GUI acceptance is claimed.
 """
 
 from __future__ import annotations
@@ -23,20 +24,26 @@ from .dataset_contract import (
     TRACE_COLUMNS,
     DatasetContractError,
     DatasetManifest,
-    validate_dataset,
+    parse_manifest,
 )
-from .dataset_files import hash_file, readonly_member_uri, require_readonly_member
+from .dataset_files import readonly_member_uri, require_readonly_member
 from .dataset_import_backend import DatasetImportBackend
+from .dataset_resolver import DatasetResolver
 from .errors import ImportExecutionError
 from .import_metadata_contract import metadata_from_mapping
 from .models import ImportMetadata
+from .ordered_frame_integrity import require_frame_declaration
 from .sharded_replay_service import ShardedReplayResult
-from .snapshot_cache import parse_cache_manifest, seal_manifest, source_hashes, validate_cache
+from .snapshot_cache import (
+    parse_cache_manifest,
+    seal_manifest,
+    source_hashes,
+)
 
 COMPATIBILITY_FORMAT = "compatibility-v1"
 DEFAULT_CAPACITY = 500000
 # Independent semantic versions, not the installed CLI version or GUI cacheHash.
-EXPORT_VERSION = 2
+EXPORT_VERSION = 3
 REFERENCE_VERSION = 1
 
 
@@ -55,6 +62,7 @@ def compatible_identity(source_hash: str, device: int | None, capacity: int) -> 
         "referenceContractVersion": REFERENCE_VERSION,
         "metadataSchemaVersion": 1,
         "importFormatVersion": 1,
+        # Historical schema/reference identity, not a current GUI-reuse claim.
         "targetRevision": MSINSIGHT_REVISION,
     }
 
@@ -219,7 +227,6 @@ def build_compatible_manifest(
     cache_hash: str,
 ) -> dict[str, object]:
     devices: dict[str, object] = {}
-    files: dict[str, str] = {}
     for device in sorted({s.device for s in result.slices}):
         slices = [s for s in result.slices if s.device == device]
         devices[str(device)] = {
@@ -244,18 +251,16 @@ def build_compatible_manifest(
         "cacheHash": cache_hash,
         "eventsPerSlice": capacity,
         "devices": devices,
+        "extensions": {"ptSnapOrderedFrames": {"version": 2}},
         "ptSnap": {
             "identity": compatible_identity(
                 metadata.source_sha256, metadata.requested_device, capacity
             ),
             "metadata": asdict(metadata),
             "omittedDevices": list(result.omitted_devices),
-            "members": files,
         },
     }
     seal_manifest(result.directory, manifest, metadata.requested_device)
-    manifest["ptSnap"]["members"] = manifest["parserCache"]["members"]
-    manifest["ptSnap"]["memberHashKind"] = "parser-v1"
     return manifest
 
 
@@ -270,8 +275,8 @@ class CompatibleCache:
 def inspect_owned_cache(target: Path) -> CompatibleCache:
     """Whole valid recognized identity only; salted hash alone is never ownership.
 
-    Base tables are attested logically. Consumer-owned tables and indexes may
-    change without invalidating parser data. Legacy exports retain byte checks.
+    Reuse checks source identity, manifest inventory and required DB structure.
+    Consumer-owned tables and indexes do not invalidate the cache.
     """
     data = parse_cache_manifest((target / "manifest.json").read_bytes())
     extension = data.get("ptSnap")
@@ -280,9 +285,8 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
     identity = extension.get("identity")
     if not isinstance(identity, dict):
         raise ValueError("manifest.ptSnap.identity: expected object")
-    for key in ("metadata", "members"):
-        if not isinstance(extension.get(key), dict):
-            raise ValueError(f"manifest.ptSnap.{key}: expected object")
+    if not isinstance(extension.get("metadata"), dict):
+        raise ValueError("manifest.ptSnap.metadata: expected object")
     if not isinstance(extension.get("omittedDevices"), list):
         raise ValueError("manifest.ptSnap.omittedDevices: expected array")
     version = identity.get("exportContractVersion")
@@ -290,9 +294,8 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
         raise ValueError(
             f"Legacy export contract v{version}; choose a new --output-dir to re-export as v{EXPORT_VERSION}"
         )
-    # Logical seals establish consistency, not semantic validity. Keep shared P0
-    # checks for every producer, including imports that do not register focus.
-    manifest = validate_dataset(target).manifest
+    # Reject declaration/identity failures before inspecting member structure.
+    manifest = parse_manifest(data)
     extension = data["ptSnap"]
     metadata = metadata_from_mapping(extension["metadata"])
     identity = extension["identity"]
@@ -310,31 +313,23 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
     ):
         raise ValueError("Metadata must match physical v1 layout")
     paths = {s.file for d in manifest.devices for s in d.slices}
+    require_frame_declaration(data)
+    resolved = DatasetResolver().inspect(target)
+    if resolved is None:
+        raise ValueError("Compatible dataset is missing")
+    if parse_cache_manifest((target / "manifest.json").read_bytes()) != data:
+        raise ValueError("Compatible manifest changed during inspection")
     if any((target / (relative + "-journal")).exists() for relative in paths):
         raise ValueError(
             "Snapshot member has a rollback journal; a writer or recovery may be active, retry later"
         )
-    if set(extension["members"]) != paths:
-        raise ValueError("Incomplete member attestation")
     expected = {"manifest.json", "parse.log", *paths, *(str(Path(p).parent) for p in paths)}
     expected.update(relative + suffix for relative in paths for suffix in ("-wal", "-shm"))
     actual = {p.relative_to(target).as_posix() for p in target.rglob("*")}
     if not actual <= expected or any(p.is_symlink() for p in target.rglob("*")):
         raise ValueError("Unrecognized files or aliases in compatible cache")
-    logical_members = None
-    if extension.get("memberHashKind") == "parser-v1":
-        checked = validate_cache(target, data["cacheHash"], metadata.requested_device)
-        if checked != data:
-            raise ValueError("Compatible manifest changed during inspection")
-        # validate_cache checks the producer seal even without parserCache.
-        logical_members = checked["ptSnap"]["members"]
-    elif "memberHashKind" in extension:
-        raise ValueError("Unsupported member hash contract")
     for relative in paths:
         member = target / relative
-        digest = logical_members[relative] if logical_members is not None else hash_file(member)
-        if digest != extension["members"][relative]:
-            raise ValueError("Compatible member hash changed")
         require_readonly_member(target, member, immutable=True)
         with closing(sqlite3.connect(readonly_member_uri(member), uri=True)) as conn:
             conn.row_factory = sqlite3.Row
@@ -364,4 +359,5 @@ def inspect_owned_cache(target: Path) -> CompatibleCache:
         raise ValueError("Device selection disagrees with identity")
     if Path(manifest.source_file).name != metadata.source_name:
         raise ValueError("Source path disagrees with metadata")
+    resolved.require_unchanged()
     return CompatibleCache(manifest, identity, metadata, tuple(omitted))

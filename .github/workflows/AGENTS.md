@@ -49,12 +49,11 @@ The required installed-wheel case creates a clean venv without system packages
 and runs its actual `pt-snap` console script from isolated HOME/CWD. Its trusted,
 test-owned input has exactly 1,000,000 events; the default exporter produces two
 full 500,000-event shards. All installed catalog entries are classified: currently
-11 dataset-supported templates succeed with installed CLI/API equivalence and
-independent known-result checks, while `event_frames` and
-`active_memory_frame_tree_at_event` return explicit unsupported-dataset errors.
-Both report commands run: `peak-memory` succeeds and `memory-tree` preserves the
-corresponding dataset rejection. The allocation/free-request/free-completion
-boundary assertions remain covered, alongside static occupancy, offset pages,
+12 dataset-supported templates succeed with installed CLI/API equivalence and
+independent known-result checks; `event_frames` remains the explicit
+unsupported-dataset query. Both `peak-memory` and `memory-tree` reports succeed.
+The allocation/free-request/free-completion boundary assertions remain covered,
+alongside static occupancy, offset pages,
 terminal survivors and unchanged source/manifest/member hashes. A second required
 nightly case separately imports 500,002 events and proves the original final
 short shard has exactly two real events, with the crossing completed lifetime

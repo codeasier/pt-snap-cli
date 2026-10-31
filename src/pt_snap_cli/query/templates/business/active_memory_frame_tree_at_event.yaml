@@ -2,9 +2,10 @@ version: "1.0"
 queries:
   active_memory_frame_tree_at_event:
     description: Decompose live memory after an event into a caller-first frame tree
-    semantics_version: 1
+    semantics_version: 2
     interpretation_limits:
-      - "Requires structured frame tables from import_format_version >= 3; old text-only databases must be re-imported."
+      - "Standalone databases require structured frame tables from import_format_version >= 3. Datasets resolve original allocation events across shards using ptSnapOrderedFrames version 1 or 2; absent, unknown or corrupt evidence contributes to missing stacks without reconstructing frames from text. Re-import to capture ordered frames."
+      - "Dataset frame_id is query-local; node_id identifies the full ordered path of filename/line/name triples. Shard-local IDs and display text are never cross-shard grouping keys. scope.source_coverage reports frame completeness separately from result row completeness."
       - "Uses allocation stacks of blocks live after event_id: allocEventId <= event_id and freeEventId > event_id (or absent). freeEventId is free_completed, so pending-free memory remains included."
       - "Traversal reverses the original innermost-first frame array. Node identity is the whole ordered caller path, preserving recursion and separating identical frames under different callers."
       - "size_bytes includes descendant occupancy; self_bytes counts only allocations ending at this node. size_bytes = self_bytes + sum(direct child size_bytes). Do not sum inclusive bytes across depths."

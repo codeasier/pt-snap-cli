@@ -53,7 +53,7 @@ NATIVE_MANIFEST_VERSION = 1
 # Semantic contracts, deliberately independent of the installed CLI __version__.
 NATIVE_FORMAT_VERSION = 1
 NATIVE_IMPORT_VERSION = 1
-NATIVE_EXTENSION_VERSION = 1
+NATIVE_EXTENSION_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -314,6 +314,11 @@ def validate_native_dataset(
         manifest.metadata.requested_device,
         manifest.events_per_slice,
     )
+    # Read old text-only artifacts; import reuse still requires the current
+    # identity in ImportService. Optional frame support is declared separately.
+    extension = manifest.identity.get("extensionContractVersion")
+    if extension in (1, NATIVE_EXTENSION_VERSION):
+        expected_identity["extensionContractVersion"] = extension
     _need(
         manifest.identity == expected_identity,
         "identity",
@@ -624,5 +629,6 @@ def build_native_manifest(
         "identity": cache_identity(metadata.source_sha256, metadata.requested_device, capacity),
         "metadata": asdict(metadata),
         "omittedDevices": list(result.omitted_devices),
+        "extensions": {"ptSnapOrderedFrames": {"version": 2}},
         "devices": devices,
     }

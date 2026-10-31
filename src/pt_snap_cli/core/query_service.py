@@ -12,6 +12,7 @@ from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionErr
 from pt_snap_cli.core.context_cache import ContextCache
 from pt_snap_cli.core.dataset_attribution import event_attribution, summarize_dataset_stacks
 from pt_snap_cli.core.dataset_contract import QueryScope
+from pt_snap_cli.core.dataset_frame_tree import frame_tree
 from pt_snap_cli.core.dataset_global import global_query
 from pt_snap_cli.core.dataset_resolver import DatasetResolver, ResolvedDataset
 from pt_snap_cli.core.dataset_sources import DatasetSourceResolver, QueryBudget
@@ -29,6 +30,7 @@ from pt_snap_cli.core.errors import (
     TemplateRenderError,
 )
 from pt_snap_cli.core.focus_service import FocusService
+from pt_snap_cli.core.latest_query import LatestQuery
 from pt_snap_cli.core.models import (
     QueryResult,
     ResolvedFocus,
@@ -39,7 +41,7 @@ from pt_snap_cli.core.models import (
 from pt_snap_cli.core.query_limits import QueryLimits, resolve_query_limits
 from pt_snap_cli.core.stack_summary import summarize_stacks
 from pt_snap_cli.query.executor import QueryExecutionError as ExecutorQueryExecutionError
-from pt_snap_cli.query.executor import QueryExecutor
+from pt_snap_cli.query.executor import QueryExecutor, cancellation_options
 from pt_snap_cli.query.executor import QueryTimeoutError as ExecutorQueryTimeoutError
 from pt_snap_cli.query.executor import TemplateRenderError as ExecutorTemplateRenderError
 from pt_snap_cli.query.registry import (
@@ -106,6 +108,8 @@ class QueryService:
         self._owns_context_cache: bool = context_cache is None
         self._executor: QueryExecutor | None = None
         self._executor_context: Context | None = None
+        self._executor_source: QueryExecutor | None = None
+        self._frame_tree_queries = LatestQuery()
 
     @property
     def context_cache(self) -> ContextCache:
@@ -117,13 +121,16 @@ class QueryService:
 
         An injected cache is borrowed and must be closed by its owner.
         """
+        self._frame_tree_queries.cancel()
         self._executor = None
         self._executor_context = None
+        self._executor_source = None
         if self._owns_context_cache:
             self._context_cache.close()
 
     def invalidate_context_cache(self, db_path: Path | str | None = None) -> None:
         """Drop a cached context (or all of them when ``db_path`` is None)."""
+        self._frame_tree_queries.cancel()
         self._context_cache.invalidate(db_path)
 
     def list_templates(
@@ -244,6 +251,75 @@ class QueryService:
         _budget: QueryBudget | None = None,
         _resolved: _ResolvedQuery | None = None,
     ) -> QueryResult:
+        """Frame-tree calls on this service supersede unfinished frame-tree calls.
+
+        Separate service instances do not cancel one another. Other templates
+        retain their existing ownership/concurrency contract.
+        """
+        if template != "active_memory_frame_tree_at_event":
+            return self._execute_query(
+                template,
+                params,
+                db_path,
+                device_id,
+                start_dir,
+                max_rows,
+                exact_total=exact_total,
+                timeout_s=timeout_s,
+                slice_index=slice_index,
+                query_limits=query_limits,
+                _budget=_budget,
+                _resolved=_resolved,
+            )
+        with self._frame_tree_queries.run() as cancelled:
+            budget = _budget if _budget is not None else self._new_budget(timeout_s, query_limits)
+            previous = budget.cancelled
+            budget.cancelled = lambda: cancelled() or (previous is not None and previous())
+            # Each task opens and closes its handles in its executing thread.
+            # The borrowed/standalone cache must never move between click workers.
+            worker = QueryService(self._focus_service, query_limits=self._query_limits)
+            # Retain override detection and custom templates, never the source connection.
+            worker._executor = self._executor
+            worker._executor_source = self._executor
+            try:
+                result = worker._execute_query(
+                    template,
+                    params,
+                    db_path,
+                    device_id,
+                    start_dir,
+                    max_rows,
+                    exact_total=exact_total,
+                    timeout_s=timeout_s,
+                    slice_index=slice_index,
+                    query_limits=query_limits,
+                    _budget=budget,
+                    _resolved=_resolved,
+                )
+                budget.remaining()
+                return result
+            finally:
+                try:
+                    worker.close()
+                finally:
+                    budget.cancelled = previous
+
+    def _execute_query(
+        self,
+        template: str,
+        params: dict[str, Any] | None = None,
+        db_path: Path | str | None = None,
+        device_id: int | None = None,
+        start_dir: Path | None = None,
+        max_rows: int | None = None,
+        *,
+        exact_total: bool = False,
+        timeout_s: float | None = None,
+        slice_index: int | None = None,
+        query_limits: QueryLimits | None = None,
+        _budget: QueryBudget | None = None,
+        _resolved: _ResolvedQuery | None = None,
+    ) -> QueryResult:
         budget = _budget if _budget is not None else self._new_budget(timeout_s, query_limits)
         timeout_s, started = budget.timeout_s, budget.started
         budget.remaining()
@@ -285,9 +361,13 @@ class QueryService:
             if slice_index is not None:
                 dataset.paths(QueryScope("slice", selected.device_id, slice_index))
             implementation = (
-                event_attribution
-                if template in ("active_blocks_at_event", "active_memory_callstack_at_event")
-                else global_query
+                frame_tree
+                if template == "active_memory_frame_tree_at_event"
+                else (
+                    event_attribution
+                    if template in ("active_blocks_at_event", "active_memory_callstack_at_event")
+                    else global_query
+                )
             )
             result = implementation(
                 sources,
@@ -325,6 +405,7 @@ class QueryService:
                 device_id=target_device,
                 max_rows=max_rows,
                 timeout_s=budget.remaining(),
+                **cancellation_options(budget.cancelled),
             )
             offset = _validated_offset(template, query_params)
             rank_cap = _finite_top_n(template, query_params)
@@ -338,6 +419,7 @@ class QueryService:
                     device_id=target_device,
                     timeout_s=_remaining_timeout(timeout_s, started),
                     ignore_row_window=True,
+                    **cancellation_options(budget.cancelled),
                 )
                 total_is_exact = True
                 if offset == 0:
@@ -349,8 +431,10 @@ class QueryService:
         except ExecutorTemplateRenderError as exc:
             raise TemplateRenderError(str(exc)) from exc
         except ExecutorQueryTimeoutError as exc:
+            budget.remaining()
             raise QueryTimeoutError(f"Query timed out after {timeout_s} seconds") from exc
         except ExecutorQueryExecutionError as exc:
+            budget.remaining()
             if get_query(template) is None:
                 raise TemplateNotFoundError(f"Template '{template}' not found") from exc
             raise QueryExecutionError(str(exc)) from exc
@@ -416,7 +500,12 @@ class QueryService:
         template directory of its own.
         """
         if self._executor is None or self._executor_context is not ctx:
-            self._executor = QueryExecutor(ctx)
+            self._executor = (
+                self._executor_source.clone_for_context(ctx)
+                if self._executor_source is not None
+                else QueryExecutor(ctx)
+            )
+            self._executor_source = None
             self._executor_context = ctx
         return self._executor
 

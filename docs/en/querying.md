@@ -99,6 +99,7 @@ across devices and there is no shared cross-device event order.
 | `memory_peak` | Independent allocated/active/reserved maxima over real events; earliest real ID wins ties; `start_id/end_id` may cross shards |
 | `allocator_gap` | The same independently selected global events, with each gap computed from counters **at that event** |
 | `active_blocks_at_event`, `active_memory_callstack_at_event` | Route a real event to its owner and resolve full cross-shard sources before grouping/top_n (details below) |
+| `active_memory_frame_tree_at_event` | Event-owner live set with cross-shard allocation frames, grouped by complete caller paths; root/self totals conserve occupancy; no top_n pruning |
 | `preexisting_live` | Owner-event preexisting occupancy, not a leak count |
 | `block` | Merge proved allocation-event lifetimes and stable negative tokens once, then apply filters/order/page; latest containing-shard state is an observation, not state at arbitrary E |
 | `freed_block_lifetime` | Deduplicated captured allocations with a proved `free_completed` source; event-ID distance buckets, not time |
@@ -216,7 +217,7 @@ shard. Event/allocation pages apply SQL filters and ordering per shard, merge at
 `offset + limit` candidates per shard, and count matches separately. Range evidence
 is measured before non-range filters. Ordinary text-stack statistics merge full
 per-shard groups before global thresholds; averages use summed sizes and counts.
-Canonical ordered-frame statistics retain the bounded source-reading path because
+Version-1 canonical ordered-frame statistics retain the bounded source-reading path because
 formatted text is not their identity. Small block/leak/lifetime reductions use read-only
 attached shards for proof, conflicts and latest observations before pagination;
 the attachment limit (normally ten) counts selected observation shards plus any
@@ -372,9 +373,9 @@ those merge semantics merely by using a built-in name.
 
 ### Optional ordered-frame reader contract
 
-This reader-only pt-snap extension is new, not an existing original-producer
-feature. Current native/compatible writers emit **no** ordered-frame tables.
-Declare `extensions.ptSnapOrderedFrames={"version":1}` in the manifest and use
+This pt-snap extension is independent of original-producer capabilities. New
+native/compatible imports write the deduplicated version-2 extension described
+below. The version-1 reader remains supported. Declare `extensions.ptSnapOrderedFrames={"version":1}` in the manifest and use
 isolated actual tables in each covered source shard:
 
 - `pt_snap_frame_coverage(eventId INTEGER PRIMARY KEY, frameCount INTEGER)`
@@ -779,7 +780,7 @@ and `semantics_version` so that lookup stays tied to the rows.
 
 ## Frame Memory Breakdown
 
-After a standalone import with this version, inspect the original ordered frame array or
+After an import with this version, inspect the original ordered frame array or
 decompose live memory after an event:
 
 ```bash
@@ -830,15 +831,46 @@ node ID to distinguish identical labels. Lists include every match and support
 Tab then Enter/Space. Parent frame moves up one level; Reset zoom returns to the
 root without clearing the search. Clear the search field to remove the results.
 
-Frame-tree templates and `report memory-tree` support standalone format-3 databases
-only. Dataset roots are rejected explicitly; the analyzer never selects a shard
-implicitly. Direct native shards have no standalone frame tables: re-import the
-original snapshot as a standalone database to use these templates. Existing
-native `pt_snap_frame`/coverage readers remain unchanged. `--timeout` uses the
-shared query deadline. Text and HTML renderers reject incomplete or nonconserving
-trees. Known-empty stacks have an `empty_callstack` synthetic leaf;
-missing/corrupt stacks retain the `missing` leaf. `event_frames` returns no rows
-for missing events/stacks, known-empty stacks or invalid frame arrays.
+`active_memory_frame_tree_at_event` and `report memory-tree` support standalone
+format-3 databases and complete native/compatible datasets. Query the dataset root:
+the event owner supplies live blocks and allocation owners supply frames, including
+earlier slices. Local IDs and display text never identify cross-shard caller paths.
+`frame_id` is query-local; `node_id` hashes the full ordered path of
+`(filename, line, name)` triples. `scope.source_coverage.ordered_frames_complete`
+reports frame evidence separately from output row completeness. Missing,
+unknown-version or corrupt evidence keeps its bytes in `missing`; re-import the
+original snapshot to capture frames. Known-empty arrays have an `empty_callstack`
+leaf. Work budgets and the shared deadline cover the full operation; failures
+return no partial tree. Text and HTML renderers reject truncated/nonconserving trees.
+`event_frames` remains standalone-only; use dataset `event` with `id` for its
+covered original `frames`. Direct native shards lack standalone frame tables;
+query the dataset root for cross-shard allocation sources.
+
+### Deduplicated dataset frame extension (version 2)
+
+New imports declare `extensions.ptSnapOrderedFrames={"version":2}` and store:
+
+| Table | Columns |
+| --- | --- |
+| `pt_snap_frame_value` | `id INTEGER PRIMARY KEY, frameJson TEXT` |
+| `pt_snap_stack` | `stackId INTEGER PRIMARY KEY, frameCount INTEGER` |
+| `pt_snap_stack_frame` | `stackId INTEGER, frameIndex INTEGER, frameId INTEGER, PRIMARY KEY(stackId,frameIndex)` |
+| `pt_snap_event_stack` | `eventId INTEGER PRIMARY KEY, stackId INTEGER` |
+
+Each canonical raw frame JSON (including extra typed fields) and each distinct
+ordered frame-ID sequence is stored once per shard. Repeated frames retain
+positions; empty stacks have an explicit count zero. Only real events receive
+references. These independent IDs preserve native text interning and compatible
+inline schemas. Native extension cache identity is 2; compatible export identity
+is 3, preventing reuse of old text-only exports as frame-capable artifacts.
+Readers support versions 1/2 and validate exact schemas, contiguous positions,
+counts, references and finite JSON with nesting depth at most 128. Writers omit
+an event's optional evidence as a whole if it cannot encode within those bounds;
+text import and other events remain usable. Tree frames
+require text filename/name and integer line; invalid fields degrade to missing.
+No text reconstruction occurs. `callstack_analysis` reduces version-2 events by
+local stack and text in SQLite before resolving representative arrays and merging
+global identities; repeated stacks do not require fetching every event into Python.
 
 The Python API uses the same template and contracts:
 

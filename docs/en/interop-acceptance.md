@@ -4,7 +4,9 @@
 
 ## Evidence layers and fixed target
 
-The ONLY upstream target is **Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5**.
+The historical parser-v2 acceptance and physical-schema reference use
+**Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5**. This is not a
+verified consumer target for current parser-v3 exports.
 Protocol/schema validation, isolated source-function checks, synthetic CI,
 reading an actual original-producer artifact, and actual GUI/C++ consumption are
 DIFFERENT evidence layers. None implies the next. **The bounded real GUI/C++ and
@@ -23,7 +25,48 @@ are separately CC BY 4.0, not automatically covered by this project's MIT lineag
 A port needs snapshot provenance/PR decisions and retained notices. Executable
 pickle trust is a SEPARATE fixture review; no new committed pickle is added here.
 
-## Forward chain: trusted source → physical export → real GUI
+## Current parser-v3 status and safe retest
+
+Current exports use `mem_snapshot_parser_v3`. The pinned historical consumer uses
+`mem_snapshot_parser_v2` and **will reparse** a v3 hash mismatch; its parse path
+removes the manifest/log before invoking the producer. Do not point that old GUI
+at the only source/cache copy. The legacy `ptSnap.identity.targetRevision` field
+is a schema/reference identity anchor, not proof of consumer support.
+The reviewed upstream master
+[`5c722719e1d288106f8d18588b0a33d979a4065b`](https://api.github.com/repos/Ascend/msinsight/git/blobs/20254ee06471a4acb3757893263d042dd5df47e8)
+also still computes the v2 salt and rejects a mismatched cache hash. Reuse with
+these reviewed consumers is therefore incompatible, not merely untested. No
+verified v3 consumer target has been selected.
+
+A current v3 GUI cache-reuse claim requires all of the following:
+
+1. Identify an immutable consumer commit and exact build; inspect its parser salt,
+   manifest/member/schema checks and reparse path before execution. A version
+   label, current branch name, or the old v2 GUI receipt is insufficient.
+2. Obtain explicit authorization for that real GUI run. Use a new isolated
+   directory, a byte-identical copy of the separately trusted pickle, and a new
+   adjacent export produced by the candidate wheel. Never move or overwrite the
+   original cache; re-export rather than relabel v2 hashes. Record source, wheel,
+   manifest and member hashes plus device/capacity before opening anything;
+   verify `manifest.sourceFile` names the copied pickle's absolute path.
+3. Open only that disposable source/cache pair with the identified build. Retain
+   `UP_TO_DATE` and no-producer-invocation evidence, compare curves/blocks and
+   first/last/cross-shard event boundaries, and exercise repeated navigation and
+   cancellation. Record post-run hashes and distinguish permitted consumer-derived
+   caches from base-data mutation or parser reruns.
+4. Keep current v3 results separate from the historical receipt below. The
+   artifact-only runner's strict `saltedCacheHash` gate intentionally rejects
+   applying an old v2 receipt to v3 output; never alter that receipt or relax hashes.
+
+No current v3 consumer build or real GUI run is accepted by this document.
+
+## Historical v2 forward chain: trusted source → physical export → real GUI
+
+The pinned historical acceptance below used `mem_snapshot_parser_v2`. Current
+exports use `mem_snapshot_parser_v3`; the historical GUI result does not verify
+the new parser version. The commands below document the old run, not a safe
+current-CLI procedure against the old GUI. Running them with a current CLI emits
+v3; use the isolated-copy plan above, not the historical cache/consumer pair.
 
 1. Review/trust the source separately: pickle is executable input, not a sandbox.
    Record exact source SHA256, size, selected device and capacity. Default import

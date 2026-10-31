@@ -140,7 +140,7 @@ class SnapshotAnalyzer:
         This cleanup operation remains available after close(). While open,
         the analyzer can create fresh contexts on its next query or overview.
         """
-        self._context_cache.invalidate(db_path)
+        self._query_service.invalidate_context_cache(db_path)
 
     def get_focus(self) -> FocusState:
         self._ensure_open()

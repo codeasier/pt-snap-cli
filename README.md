@@ -124,6 +124,13 @@ byte units, allocated/active/reserved counters, expected output and partial repo
 - [Replayable pickle splitting](docs/en/splitting.md): one split strategy and a new output directory; separate from dataset import.
 - [Complete-dataset addressing](docs/en/sharded-snapshotdb.md#complete-dataset-focus-and-addressing-p1), [global built-in support](docs/en/querying.md#dataset-global-built-in-support-p3), and [recorded interoperability acceptance](docs/en/interop-acceptance.md): advanced contracts and evidence, not prerequisites for a first report.
 
+Native reuse retains content verification and disposable validation receipts.
+Compatible reuse checks source identity, complete member inventory, required
+schema and event endpoints, not database bytes or arbitrary row values; queries
+still perform independent admission. Parser-v2 caches require a new output
+directory for parser-v3 export, never replacement. See the
+[cache and preservation contract](docs/en/sharded-snapshotdb.md).
+
 ## Built-in Query Templates & Reports
 
 Use `pt-snap query --list` or `pt-snap capabilities --json` to inspect all 13 built-in templates and their parameter/output schemas:
@@ -168,8 +175,8 @@ Peak reports expose attribution completeness and same-event active-byte coverage
 group percentages use included bytes after filtering and ranking. See the
 [report guide](docs/en/querying.md#report-command) before interpreting a capped breakdown.
 
-Standalone imports preserve ordered structured callstack frames. Use `event_frames` to
-inspect them, or `report memory-tree --event-id 100 --format html > memory-tree.html`
+Standalone imports and new native/compatible datasets preserve ordered frames.
+Use standalone `event_frames` (dataset `event` exposes `frames`), or `report memory-tree --event-id 100 --format html > memory-tree.html`
 to explore event-time occupancy by caller path. See
 [frame memory breakdown](docs/en/querying.md#frame-memory-breakdown); older
 text-only databases require re-importing the original snapshot.
@@ -181,6 +188,9 @@ Dataset work limits are configurable with `--max-work-rows`, `--max-work-bytes`,
 Defaults remain 100000 work rows / 64 MiB work bytes / 512 MiB scratch pages; see
 [public dataset limits](docs/en/querying.md#public-dataset-limits) for precedence,
 deep-pagination costs and all-or-error semantics.
+
+Concurrent frame-tree queries on one Python analyzer use the latest request;
+superseded queries raise `QueryCancelledError`. See [API cancellation semantics](docs/en/snapshot-analyzer-api.md#errors-and-scope).
 
 ## Agent Skills
 

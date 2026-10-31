@@ -252,6 +252,14 @@ other_metadata = analyzer.get_database_metadata("/path/to/other.db")
 
 ## 错误与范围
 
+同一个 analyzer 上并发调用 `active_memory_frame_tree_at_event` 时，只执行最新请求。
+新请求会中断旧任务的 Python 计算和 SQLite 语句，排队中已过期的请求不会继续计算。
+旧调用抛出 `pt_snap_cli.core.QueryCancelledError`（JSON 错误码为 `QUERY_CANCELLED`），
+不会返回成功的部分树。关闭 analyzer 或清理其 context 缓存也会取消未结束的拆解任务。
+每个任务在执行线程中关闭自己持有的数据库连接后，下一任务才开始计算。其它模板保留
+原有并发约定；不同 analyzer/service 实例、不同 CLI 进程之间互不取消。这不会增加
+持久化的拆解结果缓存。
+
 - `set_focus()` 在数据库不存在时抛出 `FileNotFoundError`，在 SnapshotDB schema 无效时
   抛出 `ValueError`。设备校验使用共享的 `InvalidDeviceError`；没有任何可解析数据库时只
   设置设备会抛出 `RuntimeError`。

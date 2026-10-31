@@ -483,6 +483,7 @@ def test_all_dataset_row_keys_are_declared_by_shared_template_schema(tmp_path, l
             "stack_bytes": 0 if detailed else -1,
         },
         "preexisting_live": {"event_id": event},
+        "active_memory_frame_tree_at_event": {"event_id": event},
     }
     with SnapshotAnalyzer(root) as analyzer:
         for template in DATASET_SUPPORT:

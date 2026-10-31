@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
 import shlex
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -323,4 +325,467 @@ def test_one_physical_shard_cannot_pass_sharded_acceptance(acceptance, tmp_path,
             env={},
         )
     assert [command[1] for command in commands] == ["import", "import", "overview"]
+    assert focus.read_text() == "unchanged"
+
+
+def _frame_identity(frames, fingerprint="generation-1", device=0):
+    canonical = json.dumps(
+        frames, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False
+    )
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return f"dataset:{fingerprint}:device:{device}:frames:sha256:{digest}"
+
+
+def _standalone_query(root, template, rows):
+    return {
+        "db_path": str(root / "standalone.db"),
+        "focus_source": "explicit",
+        "device_id": 0,
+        "template": template,
+        "rows": rows,
+        "returned": len(rows),
+        "total": len(rows),
+        "total_is_exact": True,
+        "has_more": False,
+        "truncated": False,
+    }
+
+
+def _event_parity_case(root):
+    # Recursive duplicates and distinct neighbors make both deduplication and
+    # reordering observable. Raw extras are checked by identity, not falsely
+    # presented as fields exposed by standalone event_frames.
+    leaf = {"filename": "tensor.py", "line": 1, "name": "leaf", "extra": {"flag": True}}
+    frames = [
+        leaf,
+        {"filename": "model.py", "line": 20, "name": "forward"},
+        deepcopy(leaf),
+        {"filename": "train.py", "line": 30, "name": "train"},
+    ]
+    base = [
+        {
+            "id": 4095,
+            "action": 4,
+            "address": 4096,
+            "size": 1,
+            "stream": 0,
+            "allocated": 1,
+            "active": 1,
+            "reserved": 4096,
+            "callstack": "full callstack",
+        },
+        {
+            "id": 4096,
+            "action": 6,
+            "address": 4096,
+            "size": 1,
+            "stream": 0,
+            "allocated": 0,
+            "active": 0,
+            "reserved": 4096,
+            "callstack": "",
+        },
+    ]
+    reference = _standalone_query(root, "event", base)
+    crossing = deepcopy(reference)
+    crossing["db_path"] = str(root / "dataset")
+    crossing["scope"] = {
+        "source_coverage": {
+            "range_complete": True,
+            "event_position": "after",
+            "coverage_scope": "returned_events",
+            "events_resolved": 2,
+            "ordered_frame_events": 2,
+            "source_queries": 8,
+        }
+    }
+    frame_references = {}
+    for row, raw in zip(crossing["rows"], (frames, []), strict=True):
+        identity = _frame_identity(raw)
+        row.update(
+            source_stack_id=identity,
+            stack_id=identity,
+            stack_kind="captured",
+            text_kind="captured" if row["callstack"] else "missing",
+            stack_event_id=row["id"],
+            frames=raw,
+            frames_status="ordered",
+        )
+        frame_references[row["id"]] = _standalone_query(
+            root,
+            "event_frames",
+            [
+                {
+                    "event_id": row["id"],
+                    "stack_id": 77,
+                    "position": index,
+                    "frame_id": (5, 9, 5, 11)[index],
+                    **{key: frame[key] for key in ("filename", "line", "name")},
+                }
+                for index, frame in enumerate(raw)
+            ],
+        )
+    return crossing, reference, frame_references
+
+
+def _check_event_parity(acceptance, root, case):
+    return acceptance._event_parity(
+        *case,
+        standalone=root / "standalone.db",
+        fingerprint="generation-1",
+        device=0,
+        event_ids=[4095, 4096],
+    )
+
+
+def test_event_parity_accepts_ordered_recursive_and_empty_stacks(acceptance, tmp_path):
+    case = _event_parity_case(tmp_path)
+    unchanged = deepcopy(case)
+    assert _check_event_parity(acceptance, tmp_path, case) == 4
+    assert case == unchanged
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["id", "action", "address", "size", "stream", "allocated", "active", "reserved", "callstack"],
+)
+@pytest.mark.parametrize("damage", ["value", "missing", "type"])
+def test_event_parity_never_masks_base_event_changes(acceptance, tmp_path, field, damage):
+    case = _event_parity_case(tmp_path)
+    row = case[0]["rows"][0]
+    value = row[field]
+    if damage == "missing":
+        del row[field]
+    elif damage == "value":
+        row[field] = value + (" changed" if isinstance(value, str) else 1)
+    else:
+        row[field] = None if isinstance(value, str) else float(value)
+    with pytest.raises(acceptance.AcceptanceError, match="base field|event fields"):
+        _check_event_parity(acceptance, tmp_path, case)
+
+
+@pytest.mark.parametrize(
+    "damage", ["event_order", "missing_event", "unknown_field", "missing_detail"]
+)
+def test_event_parity_rejects_changed_event_shape_or_order(acceptance, tmp_path, damage):
+    case = _event_parity_case(tmp_path)
+    rows = case[0]["rows"]
+    if damage == "event_order":
+        rows.reverse()
+    elif damage == "missing_event":
+        rows.pop()
+    elif damage == "unknown_field":
+        rows[0]["unrecognized"] = "not silently stripped"
+    else:
+        del rows[0]["frames_status"]
+    with pytest.raises(acceptance.AcceptanceError):
+        _check_event_parity(acceptance, tmp_path, case)
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "drop",
+        "empty",
+        "duplicate",
+        "reorder",
+        "filename",
+        "line",
+        "name",
+        "missing_field",
+        "float_line",
+        "bool_line",
+    ],
+)
+def test_event_parity_rejects_frame_damage_even_with_updated_identity(acceptance, tmp_path, damage):
+    case = _event_parity_case(tmp_path)
+    row = case[0]["rows"][0]
+    frames = row["frames"]
+    if damage == "drop":
+        frames.pop(2)
+    elif damage == "empty":
+        frames.clear()
+    elif damage == "duplicate":
+        frames.append(deepcopy(frames[0]))
+    elif damage == "reorder":
+        frames.reverse()
+    elif damage == "missing_field":
+        del frames[0]["filename"]
+    elif damage == "float_line":
+        frames[0]["line"] = 1.0
+    elif damage == "bool_line":
+        frames[0]["line"] = True
+    else:
+        frames[0][damage] = 999 if damage == "line" else "corrupt"
+    row["source_stack_id"] = row["stack_id"] = _frame_identity(frames)
+    with pytest.raises(acceptance.AcceptanceError, match="ordered frame count|ordered frame field"):
+        _check_event_parity(acceptance, tmp_path, case)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("frames", None),
+        ("frames", ["not a frame"]),
+        ("frames_status", "text_only"),
+        ("stack_kind", "missing"),
+        ("text_kind", "missing"),
+        ("stack_event_id", 4096),
+        ("stack_event_id", 4095.0),
+        ("stack_id", "local:77"),
+        ("source_stack_id", "local:77"),
+    ],
+)
+def test_event_parity_requires_full_ordered_source_evidence(acceptance, tmp_path, field, value):
+    case = _event_parity_case(tmp_path)
+    case[0]["rows"][0][field] = value
+    with pytest.raises(acceptance.AcceptanceError):
+        _check_event_parity(acceptance, tmp_path, case)
+
+
+@pytest.mark.parametrize("damage", ["fingerprint", "device", "digest", "extra_raw_field"])
+def test_event_parity_checks_full_raw_digest_and_namespace(acceptance, tmp_path, damage):
+    case = _event_parity_case(tmp_path)
+    row = case[0]["rows"][0]
+    if damage == "extra_raw_field":
+        row["frames"][0]["extra"]["flag"] = False
+    else:
+        identity = _frame_identity(
+            row["frames"],
+            "generation-2" if damage == "fingerprint" else "generation-1",
+            1 if damage == "device" else 0,
+        )
+        if damage == "digest":
+            identity = identity[:-1] + ("0" if identity[-1] != "0" else "1")
+        row["source_stack_id"] = row["stack_id"] = identity
+    with pytest.raises(acceptance.AcceptanceError, match="identity/namespace"):
+        _check_event_parity(acceptance, tmp_path, case)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("range_complete", False),
+        ("event_position", "before"),
+        ("coverage_scope", "all_events"),
+        ("events_resolved", 1),
+        ("events_resolved", 2.0),
+        ("ordered_frame_events", 1),
+        ("ordered_frame_events", 2.0),
+        ("source_queries", 0),
+        ("source_queries", True),
+    ],
+)
+def test_event_parity_rejects_incomplete_or_misleading_source_coverage(
+    acceptance, tmp_path, field, value
+):
+    case = _event_parity_case(tmp_path)
+    case[0]["scope"]["source_coverage"][field] = value
+    with pytest.raises(acceptance.AcceptanceError, match="source coverage"):
+        _check_event_parity(acceptance, tmp_path, case)
+
+
+@pytest.mark.parametrize("template", ["event", "event_frames"])
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("db_path", "/wrong"),
+        ("focus_source", "project"),
+        ("device_id", 1),
+        ("device_id", False),
+        ("template", "wrong"),
+        ("returned", -1),
+        ("total", -1),
+        ("total_is_exact", False),
+        ("has_more", True),
+        ("truncated", True),
+    ],
+)
+def test_event_parity_rejects_incomplete_or_wrong_standalone_reference(
+    acceptance, tmp_path, template, field, value
+):
+    case = _event_parity_case(tmp_path)
+    query = case[1] if template == "event" else case[2][4095]
+    query[field] = value
+    with pytest.raises(acceptance.AcceptanceError, match="Standalone"):
+        _check_event_parity(acceptance, tmp_path, case)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("event_id", 4096), ("position", 1), ("position", False), ("frame_id", "5"), ("stack_id", -1)],
+)
+def test_event_parity_validates_frame_reference_locators(acceptance, tmp_path, field, value):
+    case = _event_parity_case(tmp_path)
+    case[2][4095]["rows"][0][field] = value
+    with pytest.raises(acceptance.AcceptanceError, match="standalone frame"):
+        _check_event_parity(acceptance, tmp_path, case)
+
+
+@pytest.mark.parametrize(
+    ("empty_boundary", "supplement_empty"), [(False, False), (True, False), (True, True)]
+)
+def test_sharded_cli_uses_independent_frame_references_for_both_formats(
+    acceptance, tmp_path, monkeypatch, empty_boundary, supplement_empty
+):
+    focus = tmp_path / "focus.json"
+    focus.write_text("unchanged")
+    standalone = tmp_path / "standalone.db"
+    devices = [{"device_id": 0, "first_event_id": 0, "last_event_id": 8191}]
+    standalone_peak = {"device_id": 0, "rows": [{"peak_allocated": 1}]}
+    payloads = {}
+    for format_name in ("pt-snap-native-v2", "compatibility-v1"):
+        root = tmp_path / format_name
+        root.mkdir()
+        members = []
+        for index in (0, 1):
+            member = root / f"slice_{index:05d}.db"
+            member.write_bytes(b"not opened by mocked CLI")
+            members.append(
+                {
+                    "index": index,
+                    "db_path": str(member),
+                    "first_event_id": index * 4096,
+                    "last_event_id": (index + 1) * 4096 - 1,
+                }
+            )
+        overview = _overview(root)
+        overview["devices"] = devices
+        overview["dataset"]["format"] = format_name
+        overview["dataset"]["devices"] = [{"device_id": 0, "event_count": 8192, "slices": members}]
+        payloads[format_name] = overview
+    imports = {}
+    calls = []
+    crossing, reference, frame_references = _event_parity_case(tmp_path)
+    captured = deepcopy(crossing["rows"][0])
+    captured["id"] = captured["stack_event_id"] = 1
+    captured_reference = deepcopy(reference["rows"][0])
+    captured_reference["id"] = 1
+    captured_frames = deepcopy(frame_references[4095])
+    for row in captured_frames["rows"]:
+        row["event_id"] = 1
+    if supplement_empty:
+        captured["frames"] = []
+        captured["stack_id"] = captured["source_stack_id"] = _frame_identity([])
+        captured_frames = _standalone_query(tmp_path, "event_frames", [])
+    if empty_boundary:
+        crossing["rows"][0]["frames"] = []
+        crossing["rows"][0]["callstack"] = reference["rows"][0]["callstack"] = ""
+        crossing["rows"][0]["text_kind"] = "missing"
+        crossing["rows"][0]["stack_id"] = crossing["rows"][0]["source_stack_id"] = _frame_identity(
+            []
+        )
+        frame_references[4095] = _standalone_query(tmp_path, "event_frames", [])
+
+    def cli(command, **kwargs):
+        calls.append(command)
+        assert command[0] == "installed-pt-snap" and command[-1] == "--json"
+        action = command[1]
+        if action == "import":
+            assert "--no-focus" in command
+            name = command[command.index("--format") + 1]
+            imports[name] = imports.get(name, 0) + 1
+            return {
+                "db_path": str(tmp_path / name),
+                "dataset_path": str(tmp_path / name),
+                "format": name,
+                "rebuilt": imports[name] == 1,
+                "reused": imports[name] == 2,
+                "focus_state": None,
+                "slice_count": 2,
+            }
+        target = Path(command[2])
+        root = target.parent if target.name == "manifest.json" else target
+        if action == "overview":
+            result = deepcopy(payloads[root.name])
+            result["db_path"] = str(target)
+            return result
+        assert action == "query"
+        assert command[command.index("--device") + 1] == "0"
+        template = command[command.index("--template-use") + 1]
+        params = json.loads(command[command.index("--params") + 1]) if "--params" in command else {}
+        if template == "event_frames":
+            assert target == standalone and params["frame_order"] == "original"
+            assert "--exact-total" in command
+            return deepcopy(
+                captured_frames if params["event_id"] == 1 else frame_references[params["event_id"]]
+            )
+        if target == standalone:
+            assert template == "event"
+            if params.get("limit") == 1:
+                assert params == {
+                    "min_id": 0,
+                    "order_by": "callstack",
+                    "order_dir": "DESC",
+                    "limit": 1,
+                }
+                # This locator is deliberately paginated, unlike the proof queries.
+                return {
+                    **_standalone_query(tmp_path, "event", [captured_reference]),
+                    "has_more": True,
+                    "truncated": True,
+                    "total_is_exact": False,
+                }
+            assert "--exact-total" in command
+            return deepcopy(
+                _standalone_query(tmp_path, "event", [captured_reference])
+                if params.get("id") == 1
+                else reference
+            )
+        query = _query(root)
+        query["db_path"] = str(target)
+        query["template"] = template
+        query["scope"]["slice_indices"] = [0, 1]
+        if template == "memory_peak":
+            query["rows"] = standalone_peak["rows"]
+            query["scope"]["actual_range"] = {"real_event_count": 8192}
+        elif "id" in params:
+            event_id = params["id"]
+            query["scope"]["slice_indices"] = [event_id // 4096]
+            query["scope"]["source_coverage"] = {"range_complete": True}
+            query["rows"] = [{"id": event_id}]
+            if event_id == 1:
+                query["rows"] = [captured]
+                query["scope"]["source_coverage"] = {
+                    **crossing["scope"]["source_coverage"],
+                    "events_resolved": 1,
+                    "ordered_frame_events": 1,
+                }
+        else:
+            assert params == {"min_id": 4095, "max_id": 4096}
+            assert "--exact-total" in command
+            query["rows"] = crossing["rows"]
+            query["scope"].update(crossing["scope"])
+        query.update(returned=len(query["rows"]), total=len(query["rows"]), total_is_exact=True)
+        return deepcopy(query)
+
+    monkeypatch.setattr(acceptance, "_run_json", cli)
+
+    def run():
+        return acceptance._sharded_acceptance(
+            Path("installed-pt-snap"),
+            tmp_path / "unused.pkl",
+            tmp_path,
+            4096,
+            standalone,
+            {"devices": devices},
+            standalone_peak,
+            focus,
+            cwd=tmp_path,
+            env={},
+        )
+
+    if supplement_empty:
+        with pytest.raises(acceptance.AcceptanceError, match="no nonempty frame evidence"):
+            run()
+        assert focus.read_text() == "unchanged"
+        return
+    evidence = run()
+    assert [item["format"] for item in evidence] == ["pt-snap-native-v2", "compatibility-v1"]
+    assert all(
+        item["ordered_frame_field_parity"] and item["nonempty_ordered_frames_checked"]
+        for item in evidence
+    )
+    frame_calls = [command for command in calls if "event_frames" in command]
+    assert len(frame_calls) == (6 if empty_boundary else 4)
     assert focus.read_text() == "unchanged"

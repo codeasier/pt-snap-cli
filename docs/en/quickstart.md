@@ -169,7 +169,9 @@ Native output is not msinsight-compatible.
 replaced, even with `--force`; compatibility, cache validation, GUI entrance and
 fixed-version evidence have their own [protocol contract](sharded-snapshotdb.md#explicit-msinsight-compatible-export-p2).
 Read [recorded interoperability acceptance](interop-acceptance.md) before claiming
-GUI reuse. A matching hash alone is not GUI acceptance.
+GUI reuse. A matching hash alone is not GUI acceptance. The historical pinned
+v2 GUI reparses current v3 exports and can rewrite their caches; do not open the
+only copy. Current v3 consumer acceptance remains unverified.
 
 ### Optional: Split a Snapshot
 

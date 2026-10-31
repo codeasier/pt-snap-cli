@@ -40,10 +40,12 @@ def isolate(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("device", [0, 2])
-def test_all_eleven_contracts_against_independent_physical_reference(tmp_path, device):
+def test_text_contracts_against_independent_physical_reference(tmp_path, device):
     root = case(tmp_path)
     result = compare_artifact(root, device, tmp_path / "reference.db")
-    assert set(result["templates"]) == set(DATASET_SUPPORT)
+    # This independent physical reference has text stacks only. Frame paths
+    # have separate real-import differential coverage against a structured DB.
+    assert set(result["templates"]) == set(DATASET_SUPPORT) - {"active_memory_frame_tree_at_event"}
     assert result["real_events"] == 16 and result["canonical_lifecycles"] == 10
     assert result["raw_block_rows"] == 61 and result["repeated_block_rows"] == 51
     assert result["GUI"] == "human-deferred/pending/not-run"
@@ -166,14 +168,47 @@ def test_compatible_owned_cache_reuse_and_external_force_preserve_actual_bytes(t
     reused = service.import_snapshot(dataclasses.replace(request, force=True))
     assert reused.reused and reused.metadata is None
     assert inventory(result.db_path) == external
-    # Invalid external artifacts must still be preserved, including under force.
+    # Compatible reuse is structural, not content validation. Arbitrary row
+    # edits are deliberately not detected or repaired, even under force.
     with closing(sqlite3.connect(result.db_path / "device_0/slice_00000.db")) as conn, conn:
         conn.execute("UPDATE block_0 SET size=size+1")
-    invalid = inventory(result.db_path)
-    with pytest.raises(ImportExecutionError, match="preserv"):
-        service.import_snapshot(dataclasses.replace(request, force=True))
-    assert inventory(result.db_path) == invalid
+    edited = inventory(result.db_path)
+    assert edited != external
+    for force in (False, True):
+        reused = service.import_snapshot(dataclasses.replace(request, force=force))
+        assert reused.reused and reused.metadata is None
+        assert inventory(result.db_path) == edited
     assert before != external
+
+
+@pytest.mark.parametrize("external", [False, True])
+@pytest.mark.parametrize("damage", ["member", "schema", "endpoint"])
+def test_compatible_structural_rejection_preserves_every_remaining_byte(tmp_path, external, damage):
+    request = options(tmp_path, focus=False)
+    service = ImportService()
+    result = service.import_snapshot(request)
+    manifest = result.db_path / "manifest.json"
+    if external:
+        raw = json.loads(manifest.read_bytes())
+        raw.pop("ptSnap")
+        manifest.write_text(json.dumps(raw), encoding="utf-8")
+    member = result.db_path / "device_0/slice_00000.db"
+    if damage == "member":
+        member.unlink()
+    else:
+        with closing(sqlite3.connect(member)) as conn, conn:
+            if damage == "schema":
+                conn.execute("DROP TABLE block_0")
+            else:
+                # Indexed endpoints remain mandatory even without row scans.
+                changed = conn.execute("DELETE FROM trace_entry_0 WHERE id=0")
+                assert changed.rowcount == 1
+    before = inventory(result.db_path)
+    for force in (False, True):
+        with pytest.raises(ImportExecutionError, match="preserv"):
+            service.import_snapshot(dataclasses.replace(request, force=force))
+        assert inventory(result.db_path) == before
+    assert not (tmp_path / ".pt-snap").exists()
 
 
 @pytest.mark.parametrize("kind", ["trace", "block", "dictionary"])

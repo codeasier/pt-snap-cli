@@ -471,7 +471,7 @@ def _finish_stacks(sources, grouped, params, scope, events, ordered):
 
 
 def _stacks(sources, low, high, items, params, scope):
-    if sources.dataset.ordered_frames_version != 1:
+    if sources.dataset.ordered_frames_version not in (1, 2):
         return _text_stacks(sources, low, high, items, params, scope)
     grouped = {}
     events = ordered = 0
@@ -485,13 +485,34 @@ def _stacks(sources, low, high, items, params, scope):
             join = " LEFT JOIN callstack cs ON t.callstackId=cs.id"
         else:
             projection += ", t.callstack"
-        batch = sources.read(
-            sources.dataset.root / item.file,
-            f"SELECT {projection} FROM {trace} t{join} "
-            "WHERE t.id>=0 AND t.id>=? AND t.id<=? ORDER BY t.id",
-            [low, high],
-        )
-        refs = sources.events_from_rows(item, batch)
+        weights = None
+        if sources.dataset.ordered_frames_version == 2:
+            from .dataset_frames import attach_frames
+
+            path = sources.dataset.root / item.file
+            attach_frames(sources, path, [])  # Validate optional schema, no frame fetch.
+            text = "cs.callstack" if sources.dataset.callstack_layout == "v2" else "t.callstack"
+            stack_group = ""
+            if sources._frame_schemas[path]:
+                join += " LEFT JOIN pt_snap_event_stack es ON es.eventId=t.id"
+                stack_group = "es.stackId,"
+            batch = sources.read(
+                path,
+                "SELECT MIN(t.id) AS id, COUNT(*) AS alloc_count, "
+                f"SUM(t.size) AS total_size, MAX(t.size) AS max_size FROM {trace} t{join} "
+                f"WHERE t.id>=0 AND t.id>=? AND t.id<=? GROUP BY {stack_group}{text} COLLATE BINARY",
+                [low, high],
+            )
+            weights = {row["id"]: row for row in batch}
+            refs = sources.events(cast(int, row["id"]) for row in batch)
+        else:
+            batch = sources.read(
+                sources.dataset.root / item.file,
+                f"SELECT {projection} FROM {trace} t{join} "
+                "WHERE t.id>=0 AND t.id>=? AND t.id<=? ORDER BY t.id",
+                [low, high],
+            )
+            refs = sources.events_from_rows(item, batch)
         for source in refs.values():
             sources.budget.remaining()
             text = source.event.get("callstack")
@@ -521,14 +542,23 @@ def _stacks(sources, low, high, items, params, scope):
                     "frames_status": source.frames_status,
                 },
             )
-            row["alloc_count"] += 1
-            row["total_size"] += source.event["size"]
-            row["max_size"] = max(row["max_size"], source.event["size"])
+            weight = (
+                weights[source.event["id"]]
+                if weights is not None
+                else {
+                    "alloc_count": 1,
+                    "total_size": source.event["size"],
+                    "max_size": source.event["size"],
+                }
+            )
+            row["alloc_count"] += weight["alloc_count"]
+            row["total_size"] += weight["total_size"]
+            row["max_size"] = max(row["max_size"], weight["max_size"])
             if row["text_kind"] != "captured" and source.text_kind == "captured":
                 row["callstack"], row["stack_event_id"] = text, source.event["id"]
                 row["text_kind"] = "captured"
-            events += 1
-            ordered += source.frames is not None
+            events += weight["alloc_count"]
+            ordered += weight["alloc_count"] if source.frames is not None else 0
     return _finish_stacks(sources, grouped, params, scope, events, ordered)
 
 
@@ -636,7 +666,8 @@ def global_query(
     if template == "event":
         refs = sources.events(cast(int, r["id"]) for r in selected)
         detailed = (
-            sources.dataset.ordered_frames_version == 1 or cast(int, params["stack_bytes"]) >= 0
+            sources.dataset.ordered_frames_version in (1, 2)
+            or cast(int, params["stack_bytes"]) >= 0
         )
         selected = [dict(refs[cast(int, r["id"])].event) for r in selected]
         if detailed:
