@@ -4,7 +4,9 @@
 
 ## 证据分层与固定目标
 
-唯一上游目标是 **Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5**。
+历史 parser-v2 验收与物理 schema 参考使用
+**Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5**，
+它不是当前 parser-v3 导出已验证的消费端目标。
 协议/schema、隔离源函数、合成 CI、真实原版生产端产物的读取差分、GUI/C++ 实测是
 不同证据层，不能互相替代。**2026-10-11 的有界真实 GUI/C++ 与原版生产端反向验收已通过**，
 详见下方记录。[#205 待验收说明](https://github.com/codeasier/pt-snap-cli/issues/205#issuecomment-5987264017)
@@ -19,11 +21,38 @@
 本项目 MIT lineage。真正移植须走 snapshot provenance/PR 声明并保留 notices。
 可执行 pickle 的信任是独立 fixture 审核；本验收不新增已提交 pickle。
 
-## 正向：可信源 → 物理兼容导出 → 真实 GUI
+## 当前 parser-v3 状态与安全重验
+
+当前导出使用 `mem_snapshot_parser_v3`，历史固定消费端使用 `mem_snapshot_parser_v2`，
+v3 hash 不匹配时**必然重解析**；该路径先删除 manifest/log，再调用生产者。
+不要让旧 GUI 打开唯一的源/缓存副本。历史字段 `ptSnap.identity.targetRevision`
+是 schema/接口参考身份，不是消费端支持证明。已核上游 master
+[`5c722719e1d288106f8d18588b0a33d979a4065b`](https://gitcode.com/Ascend/msinsight/blob/5c722719e1d288106f8d18588b0a33d979a4065b/scripts/MemSnapDump/util/snapshot_cache.py)
+也仍计算 v2 salt 并拒绝不匹配的 cache hash。因此与这些已核消费端的复用是确定不兼容，
+不只是尚未实测；尚未选择任何已验证的 v3 消费端目标。
+
+当前 v3 GUI 缓存复用声明必须满足以下全部条件：
+
+1. 明确不可变消费端 commit 与准确 build，执行前检查 parser salt、manifest/成员/schema
+   检查与重解析路径。仅版本标签、当前分支名或旧 v2 GUI receipt 都不足够。
+2. 获得该次真实 GUI 运行的明确授权。在新的隔离目录中使用另行信任的 pickle 的字节一致
+   副本，并由候选 wheel 生成新的邻接导出。不要搬移或覆盖原缓存，也不要改标签伪装 v2 hash；
+   应重新导出。打开前记录源、wheel、manifest、成员 hash 以及设备/容量，
+   并核对 `manifest.sourceFile` 指向 pickle 副本的绝对路径。
+3. 只用指定 build 打开该可丢弃源/缓存对，保存 `UP_TO_DATE` 与无生产者调用证据，
+   对照曲线/block、首尾及跨片事件边界，覆盖重复导航与取消。记录运行后 hash，并区分
+   允许的消费端派生缓存、基础数据变更和 parser 重跑。
+4. 当前 v3 结果与下方历史 receipt 分开保存。产物 runner 的严格 `saltedCacheHash` 门禁
+   会拒绝把旧 v2 receipt 用于 v3 导出；不得修改历史 receipt 或放宽 hash 校验。
+
+本文尚未接受任何当前 v3 消费端 build 或真实 GUI 运行。
+
+## 历史 v2 正向：可信源 → 物理兼容导出 → 真实 GUI
 
 以下固定历史验收使用 `mem_snapshot_parser_v2`，当前导出已使用
-`mem_snapshot_parser_v3`；历史 GUI 结果不代表新版解析器已验收。
-需要按 v3 复用时，请换新的输出目录重新导出 v2 缓存。
+`mem_snapshot_parser_v3`；历史 GUI 结果不代表新版解析器已验收。下方命令只记录旧运行，
+不是让当前 CLI 对接旧 GUI 的安全操作指引；当前 CLI 执行它们会生成 v3。
+新验收请用上方隔离副本方案，不要复用历史缓存/消费端组合。
 
 1. 先独立审核/信任源：pickle 可执行，不是沙箱。记录 SHA256、大小、设备与容量。
    默认 import 仍单库，原生/兼容模式显式区分。

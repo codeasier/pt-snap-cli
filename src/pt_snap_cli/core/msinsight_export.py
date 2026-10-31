@@ -1,11 +1,12 @@
-"""Original interface-facts converter for fixed msinsight 101f65b8 compatibility.
+"""Original converter using the historical msinsight 101f65b8 physical schema.
 
 No Ascend implementation is copied (its source is Mulan PSL v2). Physical
-schema/hash facts: blobs 1fe50a5136f85365db55f4632d58f3cf7090431e,
+schema and historical salt-order facts: blobs 1fe50a5136f85365db55f4632d58f3cf7090431e,
 95612509ef990ac6b7034919dae4938cc6acf3ad and
 ca421c7b33f3a0050df9e7a01e666f558801bc2f. See sharded-snapshotdb docs.
 Only caller-owned finalized native staging is converted; existing caches are
-never mutated, even under force. This is not GUI acceptance.
+never mutated, even under force. Current exports use parser-v3 hashes; the pinned
+parser-v2 consumer reparses them. No current v3 GUI acceptance is claimed.
 """
 
 from __future__ import annotations
@@ -61,6 +62,7 @@ def compatible_identity(source_hash: str, device: int | None, capacity: int) -> 
         "referenceContractVersion": REFERENCE_VERSION,
         "metadataSchemaVersion": 1,
         "importFormatVersion": 1,
+        # Historical schema/reference identity, not a current GUI-reuse claim.
         "targetRevision": MSINSIGHT_REVISION,
     }
 

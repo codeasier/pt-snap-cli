@@ -153,7 +153,8 @@ RSS。输出路径、完整成员校验、force/恢复行为及支持的内建�
 `--format msinsight` 是显式选择。已有兼容目标即使 `--force` 也不替换；兼容性、
 缓存校验、GUI 入口及固定版本证据有独立的
 [协议合同](sharded-snapshotdb.md#显式-msinsight-兼容导出p2)。声称 GUI 复用前请阅读
-[已记录的互操作验收](interop-acceptance.md)，仅 hash 相同不等于 GUI 验收通过。
+[已记录的互操作验收](interop-acceptance.md)，仅 hash 相同不等于 GUI 验收通过。历史固定
+v2 GUI 会重解析当前 v3 导出并可能改写缓存，不要打开唯一副本；当前 v3 消费端验收仍未验证。
 
 ### 可选：拆分快照
 

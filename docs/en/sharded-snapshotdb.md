@@ -484,10 +484,18 @@ failure paths; no live upstream GUI or performance acceptance is claimed.
 ## Explicit msinsight-Compatible Export (P2)
 
 `pt-snap import snapshot.pkl --format msinsight --json` (alias
-`--format compatibility-v1`) targets **only**
-`Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5`. Its supported entrance is
-opening the **same original pickle** in that target with adjacent
-`<original-path>.msinsight/`, not direct standalone-directory GUI import.
+`--format compatibility-v1`) uses the physical schema referenced from
+`Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5`. That revision is a
+**historical schema/reference target, not a current parser-v3 GUI-reuse target**.
+Its parser uses `mem_snapshot_parser_v2`: it treats current v3 hashes as a cache
+miss and starts a reparse that can remove the manifest/log and rewrite cache data.
+Do not open the only copy of a current export in that old GUI.
+
+The historical GUI entrance was the **same original pickle** plus adjacent
+`<original-path>.msinsight/`, not direct standalone-directory import. Current v3
+consumer revision/build and no-reparse GUI acceptance remain unverified. Any new
+acceptance needs an explicitly identified v3 consumer and disposable, separately
+approved source/cache copies; see the [safe retest plan](interop-acceptance.md#current-parser-v3-status-and-safe-retest).
 `--output-dir` selects another parent for pt-snap; relocation alone does not create
 an upstream GUI entrance. `sourceFile` is the absolute original source path.
 Capacity defaults to `500000` and can be set with `--events-per-slice`; default
@@ -519,6 +527,8 @@ Independent `ptSnap.identity` fields are `sourceSha256`,
 `requestedDevice`, `eventsPerSlice`, `outputFormat=compatibility-v1`,
 `manifestContractVersion=1`, `exportContractVersion=3`, `referenceContractVersion=1`,
 `metadataSchemaVersion=1`, `importFormatVersion=1`, and full `targetRevision`.
+The legacy `targetRevision` name records the historical schema/reference identity;
+it does not select a consumer build or certify current GUI cache reuse.
 The `ptSnap` object also contains `metadata` and `omittedDevices`. Ownership/identity
 requires a complete member inventory and identical per-slice metadata; unknown/external
 caches and unrelated files are not claimed as owned. Valid Insight caches can be
@@ -554,9 +564,9 @@ RSS/registry/block/disk bound. New exports also retain the optional version-2
 ordered-frame extension described above.
 
 **The artifact-only runner still reports its own GUI stage as pending/not-run.**
-The separate fixed-version real GUI/C++ acceptance on 2026-10-11 is recorded in
-[interoperability acceptance](interop-acceptance.md); the runner does not mark
-GUI acceptance passed automatically. Fixed-source parser checks complete manifest,
+The separate parser-v2 real GUI/C++ acceptance on 2026-10-11 is recorded in
+[interoperability acceptance](interop-acceptance.md); neither it nor the runner
+establishes current parser-v3 GUI acceptance. The historical fixed-source parser checks complete manifest,
 nonempty identical hash, every ready/resolved/existing member, read-only DB/device
 validation and allocation-cache existence **or buildability** before UP_TO_DATE.
 Derived allocation caches may modify DBs without invoking the producer: mtime or

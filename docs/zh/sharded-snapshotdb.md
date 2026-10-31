@@ -386,9 +386,15 @@ pickle 仍可能整体加载。分库只限制**单库真实事件数**，不限
 ## 显式 msinsight 兼容导出（P2）
 
 `pt-snap import snapshot.pkl --format msinsight --json`（别名
-`--format compatibility-v1`）**仅**对齐
-`Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5`。支持入口是在该目标版本
-打开**同一原始 pickle**及邻接 `<原始路径>.msinsight/`，不是 GUI 直接导入独立目录。
+`--format compatibility-v1`）采用参考自
+`Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5` 的物理 schema。
+该版本是**历史 schema/接口参考，不是当前 parser-v3 GUI 缓存复用目标**。
+它使用 `mem_snapshot_parser_v2`，会将当前 v3 hash 视为缓存未命中并启动重解析，
+可能删除 manifest/log 并改写缓存数据。不要用该旧 GUI 打开当前导出产物的唯一副本。
+
+历史 GUI 入口是**同一原始 pickle**及邻接 `<原始路径>.msinsight/`，不是直接导入独立目录。
+当前 v3 消费端 revision/build 及免重解析 GUI 验收仍未验证。新验收须明确指定 v3 消费端，
+并使用另行授权的可丢弃源/缓存副本，见[安全重验方案](interop-acceptance.md#当前-parser-v3-状态与安全重验)。
 `--output-dir` 为 pt-snap 选择其他父目录，搬迁本身不创建上游入口。`sourceFile` 记录
 绝对原始源路径。容量默认 `500000`，可用 `--events-per-slice` 调整；默认单库及显式
 native-v2 输出仍独立且不变。
@@ -412,7 +418,8 @@ raw-frame 丢失与字符串 OOM action 强制转换属于已知局限，不应�
 独立 `ptSnap.identity` 字段为 `sourceSha256`、`requestedDevice`、`eventsPerSlice`、
 `outputFormat=compatibility-v1`、`manifestContractVersion=1`、`exportContractVersion=3`、
 `referenceContractVersion=1`、`metadataSchemaVersion=1`、`importFormatVersion=1`、完整
-`targetRevision`。`ptSnap` 另含 `metadata` 和 `omittedDevices`。所有权/身份校验
+`targetRevision`。该历史字段名记录 schema/接口参考身份，不选择消费端 build，也不证明
+当前 GUI 缓存复用已通过。`ptSnap` 另含 `metadata` 和 `omittedDevices`。所有权/身份校验
 要求成员清单完整且逐片 metadata 相同，不接管未知/外部缓存或无关文件。
 有效 Insight 缓存可以只读复用，不伪造生产者 metadata。CLI 版本变化本身不使缓存失效。
 
@@ -437,8 +444,8 @@ force 不绕过该规则。源路径/内容、选项/合同变化后须换新 `-
 上限。另保留独立的版本 2 去重 frame 扩展，详见[查询指南](querying.md#数据集去重帧扩展版本-2)。
 
 **仅检查已有产物的 runner 仍将自身 GUI 阶段标为待验收/not-run。**
-2026-10-11 独立固定版本真实 GUI/C++ 实测见[互操作验收](interop-acceptance.md)，
-不表示 runner 自动判定 GUI 通过。固定源码 parser 在 UP_TO_DATE 前检查 complete manifest、
+2026-10-11 独立 parser-v2 真实 GUI/C++ 实测见[互操作验收](interop-acceptance.md)，
+该历史记录和 runner 都不证明当前 parser-v3 GUI 已通过。历史固定源码 parser 在 UP_TO_DATE 前检查 complete manifest、
 非空相同 hash、每个 ready/可解析/存在成员、只读 DB/设备校验，以及 allocation cache
 存在**或可构建**。派生 allocation cache 可在不运行生产者时修改 DB，mtime 或新派生表
 不能单独证明重跑。真实 GUI 验收须保留 UP_TO_DATE/无 script 调用日志并对照曲线、block、
