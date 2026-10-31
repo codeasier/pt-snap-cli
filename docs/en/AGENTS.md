@@ -7,7 +7,7 @@ Translation counterpart: [Chinese guides](../zh/AGENTS.md).
 
 | Guide | Required behavior coverage |
 | --- | --- |
-| `quickstart.md` | PyPI/source setup, trusted import, focus and first query |
+| `quickstart.md` | Input/collection routing, PyPI setup, trusted import/focus effects, first report and metric interpretation |
 | `focus-management.md` | Explicit/environment/project/global resolution and persistence |
 | `querying.md` | Template discovery, params, semantics, pagination/completeness and timeout |
 | `splitting.md` | Strategy/device/format, original event IDs, replay validation and absent-destination publication |

@@ -27,6 +27,8 @@ Commands must be checked against group modules too; not all options live in
 
 - Public behavior changes update both language guides and relevant README entry
   points. Topic additions/moves also update `docs/README.md` navigation.
+- First-use walkthroughs route by input, show the default report before advanced
+  formats, and explain output units and import/focus writes next to the commands.
 - Installation walkthroughs lead with PyPI; keep editable developer setup
   separate. Agent integration uses skills plus CLI, and host restart/loading
   must be distinguished from on-disk installation status.

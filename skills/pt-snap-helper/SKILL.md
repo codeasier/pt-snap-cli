@@ -20,6 +20,49 @@ Use this skill when:
 Do not use this skill to run leak, peak, or fragmentation analysis. Hand off to
 the matching diagnostic skill after routing.
 
+## Normal route first
+
+1. Choose one goal/input row below; collection comes before later analysis.
+2. Verify the selected skill's availability and actual host loading using the
+   prerequisite contract. Do not install, import or diagnose from this helper.
+3. Hand off the explicit target/device and any complete reusable preflight
+   results; the diagnostic skill validates them before querying.
+
+Read only the recovery branch that applies: [custom/host availability](#interpret-availability-in-the-inspected-scope),
+[missing focus](#missing-focus-target-with-sibling-candidates), or
+[complete-output recovery](references/output-recovery.md). The full
+[preflight](#shared-diagnostic-preflight-contract), [boundaries](#boundaries) and
+[output](#output) remain mandatory; this route map is not a replacement.
+
+## Routing matrix
+
+Choose one next skill. If the goal is still ambiguous after this table, ask
+the user; do not start all diagnostic skills.
+
+Apply the capture row first when capture is the current stage, including a
+capture-then-analysis request. The missing-CLI analysis cells apply when the
+user is ready for analysis, not to the earlier collection stage. Every handoff
+requires host-loading evidence; a next-skill name alone is not a completed handoff.
+
+| User goal | Existing SnapshotDB | Only pickle | `pt-snap` missing | Need Ascend NPU capture |
+| --- | --- | --- | --- | --- |
+| Install or verify the CLI | `pt-snap-setup` | `pt-snap-setup` | `pt-snap-setup` | `pt-snap-setup` |
+| Collect an Ascend NPU pickle | `pt-snap-ascend-npu-collect` | `pt-snap-ascend-npu-collect` | `pt-snap-ascend-npu-collect` | `pt-snap-ascend-npu-collect` |
+| Leak / live allocations at end of trace | `pt-snap-memory-leak` | Trusted import first, then leak | `pt-snap-setup` first | Collect first, then trusted import, then leak |
+| What was live at a peak event | `pt-snap-memory-peak-breakdown` | Trusted import first, then peak | `pt-snap-setup` first | Collect first, then trusted import, then peak |
+| Allocator gaps / reserved-pool pressure | `pt-snap-memory-fragmentation` | Trusted import first, then fragmentation | `pt-snap-setup` first | Collect first, then trusted import, then fragmentation |
+
+Exact next-skill names:
+
+- `pt-snap-setup`
+- `pt-snap-ascend-npu-collect`
+- `pt-snap-memory-leak`
+- `pt-snap-memory-peak-breakdown`
+- `pt-snap-memory-fragmentation`
+
+CSV, SVG, and other visualization files are not SnapshotDB input. If the user
+only has those, stop and ask for a `.db` or a trusted pickle.
+
 ## Prerequisite: check skill availability
 
 If `pt-snap` is on PATH, inspect bundled skill status with JSON:
@@ -209,35 +252,6 @@ not live bytes. Preserve included-byte denominators and SAME selected-metric-eve
 report gap/coverage; one query/report cumulative 100000 fetched/output rows /64 MiB
 serialized values is NOT an RSS ceiling. Budget failure is no partial global proof.
 This helper still only hands off; it does not execute analysis queries.
-
-## Routing matrix
-
-Choose one next skill. If the goal is still ambiguous after this table, ask
-the user; do not start all diagnostic skills.
-
-Apply the capture row first when capture is the current stage, including a
-capture-then-analysis request. The missing-CLI analysis cells apply when the
-user is ready for analysis, not to the earlier collection stage. Every handoff
-requires host-loading evidence; a next-skill name alone is not a completed handoff.
-
-| User goal | Existing SnapshotDB | Only pickle | `pt-snap` missing | Need Ascend NPU capture |
-| --- | --- | --- | --- | --- |
-| Install or verify the CLI | `pt-snap-setup` | `pt-snap-setup` | `pt-snap-setup` | `pt-snap-setup` |
-| Collect an Ascend NPU pickle | `pt-snap-ascend-npu-collect` | `pt-snap-ascend-npu-collect` | `pt-snap-ascend-npu-collect` | `pt-snap-ascend-npu-collect` |
-| Leak / live allocations at end of trace | `pt-snap-memory-leak` | Trusted import first, then leak | `pt-snap-setup` first | Collect first, then trusted import, then leak |
-| What was live at a peak event | `pt-snap-memory-peak-breakdown` | Trusted import first, then peak | `pt-snap-setup` first | Collect first, then trusted import, then peak |
-| Allocator gaps / reserved-pool pressure | `pt-snap-memory-fragmentation` | Trusted import first, then fragmentation | `pt-snap-setup` first | Collect first, then trusted import, then fragmentation |
-
-Exact next-skill names:
-
-- `pt-snap-setup`
-- `pt-snap-ascend-npu-collect`
-- `pt-snap-memory-leak`
-- `pt-snap-memory-peak-breakdown`
-- `pt-snap-memory-fragmentation`
-
-CSV, SVG, and other visualization files are not SnapshotDB input. If the user
-only has those, stop and ask for a `.db` or a trusted pickle.
 
 ### Existing SnapshotDB
 
