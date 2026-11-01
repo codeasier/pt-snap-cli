@@ -90,7 +90,7 @@ class TestTraceEntry(unittest.TestCase):
         self.assertEqual(trace.frames, [])
 
     def test_from_dict_requires_action(self):
-        with self.assertRaisesRegex(ValueError, "Trace field 'action'"):
+        with self.assertRaises(KeyError):
             TraceEntry.from_dict({"size": 1024, "frames": []})
 
     def test_get_callstack(self):
@@ -149,11 +149,11 @@ class TestTraceEntry(unittest.TestCase):
             "",
         )
         incomplete = {**base, "frames": [{"filename": "broken.py", "line": 3}]}
-        with self.assertRaisesRegex(ValueError, "missing required field 'name'"):
+        with self.assertRaises(KeyError):
             TraceEntry.from_dict(incomplete)
-        with self.assertRaisesRegex(ValueError, "missing required field 'name'"):
+        with self.assertRaises(KeyError):
             TraceEntry.from_dict(incomplete, _raw_frames=True)
-        with self.assertRaisesRegex(ValueError, "Frames must be a list or tuple"):
+        with self.assertRaises(TypeError):
             TraceEntry.from_dict({**base, "frames": None}, _raw_frames=True)
 
     def test_raw_frames_preserve_positional_constructor_and_synthetic_serialization(self):

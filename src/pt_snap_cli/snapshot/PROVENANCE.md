@@ -299,19 +299,3 @@ Read-only queries preserve path identity, classify absent/corrupt evidence, and
 conserve live block, requested-byte and occupancy totals. No upstream code or
 new executable fixtures were incorporated; source mappings and licenses remain
 unchanged. This supersedes the unmerged implementation proposed in PR #207.
-
-## 2026-11-01 — Snapshot input error normalization (issue #280)
-
-First-party changes in `base/entities.py` validate the mappings, sequences and
-required keys consumed by entity construction, finite allocator numeric fields,
-the declared three-state block enum, and nonempty trace action strings. Failures
-of existing trace integer conversion become `ValueError` with the cause preserved.
-`tools/adaptors/snapshot2db.py`
-checks the root/device-trace container before device selection. Numeric strings
-in traces, optional defaults, sentinels, tuple containers, event IDs and successful
-replay behavior remain unchanged. The core import adapter also normalizes SQLite
-integer-binding overflow at its existing domain-error boundary, without imposing
-a new representation-wide numeric range. Generated regressions use trusted
-in-memory representations behind the loader seam, not new executable pickle
-fixtures. No parser/layout, unknown-field policy or upstream-code change is made;
-source mappings, attribution and license records are unchanged.

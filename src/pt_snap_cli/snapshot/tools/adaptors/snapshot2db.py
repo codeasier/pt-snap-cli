@@ -191,15 +191,8 @@ def dump(pickle_file: str | Path, dump_file: str | Path, device: int | None = No
     except Exception as e:
         dump_logger.error(f"Failed to load pickle file: {e}")
         return False
-    if not isinstance(data, dict):
-        raise ValueError("Snapshot must be a mapping")
     # Snapshot format: one list of trace dictionaries per device.
-    if not isinstance(data.get("device_traces", []), (list, tuple)):
-        raise ValueError("Snapshot device_traces must be a list or tuple")
     device_traces = cast(list[list[object]], data.get("device_traces", []))
-    for index, traces in enumerate(device_traces):
-        if not isinstance(traces, (list, tuple)):
-            raise ValueError(f"Snapshot device_traces[{index}] must be a list or tuple")
     # 当指定device为空时dump所有记录了跟踪事件的device，否则仅dump指定device
     need_dump_devices = [device for device in range(len(device_traces)) if device_traces[device]]
     dump_logger.info(f"Recognized have trace events devices {need_dump_devices}.")

@@ -38,15 +38,7 @@ class SnapshotImportBackend:
                 )
             except UnsafePickleError as exc:
                 raise ImportExecutionError(f"Snapshot pickle rejected: {exc}") from exc
-            except (
-                OSError,
-                sqlite3.DatabaseError,
-                pickle.UnpicklingError,
-                ValueError,
-                OverflowError,
-            ) as exc:
-                # SQLite rejects out-of-range integer bindings with OverflowError,
-                # rather than DatabaseError. Keep the original numeric failure.
+            except (OSError, sqlite3.DatabaseError, pickle.UnpicklingError, ValueError) as exc:
                 raise ImportExecutionError(f"Snapshot import backend failed: {exc}") from exc
 
             if not ok:

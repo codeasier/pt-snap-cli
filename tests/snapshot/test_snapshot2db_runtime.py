@@ -225,7 +225,7 @@ def test_fast_frame_import_rejects_malformed_frames_before_replay(monkeypatch, t
 
     monkeypatch.setattr(snapshot2db.DumpEventHooker, "pre_undo_event", pre_undo_event)
 
-    with pytest.raises(ValueError, match="missing required field 'name'"):
+    with pytest.raises(KeyError, match="name"):
         snapshot2db.dump(snapshot, database, 0)
 
     assert replayed_events == 0
@@ -261,7 +261,7 @@ def test_dump_all_removes_committed_devices_when_later_device_is_malformed(tmp_p
     with snapshot.open("wb") as stream:
         pickle.dump(representation, stream)
 
-    with pytest.raises(ValueError, match="missing required field 'name'"):
+    with pytest.raises(KeyError, match="name"):
         snapshot2db.dump(snapshot, database)
 
     assert not database.exists()
@@ -291,7 +291,7 @@ def test_failed_dump_preserves_existing_database(tmp_path):
         connection.execute("INSERT INTO marker VALUES ('preserved')")
         connection.commit()
 
-    with pytest.raises(ValueError, match="missing required field 'name'"):
+    with pytest.raises(KeyError, match="name"):
         snapshot2db.dump(snapshot, database, 0)
 
     with closing(sqlite3.connect(database)) as connection, connection:
