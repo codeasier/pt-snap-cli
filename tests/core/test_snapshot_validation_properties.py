@@ -9,6 +9,7 @@ this module covers the existing controlled ValueError conversion contract.
 from __future__ import annotations
 
 import copy
+import importlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -18,7 +19,6 @@ from hypothesis import strategies as st
 
 from pt_snap_cli.core.errors import ImportExecutionError
 from pt_snap_cli.core.snapshot_import_backend import SnapshotImportBackend
-from pt_snap_cli.snapshot.tools.adaptors import snapshot2db
 
 PROPERTY_SETTINGS = settings(
     max_examples=25, derandomize=True, database=None, deadline=None, print_blob=True
@@ -39,6 +39,8 @@ def test_generated_bad_numeric_snapshot_values_reject_without_publication(
     with TemporaryDirectory() as directory, pytest.MonkeyPatch.context() as monkeypatch:
         root = Path(directory)
         source = root / "trusted-in-memory.pkl"
+        source_bytes = b"inert test placeholder; the representation loader must be replaced"
+        source.write_bytes(source_bytes)
         output = root / "output"
         output.mkdir()
         backend = SnapshotImportBackend()
@@ -52,6 +54,9 @@ def test_generated_bad_numeric_snapshot_values_reject_without_publication(
             loads.append(path)
             return representation
 
+        # The lazy-import test removes this module from sys.modules. Resolve
+        # the current object here, not a stale reference captured at collection.
+        snapshot2db = importlib.import_module("pt_snap_cli.snapshot.tools.adaptors.snapshot2db")
         monkeypatch.setattr(snapshot2db, "load_snapshot_representation", load_representation)
         with pytest.raises(ImportExecutionError, match="Snapshot import backend failed") as error:
             backend.dump_to_db(source, output, device=0)
@@ -59,6 +64,6 @@ def test_generated_bad_numeric_snapshot_values_reject_without_publication(
         assert isinstance(error.value.__cause__, ValueError)
         assert loads == [source]
         assert representation == before
-        assert not source.exists()
+        assert source.read_bytes() == source_bytes
         assert destination.read_bytes() == previous
         assert list(output.iterdir()) == [destination]
