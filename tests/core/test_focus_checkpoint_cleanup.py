@@ -241,15 +241,18 @@ def test_unknown_checkpoint_identity_closes_without_unverified_deletion(
 ):
     service, path, original = focus
     error = OSError("checkpoint identity unavailable")
+    fstat = os.fstat
 
     def fail_fstat(fd):
-        assert fd == checkpoint_io.fd
-        raise error
+        if fd == checkpoint_io.fd:
+            raise error
+        return fstat(fd)
 
-    monkeypatch.setattr(focus_module.os, "fstat", fail_fstat)
-    with pytest.raises(OSError) as caught:
-        with service.project_focus_transaction():
-            pytest.fail("unverified checkpoint must prevent focus publication")
+    with monkeypatch.context() as patch:
+        patch.setattr(focus_module.os, "fstat", fail_fstat)
+        with pytest.raises(OSError) as caught:
+            with service.project_focus_transaction():
+                pytest.fail("unverified checkpoint must prevent focus publication")
     assert caught.value is error
     assert checkpoint_io.events == ["close"]
     assert checkpoint_io.path.read_bytes() == b""
