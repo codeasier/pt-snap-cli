@@ -24,6 +24,26 @@ Concurrency is keyed by GitHub ref and superseded runs are cancelled.
 Million-event deep-offset pagination tests are marked `slow`; their small
 pagination contracts still run across the compatibility matrix.
 
+`tests/test_ci_tiers.py` checks parsed commands, matrix rows, marker truth tables,
+conditions, independent file floors and gate ordering, not step display names or
+complete shell text. `tests/_ci_contract.py` intentionally supports only a bounded
+CI language: simple failure-propagating commands, shell quoting/continuations,
+sequential steps or a terminal `&&` chain, and explicit boolean conditions.
+Unknown shell control flow, OR/pipes, failure suppression, selector overrides and
+unrecognized conditions fail closed. Extend it with positive and negative
+mutation tests when introducing new syntax; do not weaken it into substring
+checks. Action version bumps, cache configuration, renaming, equivalent selectors
+and step splits/merges do not change a gate.
+
+The Linux browser job installs Chromium and sets `PT_SNAP_REQUIRE_BROWSER=1`.
+Browser cases are always collected even if Playwright is absent. Optional matrix
+and platform runs report each missing-dependency case as skipped plus an explicit
+**not executed** summary; that is not browser-pass evidence. Required mode fails
+for missing package/binary, any browser skip, empty/deselected collection or
+incomplete execution. `--collect-only` remains a collection diagnostic and is
+explicitly reported as not run. Broken installations and launch failures fail in
+both modes. Browser results are not added to non-browser platform requirements.
+
 Coverage reporting writes `.coverage`/`coverage.xml`; building writes `dist/` and
 intermediates. Dependency installation/build isolation may access the network.
 The [acceptance script](../scripts/clean_wheel_agent_acceptance.py) uses temporary
@@ -93,7 +113,8 @@ validation. For non-PR provenance checks, tag runs compare against the prior tag
 Review `pyproject.toml`, both workflow YAMLs, the provenance/acceptance scripts and
 `tests/test_release_workflow.py` together when changing execution order. Validate
 YAML and run `pytest tests/test_governance.py tests/test_release_workflow.py
-tests/test_ci_tiers.py tests/test_dataset_acceptance_runner.py tests/test_wheel_audit.py` from
+tests/test_ci_tiers.py tests/test_ci_contract_mutations.py
+tests/test_browser_execution_contract.py tests/test_dataset_acceptance_runner.py tests/test_wheel_audit.py` from
 the repository root. Full CI tests the matrix and installed wheel; static tests
 do not prove a release environment is configured or a publication occurred.
 
