@@ -15,7 +15,7 @@ from hypothesis import strategies as st
 
 from pt_snap_cli.core.errors import ImportExecutionError
 from pt_snap_cli.core.snapshot_import_backend import SnapshotImportBackend
-from pt_snap_cli.snapshot.base import DeviceSnapshot, TraceEntry
+from pt_snap_cli.snapshot.base import Block, DeviceSnapshot, TraceEntry
 
 PROPERTY_SETTINGS = settings(
     max_examples=25, derandomize=True, database=None, deadline=None, print_blob=True
@@ -403,6 +403,42 @@ def test_generated_non_string_block_state_is_controlled(value: object) -> None:
     representation["segments"][0]["blocks"][0]["state"] = value
     cause = _assert_representation_rejected(representation, ValueError, True)
     assert "Block field 'state' must be a string" in str(cause)
+
+
+@PROPERTY_SETTINGS
+@given(
+    state=st.one_of(
+        st.sampled_from(["", "unknown", "99", "active", "ACTIVE_ALLOCATED"]),
+        st.text(max_size=24).map(lambda value: f"unsupported:{value}"),
+    ),
+    existing=st.booleans(),
+)
+def test_generated_unknown_block_states_are_controlled(state: str, existing: bool) -> None:
+    representation = _valid_representation()
+    representation["segments"][0]["blocks"][0]["state"] = state
+    cause = _assert_representation_rejected(representation, ValueError, existing)
+    assert "Block field 'state' must be one of:" in str(cause)
+
+
+@pytest.mark.parametrize("state", ["active_allocated", "active_pending_free", "inactive"])
+@pytest.mark.parametrize("raw_frames", [False, True])
+@PROPERTY_SETTINGS
+@given(size=st.integers(1, 4096))
+def test_generated_declared_block_states_preserve_eager_and_raw_inputs(
+    state: str, raw_frames: bool, size: int
+) -> None:
+    block_data = {
+        "size": size,
+        "requested_size": size // 2,
+        "address": 4096,
+        "state": state,
+        "frames": [{"filename": "generated.py", "line": 1, "name": "run"}],
+    }
+    before = copy.deepcopy(block_data)
+    block = Block.from_dict(block_data, _raw_frames=raw_frames)
+    assert block.state == state
+    assert block.to_dict() == before
+    assert block_data == before
 
 
 @pytest.mark.parametrize("raw_frames", [False, True])

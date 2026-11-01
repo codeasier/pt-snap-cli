@@ -176,6 +176,22 @@ class BlockState:
     INACTIVE = "inactive"
 
 
+def _parse_block_state(
+    raw: object,
+) -> Literal["active_allocated", "active_pending_free", "inactive"]:
+    if not isinstance(raw, str):
+        raise ValueError("Block field 'state' must be a string")
+    if raw == "active_allocated":
+        return "active_allocated"
+    if raw == "active_pending_free":
+        return "active_pending_free"
+    if raw == "inactive":
+        return "inactive"
+    raise ValueError(
+        "Block field 'state' must be one of: active_allocated, active_pending_free, inactive"
+    )
+
+
 @dataclass
 class Block:
     # A piece of memory returned from the allocator, or
@@ -203,8 +219,7 @@ class Block:
     def from_dict(cls, block_dict: dict[str, Any], _raw_frames: bool = False):
         _validate_mapping(block_dict, "Block", ("size", "requested_size", "address", "state"))
         _validate_numbers(block_dict, "Block", ("size", "requested_size", "address"))
-        if not isinstance(block_dict["state"], str):
-            raise ValueError("Block field 'state' must be a string")
+        state = _parse_block_state(block_dict["state"])
         frame_dicts = block_dict.get("frames", [])
         _validate_sequence(frame_dicts, "Frames")
         if _raw_frames:
@@ -213,7 +228,7 @@ class Block:
             size=block_dict["size"],
             requested_size=block_dict["requested_size"],
             address=block_dict["address"],
-            state=block_dict["state"],
+            state=state,
             frames=[] if _raw_frames else [Frame.from_dict(frame) for frame in frame_dicts],
             _raw_frames=frame_dicts if _raw_frames else None,
         )

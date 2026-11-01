@@ -304,8 +304,9 @@ unchanged. This supersedes the unmerged implementation proposed in PR #207.
 
 First-party changes in `base/entities.py` validate the mappings, sequences and
 required keys consumed by entity construction, finite allocator numeric fields,
-and nonempty trace action strings. Failures of existing trace integer conversion
-become `ValueError` with the cause preserved. `tools/adaptors/snapshot2db.py`
+the declared three-state block enum, and nonempty trace action strings. Failures
+of existing trace integer conversion become `ValueError` with the cause preserved.
+`tools/adaptors/snapshot2db.py`
 checks the root/device-trace container before device selection. Numeric strings
 in traces, optional defaults, sentinels, tuple containers, event IDs and successful
 replay behavior remain unchanged. The core import adapter also normalizes SQLite
