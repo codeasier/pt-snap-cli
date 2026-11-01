@@ -7,6 +7,8 @@ import pytest
 from tests._ci_contract import command_tokens, commands, expression, matrix_rows
 from tests.test_ci_tiers import project, validate_workflow, workflow
 
+CRITICAL_CHECKER = ".github/scripts/check_critical_coverage.py"
+
 
 def _step(config, job, program, contains=None):
     matching = [
@@ -57,13 +59,8 @@ def _quotes_and_commands(config):
         "python3 -m pytest --cov-report term-missing --cov -m 'not nightly' --cov-report xml",
         "--cov",
     )
-    guard = _step(config, "test", "coverage")
-    guard["run"] = (
-        guard["run"]
-        .replace("--include='", '--include "')
-        .replace(".py'", '.py"')
-        .replace("--fail-under=", "--fail-under ")
-    )
+    guard = _step(config, "test", CRITICAL_CHECKER)
+    guard["run"] = 'python3 ".github/scripts/check_critical_coverage.py"'
 
 
 def _conditions(config):
@@ -90,19 +87,23 @@ def _excluded_then_restored_matrix(config):
 
 def _split_and_merge(config):
     job = config["jobs"]["test"]
-    guard = _step(config, "test", "coverage")
-    index = job["steps"].index(guard)
-    parts = [dict(guard, run=line) for line in guard["run"].splitlines() if line.strip()]
+    build = _step(config, "test", "build")
+    index = job["steps"].index(build)
+    parts = [dict(build, run=line) for line in build["run"].splitlines() if line.strip()]
+    assert len(parts) > 1, "Positive split mutation must split real sequential commands"
     job["steps"][index : index + 1] = parts
-    # Merge full pytest with the first independent floor; labels are irrelevant.
+    # Independently merge full pytest with its checker; labels are irrelevant.
+    guard = _step(config, "test", CRITICAL_CHECKER)
     full = _step(config, "test", "pytest", "--cov")
-    full["run"] += "\n" + parts[0]["run"]
-    job["steps"].remove(parts[0])
+    full["run"] += "\n" + guard["run"]
+    job["steps"].remove(guard)
 
 
 def _and_chain(config):
-    guard = _step(config, "test", "coverage")
-    guard["run"] = " && ".join(guard["run"].splitlines())
+    guard = _step(config, "test", CRITICAL_CHECKER)
+    full = _step(config, "test", "pytest", "--cov")
+    full["run"] += " && " + guard["run"]
+    config["jobs"]["test"]["steps"].remove(guard)
 
 
 def _include_matrix(config):
@@ -136,7 +137,7 @@ def _weaken(config, case):
     job = config["jobs"]["test"]
     full = _step(config, "test", "pytest", "--cov")
     fast = _step(config, "test", "pytest", "not slow and not nightly")
-    guard = _step(config, "test", "coverage")
+    guard = _step(config, "test", CRITICAL_CHECKER)
     browser = _step(config, "browser", "pytest")
     if case == "missing-python":
         job["strategy"]["matrix"]["python-version"].remove("3.12")
@@ -211,14 +212,30 @@ def _weaken(config, case):
         full["run"] += " -k passing_only"
     elif case == "pytest-path-filter":
         full["run"] += " tests/core"
-    elif case == "coverage-threshold":
-        guard["run"] = guard["run"].replace("--fail-under=90", "--fail-under=89")
-    elif case == "coverage-combined-selector":
-        guard["run"] = guard["run"].replace("*/core/snapshot_import_backend.py", "*/core/*.py")
-    elif case == "coverage-wrong-file":
-        guard["run"] = guard["run"].replace(
-            "*/core/snapshot_import_backend.py", "*/core/import_metadata.py"
-        )
+    elif case == "coverage-checker-omitted":
+        job["steps"].remove(guard)
+    elif case == "coverage-checker-duplicate":
+        job["steps"].append(deepcopy(guard))
+    elif case == "coverage-checker-conditional":
+        guard["if"] += " && github.event_name == 'push'"
+    elif case == "coverage-checker-wrong-python":
+        guard["if"] = "matrix.python-version == '3.12'"
+    elif case == "coverage-checker-overrides":
+        guard["run"] += " --fail-under=0"
+    elif case == "coverage-checker-positional":
+        guard["run"] += " other.coverage"
+    elif case == "coverage-checker-ignored-failure":
+        guard["continue-on-error"] = "true"
+    elif case == "coverage-checker-or-true":
+        guard["run"] += " || true"
+    elif case == "coverage-checker-and-list-swallow":
+        guard["run"] += " && pip --version\npip --version"
+    elif case == "coverage-checker-conditional-shell":
+        guard["run"] = "if false; then " + guard["run"] + "; fi"
+    elif case == "coverage-alternate-report":
+        guard["run"] = "python -m coverage report --fail-under=0"
+    elif case == "coverage-data-erased":
+        guard["run"] = "python -m coverage erase\n" + guard["run"]
     elif case == "coverage-before-measurement":
         job["steps"].remove(guard)
         job["steps"].insert(job["steps"].index(full), guard)
@@ -313,9 +330,18 @@ def _weaken(config, case):
         "full-includes-nightly",
         "pytest-k-filter",
         "pytest-path-filter",
-        "coverage-threshold",
-        "coverage-combined-selector",
-        "coverage-wrong-file",
+        "coverage-checker-omitted",
+        "coverage-checker-duplicate",
+        "coverage-checker-conditional",
+        "coverage-checker-wrong-python",
+        "coverage-checker-overrides",
+        "coverage-checker-positional",
+        "coverage-checker-ignored-failure",
+        "coverage-checker-or-true",
+        "coverage-checker-and-list-swallow",
+        "coverage-checker-conditional-shell",
+        "coverage-alternate-report",
+        "coverage-data-erased",
         "coverage-before-measurement",
         "fixture-after-tests",
         "optional-browser",
@@ -345,6 +371,35 @@ def test_workflow_gate_regressions_are_rejected(case):
 def test_coverage_configuration_cannot_weaken(field, value):
     settings = deepcopy(project())
     settings["tool"]["coverage"]["run" if field == "branch" else "report"][field] = value
+    with pytest.raises(AssertionError):
+        validate_workflow(workflow(), settings)
+
+
+def test_coverage_configuration_order_and_display_precision_do_not_change_gate():
+    settings = deepcopy(project())
+    coverage = settings["tool"]["coverage"]
+    coverage["run"]["omit"].reverse()
+    coverage["report"]["exclude_lines"].reverse()
+    coverage["report"]["precision"] = 4
+    validate_workflow(workflow(), settings)
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value"),
+    [
+        ("run", "source", ["pt_snap_cli.snapshot"]),
+        ("run", "omit", ["*/tests/*", "*/__pycache__/*", "*/core/*"]),
+        ("run", "include", ["*/snapshot/*"]),
+        ("report", "include", ["*/snapshot/*"]),
+        ("report", "omit", ["*/core/*"]),
+        ("report", "exclude_lines", [".*"]),
+        ("report", "exclude_also", [".*"]),
+        ("report", "partial_branches", [".*"]),
+    ],
+)
+def test_coverage_selectors_and_exclusions_cannot_hide_runtime(section, field, value):
+    settings = deepcopy(project())
+    settings["tool"]["coverage"][section][field] = value
     with pytest.raises(AssertionError):
         validate_workflow(workflow(), settings)
 
