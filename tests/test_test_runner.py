@@ -59,7 +59,9 @@ def shell_runner(tmp_path):
         RUNNER_TEST_LOG=str(log),
     )
 
-    def run(*args, exit_code=0, python=Path(sys.executable).as_posix()):
+    current_python = Path(sys.executable).as_posix()
+
+    def run(*args, exit_code=0, python=current_python):
         selected_env = dict(env, RUNNER_TEST_EXIT=str(exit_code))
         if python is None:
             selected_env.pop("PYTHON", None)

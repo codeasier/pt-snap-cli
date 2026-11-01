@@ -192,12 +192,15 @@ def test_distribution_guard_rejects_rediscovered_removed_content(name, entry):
 
 
 def test_distribution_guard_allows_unrelated_modules_and_metadata():
-    assert _removed_distribution_entries(
-        [
-            "pt_snap_cli/cli.py",
-            "pt_snap_cli/mcp_tools.py",
-            "pt_snap_cli/vendor_tools/reader.py",
-            "pt_snap_cli-1.0.dist-info/METADATA",
-            "pt_snap_cli-1.0.dist-info/licenses/LICENSE",
-        ]
-    ) == []
+    assert (
+        _removed_distribution_entries(
+            [
+                "pt_snap_cli/cli.py",
+                "pt_snap_cli/mcp_tools.py",
+                "pt_snap_cli/vendor_tools/reader.py",
+                "pt_snap_cli-1.0.dist-info/METADATA",
+                "pt_snap_cli-1.0.dist-info/licenses/LICENSE",
+            ]
+        )
+        == []
+    )
