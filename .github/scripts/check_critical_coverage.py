@@ -6,7 +6,7 @@ import io
 import sys
 from pathlib import Path
 
-from coverage import Coverage
+from coverage import Coverage, CoverageData
 from coverage.exceptions import CoverageException
 
 # These are independent floors, not an average that another module can offset.
@@ -31,13 +31,18 @@ class CoverageGuardError(ValueError):
 
 def check_coverage(root: Path) -> None:
     root = root.resolve()
+    if not callable(getattr(CoverageData, "close", None)):
+        raise CoverageGuardError("Critical coverage requires coverage>=7.10.3; install .[dev]")
     data_file = root / ".coverage"
     if not data_file.is_file():
         raise CoverageGuardError(f"Missing coverage data: {data_file}")
+    data: CoverageData | None = None
     try:
         coverage = Coverage(data_file=str(data_file), config_file=str(root / "pyproject.toml"))
-        coverage.load()
+        # Own the data before load(): a corrupt SQLite file can fail inside
+        # coverage.py's connection __enter__, before its normal cleanup runs.
         data = coverage.get_data()
+        coverage.load()
         if not data.has_arcs():
             raise CoverageGuardError("Critical coverage requires branch data, not line-only data")
         measured = {Path(name).resolve() for name in data.measured_files()}
@@ -69,6 +74,9 @@ def check_coverage(root: Path) -> None:
             raise CoverageGuardError("\n".join(failures))
     except (CoverageException, OSError) as error:
         raise CoverageGuardError(f"Cannot validate critical coverage: {error}") from error
+    finally:
+        if data is not None:
+            data.close()
 
 
 def main() -> int:
