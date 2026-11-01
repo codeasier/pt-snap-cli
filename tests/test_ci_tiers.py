@@ -112,37 +112,42 @@ def validate_tiers(config, settings):
 
     coverage = settings["tool"]["coverage"]
     require(coverage["run"]["branch"] is True, "Branch coverage is mandatory")
-    require(coverage["report"]["fail_under"] >= 90, "Overall coverage floor must not decrease")
-    expected = {
-        "*/core/snapshot_import_backend.py": 90,
-        "*/simulate/simulated_caching_allocator.py": 88,
-        "*/simulate/snapshot_mutator.py": 84,
-    }
-    reports = select(all_commands, "coverage")
-    require(len(reports) == len(expected), "Each critical file needs its own coverage floor")
-    seen = set()
-    for report in reports:
-        require(report.words[1] == "report", "Critical coverage must report measured results")
-        opts, positional = options(report.words[2:], valued=("--include", "--fail-under"))
-        require(
-            not positional and set(opts) == {"--include", "--fail-under"},
-            "Coverage report must have an independent selector and floor",
-        )
-        require(
-            all(len(values) == 1 for values in opts.values()),
-            "Duplicate coverage options are ambiguous",
-        )
-        path = opts["--include"][0]
-        require(
-            path in expected and path not in seen, "Wrong/combined critical-file coverage selector"
-        )
-        require(
-            float(opts["--fail-under"][0]) >= expected[path],
-            "Critical coverage floor must not decrease",
-        )
-        seen.add(path)
-        require(full.index < report.index, "Coverage must be measured before its floors")
-        _full(job, report.step)
+    require(
+        coverage["report"]["fail_under"] >= 90,
+        "Overall coverage floor must not decrease",
+    )
+    require(
+        coverage["run"].get("source") == ["pt_snap_cli"],
+        "Coverage must measure the entire runtime package",
+    )
+    require(
+        set(coverage["run"].get("omit", [])) == {"*/tests/*", "*/__pycache__/*"},
+        "Runtime modules cannot be omitted from coverage",
+    )
+    require(
+        not coverage["run"].get("include")
+        and not coverage["report"].get("include")
+        and not coverage["report"].get("omit"),
+        "Coverage measurement/report selectors must not narrow the package",
+    )
+    require(
+        set(coverage["report"].get("exclude_lines", []))
+        == {"pragma: no cover", "if __name__ == .__main__.", "if TYPE_CHECKING:"}
+        and not coverage["report"].get("exclude_also")
+        and not any(key.startswith("partial_") for key in coverage["report"]),
+        "Coverage exclusions must not hide runtime statements or branches",
+    )
+    require(
+        not select(all_commands, "coverage"),
+        "Alternate coverage commands cannot replace or bypass the critical checker",
+    )
+    guard = one(all_commands, ".github/scripts/check_critical_coverage.py")
+    require(
+        len(guard.words) == 1,
+        "Critical coverage checker must use its complete fixed inventory without overrides",
+    )
+    require(full.index < guard.index, "Coverage must be measured before its floors")
+    _full(job, guard.step)
 
     build = one(all_commands, "build")
     require(build.words[1:] == ("--wheel",), "Build must produce the wheel")
