@@ -122,10 +122,12 @@ def test_removed_package_guard_accepts_clean_and_cache_only_trees(tmp_path, name
     if layout != "absent":
         removed_root.mkdir()
     if layout == "pycache-only":
+        # The nested name is deliberately arbitrary: removal covers every child
+        # of these namespaces, not a blacklist of historical vendor identities.
         for relative in (
             "__pycache__/__init__.cpython-313.pyc",
-            "memsnapdump/__pycache__/reader.cpython-313.pyc",
-            "memsnapdump/__pycache__/reader.cpython-310.opt-1.pyc",
+            "retired_package/__pycache__/reader.cpython-313.pyc",
+            "retired_package/__pycache__/reader.cpython-310.opt-1.pyc",
         ):
             cache = removed_root / relative
             cache.parent.mkdir(parents=True, exist_ok=True)
@@ -148,9 +150,9 @@ def test_removed_package_guard_accepts_clean_and_cache_only_trees(tmp_path, name
     [
         "__init__.py",
         "server.py",
-        "memsnapdump/reader.py",
+        "retired_package/reader.py",
         "__init__.pyc",
-        "memsnapdump/schema.json",
+        "retired_package/schema.json",
         "__pycache__/hidden.py",
         "__pycache__/importable.pyc",
     ],
@@ -181,7 +183,7 @@ def test_removed_package_guard_rejects_flat_module_replacements(tmp_path, name, 
     "entry",
     [
         "{name}/__init__.py",
-        "{name}/memsnapdump/reader.py",
+        "{name}/retired_package/reader.py",
         "{name}.py",
         "{name}/__pycache__/old.pyc",
     ],
