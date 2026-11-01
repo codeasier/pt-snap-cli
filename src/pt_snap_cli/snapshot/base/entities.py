@@ -1,5 +1,30 @@
+import math
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
+
+
+def _validate_mapping(raw: Any, label: str, required: tuple[str, ...] = ()) -> None:
+    if not isinstance(raw, dict):
+        raise ValueError(f"{label} must be a mapping")
+    for name in required:
+        if name not in raw:
+            raise ValueError(f"{label} is missing required field '{name}'")
+
+
+def _validate_sequence(raw: Any, label: str) -> None:
+    # Tuples already work for trusted in-memory representations; retain that
+    # compatibility rather than requiring a particular serialized container.
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError(f"{label} must be a list or tuple")
+
+
+def _validate_numbers(raw: dict[str, Any], label: str, names: tuple[str, ...]) -> None:
+    for name in names:
+        value = raw[name]
+        if not isinstance(value, (int, float)) or (
+            isinstance(value, float) and not math.isfinite(value)
+        ):
+            raise ValueError(f"{label} field '{name}' must be a finite number")
 
 
 class Frame:
@@ -11,6 +36,7 @@ class Frame:
 
     @classmethod
     def from_dict(cls, frame_dict: dict[str, Any]):
+        _validate_mapping(frame_dict, "Frame", ("filename", "line", "name"))
         frame = cls()
         frame.filename = frame_dict["filename"]
         frame.line = frame_dict["line"]
@@ -39,10 +65,17 @@ def _format_callstack(frames: list[Frame] | list[dict[str, Any]]) -> str:
 
 
 def _validate_raw_frames(frames: list[dict[str, Any]]) -> None:
+    _validate_sequence(frames, "Frames")
     for frame in frames:
-        _ = frame["filename"]
-        _ = frame["line"]
-        _ = frame["name"]
+        _validate_mapping(frame, "Frame", ("filename", "line", "name"))
+
+
+def _trace_integer(trace_dict: dict[str, Any], name: str, default: int) -> int:
+    """Retain integer conversion while rejecting malformed numeric metadata."""
+    try:
+        return int(trace_dict.get(name, default))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"Trace field '{name}' must be integer-compatible") from exc
 
 
 @dataclass
@@ -82,19 +115,24 @@ class TraceEntry:
 
     @classmethod
     def from_dict(cls, trace_dict: dict[str, Any], _raw_frames: bool = False):
+        _validate_mapping(trace_dict, "Trace entry")
+        action = trace_dict.get("action")
+        if not isinstance(action, str) or not action.strip():
+            raise ValueError("Trace field 'action' must be a non-empty string")
         frame_dicts = trace_dict.get("frames", [])
+        _validate_sequence(frame_dicts, "Frames")
         if _raw_frames:
             _validate_raw_frames(frame_dicts)
         trace_entry = cls(
-            action=trace_dict["action"],
-            addr=int(trace_dict.get("addr", -1)),
-            size=int(trace_dict.get("size", 0)),
-            stream=int(trace_dict.get("stream", 0)),
-            device_free=int(trace_dict.get("device_free", -1)),
+            action=action,
+            addr=_trace_integer(trace_dict, "addr", -1),
+            size=_trace_integer(trace_dict, "size", 0),
+            stream=_trace_integer(trace_dict, "stream", 0),
+            device_free=_trace_integer(trace_dict, "device_free", -1),
             _origin=trace_dict,
             frames=[] if _raw_frames else [Frame.from_dict(frame) for frame in frame_dicts],
             _raw_frames=frame_dicts if _raw_frames else None,
-            idx=int(trace_dict["id"]) if "id" in trace_dict else -1,
+            idx=_trace_integer(trace_dict, "id", -1),
         )
         return trace_entry
 
@@ -138,6 +176,22 @@ class BlockState:
     INACTIVE = "inactive"
 
 
+def _parse_block_state(
+    raw: object,
+) -> Literal["active_allocated", "active_pending_free", "inactive"]:
+    if not isinstance(raw, str):
+        raise ValueError("Block field 'state' must be a string")
+    if raw == "active_allocated":
+        return "active_allocated"
+    if raw == "active_pending_free":
+        return "active_pending_free"
+    if raw == "inactive":
+        return "inactive"
+    raise ValueError(
+        "Block field 'state' must be one of: active_allocated, active_pending_free, inactive"
+    )
+
+
 @dataclass
 class Block:
     # A piece of memory returned from the allocator, or
@@ -163,14 +217,18 @@ class Block:
 
     @classmethod
     def from_dict(cls, block_dict: dict[str, Any], _raw_frames: bool = False):
+        _validate_mapping(block_dict, "Block", ("size", "requested_size", "address", "state"))
+        _validate_numbers(block_dict, "Block", ("size", "requested_size", "address"))
+        state = _parse_block_state(block_dict["state"])
         frame_dicts = block_dict.get("frames", [])
+        _validate_sequence(frame_dicts, "Frames")
         if _raw_frames:
             _validate_raw_frames(frame_dicts)
         block = cls(
             size=block_dict["size"],
             requested_size=block_dict["requested_size"],
             address=block_dict["address"],
-            state=block_dict["state"],
+            state=state,
             frames=[] if _raw_frames else [Frame.from_dict(frame) for frame in frame_dicts],
             _raw_frames=frame_dicts if _raw_frames else None,
         )
@@ -231,7 +289,12 @@ class Segment:
         ignore_inactive_blocks: bool = False,
         _raw_frames: bool = False,
     ):
+        numeric_fields = ("address", "total_size", "stream", "allocated_size", "active_size")
+        _validate_mapping(segment_dict, "Segment", (*numeric_fields, "segment_type", "blocks"))
+        _validate_numbers(segment_dict, "Segment", numeric_fields)
+        _validate_sequence(segment_dict["blocks"], "Segment blocks")
         frame_dicts = segment_dict.get("frames", [])
+        _validate_sequence(frame_dicts, "Frames")
         if _raw_frames:
             _validate_raw_frames(frame_dicts)
         segment = cls(
@@ -248,6 +311,7 @@ class Segment:
             is_expandable=segment_dict.get("is_expandable", False),
         )
         for block in segment_dict["blocks"]:
+            _validate_mapping(block, "Block", ("state",))
             if ignore_inactive_blocks and block["state"] == BlockState.INACTIVE:
                 continue
             _block = Block.from_dict(block, _raw_frames=_raw_frames)
@@ -328,9 +392,13 @@ class DeviceSnapshot:
         ignore_inactive_blocks: bool = False,
         _raw_frames: bool = False,
     ):
+        _validate_mapping(snapshot_dict, "Snapshot")
         segments_dict = snapshot_dict.get("segments", [])
         device_traces = snapshot_dict.get("device_traces", [])
+        _validate_sequence(segments_dict, "Snapshot segments")
+        _validate_sequence(device_traces, "Snapshot device_traces")
         device_trace_list = device_traces[device] if 0 <= device < len(device_traces) else []
+        _validate_sequence(device_trace_list, "Device traces")
         snapshot = cls()
         snapshot.segments = []
         snapshot.trace_entries = []
@@ -339,6 +407,7 @@ class DeviceSnapshot:
         snapshot.total_activated = 0
         # 读取dump_snapshot时内存状态
         for segment_dict in segments_dict:
+            _validate_mapping(segment_dict, "Segment")
             # 当segment原始数据中缺少device字段明确指向其所属设备时，默认其归属为device0
             # 此时如果from_dict指定device为0或未指定而缺省为0，则未知归属的device也会纳入分析
             if segment_dict.get("device", 0) != device:

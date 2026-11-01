@@ -75,9 +75,17 @@ may point to an existing Chromium executable instead of downloading one.
   errors. Ownership/teardown guidance lives in [tests](tests/AGENTS.md).
 - Coverage is measured with branches enabled. The overall floor and independent
   critical-file floors are documented with [CI](.github/workflows/AGENTS.md).
-- `tests/run_tests.sh` assumes a developer-specific Conda path and writes
-  `test_reports/`; prefer direct pytest. `.pt-snap/`, `.tmp/`, `.worktrees/`,
-  and `tmp/` are ignored and excluded from root Ruff/Black checks.
+- `bash tests/run_tests.sh` is an optional Bash entry point using the active
+  `python -m pytest`; set `PYTHON=/path/to/python` to choose another executable.
+  It does not activate environments or install dependencies. Full mode retains
+  the configured coverage floor and writes ignored `test_reports/` output;
+  `--reports-dir DIR` changes that destination. `--quick` omits coverage/report
+  generation and is **not** a substitute for CI's full coverage gate. Use
+  `--help` for file/keyword/marker selection and `--` for extra pytest arguments.
+  Pytest's exit status is preserved, including failure and no-tests-collected.
+  Without Bash, use the direct Python/pytest commands above. `.pt-snap/`,
+  `.tmp/`, `.worktrees/`, and `tmp/` are ignored and excluded from root
+  Ruff/Black checks.
 - `python -m build` writes `dist/` and build intermediates and may download build
   requirements. See [packaging](src/AGENTS.md) before using it as verification.
 
