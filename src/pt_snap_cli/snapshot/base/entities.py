@@ -176,22 +176,6 @@ class BlockState:
     INACTIVE = "inactive"
 
 
-def _parse_block_state(
-    raw: object,
-) -> Literal["active_allocated", "active_pending_free", "inactive"]:
-    if not isinstance(raw, str):
-        raise ValueError("Block field 'state' must be a string")
-    if raw == "active_allocated":
-        return "active_allocated"
-    if raw == "active_pending_free":
-        return "active_pending_free"
-    if raw == "inactive":
-        return "inactive"
-    raise ValueError(
-        "Block field 'state' must be one of: active_allocated, active_pending_free, inactive"
-    )
-
-
 @dataclass
 class Block:
     # A piece of memory returned from the allocator, or
@@ -200,11 +184,9 @@ class Block:
     requested_size: int = 0  # size requested during malloc, may be smaller than
     # size due to rounding
     address: int = -1
-    state: Literal[
-        "active_allocated",  # used by a tensor
-        "active_pending_free",  # waiting for another stream to finish using this, then it will become free
-        "inactive",
-    ] = BlockState.INACTIVE  # free for reuse
+    # Preserve producer state strings; BlockState names the replay states, not
+    # a closed input enum (PyTorch also emits "active_awaiting_free").
+    state: str = BlockState.INACTIVE  # free for reuse
     frames: list[Frame] = field(
         default_factory=list
     )  # stack trace from where the allocation occurred
@@ -219,7 +201,9 @@ class Block:
     def from_dict(cls, block_dict: dict[str, Any], _raw_frames: bool = False):
         _validate_mapping(block_dict, "Block", ("size", "requested_size", "address", "state"))
         _validate_numbers(block_dict, "Block", ("size", "requested_size", "address"))
-        state = _parse_block_state(block_dict["state"])
+        state = block_dict["state"]
+        if not isinstance(state, str):
+            raise ValueError("Block field 'state' must be a string")
         frame_dicts = block_dict.get("frames", [])
         _validate_sequence(frame_dicts, "Frames")
         if _raw_frames:

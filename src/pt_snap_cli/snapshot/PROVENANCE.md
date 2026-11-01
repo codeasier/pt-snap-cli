@@ -304,7 +304,9 @@ unchanged. This supersedes the unmerged implementation proposed in PR #207.
 
 First-party changes in `base/entities.py` validate the mappings, sequences and
 required keys consumed by entity construction, finite allocator numeric fields,
-the declared three-state block enum, and nonempty trace action strings. Failures
+string-valued block states, and nonempty trace action strings. Producer block
+state strings remain unchanged rather than being restricted to replay constants;
+the existing SQL value mapping and missing-column default are unchanged. Failures
 of existing trace integer conversion become `ValueError` with the cause preserved.
 `tools/adaptors/snapshot2db.py`
 checks the root/device-trace container before device selection. Numeric strings

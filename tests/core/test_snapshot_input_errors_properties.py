@@ -16,6 +16,7 @@ from hypothesis import strategies as st
 from pt_snap_cli.core.errors import ImportExecutionError
 from pt_snap_cli.core.snapshot_import_backend import SnapshotImportBackend
 from pt_snap_cli.snapshot.base import Block, DeviceSnapshot, TraceEntry
+from pt_snap_cli.snapshot.tools.adaptors.database import SnapshotDb, block2record
 
 PROPERTY_SETTINGS = settings(
     max_examples=25, derandomize=True, database=None, deadline=None, print_blob=True
@@ -397,34 +398,33 @@ def test_generated_non_numeric_allocator_metadata_is_controlled(
 
 
 @PROPERTY_SETTINGS
-@given(value=st.one_of(st.none(), st.integers(-100, 100), st.lists(SCALARS, max_size=3)))
-def test_generated_non_string_block_state_is_controlled(value: object) -> None:
-    representation = _valid_representation()
-    representation["segments"][0]["blocks"][0]["state"] = value
-    cause = _assert_representation_rejected(representation, ValueError, True)
-    assert "Block field 'state' must be a string" in str(cause)
-
-
-@PROPERTY_SETTINGS
 @given(
-    state=st.one_of(
-        st.sampled_from(["", "unknown", "99", "active", "ACTIVE_ALLOCATED"]),
-        st.text(max_size=24).map(lambda value: f"unsupported:{value}"),
+    value=st.one_of(
+        st.none(),
+        st.booleans(),
+        st.integers(-100, 100),
+        st.lists(SCALARS, max_size=3),
+        st.dictionaries(st.text(max_size=8), SCALARS, max_size=3),
     ),
     existing=st.booleans(),
 )
-def test_generated_unknown_block_states_are_controlled(state: str, existing: bool) -> None:
+def test_generated_non_string_block_state_is_controlled(value: object, existing: bool) -> None:
     representation = _valid_representation()
-    representation["segments"][0]["blocks"][0]["state"] = state
+    representation["segments"][0]["blocks"][0]["state"] = value
     cause = _assert_representation_rejected(representation, ValueError, existing)
-    assert "Block field 'state' must be one of:" in str(cause)
+    assert "Block field 'state' must be a string" in str(cause)
 
 
-@pytest.mark.parametrize("state", ["active_allocated", "active_pending_free", "inactive"])
 @pytest.mark.parametrize("raw_frames", [False, True])
 @PROPERTY_SETTINGS
-@given(size=st.integers(1, 4096))
-def test_generated_declared_block_states_preserve_eager_and_raw_inputs(
+@example(state="active_allocated", size=16)
+@example(state="active_pending_free", size=16)
+@example(state="inactive", size=16)
+@example(state="active_awaiting_free", size=16)
+@example(state="unknown", size=16)
+@example(state="", size=16)
+@given(state=st.text(max_size=24), size=st.integers(1, 4096))
+def test_generated_string_block_states_preserve_eager_and_raw_inputs(
     state: str, raw_frames: bool, size: int
 ) -> None:
     block_data = {
@@ -439,6 +439,80 @@ def test_generated_declared_block_states_preserve_eager_and_raw_inputs(
     assert block.state == state
     assert block.to_dict() == before
     assert block_data == before
+
+
+@pytest.mark.parametrize(
+    ("state", "stored_state"),
+    [
+        ("active_allocated", 1),
+        ("active_pending_free", 0),
+        ("inactive", -1),
+        ("active_awaiting_free", "active_awaiting_free"),
+        ("unknown", "unknown"),
+        ("", ""),
+    ],
+)
+@PROPERTY_SETTINGS
+@given(size=st.integers(1, 4096))
+def test_generated_block_states_preserve_sql_mapping_and_missing_column_default(
+    state: str, stored_state: str | int, size: int
+) -> None:
+    block = Block.from_dict({"size": size, "requested_size": size, "address": 4096, "state": state})
+    block.alloc_event_idx = 0
+    record = block2record(block)
+    assert record["state"] == state
+    before = copy.deepcopy(record)
+    with TemporaryDirectory() as directory:
+        database = SnapshotDb(str(Path(directory) / "states.db"))
+        try:
+            database.create_block_table()
+            table = database.get_block_table()
+            table.insert_record(database.conn, record)
+            # Unknown strings pass through the existing map. The SQL default
+            # 99 applies only when the column is omitted, not to unknown values.
+            table.insert_record(database.conn, {"id": 1})
+            assert database.conn.execute("SELECT state FROM block_0 ORDER BY id").fetchall() == [
+                (stored_state,),
+                (99,),
+            ]
+        finally:
+            database.conn.close()
+    assert record == before
+    assert block.state == state
+
+
+@pytest.mark.parametrize("state", ["active_awaiting_free", "unknown", ""])
+@PROPERTY_SETTINGS
+@given(size=st.integers(1, 4096))
+def test_generated_producer_block_states_still_import_without_normalization(
+    state: str, size: int
+) -> None:
+    representation = _valid_representation()
+    segment = representation["segments"][0]
+    segment.update(total_size=size, allocated_size=size, active_size=size)
+    segment["blocks"][0].update(state=state, size=size, requested_size=size)
+    before = copy.deepcopy(representation)
+    with TemporaryDirectory() as directory, pytest.MonkeyPatch.context() as monkeypatch:
+        root = Path(directory)
+        source = root / "trusted-in-memory.pkl"
+        source.write_bytes(SOURCE_BYTES)
+        output = root / "output"
+        loads = []
+
+        def load_representation(path: Path) -> dict[str, object]:
+            assert path == source
+            loads.append(path)
+            return representation
+
+        snapshot2db = importlib.import_module("pt_snap_cli.snapshot.tools.adaptors.snapshot2db")
+        monkeypatch.setattr(snapshot2db, "load_snapshot_representation", load_representation)
+        destination = SnapshotImportBackend().dump_to_db(source, output, device=0)
+        with closing(sqlite3.connect(destination)) as connection:
+            assert connection.execute("SELECT state FROM block_0").fetchall() == [(state,)]
+        assert loads == [source]
+        assert representation == before
+        assert source.read_bytes() == SOURCE_BYTES
+        assert list(output.iterdir()) == [destination]
 
 
 @pytest.mark.parametrize("raw_frames", [False, True])
