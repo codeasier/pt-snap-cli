@@ -6,8 +6,6 @@ PT_SNAP_REQUIRE_BROWSER=1 so a missing browser cannot silently skip these tests.
 
 from __future__ import annotations
 
-import importlib
-import os
 import re
 from collections.abc import Iterator
 
@@ -15,12 +13,9 @@ import pytest
 
 from pt_snap_cli.core.models import QueryResult
 from pt_snap_cli.memory_tree_render import render_memory_tree
+from tests._browser_support import browser_expect as expect
 
-playwright = (
-    importlib.import_module("playwright.sync_api")
-    if os.environ.get("PT_SNAP_REQUIRE_BROWSER") == "1"
-    else pytest.importorskip("playwright.sync_api")
-)
+pytestmark = pytest.mark.browser
 
 ROOT_BYTES = 471_498_368
 GIANT_BYTES = 283_057_288
@@ -82,27 +77,6 @@ def frame_rows():
     return rows
 
 
-@pytest.fixture(scope="module")
-def chromium_browser():
-    with playwright.sync_playwright() as runtime:
-        options = {"headless": True}
-        executable = os.environ.get("PT_SNAP_TEST_CHROMIUM")
-        if executable:
-            options["executable_path"] = executable
-        try:
-            browser = runtime.chromium.launch(**options)
-        except playwright.Error as exc:
-            # A broken running browser is a test failure, not an optional dependency.
-            missing = "executable doesn't exist" in str(exc).lower()
-            if missing and os.environ.get("PT_SNAP_REQUIRE_BROWSER") != "1":
-                pytest.skip("Chromium is not installed; run python -m playwright install chromium")
-            pytest.fail(f"Cannot launch Chromium for frame navigation tests: {exc}")
-        try:
-            yield browser
-        finally:
-            browser.close()
-
-
 @pytest.fixture
 def browser_page(chromium_browser) -> Iterator:
     context = chromium_browser.new_context(viewport={"width": 1440, "height": 1000}, locale="en-US")
@@ -126,7 +100,7 @@ def _render(page, rows):
         total_is_exact=True,
     )
     page.set_content(render_memory_tree(result, event_id=17, html=True), wait_until="load")
-    playwright.expect(page.locator("#chart .node").first).to_be_attached()
+    expect(page.locator("#chart .node").first).to_be_attached()
 
 
 def _button(page, container, node_id):
@@ -152,8 +126,8 @@ def _assert_path(locator, *labels):
 
 
 def _assert_selected(page, node_id, *labels):
-    playwright.expect(page.locator("#chart .node").first).to_have_attribute("data-node-id", node_id)
-    playwright.expect(page.locator("#detail")).to_contain_text(node_id)
+    expect(page.locator("#chart .node").first).to_have_attribute("data-node-id", node_id)
+    expect(page.locator("#detail")).to_contain_text(node_id)
     _assert_path(page.locator("#focus-path"), *labels)
 
 
@@ -170,9 +144,9 @@ def _tab_to(page, target):
 def test_search_keeps_true_proportional_geometry_until_navigation(browser_page, frame_rows):
     page = browser_page
     _render(page, frame_rows)
-    playwright.expect(page.get_by_role("button", name="Parent frame", exact=True)).to_be_disabled()
-    playwright.expect(page.locator("#search-status")).not_to_be_empty()
-    playwright.expect(page.locator("#search-results button")).to_have_count(0)
+    expect(page.get_by_role("button", name="Parent frame", exact=True)).to_be_disabled()
+    expect(page.locator("#search-status")).not_to_be_empty()
+    expect(page.locator("#search-results button")).to_have_count(0)
     _assert_selected(page, "root", "All active memory")
 
     giant_width = float(_rect(page, "frame:giant").get_attribute("width"))
@@ -182,7 +156,7 @@ def test_search_keeps_true_proportional_geometry_until_navigation(browser_page, 
     original_geometry = _geometry(page)
 
     page.locator("#search").fill("SHARED_FUNCTION")
-    playwright.expect(page.locator("#search-results button")).to_have_count(2)
+    expect(page.locator("#search-results button")).to_have_count(2)
     assert _geometry(page) == original_geometry
     _assert_selected(page, "root", "All active memory")
 
@@ -201,26 +175,26 @@ def test_search_disambiguates_duplicate_paths_and_supports_native_keyboard(
     page = browser_page
     _render(page, frame_rows)
     page.locator("#search").fill("sHaReD_fUnCtIoN")
-    playwright.expect(page.locator("#search-results button")).to_have_count(2)
-    playwright.expect(page.locator("#search-status")).to_contain_text(re.compile(r"\b2\b"))
+    expect(page.locator("#search-results button")).to_have_count(2)
+    expect(page.locator("#search-status")).to_contain_text(re.compile(r"\b2\b"))
     for node_id, branch in (
         ("frame:giant/tiny", "giant_branch"),
         ("frame:other/tiny", "other_branch"),
     ):
         button = _button(page, "search-results", node_id)
         _assert_path(button, "All active memory", branch, "shared_function")
-        playwright.expect(button).to_contain_text(node_id)
-        playwright.expect(button).to_contain_text(re.compile(r"40\s+bytes", re.IGNORECASE))
+        expect(button).to_contain_text(node_id)
+        expect(button).to_contain_text(re.compile(r"40\s+bytes", re.IGNORECASE))
     target = _button(page, "search-results", "frame:giant/tiny")
     _tab_to(page, target)
     page.keyboard.press("Enter")
     _assert_selected(
         page, "frame:giant/tiny", "All active memory", "giant_branch", "shared_function"
     )
-    playwright.expect(page.locator("#detail")).to_contain_text("Inclusive: 40 bytes")
+    expect(page.locator("#detail")).to_contain_text("Inclusive: 40 bytes")
 
     # The other same-named frame remains available outside the focused subtree.
-    playwright.expect(page.locator("#search-results button")).to_have_count(2)
+    expect(page.locator("#search-results button")).to_have_count(2)
     target = _button(page, "search-results", "frame:other/tiny")
     _tab_to(page, target)
     page.keyboard.press("Space")
@@ -234,13 +208,13 @@ def test_node_id_search_is_case_insensitive_and_global_after_focus(browser_page,
     _render(page, frame_rows)
     _button(page, "children-list", "frame:giant").click()
     page.locator("#search").fill("FRAME:OTHER/TINY")
-    playwright.expect(page.locator("#search-results button")).to_have_count(1)
+    expect(page.locator("#search-results button")).to_have_count(1)
     _button(page, "search-results", "frame:other/tiny").click()
     _assert_selected(
         page, "frame:other/tiny", "All active memory", "other_branch", "shared_function"
     )
     page.locator("#search").fill("ZERO_LEAF")
-    playwright.expect(page.locator("#search-results button")).to_have_count(1)
+    expect(page.locator("#search-results button")).to_have_count(1)
     _button(page, "search-results", "frame:giant/zero/leaf").click()
     _assert_selected(
         page,
@@ -250,34 +224,34 @@ def test_node_id_search_is_case_insensitive_and_global_after_focus(browser_page,
         "zero_parent",
         "zero_leaf",
     )
-    playwright.expect(page.locator("#detail")).to_contain_text("Inclusive: 0 bytes")
+    expect(page.locator("#detail")).to_contain_text("Inclusive: 0 bytes")
 
 
 def test_children_reach_tiny_and_zero_frames_and_parent_retraces_path(browser_page, frame_rows):
     page = browser_page
     _render(page, frame_rows)
-    playwright.expect(page.locator("#children-list button")).to_have_count(3)
+    expect(page.locator("#children-list button")).to_have_count(3)
     giant = _button(page, "children-list", "frame:giant")
     _assert_path(giant, "All active memory", "giant_branch")
-    playwright.expect(giant).to_contain_text("frame:giant")
-    playwright.expect(giant).to_contain_text("283,057,288 bytes")
+    expect(giant).to_contain_text("frame:giant")
+    expect(giant).to_contain_text("283,057,288 bytes")
     giant.click()
-    playwright.expect(page.locator("#children-list button")).to_have_count(2)
+    expect(page.locator("#children-list button")).to_have_count(2)
 
     tiny = _button(page, "children-list", "frame:giant/tiny")
     _assert_path(tiny, "All active memory", "giant_branch", "shared_function")
-    playwright.expect(tiny).to_contain_text("40 bytes")
+    expect(tiny).to_contain_text("40 bytes")
     _tab_to(page, tiny)
     page.keyboard.press("Enter")
     _assert_selected(
         page, "frame:giant/tiny", "All active memory", "giant_branch", "shared_function"
     )
-    playwright.expect(page.locator("#children-list button")).to_have_count(0)
-    playwright.expect(page.locator("#children-status")).not_to_be_empty()
+    expect(page.locator("#children-list button")).to_have_count(0)
+    expect(page.locator("#children-status")).not_to_be_empty()
     page.get_by_role("button", name="Parent frame", exact=True).click()
 
     zero = _button(page, "children-list", "frame:giant/zero")
-    playwright.expect(zero).to_contain_text("0 bytes")
+    expect(zero).to_contain_text("0 bytes")
     _tab_to(page, zero)
     page.keyboard.press("Space")
     _assert_selected(page, "frame:giant/zero", "All active memory", "giant_branch", "zero_parent")
@@ -290,8 +264,8 @@ def test_children_reach_tiny_and_zero_frames_and_parent_retraces_path(browser_pa
         "zero_parent",
         "zero_leaf",
     )
-    playwright.expect(page.locator("#children-list button")).to_have_count(0)
-    playwright.expect(page.locator("#children-status")).not_to_be_empty()
+    expect(page.locator("#children-list button")).to_have_count(0)
+    expect(page.locator("#children-status")).not_to_be_empty()
     for node_id, labels in (
         ("frame:giant/zero", ("All active memory", "giant_branch", "zero_parent")),
         ("frame:giant", ("All active memory", "giant_branch")),
@@ -299,7 +273,7 @@ def test_children_reach_tiny_and_zero_frames_and_parent_retraces_path(browser_pa
     ):
         page.get_by_role("button", name="Parent frame", exact=True).click()
         _assert_selected(page, node_id, *labels)
-    playwright.expect(page.get_by_role("button", name="Parent frame", exact=True)).to_be_disabled()
+    expect(page.get_by_role("button", name="Parent frame", exact=True)).to_be_disabled()
 
 
 def test_reset_is_repeatable_and_preserves_global_search(browser_page, frame_rows):
@@ -311,12 +285,10 @@ def test_reset_is_repeatable_and_preserves_global_search(browser_page, frame_row
         _button(page, "search-results", node_id).click()
         page.locator("#reset").click()
         _assert_selected(page, "root", "All active memory")
-        playwright.expect(page.locator("#search")).to_have_value("shared_function")
-        playwright.expect(page.locator("#search-results button")).to_have_count(2)
-        playwright.expect(page.locator("#children-list button")).to_have_count(3)
-        playwright.expect(
-            page.get_by_role("button", name="Parent frame", exact=True)
-        ).to_be_disabled()
+        expect(page.locator("#search")).to_have_value("shared_function")
+        expect(page.locator("#search-results button")).to_have_count(2)
+        expect(page.locator("#children-list button")).to_have_count(3)
+        expect(page.get_by_role("button", name="Parent frame", exact=True)).to_be_disabled()
         assert _geometry(page) == original_geometry
     page.locator("#reset").click()
     _assert_selected(page, "root", "All active memory")
@@ -329,14 +301,14 @@ def test_no_results_and_clearing_search_leave_navigation_usable(browser_page, fr
     _button(page, "children-list", "frame:giant").click()
     geometry = _geometry(page)
     page.locator("#search").fill("there is no such frame")
-    playwright.expect(page.locator("#search-results button")).to_have_count(0)
-    playwright.expect(page.locator("#search-status")).to_have_text("No matching frames.")
+    expect(page.locator("#search-results button")).to_have_count(0)
+    expect(page.locator("#search-status")).to_have_text("No matching frames.")
     assert _geometry(page) == geometry
     _assert_selected(page, "frame:giant", "All active memory", "giant_branch")
-    playwright.expect(page.locator("#children-list button")).to_have_count(2)
+    expect(page.locator("#children-list button")).to_have_count(2)
     page.locator("#search").fill("")
-    playwright.expect(page.locator("#search-status")).to_have_text(instructions)
-    playwright.expect(page.locator("#search-results button")).to_have_count(0)
+    expect(page.locator("#search-status")).to_have_text(instructions)
+    expect(page.locator("#search-results button")).to_have_count(0)
     _button(page, "children-list", "frame:giant/tiny").click()
     _assert_selected(
         page, "frame:giant/tiny", "All active memory", "giant_branch", "shared_function"
@@ -347,22 +319,20 @@ def test_unicode_and_html_like_labels_remain_plain_text_everywhere(browser_page,
     page = browser_page
     _render(page, frame_rows)
     root_child = _button(page, "children-list", "frame:malicious")
-    playwright.expect(root_child).to_contain_text(MALICIOUS_LABEL)
+    expect(root_child).to_contain_text(MALICIOUS_LABEL)
     page.locator("#search").fill("中文")
-    playwright.expect(page.locator("#search-results button")).to_have_count(1)
+    expect(page.locator("#search-results button")).to_have_count(1)
     result = _button(page, "search-results", "frame:malicious")
-    playwright.expect(result).to_contain_text(MALICIOUS_LABEL)
+    expect(result).to_contain_text(MALICIOUS_LABEL)
     result.click()
     _assert_selected(page, "frame:malicious", "All active memory", MALICIOUS_LABEL)
-    playwright.expect(page.locator("#detail")).to_contain_text(MALICIOUS_LABEL)
-    playwright.expect(page.locator("#chart text")).to_have_text(MALICIOUS_LABEL)
-    playwright.expect(page.locator("img")).to_have_count(0)
-    playwright.expect(page.locator("script")).to_have_count(2)
+    expect(page.locator("#detail")).to_contain_text(MALICIOUS_LABEL)
+    expect(page.locator("#chart text")).to_have_text(MALICIOUS_LABEL)
+    expect(page.locator("img")).to_have_count(0)
+    expect(page.locator("script")).to_have_count(2)
     assert page.evaluate("window.__frameInjected === undefined")
     page.locator("#reset").click()
-    playwright.expect(_button(page, "children-list", "frame:malicious")).to_contain_text(
-        MALICIOUS_LABEL
-    )
+    expect(_button(page, "children-list", "frame:malicious")).to_contain_text(MALICIOUS_LABEL)
 
 
 def test_search_does_not_silently_truncate_more_than_100_matches(browser_page):
@@ -373,13 +343,13 @@ def test_search_does_not_silently_truncate_more_than_100_matches(browser_page):
     )
     _render(page, rows)
     page.locator("#search").fill("BATCH FRAME")
-    playwright.expect(page.locator("#search-results button")).to_have_count(151)
-    playwright.expect(page.locator("#search-status")).to_contain_text(re.compile(r"\b151\b"))
+    expect(page.locator("#search-results button")).to_have_count(151)
+    expect(page.locator("#search-status")).to_contain_text(re.compile(r"\b151\b"))
     _button(page, "search-results", "batch:150").click()
     _assert_selected(page, "batch:150", "All active memory", "batch frame 150")
-    playwright.expect(page.locator("#search-results button")).to_have_count(151)
+    expect(page.locator("#search-results button")).to_have_count(151)
     page.locator("#reset").click()
-    playwright.expect(page.locator("#children-list button")).to_have_count(151)
+    expect(page.locator("#children-list button")).to_have_count(151)
 
 
 def test_zero_total_tree_can_be_explored_and_reset(browser_page):
@@ -395,15 +365,15 @@ def test_zero_total_tree_can_be_explored_and_reset(browser_page):
     _render(page, rows)
     original_geometry = _geometry(page)
     assert float(_rect(page, "empty:branch").get_attribute("width")) == 0
-    playwright.expect(page.locator("#children-list button")).to_have_count(2)
+    expect(page.locator("#children-list button")).to_have_count(2)
     _button(page, "children-list", "empty:branch").click()
     leaf = _button(page, "children-list", "empty:leaf")
     _tab_to(page, leaf)
     page.keyboard.press("Enter")
     _assert_selected(page, "empty:leaf", "Empty active memory", "empty branch", "empty leaf")
-    playwright.expect(page.locator("#detail")).to_contain_text("Inclusive: 0 bytes")
-    playwright.expect(page.locator("#detail")).to_contain_text("n/a")
-    playwright.expect(page.locator("#children-status")).not_to_be_empty()
+    expect(page.locator("#detail")).to_contain_text("Inclusive: 0 bytes")
+    expect(page.locator("#detail")).to_contain_text("n/a")
+    expect(page.locator("#children-status")).not_to_be_empty()
     page.locator("#search").fill("empty sibling")
     _button(page, "search-results", "empty:sibling").click()
     _assert_selected(page, "empty:sibling", "Empty active memory", "empty sibling")
@@ -418,10 +388,10 @@ def test_existing_svg_click_and_hover_keep_working(browser_page, frame_rows):
     page = browser_page
     _render(page, frame_rows)
     _rect(page, "frame:giant").hover()
-    playwright.expect(page.locator("#detail")).to_contain_text("283,057,288 bytes")
+    expect(page.locator("#detail")).to_contain_text("283,057,288 bytes")
     _rect(page, "frame:giant").click()
     _assert_selected(page, "frame:giant", "All active memory", "giant_branch")
-    playwright.expect(page.locator("#children-list button")).to_have_count(2)
+    expect(page.locator("#children-list button")).to_have_count(2)
     page.locator("#reset").click()
     _assert_selected(page, "root", "All active memory")
 
@@ -431,17 +401,17 @@ def test_keyboard_focus_survives_continuous_descent_parent_and_reset(browser_pag
     _render(page, frame_rows)
     path = page.locator("#focus-path")
     _button(page, "children-list", "frame:giant").click()
-    playwright.expect(path).to_be_focused()
+    expect(path).to_be_focused()
 
     # No focus() helper between navigations: the next Tab reaches the new children.
     page.keyboard.press("Tab")
-    playwright.expect(_button(page, "children-list", "frame:giant/tiny")).to_be_focused()
+    expect(_button(page, "children-list", "frame:giant/tiny")).to_be_focused()
     page.keyboard.press("Tab")
-    playwright.expect(_button(page, "children-list", "frame:giant/zero")).to_be_focused()
+    expect(_button(page, "children-list", "frame:giant/zero")).to_be_focused()
     page.keyboard.press("Space")
-    playwright.expect(path).to_be_focused()
+    expect(path).to_be_focused()
     page.keyboard.press("Tab")
-    playwright.expect(_button(page, "children-list", "frame:giant/zero/leaf")).to_be_focused()
+    expect(_button(page, "children-list", "frame:giant/zero/leaf")).to_be_focused()
     page.keyboard.press("Enter")
     _assert_selected(
         page,
@@ -451,25 +421,25 @@ def test_keyboard_focus_survives_continuous_descent_parent_and_reset(browser_pag
         "zero_parent",
         "zero_leaf",
     )
-    playwright.expect(path).to_be_focused()
+    expect(path).to_be_focused()
 
     page.keyboard.press("Shift+Tab")
-    playwright.expect(page.locator("#search")).to_be_focused()
+    expect(page.locator("#search")).to_be_focused()
     page.keyboard.press("Shift+Tab")
-    playwright.expect(page.get_by_role("button", name="Parent frame", exact=True)).to_be_focused()
+    expect(page.get_by_role("button", name="Parent frame", exact=True)).to_be_focused()
     page.keyboard.press("Enter")
     _assert_selected(page, "frame:giant/zero", "All active memory", "giant_branch", "zero_parent")
-    playwright.expect(path).to_be_focused()
+    expect(path).to_be_focused()
 
     for _ in range(3):
         page.keyboard.press("Shift+Tab")
-    playwright.expect(page.locator("#reset")).to_be_focused()
+    expect(page.locator("#reset")).to_be_focused()
     page.keyboard.press("Space")
     _assert_selected(page, "root", "All active memory")
-    playwright.expect(path).to_be_focused()
-    playwright.expect(page.get_by_role("button", name="Parent frame", exact=True)).to_be_disabled()
+    expect(path).to_be_focused()
+    expect(page.get_by_role("button", name="Parent frame", exact=True)).to_be_disabled()
     page.keyboard.press("Tab")
-    playwright.expect(_button(page, "children-list", "frame:giant")).to_be_focused()
+    expect(_button(page, "children-list", "frame:giant")).to_be_focused()
 
 
 def test_special_allocation_categories_remain_reachable(browser_page):
@@ -492,10 +462,10 @@ def test_special_allocation_categories_remain_reachable(browser_page):
         assert float(_rect(page, node_id).get_attribute("width")) == 0
         _button(page, "children-list", node_id).click()
         _assert_selected(page, node_id, "All active memory", label)
-        playwright.expect(page.locator("#children-status")).not_to_be_empty()
+        expect(page.locator("#children-status")).not_to_be_empty()
         page.locator("#reset").click()
         page.locator("#search").fill(node_id)
-        playwright.expect(page.locator("#search-results button")).to_have_count(1)
+        expect(page.locator("#search-results button")).to_have_count(1)
         _button(page, "search-results", node_id).click()
         _assert_selected(page, node_id, "All active memory", label)
         page.locator("#reset").click()

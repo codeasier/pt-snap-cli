@@ -56,7 +56,8 @@ jobs:
         run: python -m pytest tests/test_fixture_provenance.py
       - name: Run exhaustive non-slow partition
         # No coverage denominator or scale matrix here. Resource-warning gates
-        # remain enabled; required Chromium interaction runs in the Linux job.
+        # remain enabled; browser cases stay collected and explicitly report
+        # optional skips. Real Chromium execution is required in the Linux job.
         run: ${{ matrix.command }}
       - name: Upload platform test results
         if: always()
