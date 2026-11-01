@@ -88,8 +88,11 @@ class FocusService:
     def _checkpoint_file(path: Path, content: bytes, mode: int) -> tuple[Path, tuple[int, int]]:
         fd, name = tempfile.mkstemp(dir=path.parent, prefix=".focus.pt-snap-", suffix=".recovery")
         backup = Path(name)
-        identity = os.fstat(fd)
+        identity: tuple[int, int] | None = None
+        close_attempted = False
         try:
+            info = os.fstat(fd)
+            identity = (info.st_dev, info.st_ino)
             remaining = memoryview(content)
             while remaining:
                 written = os.write(fd, remaining)
@@ -99,20 +102,28 @@ class FocusService:
             if hasattr(os, "fchmod"):
                 os.fchmod(fd, mode)
             else:
-                FocusService._verify_checkpoint(backup, (identity.st_dev, identity.st_ino))
+                FocusService._verify_checkpoint(backup, identity)
                 os.chmod(backup, mode)
             os.fsync(fd)
-            FocusService._verify_checkpoint(backup, (identity.st_dev, identity.st_ino))
-        except BaseException:
-            try:
-                FocusService._verify_checkpoint(backup, (identity.st_dev, identity.st_ino))
-                backup.unlink()
-            except OSError:
-                pass
-            raise
-        finally:
+            FocusService._verify_checkpoint(backup, identity)
+            close_attempted = True
             os.close(fd)
-        return backup, (identity.st_dev, identity.st_ino)
+        except BaseException:
+            # Windows cannot unlink an open checkpoint. Do not retry a failed
+            # close: the descriptor may already be closed and reused.
+            if not close_attempted:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            if identity is not None:
+                try:
+                    FocusService._verify_checkpoint(backup, identity)
+                    backup.unlink()
+                except OSError:
+                    pass
+            raise
+        return backup, identity
 
     @staticmethod
     def _verify_checkpoint(path: Path, identity: tuple[int, int]) -> None:
