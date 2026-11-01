@@ -14,6 +14,7 @@ coverage.xml
 platform-tests.xml
 platform-partition.json
 htmlcov/
+test_reports/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
