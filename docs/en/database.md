@@ -474,9 +474,14 @@ version-2 deduplicated frame extension; standalone imports use format 3. Frames 
 Inline stack bytes scale with the sum of stack text **over every event**, not
 unique stacks; conversion temporarily holds native and inline tables and may leave
 SQLite free pages. Capacity does not bound blocks, loading RSS or total disk.
-Compatible datasets additionally carry `ptSnap.identity`, metadata, omitted devices
-and full member hashes. Recognized whole-artifact metadata is available only after
-all attestation checks; external v1 datasets still need no metadata.
+Compatible exports additionally carry `ptSnap.identity`, metadata, omitted devices
+and a structural member inventory with empty digest values. Historical digest
+fields are accepted as inventories; compatible import reuse compares member names,
+not digest values, alongside source identity and required read-only structure.
+It does not scan arbitrary row contents, so structurally valid content edits can
+be reused. Recognized metadata does not attest database content integrity.
+Queries and explicit validators perform independent admission checks; external v1
+datasets still need no metadata. Native dataset content verification is unchanged.
 
 For finalized compatibility datasets ONLY, bare validation and cached analysis
 use `mode=ro&immutable=1` after rejecting all live/dangling sidecars and aliases

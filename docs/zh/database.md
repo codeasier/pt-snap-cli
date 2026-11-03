@@ -441,8 +441,11 @@ P0 兼容 v1 表序、内联布局和 manifest 语义不变。
 
 内联调用栈字节按**所有事件**的文本总和增长，不按不同栈计数；转换暂时并存原生与内联表，
 可能保留 SQLite free pages。容量不限制 block、加载 RSS 或总磁盘。兼容 manifest 的
-`ptSnap.identity`、metadata、省略设备和全部成员哈希形成整体证明，完整校验后才报告
-metadata available；外部 v1 数据集仍不要求 metadata。
+`ptSnap.identity`、metadata、省略设备及摘要值为空字符串的结构成员清单随导出写入。
+历史摘要字段仅作为清单接受；兼容导入复用检查成员名称、源身份及必要的只读结构，
+不比较摘要值，也不扫描任意行内容，因此结构合法的内容编辑可以被复用。
+识别到 metadata 不证明数据库内容完整。查询和显式验证器独立执行准入检查；
+外部 v1 数据集仍不要求 metadata。原生数据集的内容校验保持不变。
 
 **仅最终化兼容数据集**的裸校验与缓存分析在首个 SQLite 打开前拒绝全部存活/悬空
 sidecar 和别名后使用 `mode=ro&immutable=1`，保留已关闭/checkpoint 原版 WAL 的字节及

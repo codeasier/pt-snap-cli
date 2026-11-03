@@ -139,11 +139,14 @@ Bounded `event` and point-event active block/callstack dataset queries are
 available; global aggregate/report selection remains unsupported.
 
 Compatible publication is **no-replace**: external/original/user caches are never
-overwritten or deleted, even under `--force`. A complete, attested, identical
-pt-snap cache is reused (also with force); otherwise choose a new `--output-dir`.
-Source content, sourceFile, options, all member hashes and contract versions must
-match independently of salted `cacheHash`. A GUI-derived cache modification can
-invalidate this attestation, without implying producer rerun. All staged members
+overwritten or deleted, even under `--force`. Reuse checks source identity,
+sourceFile, options, contract versions, the complete member inventory and required
+read-only structure; otherwise choose a new `--output-dir`. Historical member
+hash fields are treated as inventories, without comparing digest values.
+Compatible import does not hash database contents or scan arbitrary row values:
+structurally valid content edits can be reused. Queries and explicit validators
+perform their own independent admission checks; successful import reuse is not
+proof of database content integrity or GUI cache reuse. All staged members
 close/finalize/validate before exclusive publication and requested focus; ordinary
 failure compensates exact old focus bytes, with recovery evidence if rollback fails.
 Standalone/native force policies remain unchanged. `SnapshotAnalyzer` is analysis-only.
