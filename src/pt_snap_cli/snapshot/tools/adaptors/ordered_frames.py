@@ -4,6 +4,7 @@ import json
 import sqlite3
 
 from ...base import Frame, TraceEntry
+from ...util.frame_json import _bounded_depth
 
 
 class OrderedFrameWriter:
@@ -40,6 +41,10 @@ class OrderedFrameWriter:
                     )
                     for frame in frames
                 ]
+                # Check the JSON shape readers see, including tuple-to-list
+                # normalization, before writing any part of this optional stack.
+                if not _bounded_depth([json.loads(value) for value in encoded]):
+                    return
             except (ValueError, TypeError, RecursionError, OverflowError):
                 # Optional evidence must not change acceptance of native text inputs.
                 return

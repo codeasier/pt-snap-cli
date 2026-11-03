@@ -9,11 +9,46 @@ from pathlib import Path
 
 import pytest
 
+from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.core import import_service
 from pt_snap_cli.core.errors import ImportExecutionError
 from pt_snap_cli.core.import_service import ImportService
+from pt_snap_cli.core.models import ImportOptions
 from tests.core.test_dataset_import import hashes
 from tests.core.test_msinsight_export import options
+from tests.snapshot.test_sharded_replay import lifecycle_data, write_source
+
+
+@pytest.mark.parametrize("fmt", [None, "msinsight"])
+@pytest.mark.parametrize("container", [dict, tuple])
+def test_serializable_deep_optional_frames_do_not_reject_import(tmp_path, fmt, container):
+    data = lifecycle_data()
+    data["device_traces"][0] = [e for e in data["device_traces"][0] if e["action"] != "oom"]
+    extra = 0
+    for _ in range(140):
+        extra = {"nested": extra} if container is dict else (extra,)
+    for event in data["device_traces"][0]:
+        # The first valid frame must not be partially inserted before rejection.
+        event["frames"] = [dict(event["frames"][0]), {**event["frames"][0], "extra": extra}]
+    source = write_source(tmp_path, data)
+    result = ImportService().import_snapshot(
+        ImportOptions(source, tmp_path / "output", set_focus=False, events_per_slice=2, format=fmt)
+    )
+    for member in result.db_path.glob("device_*/*.db"):
+        with closing(sqlite3.connect(member)) as conn:
+            for table in (
+                "pt_snap_frame_value",
+                "pt_snap_stack",
+                "pt_snap_stack_frame",
+                "pt_snap_event_stack",
+            ):
+                assert conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0] == 0
+    with SnapshotAnalyzer(result.db_path) as analyzer:
+        row = analyzer.execute_query("event", {"id": 0})["rows"][0]
+        assert row["callstack"]
+        assert row["frames"] is None and row["frames_status"] == "text_only"
+        tree = analyzer.execute_query("active_memory_frame_tree_at_event", {"event_id": 0})
+        assert any(node["node_id"] == "missing" for node in tree["rows"])
 
 
 @pytest.fixture(autouse=True)

@@ -83,7 +83,9 @@ def attach_frames(
         for row in coverage:
             resolver.budget.remaining()
             event, stack, count = row["eventId"], row["stackId"], row["frameCount"]
-            if event not in ids or type(stack) is not int or type(count) is not int or count < 0:
+            # The SQL IN clause already restricts eventId to this batch. Do not
+            # scan the full shard's allocation list for each returned event.
+            if type(stack) is not int or type(count) is not int or count < 0:
                 continue
             stack = cast(int, stack)
             if stack not in decoded_stacks:

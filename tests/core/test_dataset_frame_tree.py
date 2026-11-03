@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 import pt_snap_cli.core.query_service as query_service_module
 from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import app
+from pt_snap_cli.core.dataset_frames import attach_frames
 from pt_snap_cli.core.errors import InvalidParameterError, QueryCancelledError, QueryExecutionError
 from pt_snap_cli.core.import_service import ImportService
 from pt_snap_cli.core.models import ImportOptions
@@ -418,3 +419,47 @@ def test_statistics_representative_is_earliest_event_not_local_stack_id(tmp_path
         assert shared["alloc_count"] == 3  # Events 0, 1 and 11 share the raw array.
         assert shared["total_size"] == 24  # Trace-event sizes, not live block sizes.
     assert hashes(root) == before
+
+
+def test_large_shared_stack_batch_never_searches_all_event_ids(tmp_path):
+    class EventIds(list):
+        def __contains__(self, event):
+            pytest.fail("Frame loading must not perform linear event-list membership")
+
+    class Budget:
+        def remaining(self):
+            return None
+
+    path = tmp_path / "many-allocations.db"
+    with closing(sqlite3.connect(path)) as conn:
+        conn.executescript(
+            "CREATE TABLE pt_snap_event_stack(eventId INTEGER PRIMARY KEY,stackId INTEGER);"
+            "CREATE TABLE pt_snap_stack(stackId INTEGER PRIMARY KEY,frameCount INTEGER);"
+            "CREATE TABLE pt_snap_stack_frame(stackId INTEGER,frameIndex INTEGER,frameId INTEGER);"
+            "CREATE TABLE pt_snap_frame_value(id INTEGER PRIMARY KEY,frameJson TEXT);"
+            "INSERT INTO pt_snap_stack VALUES(0,1);"
+            "INSERT INTO pt_snap_stack_frame VALUES(0,0,0);"
+        )
+        conn.execute(
+            "INSERT INTO pt_snap_frame_value VALUES(0,?)",
+            (json.dumps({"filename": "alloc.py", "line": 1, "name": "alloc"}),),
+        )
+        conn.executemany(
+            "INSERT INTO pt_snap_event_stack VALUES(?,0)", ((i,) for i in range(30000))
+        )
+        conn.row_factory = sqlite3.Row
+
+        class Resolver:
+            _frame_schemas = {path: True}
+            budget = Budget()
+            reads = 0
+
+            def read(self, path, sql, values=None):
+                self.reads += 1
+                return [dict(row) for row in conn.execute(sql, values or [])]
+
+        resolver = Resolver()
+        frames = attach_frames(resolver, path, EventIds(range(30000)))
+        assert len(frames) == 30000
+        assert resolver.reads == 2 * ((30000 + 255) // 256)
+        assert frames[0] == frames[29999]

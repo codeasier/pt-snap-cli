@@ -312,3 +312,12 @@ artifacts remain readable. Dataset trees resolve allocation owners before
 caller-path grouping and preserve missing/empty/static/preexisting occupancy.
 No allocator transition, event ID, source mapping, license or executable fixture
 was changed, and no external implementation was incorporated.
+
+## 2026-11-03: preflight optional ordered-frame JSON before publication
+
+First-party frame writers and readers now share the existing bounded JSON rules.
+Serialized stacks are checked before any optional evidence is inserted, including
+JSON tuple-to-array normalization; unsupported deep evidence is omitted while
+the original text stack and snapshot import remain accepted. No allocator,
+event identity, source mapping, license or executable fixture changed. No
+external implementation was incorporated.

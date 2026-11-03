@@ -168,9 +168,15 @@ def test_compatible_owned_cache_reuse_and_external_force_preserve_actual_bytes(t
     reused = service.import_snapshot(dataclasses.replace(request, force=True))
     assert reused.reused and reused.metadata is None
     assert inventory(result.db_path) == external
-    # Invalid external artifacts must still be preserved, including under force.
+    # Lightweight reuse accepts content edits and must preserve the edited bytes.
     with closing(sqlite3.connect(result.db_path / "device_0/slice_00000.db")) as conn, conn:
         conn.execute("UPDATE block_0 SET size=size+1")
+    edited = inventory(result.db_path)
+    assert service.import_snapshot(dataclasses.replace(request, force=True)).reused
+    assert inventory(result.db_path) == edited
+    # Structural damage must still be rejected without replacing the artifact.
+    with closing(sqlite3.connect(result.db_path / "device_0/slice_00000.db")) as conn, conn:
+        conn.execute("DROP TABLE block_0")
     invalid = inventory(result.db_path)
     with pytest.raises(ImportExecutionError, match="preserv"):
         service.import_snapshot(dataclasses.replace(request, force=True))

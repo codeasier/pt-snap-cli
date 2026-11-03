@@ -159,7 +159,9 @@ Compatible cache reuse checks the ordered-frame declaration version, not frame-t
 contents or stored digests. Queries independently validate the frame evidence they use.
 Legacy and external text-only caches retain their read-only degradation behavior.
 Unencodable optional event evidence may remain uncovered; source coverage is reported
-separately.
+separately. Writers check the reader's JSON depth limit of 128 before inserting any
+part of a stack. Unsupported deep evidence is omitted as a whole; text callstacks
+and memory occupancy remain available.
 
 `DatasetValidation.text_callstacks=True` means an inline text column is available,
 not that every event has a stack. `structured_frames=False` remains false even

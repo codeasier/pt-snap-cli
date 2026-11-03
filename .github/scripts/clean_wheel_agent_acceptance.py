@@ -197,6 +197,52 @@ def _dataset_query(
     return scope
 
 
+def _event_parity(crossing: list[dict[str, Any]], reference: list[dict[str, Any]]) -> None:
+    """Compare stable event values and validate dataset-only ordered evidence."""
+    fields = (
+        "id",
+        "action",
+        "address",
+        "size",
+        "stream",
+        "allocated",
+        "active",
+        "reserved",
+        "callstack",
+    )
+    _require(
+        len(crossing) == len(reference) == 2
+        and all(all(key in row for key in fields) for row in [*crossing, *reference]),
+        "Cross-shard real events have missing rows or fields",
+    )
+    _require(
+        [{key: row[key] for key in fields} for row in crossing]
+        == [{key: row[key] for key in fields} for row in reference],
+        "Cross-shard real events differ from standalone",
+    )
+    for row in crossing:
+        frames = row.get("frames")
+        _require(
+            row.get("frames_status") == "ordered"
+            and isinstance(frames, list)
+            and all(
+                isinstance(frame, dict)
+                and isinstance(frame.get("filename"), str)
+                and type(frame.get("line")) is int
+                and isinstance(frame.get("name"), str)
+                for frame in frames
+            ),
+            "Cross-shard ordered frame evidence is incomplete",
+        )
+        _require(
+            "\n".join(
+                f"{frame['filename']}:{frame['line']} {frame['name']}" for frame in reversed(frames)
+            )
+            == row["callstack"],
+            "Cross-shard ordered frames differ from standalone stack text",
+        )
+
+
 def _sharded_acceptance(
     pt_snap: Path,
     fixture: Path,
@@ -358,10 +404,7 @@ def _sharded_acceptance(
             scope.get("slice_indices") == [slices[0]["index"], slices[1]["index"]],
             "Event range did not cross shards",
         )
-        _require(
-            crossing["rows"] == reference["rows"] and len(crossing["rows"]) == 2,
-            "Cross-shard real events differ from standalone",
-        )
+        _event_parity(crossing["rows"], reference["rows"])
         _require(
             crossing.get("total_is_exact") is True and crossing.get("total") == 2,
             "Cross-shard exact total is invalid",
