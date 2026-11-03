@@ -97,8 +97,11 @@ pt-snap overview snapshot.pkl.msinsight --json
 pt-snap query --template-use event --slice 0 --json
 ```
 
-此**显式**模式仅对齐 `Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5`
-的原始 pickle 导入入口，不是独立目录入口。GUI 发现要求同一原始 pickle 邻接
+此**显式**模式导出 parser v3 缓存。`Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5`
+仅为历史 v2 schema/身份参考，不是当前导出的已核验消费端；目前尚无已核验的 v3
+消费端固定 revision/build。不要用该旧 GUI 打开当前缓存，它可能重新解析并改写缓存。
+后续 v3 验收应使用独立可信 pickle 副本及新建的邻接缓存，保留原始产物；
+这不是当前 GUI 支持承诺。历史入口要求同一原始 pickle 邻接
 `<完整输入文件名>.msinsight/`；pt-snap 可在没有 pickle 时分析已搬迁完整产物。
 可选 `--events-per-slice N` 默认 `500000`；`--output-dir` 选择其他父目录，不意味着
 GUI 支持独立入口。`--device` 选择有事件设备，并披露省略设备。非零/稀疏真实 ID、

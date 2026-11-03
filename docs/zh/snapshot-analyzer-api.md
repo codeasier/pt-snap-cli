@@ -210,6 +210,7 @@ for row in result["rows"]:
 analyzer 设备；未设置显式 analyzer 数据库时，再使用已解析项目或全局 focus 的设备；
 最后使用发现的第一个设备。只有显式 analyzer 数据库而没有 analyzer 设备时，不会继承
 配置中的设备。`max_rows=None`、零或负数均表示不限制行数。传入
+帧树排队等待也计入同一次调用的超时预算。
 `exact_total=True` 可得到匹配行 `COUNT`。`timeout_s` 是一次
 `execute_query()` 调用的墙钟预算（秒），也可由 `PT_SNAP_QUERY_TIMEOUT`
 提供；页面查询与可选 COUNT 共用该预算。该环境变量作用于所有模板查询，

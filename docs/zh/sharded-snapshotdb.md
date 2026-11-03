@@ -388,9 +388,13 @@ pickle 仍可能整体加载。分库只限制**单库真实事件数**，不限
 ## 显式 msinsight 兼容导出（P2）
 
 `pt-snap import snapshot.pkl --format msinsight --json`（别名
-`--format compatibility-v1`）**仅**对齐
-`Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5`。支持入口是在该目标版本
-打开**同一原始 pickle**及邻接 `<原始路径>.msinsight/`，不是 GUI 直接导入独立目录。
+`--format compatibility-v1`）导出 parser v3 缓存。固定的
+`Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5` 及 `targetRevision`
+仅为历史 schema/身份参考，不证明旧 v2 GUI 支持当前导出。尚无已核验的 v3
+消费端固定 revision/build。不要将当前缓存交给该旧 GUI，它可能重新解析并改写缓存。
+后续 v3 验收必须使用独立可信 pickle 副本及新建邻接 `<原始路径>.msinsight/` 缓存，
+保留原始产物，并记录配套消费端 revision/build、验证 v3 hash/member 语义后再宣称
+GUI 复用通过。不支持 GUI 直接导入独立目录。
 `--output-dir` 为 pt-snap 选择其他父目录，搬迁本身不创建上游入口。`sourceFile` 记录
 绝对原始源路径。容量默认 `500000`，可用 `--events-per-slice` 调整；默认单库及显式
 native-v2 输出仍独立且不变。

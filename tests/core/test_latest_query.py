@@ -4,16 +4,82 @@ import sqlite3
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
-from threading import Event
+from threading import Event, Lock
 
 import pytest
 
 from pt_snap_cli.api import SnapshotAnalyzer
-from pt_snap_cli.core.errors import QueryCancelledError
+from pt_snap_cli.core.dataset_sources import QueryBudget
+from pt_snap_cli.core.errors import QueryCancelledError, QueryTimeoutError
 from pt_snap_cli.core.latest_query import LatestQuery
+from pt_snap_cli.core.query_service import QueryService
 from pt_snap_cli.core.validation_budget import validation_progress
 from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.executor import QueryExecutor
+
+
+@pytest.mark.parametrize("supplied_budget", [False, True])
+def test_queued_tree_timeout_includes_wait_and_does_not_start_worker(monkeypatch, supplied_budget):
+    now = [100.0]
+    monkeypatch.setattr("pt_snap_cli.core.query_service.time.monotonic", lambda: now[0])
+    waiting = Event()
+    work = Lock()
+    work.acquire()
+
+    class ObservedLock:
+        def acquire(self, *, timeout):
+            waiting.set()
+            return work.acquire(timeout=timeout)
+
+        def release(self):
+            work.release()
+
+    def unexpected_worker(*args, **kwargs):
+        pytest.fail("An expired queued request must not start its query worker")
+
+    service = QueryService()
+    service._frame_tree_queries._work = ObservedLock()
+    monkeypatch.setattr(QueryService, "_execute_query", unexpected_worker)
+    budget = QueryBudget(1.0, now[0]) if supplied_budget else None
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            request = pool.submit(
+                service.execute_query,
+                "active_memory_frame_tree_at_event",
+                timeout_s=1.0,
+                _budget=budget,
+            )
+            try:
+                assert waiting.wait(3)
+                now[0] += 5.0
+                # The caller returns while the old task still owns the lock.
+                with pytest.raises(QueryTimeoutError):
+                    request.result(timeout=3)
+                assert work.locked()
+                assert service._frame_tree_queries._active is None
+            finally:
+                work.release()
+    finally:
+        service.close()
+
+
+def test_deadline_is_checked_after_acquiring_work_lock():
+    queries = LatestQuery()
+    checks = 0
+
+    def remaining():
+        nonlocal checks
+        checks += 1
+        if checks == 2:
+            raise QueryTimeoutError("expired while acquiring lock")
+        return 1.0
+
+    with pytest.raises(QueryTimeoutError):
+        with queries.run(remaining):
+            pytest.fail("Expired work must not run")
+    # Timeout releases the lock and does not poison a subsequent request.
+    with queries.run():
+        pass
 
 
 def test_cancel_discards_result_and_next_query_can_run():

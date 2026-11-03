@@ -82,8 +82,8 @@ temporary derived database; source shards stay read-only. See the global support
 matrix for storage limits, cleanup and memory caveats.
 
 Explicit `pt-snap import snapshot.pkl --format msinsight --json` produces
-`snapshot.pkl.msinsight/` for the fixed msinsight revision's **same original
-pickle + adjacent cache** entrance. Inline stacks cost more space than native
+`snapshot.pkl.msinsight/` using parser v3. The pinned v2 revision is a historical
+schema reference; current exports have no verified GUI consumer revision yet. Inline stacks cost more space than native
 interning. Existing compatible targets are never replaced, even with `--force`;
 only pt-snap caches with matching identity and valid structure are reused. GUI acceptance remains
 **pending/not run**; hash equality alone is not acceptance. See

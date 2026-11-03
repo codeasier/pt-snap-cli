@@ -4,7 +4,8 @@
 
 ## 证据分层与固定目标
 
-唯一上游目标是 **Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5**。
+历史 v2 验收目标是 **Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5**。
+该 revision 及 `targetRevision` 仅为历史 schema/身份参考，不是当前 v3 导出的已核验消费端。
 协议/schema、隔离源函数、合成 CI、真实原版生产端产物的读取差分、GUI/C++ 实测是
 不同证据层，不能互相替代。**2026-10-11 的有界真实 GUI/C++ 与原版生产端反向验收已通过**，
 详见下方记录。[#205 待验收说明](https://github.com/codeasier/pt-snap-cli/issues/205#issuecomment-5987264017)
@@ -19,7 +20,19 @@
 本项目 MIT lineage。真正移植须走 snapshot provenance/PR 声明并保留 notices。
 可执行 pickle 的信任是独立 fixture 审核；本验收不新增已提交 pickle。
 
-## 正向：可信源 → 物理兼容导出 → 真实 GUI
+## 当前 v3 消费端验收状态
+
+目前尚无已核验的配套 v3 消费端固定 revision/build，不宣称当前导出支持 GUI 复用。
+联动消费端必须匹配 `cacheHash = SHA256(b"mem_snapshot_parser_v3" + raw_pickle_bytes)`，
+并将 `parserCache.members` 作为值为空字符串的结构清单，不要求历史 DB 内容摘要。
+仅 `targetRevision` 匹配不能证明这些行为。
+
+宣称支持前，应固定消费端 revision/build，实测缓存复用、未重跑生产端及无意外产物修改。
+必须使用独立可信 pickle 副本和新建邻接缓存目录，保留原始产物。
+不要用固定的旧 v2 GUI 打开当前 v3 缓存，它可能重新解析并改写缓存。
+以下步骤仅记录历史 v2 流程，不是当前 CLI 导出的验收操作指南。
+
+## 历史 v2 正向：可信源 → 物理兼容导出 → 真实 GUI
 
 以下固定历史验收使用 `mem_snapshot_parser_v2`，当前导出已使用
 `mem_snapshot_parser_v3`；历史 GUI 结果不代表新版解析器已验收。

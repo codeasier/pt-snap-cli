@@ -271,8 +271,8 @@ class QueryService:
                 _budget=_budget,
                 _resolved=_resolved,
             )
-        with self._frame_tree_queries.run() as cancelled:
-            budget = _budget if _budget is not None else self._new_budget(timeout_s, query_limits)
+        budget = _budget if _budget is not None else self._new_budget(timeout_s, query_limits)
+        with self._frame_tree_queries.run(budget.remaining) as cancelled:
             previous = budget.cancelled
             budget.cancelled = lambda: cancelled() or (previous is not None and previous())
             # Each task opens and closes its handles in its executing thread.

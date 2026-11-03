@@ -4,7 +4,9 @@
 
 ## Evidence layers and fixed target
 
-The ONLY upstream target is **Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5**.
+The historical v2 acceptance target was **Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5**.
+This revision and `targetRevision` are historical schema/identity references, not
+a verified consumer for current v3 exports.
 Protocol/schema validation, isolated source-function checks, synthetic CI,
 reading an actual original-producer artifact, and actual GUI/C++ consumption are
 DIFFERENT evidence layers. None implies the next. **The bounded real GUI/C++ and
@@ -23,7 +25,23 @@ are separately CC BY 4.0, not automatically covered by this project's MIT lineag
 A port needs snapshot provenance/PR decisions and retained notices. Executable
 pickle trust is a SEPARATE fixture review; no new committed pickle is added here.
 
-## Forward chain: trusted source → physical export → real GUI
+## Current v3 consumer acceptance status
+
+No matching v3 consumer revision/build has been verified yet; current exports
+have no claimed GUI reuse support. The coordinated consumer must match
+`cacheHash = SHA256(b"mem_snapshot_parser_v3" + raw_pickle_bytes)` and treat
+`parserCache.members` as a structural inventory with empty member values,
+without requiring historical DB content digests. A `targetRevision` match alone
+does not establish these behaviors.
+
+Before claiming support, pin the consumer revision/build and verify actual cache
+reuse without producer rerun or unintended artifact changes. Use a separately
+trusted pickle copy and a new adjacent cache directory, preserving original
+artifacts. Do not open current v3 caches with the pinned old v2 GUI: it can
+reparse and rewrite the cache. The following steps record the historical v2
+procedure and are not instructions for accepting current CLI exports.
+
+## Historical v2 forward chain: trusted source → physical export → real GUI
 
 The pinned historical acceptance below used `mem_snapshot_parser_v2`. Current
 exports use `mem_snapshot_parser_v3`; the historical GUI result does not verify

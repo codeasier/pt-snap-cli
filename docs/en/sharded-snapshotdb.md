@@ -486,10 +486,15 @@ failure paths; no live upstream GUI or performance acceptance is claimed.
 ## Explicit msinsight-Compatible Export (P2)
 
 `pt-snap import snapshot.pkl --format msinsight --json` (alias
-`--format compatibility-v1`) targets **only**
-`Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5`. Its supported entrance is
-opening the **same original pickle** in that target with adjacent
-`<original-path>.msinsight/`, not direct standalone-directory GUI import.
+`--format compatibility-v1`) exports parser v3 caches. The pinned
+`Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5` and `targetRevision`
+are historical schema/identity references, not proof that the old v2 GUI supports
+current exports. No fixed v3 consumer revision/build has been verified yet.
+Do not give current caches to that old GUI: it may reparse and rewrite them.
+Future v3 acceptance must use a separately trusted pickle copy with a new adjacent
+`<original-path>.msinsight/` cache, preserving the original artifacts; it must pin
+the matching consumer revision/build and verify v3 hash/member semantics before
+claiming GUI reuse. Direct standalone-directory GUI import is not supported.
 `--output-dir` selects another parent for pt-snap; relocation alone does not create
 an upstream GUI entrance. `sourceFile` is the absolute original source path.
 Capacity defaults to `500000` and can be set with `--events-per-slice`; default

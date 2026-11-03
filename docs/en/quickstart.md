@@ -117,9 +117,13 @@ pt-snap overview snapshot.pkl.msinsight --json
 pt-snap query --template-use event --slice 0 --json
 ```
 
-This **explicit** mode targets `Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5`
-and its original-pickle import entrance, not direct directory import. Keep the
-same original pickle beside `<full-input-filename>.msinsight/` for GUI discovery;
+This **explicit** mode exports parser v3 caches.
+`Ascend/msinsight@101f65b877a267ffd5f66ea3834706057ba243e5` is a historical v2
+schema/identity reference, not a verified consumer for current exports. No fixed
+v3 consumer revision/build has been verified yet. Do not open current caches
+with that old GUI: it may reparse and rewrite them. For future v3 acceptance, use
+a separately trusted pickle copy and a new adjacent `<full-input-filename>.msinsight/`
+cache, preserving the original artifacts. This is not a current GUI support claim;
 pt-snap itself can analyze a relocated complete artifact without pickle. Optional
 `--events-per-slice N` defaults to `500000`; `--output-dir` selects another parent,
 not an independently supported GUI entrance. `--device` selects an event-bearing

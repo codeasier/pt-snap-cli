@@ -70,7 +70,8 @@ pt-snap split snapshot.pkl --slices 4 --output snapshot-slices
 保持只读；存储限额、清理及内存边界见全局支持矩阵。
 
 显式 `pt-snap import snapshot.pkl --format msinsight --json` 生成
-`snapshot.pkl.msinsight/`，对齐固定 msinsight 版本的**同一原始 pickle + 邻接缓存**入口。
+`snapshot.pkl.msinsight/`，使用 parser v3。固定的旧 v2 revision 仅为历史 schema 参考；
+当前导出尚无已核验的 GUI 消费端固定版本。
 内联栈比原生去重占更多空间；即使 `--force` 也不替换已有兼容目标，只复用结构检查通过且
 身份相同的 pt-snap 缓存。GUI **待验收/未运行**，hash 相等不代表验收通过。详见
 [兼容导出及限制](docs/zh/sharded-snapshotdb.md#显式-msinsight-兼容导出p2)。
