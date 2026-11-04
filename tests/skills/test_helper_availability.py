@@ -1,6 +1,7 @@
 """Availability instructions and the real CLI evidence used by the helper."""
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -60,8 +61,7 @@ def test_custom_install_status_is_scoped_to_inspected_directory(
     if custom_status == "outdated":
         skill_file.write_text("older skill instructions\n", encoding="utf-8")
     elif custom_status == "missing":
-        skill_file.unlink()
-        skill_file.parent.rmdir()
+        shutil.rmtree(skill_file.parent)
 
     default = runner.invoke(app, ["skill", "list", "--json"])
     assert default.exit_code == 0, default.output

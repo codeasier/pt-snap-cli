@@ -4,25 +4,64 @@
 
 `pt-snap-cli` ships agent skills for routing (`pt-snap-helper`), setup, Ascend NPU collection, and memory diagnostics. Agents should start with `pt-snap-helper` and prefer `--json` on commands that accept it. The `pt-snap skill` commands copy those skills into the shared Agent Skills directory and into host-specific directories that Claude Code still requires.
 
-## Collection when the CLI is missing
+## First Agent Session
 
-For Ascend NPU capture, `pt-snap-helper` routes to `pt-snap-ascend-npu-collect`
-without requiring `pt-snap-setup` first. The exact collection skill must already
-be loaded by the host or load successfully through its supported loader; the
-collection skill owns TorchNPU/environment verification. Without the CLI,
-catalog/directory status is `unchecked`, reported separately from host-loading
-evidence. Readable skill source is not proof of loading.
+1. **Install the CLI** in Python 3.10+ if needed: `python -m pip install pt-snap-cli`.
+   An agent must get the separate setup approval before installing packages.
+2. **Install the skills** for the host you use. The normal default writes to the
+   user-level shared `agents` and Claude directories:
 
-If loading fails or is unavailable, the helper pauses collection handoff and
-explains how to make the known skill directory discoverable and restart, or use
-a supported loader. Acquiring a missing skill is a separate user choice; the
-helper does not implicitly install packages or skills.
+   ```bash
+   pt-snap skill install
+   ```
 
-Existing SnapshotDB analysis with a missing CLI still routes to setup. For
-capture followed by analysis, collect first, then use setup if the CLI is still
-missing. Pickle-only analysis requires an independent trusted-import decision;
-setup approval does not approve import. Diagnostic handoff starts only after a
-SnapshotDB exists, with the normal capabilities/overview preflight.
+   This copies files; it is not a read-only probe. For project scope use
+   `pt-snap skill install --project --target agents`. See destinations below
+   before choosing custom/native host paths.
+3. **Restart the agent host** after changed files. A running session may still
+   have the old content loaded.
+4. **Verify disk status and host loading separately**:
+
+   ```bash
+   pt-snap --help
+   pt-snap skill list --json
+   ```
+
+   Check the intended location's `installed` status, then use the host's skill
+   list/loader to confirm it can load `pt-snap-helper` and the chosen diagnostic
+   skill. CLI status only proves the inspected files, not host loading.
+5. **Ask for one analysis**, giving an existing DB/complete dataset and device.
+   If you only have a pickle or need collection, start at [Prepare Your Input](quickstart.md#prepare-your-input).
+
+Example requests (replace paths/devices with your own):
+
+- “Use pt-snap-helper for `snapshot.pkl.db`, device 0. Explain which blocks and
+  callstacks were live at the active peak; include coverage and unknowns.”
+- “Inspect end-of-trace leak **candidates** in `snapshot.pkl.db`, device 0.
+  Distinguish retention/pending free from a proven leak; do not change focus.”
+- “Gather fragmentation evidence for `snapshot.pkl.db`, device 0, event range
+  100–700. Compare same-event allocator gaps and segment behavior; do not infer
+  an OOM root cause from a gap alone.”
+
+Diagnostics are read-only: no pickle import, package/skill install, persisted
+focus or report-file writes. They validate full capabilities and overview before
+queries; `overview.import_metadata.status` matters even when `ok` is true.
+A loaded helper routes to one skill rather than running every diagnostic.
+
+## Workflow Layers and Output Recovery
+
+- **Normal path:** each skill starts with a short route map, then its required
+  input/preflight and bounded evidence workflow. Reuse a complete, current
+  capabilities/overview result rather than printing it again.
+- **Full contract:** keep required template parameters/semantics, database and
+  device identity, nested metadata status, completeness and attribution limits.
+  Fewer calls do not necessarily mean fewer output bytes.
+- **Recovery only when needed:** missing focus, custom install locations and CLI
+  absence have separate branches below/in the skill. For tool-truncated JSON,
+  use the packaged [complete-output recovery procedure](../../skills/pt-snap-helper/references/output-recovery.md).
+  It preserves the full object, offers an in-memory minifying retry, and stops
+  if the host cannot expose complete output. No `head`, grep, per-template
+  substitution, raw SQL or scratch-file workaround bypasses preflight.
 
 ## List skills
 
@@ -157,3 +196,23 @@ blocks allocated before the range but still live at the selected event remain
 included. `report peak-memory` selects an unfiltered full-trace peak, so it is
 only used for an explicitly requested, separately labelled full-trace comparison
 after validating its peak event. Its results do not replace range-scoped evidence.
+
+## Collection when the CLI is missing
+
+For Ascend NPU capture, `pt-snap-helper` routes to `pt-snap-ascend-npu-collect`
+without requiring `pt-snap-setup` first. The exact collection skill must already
+be loaded by the host or load successfully through its supported loader; the
+collection skill owns TorchNPU/environment verification. Without the CLI,
+catalog/directory status is `unchecked`, reported separately from host-loading
+evidence. Readable skill source is not proof of loading.
+
+If loading fails or is unavailable, the helper pauses collection handoff and
+explains how to make the known skill directory discoverable and restart, or use
+a supported loader. Acquiring a missing skill is a separate user choice; the
+helper does not implicitly install packages or skills.
+
+Existing SnapshotDB analysis with a missing CLI still routes to setup. For
+capture followed by analysis, collect first, then use setup if the CLI is still
+missing. Pickle-only analysis requires an independent trusted-import decision;
+setup approval does not approve import. Diagnostic handoff starts only after a
+SnapshotDB exists, with the normal capabilities/overview preflight.

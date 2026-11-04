@@ -17,12 +17,60 @@ Concurrency is keyed by GitHub ref and superseded runs are cancelled.
 | Compatibility matrix | Python 3.10–3.12; fixture provenance first, then `pytest -m "not slow and not nightly"` |
 | Full PR test tier | Python 3.13; `pytest -m "not nightly"` with branch coverage, preserving the existing slow tests |
 | Overall coverage | `pyproject.toml` fail-under 90 with branches enabled |
-| Critical runtime coverage | Import backend 90; simulated allocator 88; snapshot mutator 84, checked independently |
+| Critical runtime coverage | Ten independent line+branch floors, enforced by the fail-closed checker below |
 | Python 3.13 packaging | Upload coverage, build wheel, run offline clean-wheel skill/CLI acceptance including both sharded formats |
 | Nightly/manual dataset acceptance | Python 3.13; provenance, wheel build and audit, then `nightly` tests including the required installed-wheel CLI/API test |
 
 Million-event deep-offset pagination tests are marked `slow`; their small
 pagination contracts still run across the compatibility matrix.
+
+### Independent critical-file coverage
+
+After full Python 3.13 coverage, `check_critical_coverage.py` enforces this complete
+inventory. A high average cannot compensate for a single file below its floor.
+
+| Runtime module (`src/pt_snap_cli/`) | Minimum line + branch coverage |
+| --- | --- |
+| `core/snapshot_import_backend.py` | 90% |
+| `snapshot/simulate/simulated_caching_allocator.py` | 88% |
+| `snapshot/simulate/snapshot_mutator.py` | 84% |
+| `core/import_metadata_contract.py` | 100% |
+| `core/import_metadata.py` | 90% |
+| `core/split_service.py` | 90% |
+| `core/focus_service.py` | 90% |
+| `core/skill_service.py` | 90% |
+| `core/snapshot_cache.py` | 90% |
+| `snapshot/representation.py` | 95% |
+
+The checker requires `.coverage`, branch data, every listed source file, measured
+coverage for each exact path, and executable statements. Missing/corrupt evidence
+fails; percentages are compared before display rounding. It has no selector or
+floor overrides. The overall 90% gate remains separate and unchanged. CI contract
+mutation tests reject an omitted/conditional checker, alternate coverage commands,
+ignored failures, reordered execution, and narrowed source/omit/exclusion settings;
+`tests/test_critical_coverage_gate.py` separately protects the exact inventory and
+exercises real coverage-data success/failure cases. Raise floors only with actual
+CI evidence; do not delete code, add exclusions, or weaken assertions to meet them.
+
+`tests/test_ci_tiers.py` checks parsed commands, matrix rows, marker truth tables,
+conditions, independent file floors and gate ordering, not step display names or
+complete shell text. `tests/_ci_contract.py` intentionally supports only a bounded
+CI language: simple failure-propagating commands, shell quoting/continuations,
+sequential steps or a terminal `&&` chain, and explicit boolean conditions.
+Unknown shell control flow, OR/pipes, failure suppression, selector overrides and
+unrecognized conditions fail closed. Extend it with positive and negative
+mutation tests when introducing new syntax; do not weaken it into substring
+checks. Action version bumps, cache configuration, renaming, equivalent selectors
+and step splits/merges do not change a gate.
+
+The Linux browser job installs Chromium and sets `PT_SNAP_REQUIRE_BROWSER=1`.
+Browser cases are always collected even if Playwright is absent. Optional matrix
+and platform runs report each missing-dependency case as skipped plus an explicit
+**not executed** summary; that is not browser-pass evidence. Required mode fails
+for missing package/binary, any browser skip, empty/deselected collection or
+incomplete execution. `--collect-only` remains a collection diagnostic and is
+explicitly reported as not run. Broken installations and launch failures fail in
+both modes. Browser results are not added to non-browser platform requirements.
 
 Coverage reporting writes `.coverage`/`coverage.xml`; building writes `dist/` and
 intermediates. Dependency installation/build isolation may access the network.
@@ -92,7 +140,8 @@ validation. For non-PR provenance checks, tag runs compare against the prior tag
 Review `pyproject.toml`, both workflow YAMLs, the provenance/acceptance scripts and
 `tests/test_release_workflow.py` together when changing execution order. Validate
 YAML and run `pytest tests/test_governance.py tests/test_release_workflow.py
-tests/test_ci_tiers.py tests/test_dataset_acceptance_runner.py tests/test_wheel_audit.py` from
+tests/test_ci_tiers.py tests/test_ci_contract_mutations.py
+tests/test_browser_execution_contract.py tests/test_dataset_acceptance_runner.py tests/test_wheel_audit.py` from
 the repository root. Full CI tests the matrix and installed wheel; static tests
 do not prove a release environment is configured or a publication occurred.
 

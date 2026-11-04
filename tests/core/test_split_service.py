@@ -611,18 +611,22 @@ def test_stage_identity_closes_descriptor_when_fstat_fails(
 
     def recording_open(*args: object) -> int:
         descriptor = real_open(*args)  # type: ignore[arg-type]
-        descriptors.append(descriptor)
+        if args[0] == tmp_path:
+            descriptors.append(descriptor)
         return descriptor
 
-    monkeypatch.setattr(split_module.os, "open", recording_open)
-    monkeypatch.setattr(
-        split_module.os,
-        "fstat",
-        lambda descriptor: (_ for _ in ()).throw(OSError("fstat failed")),
-    )
+    def fail_stage_fstat(descriptor: int) -> object:
+        if descriptor in descriptors:
+            raise OSError("fstat failed")
+        return real_fstat(descriptor)
 
     with pytest.raises(OSError, match="fstat failed"):
-        SplitService._stage_identity(tmp_path)
+        # os is a process-wide module: do not inject faults into pytest's own
+        # file inspection, and restore it before pytest handles the exception.
+        with monkeypatch.context() as patch:
+            patch.setattr(split_module.os, "open", recording_open)
+            patch.setattr(split_module.os, "fstat", fail_stage_fstat)
+            SplitService._stage_identity(tmp_path)
 
     assert len(descriptors) == 1
     with pytest.raises(OSError):

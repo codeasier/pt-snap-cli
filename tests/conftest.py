@@ -7,6 +7,8 @@ import pytest
 
 from tests._fixture_provenance import FixtureProvenanceError, verify_snapshot_fixtures
 
+pytest_plugins = ("tests._browser_support",)
+
 
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Stop before collection can execute a changed or unreviewed pickle."""

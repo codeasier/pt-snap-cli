@@ -11,6 +11,20 @@ Use this skill to diagnose memory that remains live in a PyTorch SnapshotDB and 
 
 This is an evidence-gathering workflow. A single snapshot cannot confirm a leak. An allocation without a recorded free event is a candidate that was still live when tracing ended, not proof that it can never be released.
 
+## Normal path and reading order
+
+1. Validate the explicit DB/device and [required inputs](#required-inputs).
+2. Complete [preflight](#prerequisite-phase), reusing only full, current
+   capabilities/overview results. This applies even without helper routing.
+3. Follow the [bounded evidence workflow](#diagnostic-workflow), then the output and
+   [guardrails](#guardrails). Separate observations, inference and unknowns.
+
+The full contracts below remain mandatory. Dataset and compact-stack sections
+apply only to those inputs/options; missing-focus recovery applies only to a
+missing effective target. If a host tool truncates JSON, read
+[complete-output recovery](references/output-recovery.md) before proceeding;
+do not bypass preflight or write files to recover output.
+
 ## Required Inputs
 
 - A SnapshotDB path, either supplied explicitly or resolved by the current `pt-snap focus`.
