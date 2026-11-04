@@ -324,3 +324,79 @@ def test_one_physical_shard_cannot_pass_sharded_acceptance(acceptance, tmp_path,
         )
     assert [command[1] for command in commands] == ["import", "import", "overview"]
     assert focus.read_text() == "unchanged"
+
+
+def test_real_two_shard_cli_passes_comparator_with_additional_frame_evidence(
+    acceptance, tmp_path, monkeypatch
+):
+    from typer.testing import CliRunner
+
+    from pt_snap_cli.cli import app
+    from tests.snapshot.test_sharded_replay import lifecycle_data, write_source
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("PT_SNAP_DB_PATH", raising=False)
+    data = lifecycle_data()
+    data["device_traces"][0] = [e for e in data["device_traces"][0] if e["action"] != "oom"]
+    source = write_source(tmp_path, data)
+    runner = CliRunner()
+
+    def cli(command, **kwargs):
+        result = runner.invoke(app, command[1:])
+        assert result.exit_code == 0, result.output
+        return json.loads(result.stdout)
+
+    monkeypatch.setattr(acceptance, "_run_json", cli)
+    standalone = cli(["pt-snap", "import", str(source), "--json"])["db_path"]
+    overview = cli(["pt-snap", "overview", standalone, "--json"])
+    peak = cli(["pt-snap", "query", standalone, "--template-use", "memory_peak", "--json"])
+    evidence = acceptance._sharded_acceptance(
+        Path("pt-snap"),
+        source,
+        tmp_path / "datasets",
+        2,
+        Path(standalone),
+        overview,
+        peak,
+        tmp_path / ".pt-snap/focus.json",
+        cwd=tmp_path,
+        env={},
+    )
+    assert len(evidence) == 2
+    assert all(item["cross_shard_event_parity"] and item["slice_count"] >= 2 for item in evidence)
+
+
+@pytest.mark.parametrize(
+    "damage", ["event-value", "missing-field", "missing-evidence", "frame-text"]
+)
+def test_event_comparator_does_not_hide_base_or_frame_corruption(acceptance, damage):
+    import copy
+
+    event = {
+        "id": 0,
+        "action": 4,
+        "address": 100,
+        "size": 10,
+        "stream": 0,
+        "allocated": 10,
+        "active": 10,
+        "reserved": 16,
+        "callstack": "x.py:1 f",
+    }
+    reference = [event, {**event, "id": 1}]
+    crossing = [
+        dict(row, frames_status="ordered", frames=[{"filename": "x.py", "line": 1, "name": "f"}])
+        for row in copy.deepcopy(reference)
+    ]
+    acceptance._event_parity(crossing, reference)
+    if damage == "event-value":
+        crossing[0]["size"] += 1
+    elif damage == "missing-field":
+        del crossing[0]["size"]
+    elif damage == "missing-evidence":
+        crossing[0]["frames"] = None
+    else:
+        crossing[0]["frames"][0]["name"] = "changed"
+    with pytest.raises(acceptance.AcceptanceError):
+        acceptance._event_parity(crossing, reference)

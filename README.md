@@ -124,6 +124,11 @@ byte units, allocated/active/reserved counters, expected output and partial repo
 - [Replayable pickle splitting](docs/en/splitting.md): one split strategy and a new output directory; separate from dataset import.
 - [Complete-dataset addressing](docs/en/sharded-snapshotdb.md#complete-dataset-focus-and-addressing-p1), [global built-in support](docs/en/querying.md#dataset-global-built-in-support-p3), and [recorded interoperability acceptance](docs/en/interop-acceptance.md): advanced contracts and evidence, not prerequisites for a first report.
 
+Current compatible exports use parser v3; the pinned v2 revision is a historical
+schema reference, with no verified v3 GUI consumer revision yet. Compatible reuse
+checks source identity, member inventory and required structure, without comparing
+database content digests. See the protocol contract above for limits and evidence.
+
 ## Built-in Query Templates & Reports
 
 Use `pt-snap query --list` or `pt-snap capabilities --json` to inspect all 13 built-in templates and their parameter/output schemas:

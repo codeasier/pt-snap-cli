@@ -14,6 +14,7 @@ from pt_snap_cli.core.errors import (
     InvalidCategoryError,
     InvalidDeviceError,
     InvalidParameterError,
+    QueryCancelledError,
     QueryExecutionError,
     QueryTimeoutError,
     SkillError,
@@ -32,6 +33,7 @@ FOCUS_FILE_INVALID = "FOCUS_FILE_INVALID"
 DATABASE_SCHEMA_INVALID = "DATABASE_SCHEMA_INVALID"
 QUERY_FAILED = "QUERY_FAILED"
 QUERY_TIMEOUT = "QUERY_TIMEOUT"
+QUERY_CANCELLED = "QUERY_CANCELLED"
 IMPORT_FAILED = "IMPORT_FAILED"
 IMPORT_BACKEND_MISSING = "IMPORT_BACKEND_MISSING"
 SNAPSHOT_INVALID = "SNAPSHOT_INVALID"
@@ -87,6 +89,8 @@ def classify_error(exc: BaseException) -> tuple[str, str | None]:
             INVALID_PARAMETER,
             "Use a numeric --timeout, or set PT_SNAP_QUERY_TIMEOUT to a number of seconds.",
         )
+    if isinstance(exc, QueryCancelledError):
+        return QUERY_CANCELLED, "Use the result of the latest frame-tree request."
     if isinstance(exc, QueryTimeoutError):
         return (
             QUERY_TIMEOUT,

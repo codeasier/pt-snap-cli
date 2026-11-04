@@ -210,6 +210,7 @@ for row in result["rows"]:
 analyzer 设备；未设置显式 analyzer 数据库时，再使用已解析项目或全局 focus 的设备；
 最后使用发现的第一个设备。只有显式 analyzer 数据库而没有 analyzer 设备时，不会继承
 配置中的设备。`max_rows=None`、零或负数均表示不限制行数。传入
+帧树排队等待也计入同一次调用的超时预算。
 `exact_total=True` 可得到匹配行 `COUNT`。`timeout_s` 是一次
 `execute_query()` 调用的墙钟预算（秒），也可由 `PT_SNAP_QUERY_TIMEOUT`
 提供；页面查询与可选 COUNT 共用该预算。该环境变量作用于所有模板查询，
@@ -251,6 +252,14 @@ other_metadata = analyzer.get_database_metadata("/path/to/other.db")
 版本不受支持时返回 `status="invalid"`。
 
 ## 错误与范围
+
+同一个 analyzer 上并发调用 `active_memory_frame_tree_at_event` 时，只执行最新请求。
+新请求会中断旧任务的 Python 计算和 SQLite 语句，排队中已过期的请求不会继续计算。
+旧调用抛出 `pt_snap_cli.core.QueryCancelledError`（JSON 错误码为 `QUERY_CANCELLED`），
+不会返回成功的部分树。关闭 analyzer 或清理其 context 缓存也会取消未结束的拆解任务。
+每个任务在执行线程中关闭自己持有的数据库连接后，下一任务才开始计算。其它模板保留
+原有并发约定；不同 analyzer/service 实例、不同 CLI 进程之间互不取消。这不会增加
+持久化的拆解结果缓存。
 
 - `set_focus()` 在数据库不存在时抛出 `FileNotFoundError`，在 SnapshotDB schema 无效时
   抛出 `ValueError`。设备校验使用共享的 `InvalidDeviceError`；没有任何可解析数据库时只

@@ -390,6 +390,9 @@ def test_global_text_identity_and_candidates_ignore_source_collation(
             conn.execute("UPDATE trace_entry_0 SET callstackId=1 WHERE id=?", [ids[1]])
         conn.execute("UPDATE trace_entry_0 SET size=1 WHERE id>=0")
     if layout == "v2":
+        # This fixture tests text collation, independently of the original raw
+        # frames retained by new imports. Frame identity has separate coverage.
+        manifest.pop("extensions", None)
         item["sha256"] = hashlib.sha256(member.read_bytes()).hexdigest()
         manifest_path.write_text(json.dumps(manifest))
     expected_text = {event: texts[int(event == ids[1])] for event in ids}

@@ -231,7 +231,8 @@ project or global focus when no explicit analyzer database is set, then the firs
 discovered device. An explicit analyzer database without an analyzer device does
 not inherit a configured device. `max_rows=None`, zero, or a negative value is
 unlimited. Pass `exact_total=True` for a matching-row `COUNT`. `timeout_s`
-is a wall-clock budget for one `execute_query()` call in seconds (or
+is a wall-clock budget for one `execute_query()` call, including frame-tree queue
+waiting, in seconds (or
 `PT_SNAP_QUERY_TIMEOUT`); the page query and optional COUNT share it. The
 same environment variable applies to every template query, including
 `report peak-memory`. It does not change the row cap. Continue
@@ -278,6 +279,17 @@ legacy or external databases without `pt_snap_metadata` return
 metadata schema version returns `status="invalid"`.
 
 ## Errors and Scope
+
+Concurrent `active_memory_frame_tree_at_event` requests on the same analyzer
+use latest-request-wins semantics. A new request interrupts the previous tree's
+Python work and SQLite statements; superseded queued requests do not compute.
+The old call raises `pt_snap_cli.core.QueryCancelledError` (`QUERY_CANCELLED`
+in JSON), never a partial successful tree. Closing the analyzer or invalidating
+its context cache also cancels outstanding tree work. Worker-owned connections
+are closed in the executing thread before the next tree runs. Other templates
+retain their existing concurrency contract; separate analyzers/services and
+separate CLI processes do not cancel one another. This does not introduce a
+persistent tree-result cache.
 
 - `set_focus()` raises `FileNotFoundError` for a missing database and
   `ValueError` for an invalid SnapshotDB schema. Device validation uses the shared

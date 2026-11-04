@@ -7,8 +7,9 @@
 `tests/core/test_dataset_realistic.py` 默认在兼容 v1 和原生 v2 两种布局上各执行
 20 个确定性种子；夜间配置将同一批种子扩展至 200 个。原有八个回归种子及二十种
 查询形态完整保留。每个种子每种布局运行 69–73 个查询用例（20 种子共 2,896 次
-成对比较，200 种子共 28,864 次），覆盖全部十一个 dataset 支持模板。
-仅单库支持的 `event_frames`、`active_memory_frame_tree_at_event` 另有明确拒绝测试，
+成对比较，200 种子共 28,864 次），覆盖十一个文本查询契约。
+帧树由 `test_dataset_frame_tree.py` 单独验证真实导入的单库/数据集对齐、递归、跨片来源、
+损坏、预算及只读守恒；仅 `event_frames` 保留明确数据集拒绝测试，
 不会计为差分成功。
 
 两种布局使用相同的独立生成 80-event 历史，并分别与同布局单库 SQL 参考结果比较。
@@ -105,10 +106,8 @@ fallback 三条路径的这些契约。`top_n=0` 完整性另有空/static/dynam
   64-MiB 上限，无需创建 8-GB 数据文件。
 - 受信、测试自行构造的 1,000,000 个 alloc/free-request/free-completion 事件快照，
   经干净 venv 中安装的 `pt-snap import --format msinsight`，**不覆盖容量默认值**，
-  生成两个完整的 500,000-event 成员。所有已安装目录模板均被分类：11 个支持数据集的
-  模板核对 CLI/API 一致性及独立结果；`event_frames` 和
-  `active_memory_frame_tree_at_event` 保留明确的数据集拒绝。`peak-memory` 报告成功，
-  `memory-tree` 保留数据集拒绝。
+  生成两个完整的 500,000-event 成员。所有已安装目录模板均被分类：12 个支持数据集的
+  模板核对 CLI/API 一致性及独立结果。帧树模板及 `memory-tree` 报告成功，并验证根节点/自身占用守恒；仅 `event_frames` 保留数据集拒绝。
 - 第二个必需的安装包用例保留原有 500,002-event 工作负载及 500,000 + 2 成员布局，
   验证跨界完成生命周期、最终存活分配、分页及定点事件结果。两个安装包用例均要求
   查询前后输入、manifest 及成员 hash 不变。

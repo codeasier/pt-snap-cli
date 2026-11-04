@@ -59,6 +59,23 @@ WINDOWS = [
 ]
 
 
+def assert_shared_rows(actual, expected):
+    """Compare common columns while checking new dataset event frame evidence."""
+    assert len(actual) == len(expected)
+    for row, reference in zip(actual, expected, strict=True):
+        assert {key: row[key] for key in reference} == reference
+        if "frames_status" in row:
+            assert row["frames_status"] == "ordered"
+            assert isinstance(row["frames"], list)
+            assert (
+                "\n".join(
+                    f"{frame['filename']}:{frame['line']} {frame['name']}"
+                    for frame in reversed(row["frames"])
+                )
+                == reference["callstack"]
+            )
+
+
 @pytest.mark.parametrize("template", ["event", "allocation"])
 @pytest.mark.parametrize("direction", ["ASC", "DESC"])
 def test_id_windows_match_standalone_with_filters_and_sparse_ids(
@@ -100,7 +117,7 @@ def test_id_windows_match_standalone_with_filters_and_sparse_ids(
                     expected = service.execute_query(
                         template, params, single, max_rows=max_rows, exact_total=exact
                     )
-                    assert actual.rows == expected.rows, params
+                    assert_shared_rows(actual.rows, expected.rows)
                     for field in ("total", "returned", "has_more", "truncated", "total_is_exact"):
                         assert getattr(actual, field) == getattr(expected, field), (params, field)
                     assert actual.scope["actual_range"] == {
@@ -131,7 +148,7 @@ def test_id_slice_pages_preserve_scope_and_exact_total(paired_dataset, template,
                     template, params, root, slice_index=item.index, exact_total=True
                 )
                 expected = service.execute_query(template, params, single, exact_total=True)
-                assert actual.rows == expected.rows
+                assert_shared_rows(actual.rows, expected.rows)
                 assert actual.total == expected.total
                 assert actual.has_more == expected.has_more
                 assert actual.truncated == expected.truncated

@@ -25,7 +25,8 @@ SUPPORTED_TEMPLATES = frozenset(
         "active_memory_callstack_at_event",
     )
 )
-UNSUPPORTED_TEMPLATES = frozenset(("event_frames", "active_memory_frame_tree_at_event"))
+FRAME_TEMPLATES = frozenset(("active_memory_frame_tree_at_event",))
+UNSUPPORTED_TEMPLATES = frozenset(("event_frames",))
 
 
 def configured_seeds(environ=None):

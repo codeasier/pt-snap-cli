@@ -171,6 +171,22 @@ fixed-version evidence have their own [protocol contract](sharded-snapshotdb.md#
 Read [recorded interoperability acceptance](interop-acceptance.md) before claiming
 GUI reuse. A matching hash alone is not GUI acceptance.
 
+Current exports use parser v3. The pinned `101f65b` revision and `targetRevision`
+are historical v2 schema/identity references, not verified current GUI consumers.
+No fixed v3 consumer revision/build has been verified yet. Do not open current
+caches with the old GUI: it may reparse and rewrite them. Future v3 acceptance
+must use a separately trusted pickle copy and a new adjacent cache, preserving
+original artifacts.
+
+Compatible reuse checks source identity, sourceFile, options, contract versions,
+the complete member inventory and required read-only structure. Historical member
+hash fields are inventories; their digest values are not compared. Import does
+not hash database contents or scan arbitrary row values, so structurally valid
+content edits can be reused. Queries and explicit validators perform independent
+admission checks. Successful reuse is not proof of database content integrity or
+GUI cache reuse. `--output-dir` selects another parent; moving a dataset does not
+establish a GUI entrance.
+
 ### Optional: Split a Snapshot
 
 `pt-snap split` creates independently replayable files, not a queried dataset.

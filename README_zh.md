@@ -121,6 +121,10 @@ allocated/active/reserved 指标、预期输出和报告不完整的情况。
 - [可回放 pickle 拆分](docs/zh/splitting.md)：只选一种拆分策略并使用新目录，与数据集导入不同。
 - [完整数据集寻址](docs/zh/sharded-snapshotdb.md#完整数据集-focus-与寻址p1)、[全局内建支持](docs/zh/querying.md#数据集全局内建支持p3)和[已记录的互操作验收](docs/zh/interop-acceptance.md)：按需查看高级合同与证据，不是第一份报告的前置条件。
 
+当前兼容导出使用 parser v3，固定的旧 v2 revision 仅为历史 schema 参考，尚无已核验的
+v3 GUI 消费端固定版本。兼容复用检查源身份、成员清单及必要结构，不比较数据库内容摘要。
+限制与验收证据见上方协议合同。
+
 ## 内置查询模板与报告
 
 可执行 `pt-snap query --list` 或 `pt-snap capabilities --json` 查看全部 13 个内置查询模板及其参数与输出契约：

@@ -111,6 +111,7 @@ class WheelRuntime:
             PATH=f"{bin_dir}{os.pathsep}{self.env.get('PATH', '')}",
             PWD=str(self.cwd),
             PYTHONNOUSERSITE="1",
+            PYTHONUTF8="1",
             PIP_DISABLE_PIP_VERSION_CHECK="1",
             NO_COLOR="1",
         )
@@ -142,7 +143,13 @@ class WheelRuntime:
     def run(self, label, command, *, expected=0):
         started = time.perf_counter()
         result = subprocess.run(
-            command, cwd=self.cwd, env=self.env, capture_output=True, text=True, check=False
+            command,
+            cwd=self.cwd,
+            env=self.env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
         )
         self.commands.append(
             {
