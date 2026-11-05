@@ -544,6 +544,8 @@ def test_native_bare_local_stack_ids_do_not_alias_foreign_sources(tmp_path):
         .db_path
     )
     raw = json.loads((root / "manifest.json").read_text())
+    # Exercise legacy text-only identity independently of captured frame evidence.
+    raw.pop("extensions", None)
     for event in (17, 67):
         item = next(
             s

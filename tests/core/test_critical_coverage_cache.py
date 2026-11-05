@@ -12,7 +12,7 @@ import pytest
 
 from pt_snap_cli.core import snapshot_cache
 from pt_snap_cli.core.snapshot_cache import (
-    member_digest,
+    parser_members,
     seal_manifest,
     source_hashes,
     validate_cache,
@@ -233,11 +233,19 @@ def test_matching_producer_and_parser_identities_validate_read_only(cache_artifa
 
 
 @pytest.mark.parametrize("device", ["01", "0; DROP TABLE block_0"])
-def test_member_digest_rejects_invalid_device_before_database_access(cache_artifact, device):
-    directory = cache_artifact[0]
+def test_member_inventory_rejects_invalid_device_before_database_access(
+    cache_artifact, device, monkeypatch
+):
+    directory, manifest, _ = cache_artifact
+    manifest["devices"][device] = manifest["devices"].pop("0")
+
+    def unexpected_database_access(*args, **kwargs):
+        pytest.fail("Invalid device IDs must be rejected before opening a database")
+
+    monkeypatch.setattr(snapshot_cache, "validate_member_structure", unexpected_database_access)
     before = _tree_state(directory)
     with pytest.raises(ValueError, match="Invalid device ID"):
-        member_digest(directory / "slice.db", device, 0, 0)
+        parser_members(directory, manifest)
     assert _tree_state(directory) == before
 
 

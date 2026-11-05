@@ -13,6 +13,7 @@ from pt_snap_cli.core.errors import (
     InvalidParameterError,
     InvalidSkillTargetError,
     PtSnapCoreError,
+    QueryCancelledError,
     QueryExecutionError,
     QueryTimeoutError,
     SkillCatalogError,
@@ -65,6 +66,7 @@ from pt_snap_cli.core.skill_service import SkillService
 from pt_snap_cli.core.split_service import SplitService
 
 __all__ = [
+    "QueryCancelledError",
     "PtSnapCoreError",
     "FocusNotConfiguredError",
     "FocusFileInvalidError",

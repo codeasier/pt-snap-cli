@@ -12,7 +12,7 @@ from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from typing import Protocol, TypeVar
 
-from .errors import QueryTimeoutError
+from .errors import QueryCancelledError, QueryTimeoutError
 
 
 class ValidationBudget(Protocol):
@@ -50,16 +50,16 @@ def checked_rows(rows: Iterable[_T], budget: ValidationBudget | None) -> Iterato
 def validation_progress(
     conn: sqlite3.Connection, budget: ValidationBudget | None
 ) -> Iterator[None]:
-    """Interrupt SQLite and preserve QUERY_TIMEOUT rather than a schema error."""
+    """Preserve timeout/cancellation instead of reporting an invalid schema."""
     check_budget(budget)
-    timed_out: QueryTimeoutError | None = None
+    interrupted: QueryTimeoutError | QueryCancelledError | None = None
 
     def progress() -> int:
-        nonlocal timed_out
+        nonlocal interrupted
         try:
             check_budget(budget)
-        except QueryTimeoutError as exc:
-            timed_out = exc
+        except (QueryTimeoutError, QueryCancelledError) as exc:
+            interrupted = exc
             return 1
         return 0
 
@@ -69,8 +69,8 @@ def validation_progress(
         try:
             yield
         except sqlite3.DatabaseError:
-            if timed_out is not None:
-                raise timed_out from None
+            if interrupted is not None:
+                raise interrupted from None
             check_budget(budget)
             raise
         check_budget(budget)

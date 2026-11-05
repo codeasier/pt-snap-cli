@@ -15,6 +15,7 @@ from typing import Any
 from ...base import Block, BlockState, DeviceSnapshot, TraceEntry
 from ...simulate import AllocatorHooker, SimulateDeviceSnapshot, SimulateHooker
 from .database import CallstackInterner, event2record
+from .ordered_frames import OrderedFrameWriter
 from .snapshot2db import SnapshotDbHandler
 
 
@@ -153,11 +154,13 @@ class _SliceHook(SimulateHooker, AllocatorHooker):
         self.registry = registry
         self.writer = SnapshotDbHandler(str(item.file), [item.device])
         self.stacks = CallstackInterner()
+        self.frames = OrderedFrameWriter(self.writer.db.conn)
         self.current_event: TraceEntry | None = None
 
     def pre_undo_event(self, wait4undo_event: TraceEntry, current_snapshot: DeviceSnapshot) -> bool:
         event, snapshot = wait4undo_event, current_snapshot
         self.current_event = event
+        self.frames.insert(event)
         self.writer.insert_event(
             event2record(
                 event,

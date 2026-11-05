@@ -7,9 +7,13 @@ from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 
-from pt_snap_cli.core.dataset_contract import parse_manifest, validate_dataset
+from pt_snap_cli.core.dataset_contract import parse_manifest
 from pt_snap_cli.core.dataset_import_backend import DatasetImportBackend
-from pt_snap_cli.core.dataset_resolver import DatasetResolver, _require_readonly_member
+from pt_snap_cli.core.dataset_resolver import (
+    DatasetResolver,
+    ResolvedDataset,
+    _require_readonly_member,
+)
 from pt_snap_cli.core.errors import (
     DatabaseSchemaError,
     FocusFileInvalidError,
@@ -43,9 +47,15 @@ from pt_snap_cli.core.native_dataset_contract import (
     build_native_manifest,
     cache_identity,
 )
+from pt_snap_cli.core.ordered_frame_integrity import frame_member_digest, require_frame_declaration
 from pt_snap_cli.core.sharded_replay_service import ShardedReplayResult
-from pt_snap_cli.core.snapshot_cache import parse_cache_manifest, source_hashes, validate_cache
+from pt_snap_cli.core.snapshot_cache import (
+    parse_cache_manifest,
+    source_hashes,
+    validate_cache,
+)
 from pt_snap_cli.core.snapshot_import_backend import SnapshotImportBackend
+from pt_snap_cli.core.validation_receipts import import_receipts, load_receipt, save_receipt
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +79,10 @@ class ImportService:
         self._msinsight_backend = MsinsightImportBackend()
 
     def import_snapshot(self, options: ImportOptions) -> ImportResult:
+        with import_receipts():
+            return self._import_snapshot(options)
+
+    def _import_snapshot(self, options: ImportOptions) -> ImportResult:
         self._validate_options(options)
         self._validate_snapshot_file(options.snapshot_file)
         if options.format in (COMPATIBILITY_FORMAT, "msinsight"):
@@ -204,6 +218,20 @@ class ImportService:
                 and dataset is not None
                 and manifest.identity == cache_identity(source_hash, options.device, capacity)
             ):
+                try:
+                    require_frame_declaration(
+                        parse_cache_manifest((target / "manifest.json").read_bytes())
+                    )
+                    if load_receipt(target, "native-frames", dataset.fingerprint) != {}:
+                        for device in manifest.devices:
+                            for item in device.slices:
+                                frame_member_digest(target, target / item.file, device.device_id)
+                        dataset.require_unchanged()
+                        save_receipt(target, "native-frames", dataset.fingerprint, {})
+                except (ValueError, OSError, sqlite3.DatabaseError, DatabaseSchemaError) as exc:
+                    raise ImportExecutionError(
+                        f"Existing native ordered-frame evidence is invalid; use --force to rebuild. Existing target and focus preserved: {exc}"
+                    ) from exc
                 self._recheck_source(options.snapshot_file, source_hash)
                 focus_state = self._set_focus_if_requested(target, options)
                 return ImportResult(
@@ -239,7 +267,9 @@ class ImportService:
             for item in result.slices:
                 _require_readonly_member(result.directory, item.file)
                 self._metadata_service.write(item.file, metadata)
+                frame_member_digest(result.directory, item.file, item.device)
             manifest = build_native_manifest(result, metadata, capacity)
+            require_frame_declaration(manifest)
             with (result.directory / "manifest.json").open("x", encoding="utf-8") as file:
                 json.dump(manifest, file, indent=2)
             validated = DatasetResolver().inspect(result.directory)
@@ -247,6 +277,8 @@ class ImportService:
                 raise ImportExecutionError(
                     "Staged dataset validation did not produce a complete artifact."
                 )
+            self._remember_published_validation(target, validated)
+            save_receipt(target, "native-frames", validated.fingerprint, {})
             completed, generated = metadata, result
 
         focus_state: FocusState | None = None
@@ -310,9 +342,6 @@ class ImportService:
                             "Explicit events_per_slice does not match the existing compatible "
                             "cache; choose a new output directory."
                         )
-                    # A self-consistent seal is not proof of semantic validity.
-                    # Use shared P0 without repeating the resolver's seal scan.
-                    validate_dataset(target)
                     self._recheck_source(options.snapshot_file, source_hash)
                     return ImportResult(
                         target,
@@ -418,6 +447,22 @@ class ImportService:
             len(generated.slices),
             COMPATIBILITY_FORMAT,
             generated.omitted_devices,
+        )
+
+    @staticmethod
+    def _remember_published_validation(target: Path, validated: ResolvedDataset) -> None:
+        if not validated.content_verified:
+            return
+        # Publication only renames the staged directory. The receipt is bound to
+        # all manifest/member bytes, so another artifact at target cannot hit it.
+        save_receipt(
+            target,
+            "dataset",
+            validated.fingerprint,
+            {
+                "real": validated.validation.real_event_count,
+                "boundary": validated.validation.boundary_event_count,
+            },
         )
 
     def _hash_source(self, source: Path) -> str:

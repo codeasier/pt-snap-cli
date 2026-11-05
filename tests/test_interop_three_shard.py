@@ -184,7 +184,7 @@ def test_true_cli_import_keeps_one_event_per_owner_and_discovers_requested(impor
     if fmt == "msinsight":
         assert (
             manifest["cacheHash"]
-            == hashlib.sha256(b"mem_snapshot_parser_v2" + source.read_bytes()).hexdigest()
+            == hashlib.sha256(b"mem_snapshot_parser_v3" + source.read_bytes()).hexdigest()
         )
     assert {p: digest(p) for p in before} == before
 

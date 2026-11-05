@@ -36,6 +36,7 @@ from pt_snap_cli.core.errors import (
     DatabaseSchemaError,
     InvalidDeviceError,
     InvalidParameterError,
+    QueryCancelledError,
     QueryTimeoutError,
 )
 from pt_snap_cli.core.native_dataset_contract import (
@@ -47,13 +48,22 @@ from pt_snap_cli.core.native_dataset_contract import (
     validate_native_dataset,
     validate_native_scope,
 )
-from pt_snap_cli.core.snapshot_cache import validate_cache
+from pt_snap_cli.core.snapshot_cache import (
+    parse_cache_manifest,
+    validate_cache,
+)
 from pt_snap_cli.core.validation_budget import (
     ValidationBudget,
     check_budget,
     checked_rows,
     sqlite_timeout,
     validation_progress,
+)
+from pt_snap_cli.core.validation_receipts import (
+    import_validation_active,
+    load_receipt,
+    receipts_enabled,
+    save_receipt,
 )
 
 _FileStamp = tuple[int, int, int, int, int, int, int]
@@ -67,6 +77,7 @@ class ResolvedDataset:
     fingerprint: str
     ordered_frames_version: int | None = None
     generation: _Generation | None = None
+    content_verified: bool = True
 
     def require_unchanged(self, budget: ValidationBudget | None = None) -> None:
         """Guard a reused report/query resolution without repeating full validation."""
@@ -76,7 +87,7 @@ class ResolvedDataset:
             current = _generation(self.root, self.validation.manifest, budget)
             if self.generation is None or current != self.generation:
                 raise DatabaseSchemaError("Dataset members changed during operation; retry.")
-            if not _cacheable(current):
+            if self.content_verified and not _cacheable(current):
                 if (
                     _content_fingerprint(self.root, self.validation.manifest, budget)
                     != self.fingerprint
@@ -140,7 +151,7 @@ class ResolvedDataset:
             "cross_slice_queries": True,
             "supported_queries": dict(DATASET_SUPPORT),
             "cross_slice_sources": True,
-            "ordered_frames_reader_version": 1,
+            "ordered_frames_reader_version": 2,
             "structured_frames_scope": "validation_only; query source coverage is separate",
             "devices": [
                 {
@@ -303,7 +314,10 @@ class DatasetResolver:
     """
 
     def inspect(
-        self, path: Path | str, *, budget: ValidationBudget | None = None
+        self,
+        path: Path | str,
+        *,
+        budget: ValidationBudget | None = None,
     ) -> ResolvedDataset | None:
         candidate = Path(path).expanduser().absolute()
         with _CACHE_LOCK:
@@ -320,6 +334,10 @@ class DatasetResolver:
                     _ = _VALIDATED.pop(cache_key, None)
                 return None
             cache_key = root
+            if import_validation_active():
+                raw = parse_cache_manifest((root / "manifest.json").read_bytes())
+                if raw.get("format") != NATIVE_FORMAT:
+                    return self._inspect_compatible_structure(root, raw, budget)
             strong_cache = os.environ.get("PT_SNAP_DATASET_CACHE") is None
             with _CACHE_LOCK:
                 cached = _VALIDATED.get(root)
@@ -380,16 +398,32 @@ class DatasetResolver:
             # Native validation already checks both ends against declared hashes.
             compatibility_before = (
                 _content_fingerprint(root, planned, budget, manifest_hash=before)
-                if strong_cache and not isinstance(planned, NativeManifest)
+                if strong_cache and (not isinstance(planned, NativeManifest) or receipts_enabled())
                 else None
             )
-            validation = (
-                validate_native_dataset(root, planned, budget=budget)
-                if isinstance(planned, NativeManifest)
-                else validate_dataset(root, budget=budget)
+            receipt = (
+                load_receipt(root, "dataset", compatibility_before)
+                if compatibility_before is not None
+                else None
             )
+            counts = (
+                [receipt.get(key) for key in ("real", "boundary")] if receipt is not None else []
+            )
+            receipt_hit = len(counts) == 2 and all(type(n) is int and n >= 0 for n in counts)
+            if receipt_hit:
+                assert receipt is not None
+                real, boundary = receipt["real"], receipt["boundary"]
+                assert isinstance(real, int) and isinstance(boundary, int)
+                validation = DatasetValidation(planned, real, boundary)
+            else:
+                validation = (
+                    validate_native_dataset(root, planned, budget=budget)
+                    if isinstance(planned, NativeManifest)
+                    else validate_dataset(root, budget=budget)
+                )
             if (
-                not isinstance(planned, NativeManifest)
+                not receipt_hit
+                and not isinstance(planned, NativeManifest)
                 and isinstance(raw, dict)
                 and ("parserCache" in raw or "ptSnap" in raw)
             ):
@@ -417,7 +451,7 @@ class DatasetResolver:
                     ) from exc
             digest = hashlib.sha256()
             digest.update(before.encode("ascii"))
-            for device in checked_rows(validation.manifest.devices, budget):
+            for device in checked_rows(() if receipt_hit else validation.manifest.devices, budget):
                 for item in checked_rows(device.slices, budget):
                     digest.update(item.file.encode("utf-8"))
                     # Native validation already verifies this digest before and
@@ -432,7 +466,8 @@ class DatasetResolver:
                     if wal.exists():
                         digest.update(b"-wal")
                         digest.update(_hash_file(wal, budget=budget).encode("ascii"))
-            fingerprint = digest.hexdigest()
+            fingerprint = compatibility_before if receipt_hit else digest.hexdigest()
+            assert fingerprint is not None
             if compatibility_before is not None and compatibility_before != fingerprint:
                 raise DatabaseSchemaError("Dataset content changed during inspection; retry.")
             if before != _hash_file(manifest_path, budget=budget):
@@ -448,6 +483,16 @@ class DatasetResolver:
                 fingerprint,
                 version if type(version) is int else None,
                 generation,
+            )
+            check_budget(budget)
+            save_receipt(
+                root,
+                "dataset",
+                fingerprint,
+                {
+                    "real": validation.real_event_count,
+                    "boundary": validation.boundary_event_count,
+                },
             )
             if strong_cache or _cacheable(generation):
                 entry = _ValidatedEntry(
@@ -475,10 +520,69 @@ class DatasetResolver:
             with _CACHE_LOCK:
                 _ = _VALIDATED.pop(cache_key, None)
             raise DatabaseSchemaError("Invalid dataset: manifest nesting is too deep") from exc
-        except (DatabaseSchemaError, QueryTimeoutError):
+        except (DatabaseSchemaError, QueryTimeoutError, QueryCancelledError):
             with _CACHE_LOCK:
                 _ = _VALIDATED.pop(cache_key, None)
             raise
+
+    @staticmethod
+    def _inspect_compatible_structure(
+        root: Path, raw: dict[str, object], budget: ValidationBudget | None
+    ) -> ResolvedDataset:
+        manifest = parse_manifest(raw, budget=budget)
+        _generation(root, manifest, budget)  # Preflight all members before SQLite opens.
+        _prepare_compatibility_transport(root, manifest, budget)
+        generation = _generation(root, manifest, budget)
+        attestation = raw.get("parserCache", {})
+        producer = raw.get("ptSnap", {})
+        if not isinstance(attestation, dict) or not isinstance(producer, dict):
+            raise DatabaseSchemaError("Invalid cache extension")
+        identity = producer.get("identity", {})
+        if not isinstance(identity, dict):
+            raise DatabaseSchemaError("Invalid producer identity")
+        selected = attestation.get("requestedDevice")
+        if selected is None:
+            selected = identity.get("requestedDevice")
+        cache_hash = raw.get("cacheHash")
+        if not isinstance(cache_hash, str):
+            raise DatabaseSchemaError("Invalid cacheHash")
+        checked = validate_cache(root, cache_hash, selected, budget=budget)
+        if checked != raw:
+            raise DatabaseSchemaError("Dataset manifest changed during inspection; retry.")
+        boundary = 0
+        for device in manifest.devices:
+            for item in device.slices:
+                with (
+                    closing(
+                        sqlite3.connect(
+                            readonly_member_uri(root / item.file),
+                            uri=True,
+                            timeout=sqlite_timeout(budget),
+                        )
+                    ) as conn,
+                    validation_progress(conn, budget),
+                ):
+                    # Count only synthetic IDs through the integer primary key;
+                    # never fetch/encode callstacks or scan block contents.
+                    boundary += conn.execute(
+                        f'SELECT COUNT(*) FROM "trace_entry_{device.device_id}" WHERE id<0'  # nosec B608
+                    ).fetchone()[0]
+        if raw != parse_cache_manifest(
+            (root / "manifest.json").read_bytes()
+        ) or generation != _generation(root, manifest, budget):
+            raise DatabaseSchemaError("Dataset changed during inspection; retry.")
+        extensions = raw.get("extensions", {})
+        frames = extensions.get("ptSnapOrderedFrames", {}) if isinstance(extensions, dict) else {}
+        version = frames.get("version") if isinstance(frames, dict) else None
+        fingerprint = "structure-" + hashlib.sha256(repr(generation).encode()).hexdigest()
+        return ResolvedDataset(
+            root,
+            DatasetValidation(manifest, sum(d.event_count for d in manifest.devices), boundary),
+            fingerprint,
+            version if type(version) is int else None,
+            generation,
+            False,
+        )
 
     def completion_device_ids(self, path: Path | str) -> list[int] | None:
         """Bounded manifest-only hints, never evidence of dataset validity.

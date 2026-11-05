@@ -9,10 +9,10 @@ fixture is not evidence that a producer, collector, or exporter ran.
 compatibility-v1 and native-v2 layouts; the nightly profile extends the same bank
 to 200 seeds. The original eight regression seeds and twenty query shapes remain.
 Each seed now runs 69–73 query cases per layout (2,896 paired comparisons for the
-20-seed bank; 28,864 for 200), covering all eleven dataset-supported templates.
-The two standalone-only templates, `event_frames` and
-`active_memory_frame_tree_at_event`, have separate explicit rejection tests and
-never count as successful differential comparisons.
+20-seed bank; 28,864 for 200), covering eleven text-query contracts. Dataset frame trees have a separate
+real-import single-DB differential suite in `test_dataset_frame_tree.py`, including
+recursion, cross-shard sources, corruption, budgets and read-only conservation.
+Only `event_frames` remains an explicit dataset rejection.
 
 Both layouts use the same independently generated 80-event history and a
 layout-matched standalone SQL oracle. Capacities 2/3/4/5/10/16 produce 5–40
@@ -131,10 +131,10 @@ separate empty/static/dynamic/mixed regressions across both layouts and reducers
 - A trusted, test-owned snapshot with 1,000,000 alloc/free-request/free-completion
   events goes through the clean-venv installed `pt-snap import --format msinsight`
   with **no capacity override**, producing two full 500,000-event members. All
-  installed catalog templates are classified: 11 dataset-supported templates
-  have CLI/API parity and independent result checks; `event_frames` and
-  `active_memory_frame_tree_at_event` retain explicit dataset rejection. The
-  `peak-memory` report succeeds; `memory-tree` retains its dataset rejection.
+  installed catalog templates are classified: 12 dataset-supported templates
+  have CLI/API parity and independent result checks; only `event_frames`
+  retains explicit dataset rejection. Both `peak-memory` and `memory-tree`
+  reports succeed, with root/self occupancy conservation checked.
 - A second required installed-wheel case preserves the original 500,002-event
   workload and its 500,000 + 2 member layout. It verifies the crossing completed
   lifetime, final survivor, pages and point-event results. Both installed cases

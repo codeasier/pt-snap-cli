@@ -56,6 +56,10 @@ class QueryTimeoutError(QueryExecutionError):
     pass
 
 
+class QueryCancelledError(QueryExecutionError):
+    """An obsolete query was interrupted; no partial result is returned."""
+
+
 class ImportToolMissingError(PtSnapCoreError):
     """Raised when the built-in snapshot import backend is unavailable.
 

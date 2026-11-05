@@ -15,6 +15,43 @@ from pt_snap_cli.query.executor import (
 )
 
 
+@pytest.mark.parametrize("method", ["execute", "count"])
+def test_sqlite_cancellation_without_timeout_clears_progress_handler(tmp_path, method):
+    path = tmp_path / "cancel.db"
+    with closing(sqlite3.connect(path)) as conn:
+        conn.execute("CREATE TABLE dictionary (id INTEGER PRIMARY KEY, value TEXT)")
+        conn.commit()
+    context = Context(path, persistent=True)
+    try:
+        executor = QueryExecutor(context)
+        checks = 0
+
+        def cancelled():
+            nonlocal checks
+            checks += 1
+            return checks >= 3
+
+        sql = (
+            "WITH RECURSIVE n(x) AS (VALUES(0) UNION ALL SELECT x+1 FROM n WHERE x<100000000) "
+            "SELECT SUM(x) AS value FROM n"
+        )
+        with pytest.raises(QueryExecutionError, match="interrupted"):
+            getattr(executor, method)(sql, cancelled=cancelled)
+        assert checks == 3
+        assert executor.execute("SELECT 42 AS value") == [{"value": 42}]
+    finally:
+        context.close()
+
+
+def test_executor_clone_keeps_runtime_templates_without_sharing_registrations():
+    first = QueryExecutor(context=None)
+    first.register_template(QueryTemplate(name="custom", query="SELECT 1", parameters={}))
+    worker = first.clone_for_context(None)
+    assert worker.has_runtime_template("custom")
+    worker.register_template(QueryTemplate(name="worker_only", query="SELECT 2", parameters={}))
+    assert not first.has_runtime_template("worker_only")
+
+
 class TestQueryExecutor:
     def test_render_simple_template(self):
         template = QueryTemplate(

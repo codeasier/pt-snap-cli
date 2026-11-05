@@ -56,7 +56,7 @@ class ReportService:
         timeout_s: float | None = None,
         query_limits: QueryLimits | None = None,
     ) -> QueryResult:
-        """Return frame occupancy through the shared standalone query contract."""
+        """Return standalone or dataset frame occupancy through the shared query."""
         return self._query_service.execute_query(
             "active_memory_frame_tree_at_event",
             params={"event_id": event_id, "include_static": include_static, "min_size": min_size},

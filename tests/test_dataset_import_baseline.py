@@ -151,8 +151,21 @@ def test_reuse_miss_refuses_rebuild_and_preserves_existing_actual_bytes(tmp_path
 
 
 def test_recorded_performance_report_is_structural_not_a_speed_gate():
-    from pt_snap_cli.core.dataset_support import DATASET_SUPPORT
-
+    # This is historical evidence tied to report["source_head"], not a claim
+    # that queries introduced later were measured by that recorded run.
+    recorded_templates = {
+        "event",
+        "allocation",
+        "memory_peak",
+        "allocator_gap",
+        "active_blocks_at_event",
+        "active_memory_callstack_at_event",
+        "preexisting_live",
+        "block",
+        "freed_block_lifetime",
+        "leak_detection",
+        "callstack_analysis",
+    }
     repository = Path(__file__).resolve().parents[1]
     raw = (repository / "docs/dataset-performance-baseline.json").read_text()
     report = json.loads(raw)
@@ -167,7 +180,7 @@ def test_recorded_performance_report_is_structural_not_a_speed_gate():
     for record in report["records"]:
         assert record["exit"] == 0 and record["phase_rss"]["status"] == "unavailable"
         assert "RUSAGE_SELF" in record["rss_scope"]
-        assert set(record["queries"]) == set(DATASET_SUPPORT)
+        assert set(record["queries"]) == recorded_templates
         assert record["individual_shard_bytes"] and record["total_disk_bytes"] > 0
         assert all(q["status"] == "passed" for q in record["queries"].values())
         # Deliberately no timing/RSS/speedup threshold: these are observations.

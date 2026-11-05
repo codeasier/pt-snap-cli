@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import copy
 import re
 import sqlite3
 import time
 from collections.abc import Callable, Generator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from jinja2 import Environment, StrictUndefined, Template, TemplateSyntaxError
 
@@ -90,6 +91,14 @@ def reported_sql_limit(
     return injected_row_limit(validated, max_rows)
 
 
+class _CancellationOptions(TypedDict, total=False):
+    cancelled: Callable[[], bool]
+
+
+def cancellation_options(cancelled: Callable[[], bool] | None) -> _CancellationOptions:
+    return {"cancelled": cancelled} if cancelled is not None else {}
+
+
 class QueryExecutionError(Exception):
     """Raised when query execution fails."""
 
@@ -115,7 +124,9 @@ def _is_sqlite_interrupt(error: BaseException) -> bool:
 
 @contextmanager
 def _sqlite_timeout(
-    conn: sqlite3.Connection, timeout_s: float | None
+    conn: sqlite3.Connection,
+    timeout_s: float | None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> Generator[None, None, None]:
     """Abort the current SQLite statement after ``timeout_s`` wall-clock seconds.
 
@@ -124,13 +135,18 @@ def _sqlite_timeout(
     the query should run without a time bound. The handler is always cleared
     so persistent connections do not leak a deadline into the next statement.
     """
-    if timeout_s is None or timeout_s <= 0:
+    if (timeout_s is None or timeout_s <= 0) and cancelled is None:
         yield
         return
-    deadline = time.monotonic() + float(timeout_s)
+    deadline = (
+        time.monotonic() + float(timeout_s) if timeout_s is not None and timeout_s > 0 else None
+    )
 
     def _handler() -> int:
-        return 1 if time.monotonic() >= deadline else 0
+        return int(
+            (cancelled is not None and cancelled())
+            or (deadline is not None and time.monotonic() >= deadline)
+        )
 
     conn.set_progress_handler(_handler, _PROGRESS_HANDLER_INTERVAL)
     try:
@@ -329,6 +345,12 @@ class QueryExecutor:
 
         return rendered_sql
 
+    def clone_for_context(self, context: Context) -> QueryExecutor:
+        """Copy runtime registrations to a worker without borrowing its connection."""
+        worker = QueryExecutor(context)
+        worker._configs = copy.deepcopy(self._configs)
+        return worker
+
     def execute(
         self,
         sql: str,
@@ -336,6 +358,7 @@ class QueryExecutor:
         timeout_s: float | None = None,
         *,
         consume: Callable[[list[dict[str, Any]]], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
     ) -> list[dict[str, Any]]:
         """Execute raw SQL query.
 
@@ -353,7 +376,7 @@ class QueryExecutor:
         """
         try:
             with self._context.connect() as conn:
-                with _sqlite_timeout(conn, timeout_s):
+                with _sqlite_timeout(conn, timeout_s, cancelled):
                     cursor = conn.cursor()
                     try:
                         if params:
@@ -386,13 +409,19 @@ class QueryExecutor:
         except Exception as e:
             raise QueryExecutionError(f"Query execution failed: {e}") from e
 
-    def count(self, sql: str, timeout_s: float | None = None) -> int:
+    def count(
+        self,
+        sql: str,
+        timeout_s: float | None = None,
+        *,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> int:
         """Count the rows produced by a rendered query without materializing them."""
         query = sql.strip().rstrip(";").rstrip()
         count_sql = f"SELECT COUNT(*) FROM ({query}) AS pt_snap_count"
         try:
             with self._context.connect() as conn:
-                with _sqlite_timeout(conn, timeout_s):
+                with _sqlite_timeout(conn, timeout_s, cancelled):
                     cursor = conn.cursor()
                     cursor.execute(count_sql)
                     row = cursor.fetchone()
@@ -456,6 +485,7 @@ class QueryExecutor:
         timeout_s: float | None = None,
         *,
         probe_has_more: bool = True,
+        cancelled: Callable[[], bool] | None = None,
     ) -> tuple[list[dict[str, Any]], bool, int | None]:
         """Execute a named template and report whether more rows exist.
 
@@ -480,7 +510,11 @@ class QueryExecutor:
         fetch_sql = (
             bump_trailing_limit(sql, 1) if probe_has_more and applied_limit is not None else sql
         )
-        rows = self.execute(fetch_sql, timeout_s=timeout_s)
+        rows = self.execute(
+            fetch_sql,
+            timeout_s=timeout_s,
+            **cancellation_options(cancelled),
+        )
         has_more = applied_limit is not None and len(rows) > applied_limit
         if has_more and applied_limit is not None:
             rows = rows[:applied_limit]
@@ -495,6 +529,7 @@ class QueryExecutor:
         timeout_s: float | None = None,
         *,
         ignore_row_window: bool = False,
+        cancelled: Callable[[], bool] | None = None,
     ) -> int:
         """Count rows returned by a named template without materializing them.
 
@@ -518,7 +553,7 @@ class QueryExecutor:
             if "top_n" in template.parameters:
                 count_params["top_n"] = -1
         sql = self.render(template, count_params, device_id)
-        return self.count(sql, timeout_s=timeout_s)
+        return self.count(sql, timeout_s=timeout_s, **cancellation_options(cancelled))
 
     def execute_on_all_devices(
         self,

@@ -57,11 +57,10 @@ The same acceptance is stored in the JUnit `dataset_acceptance` property (use
 
 The real importer exports exactly 1,000,000 events using the unchanged 500,000
 default capacity. The complete installed catalog must be classified: currently
-11 dataset-supported templates succeed with CLI/API result parity and independent
-known-result assertions; `event_frames` and `active_memory_frame_tree_at_event`
-are explicit dataset rejections. Both report commands run through the console:
-`peak-memory` succeeds, while `memory-tree` preserves its documented unsupported
-dataset contract. Source and every exported member remain unchanged. This is
+12 dataset-supported templates succeed with CLI/API result parity and independent
+known-result assertions; `event_frames` is the explicit dataset rejection.
+Frame trees have additional real-import differential tests in `test_dataset_frame_tree.py`. Both report commands run through the console:
+`peak-memory` and `memory-tree` succeed with shared CLI/API semantics. Source and every exported member remain unchanged. This is
 trusted test-owned producer/replay acceptance, not live capture or upstream GUI
 acceptance. Do not turn a missing wheel/skip into a successful nightly gate.
 

@@ -360,7 +360,7 @@ CREATE UNIQUE INDEX idx_callstack_frame_position
 ### 单库帧能力边界
 
 格式 3 仅用于单库导入。原生分片导入保持格式 2，兼容导出保持格式 1；
-它们不会声称支持单库帧树。新增 `callstack_frame_manifest(callstackId INTEGER PRIMARY KEY,
+它们通过独立的版本 2 去重帧扩展支持数据集帧树，详见[查询指南](querying.md#数据集去重帧扩展版本-2)。新增 `callstack_frame_manifest(callstackId INTEGER PRIMARY KEY,
 frameCount INTEGER NOT NULL)` 保存每个采集调用栈的预期长度，包括零。
 filename/name 必须是文本，line 必须是整数。`event_frames` 对缺失、已知空数组
 或损坏数组返回零行，不输出部分重建的数组。树将已知空栈与缺失/损坏证据分开。
@@ -437,12 +437,15 @@ P0 兼容 v1 表序、内联布局和 manifest 语义不变。
 `trace_entry_<device>` 表，第九列为 `callstack TEXT`，不是 VIEW；block/dictionary
 位置 schema 精确匹配。转换去除暂存的未隔离 `callstack` 表，写入
 `pt_snap_metadata.import_format_version=1`，保留隔离的 `pt_snap_block_reference`
-文本生命周期来源。原生单库/数据集仍使用去重和 v2 metadata，不生成或从文本推断有序 frames。
+文本生命周期来源。原生数据集保留独立的版本 2 帧扩展，不从文本推断有序 frames。
 
 内联调用栈字节按**所有事件**的文本总和增长，不按不同栈计数；转换暂时并存原生与内联表，
 可能保留 SQLite free pages。容量不限制 block、加载 RSS 或总磁盘。兼容 manifest 的
-`ptSnap.identity`、metadata、省略设备和全部成员哈希形成整体证明，完整校验后才报告
-metadata available；外部 v1 数据集仍不要求 metadata。
+`ptSnap.identity`、metadata、省略设备及摘要值为空字符串的结构成员清单随导出写入。
+历史摘要字段仅作为清单接受；兼容导入复用检查成员名称、源身份及必要的只读结构，
+不比较摘要值，也不扫描任意行内容，因此结构合法的内容编辑可以被复用。
+识别到 metadata 不证明数据库内容完整。查询和显式验证器独立执行准入检查；
+外部 v1 数据集仍不要求 metadata。原生数据集的内容校验保持不变。
 
 **仅最终化兼容数据集**的裸校验与缓存分析在首个 SQLite 打开前拒绝全部存活/悬空
 sidecar 和别名后使用 `mode=ro&immutable=1`，保留已关闭/checkpoint 原版 WAL 的字节及
