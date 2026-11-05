@@ -204,8 +204,16 @@ class QueryTemplate:
         Returns:
             QueryTemplate instance.
         """
+        data = _require_mapping(data, "template")
+        if "name" in data:
+            _require_name(data["name"], "template")
         parameters = {}
-        for name, param_data in data.get("parameters", {}).items():
+        parameter_data = _require_mapping(data.get("parameters", {}), "parameters")
+        for name, param_data in parameter_data.items():
+            _require_name(name, "parameter")
+            param_data = _require_mapping(param_data, f"parameter '{name}'")
+            if not isinstance(param_data.get("type", "str"), str):
+                raise ValueError(f"Parameter '{name}' type must be a string")
             parameters[name] = QueryParameter(
                 name=name,
                 type=param_data.get("type", "str"),
@@ -218,6 +226,8 @@ class QueryTemplate:
         template_name = data.get("name", "")
         query_variants = _parse_query_variants(template_name, data.get("query_variants"))
         explicit_query = data.get("query")
+        if explicit_query is not None and not isinstance(explicit_query, str):
+            raise ValueError(f"query for '{template_name}' must be a SQL string")
         if query_variants:
             if isinstance(explicit_query, str) and explicit_query.strip():
                 raise ValueError(
@@ -243,6 +253,17 @@ class QueryTemplate:
                 f"template '{template_name}'", data.get("interpretation_limits")
             ),
         )
+
+
+def _require_mapping(raw: Any, label: str) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ValueError(f"{label} must be a mapping")
+    return raw
+
+
+def _require_name(raw: Any, label: str) -> None:
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError(f"{label} name must be a non-empty string")
 
 
 def _parse_semantics_version(template_name: str, raw: Any) -> int | None:
@@ -408,23 +429,15 @@ class QueryConfig:
         Raises:
             FileNotFoundError: If file does not exist.
             yaml.YAMLError: If YAML is invalid.
+            ValueError: If the configuration structure or template metadata is invalid.
         """
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Config file not found: {path}")
 
         with open(path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-
-        queries = {}
-        for name, query_data in data.get("queries", {}).items():
-            query_data["name"] = name
-            queries[name] = QueryTemplate.from_dict(query_data, default_category=default_category)
-
-        return cls(
-            version=data.get("version", "1.0"),
-            queries=queries,
-        )
+            data = yaml.safe_load(f)
+        return cls._from_yaml_data(data, default_category=default_category)
 
     @classmethod
     def load_yaml_from_string(cls, content: str) -> QueryConfig:
@@ -435,13 +448,29 @@ class QueryConfig:
 
         Returns:
             QueryConfig instance.
+
+        Raises:
+            yaml.YAMLError: If YAML is invalid.
+            ValueError: If the configuration structure or template metadata is invalid.
         """
-        data = yaml.safe_load(content) or {}
+        return cls._from_yaml_data(yaml.safe_load(content))
+
+    @classmethod
+    def _from_yaml_data(cls, raw: Any, default_category: str | None = None) -> QueryConfig:
+        # An empty YAML document remains an empty configuration. Other falsy
+        # values ([], false, 0, "") are not mappings and must not silently pass.
+        data = _require_mapping({} if raw is None else raw, "configuration")
+        query_definitions = _require_mapping(data.get("queries", {}), "queries")
 
         queries = {}
-        for name, query_data in data.get("queries", {}).items():
-            query_data["name"] = name
-            queries[name] = QueryTemplate.from_dict(query_data)
+        for name, query_data in query_definitions.items():
+            _require_name(name, "query")
+            query_data = _require_mapping(query_data, f"query '{name}'")
+            # Do not overwrite caller data or shared YAML aliases with the
+            # enclosing name. Each query gets its own top-level mapping.
+            queries[name] = QueryTemplate.from_dict(
+                {**query_data, "name": name}, default_category=default_category
+            )
 
         return cls(
             version=data.get("version", "1.0"),
