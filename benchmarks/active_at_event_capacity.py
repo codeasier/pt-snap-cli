@@ -18,12 +18,12 @@ from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
 
-from pt_snap_cli.core.dataset.dataset_contract import ACTION_NAMES, BLOCK_STATES
-from pt_snap_cli.core.dataset.dataset_sources import QueryBudget
+from pt_snap_cli.core.analysis.query_service import QueryService
 from pt_snap_cli.core.common.errors import QueryExecutionError
 from pt_snap_cli.core.common.models import ImportMetadata
+from pt_snap_cli.core.dataset.dataset_contract import ACTION_NAMES, BLOCK_STATES
+from pt_snap_cli.core.dataset.dataset_sources import QueryBudget
 from pt_snap_cli.core.dataset.native_dataset_contract import NATIVE_FORMAT, cache_identity
-from pt_snap_cli.core.analysis.query_service import QueryService
 
 SCHEMA = """CREATE TABLE dictionary ("table" TEXT,"column" TEXT,"key" TEXT,"value" TEXT);
 CREATE TABLE trace_entry_0 (id INTEGER PRIMARY KEY,action INTEGER,address INTEGER,
