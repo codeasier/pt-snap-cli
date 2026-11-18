@@ -21,7 +21,7 @@ import json, platform, site, sqlite3, sys
 from dataclasses import asdict
 from pathlib import Path
 import pt_snap_cli, typer, yaml, jinja2
-from pt_snap_cli.core.query_limits import QueryLimits
+from pt_snap_cli.core.common.query_limits import QueryLimits
 print(json.dumps({
     "python": sys.version, "executable": sys.executable,
     "prefix": sys.prefix, "base_prefix": sys.base_prefix,
@@ -41,8 +41,8 @@ API_QUERIES = """
 import json, sys
 from dataclasses import asdict
 from pt_snap_cli.api import SnapshotAnalyzer
-from pt_snap_cli.core.error_codes import classify_error
-from pt_snap_cli.core.report_service import ReportService
+from pt_snap_cli.core.common.error_codes import classify_error
+from pt_snap_cli.core.analysis.report_service import ReportService
 root, cases_file, event = sys.argv[1], sys.argv[2], int(sys.argv[3])
 results, errors = {}, {}
 with SnapshotAnalyzer(root) as analyzer:

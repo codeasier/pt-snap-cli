@@ -6,11 +6,11 @@ from contextlib import closing
 
 import pytest
 
-from pt_snap_cli.core import dataset_lifecycle_scratch as scratch
-from pt_snap_cli.core import dataset_lifecycle_sql as sql
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
-from pt_snap_cli.core.dataset_sources import DatasetSourceResolver, QueryBudget
-from pt_snap_cli.core.errors import QueryExecutionError, QueryTimeoutError
+from pt_snap_cli.core.common.errors import QueryExecutionError, QueryTimeoutError
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.dataset.dataset_sources import DatasetSourceResolver, QueryBudget
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_scratch as scratch
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_sql as sql
 from tests.core.test_dataset_lifecycle_scratch import capture_storage
 from tests.core.test_dataset_sql_pushdown import run_resolved
 from tests.test_dataset_focus import hashes, make_dataset

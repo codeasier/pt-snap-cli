@@ -124,11 +124,11 @@ def _run_import_once(snapshot: Path, output_dir: Path, device: int) -> RunResult
             "-c",
             f"""
 import logging; logging.disable(logging.CRITICAL)
-import pt_snap_cli.core.import_metadata as import_metadata
+import pt_snap_cli.core.importing.import_metadata as import_metadata
 import resource
 import sys
 from benchmarks.baseline_import import _max_rss_kb
-from pt_snap_cli.core.import_service import ImportOptions, ImportService
+from pt_snap_cli.core.importing.import_service import ImportOptions, ImportService
 from pathlib import Path
 if not import_metadata.__version__:
     import_metadata.__version__ = "benchmark"
@@ -273,7 +273,7 @@ def _correctness_summary(output_dir: Path, device: int) -> dict:
 
 
 def _profile_import(snapshot: Path, output_dir: Path, device: int, top_n: int = 20) -> str:
-    from pt_snap_cli.core.import_service import ImportOptions, ImportService
+    from pt_snap_cli.core.importing.import_service import ImportOptions, ImportService
 
     service = ImportService()
     options = ImportOptions(

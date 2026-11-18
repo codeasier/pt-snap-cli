@@ -19,13 +19,13 @@ from pt_snap_cli.core import (
     dumps_json,
     json_error,
 )
-from pt_snap_cli.core.error_codes import ERROR
-from pt_snap_cli.core.models import SKILL_RESTART_ACTIONS, SKILL_RESTART_HINT
-from pt_snap_cli.core.skill_service import (
+from pt_snap_cli.core.analysis.skill_service import (
     format_skill_install_target,
     format_skill_location,
     human_skill_summary,
 )
+from pt_snap_cli.core.common.error_codes import ERROR
+from pt_snap_cli.core.common.models import SKILL_RESTART_ACTIONS, SKILL_RESTART_HINT
 
 # Typer 0.27+ vendors Click, so its context cannot be read via click.get_current_context.
 JSON_MODE: ContextVar[bool] = ContextVar("pt_snap_json_mode", default=False)

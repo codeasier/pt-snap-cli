@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.core import import_metadata
-from pt_snap_cli.core.errors import ImportExecutionError
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.models import ImportOptions
-from pt_snap_cli.core.native_dataset_contract import NATIVE_FORMAT
+from pt_snap_cli.core.common.errors import ImportExecutionError
+from pt_snap_cli.core.common.models import ImportOptions
+from pt_snap_cli.core.dataset.native_dataset_contract import NATIVE_FORMAT
+from pt_snap_cli.core.importing import import_metadata
+from pt_snap_cli.core.importing.import_service import ImportService
 from pt_snap_cli.snapshot.tools.adaptors import snapshot2db
 from tests.snapshot.test_sharded_replay import lifecycle_data, write_source
 

@@ -4,17 +4,17 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.core.errors import (
-    InvalidSkillTargetError,
-    SkillCatalogError,
-    SkillInstallError,
-    SkillNotFoundError,
-)
-from pt_snap_cli.core.skill_service import (
+from pt_snap_cli.core.analysis.skill_service import (
     SkillService,
     default_catalog_dir,
     human_skill_summary,
     skill_dir_digest,
+)
+from pt_snap_cli.core.common.errors import (
+    InvalidSkillTargetError,
+    SkillCatalogError,
+    SkillInstallError,
+    SkillNotFoundError,
 )
 
 

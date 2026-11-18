@@ -31,15 +31,15 @@ inventory. A high average cannot compensate for a single file below its floor.
 
 | Runtime module (`src/pt_snap_cli/`) | Minimum line + branch coverage |
 | --- | --- |
-| `core/snapshot_import_backend.py` | 90% |
+| `core/importing/snapshot_import_backend.py` | 90% |
 | `snapshot/simulate/simulated_caching_allocator.py` | 88% |
 | `snapshot/simulate/snapshot_mutator.py` | 84% |
-| `core/import_metadata_contract.py` | 100% |
-| `core/import_metadata.py` | 90% |
-| `core/split_service.py` | 90% |
-| `core/focus_service.py` | 90% |
-| `core/skill_service.py` | 90% |
-| `core/snapshot_cache.py` | 90% |
+| `core/importing/import_metadata_contract.py` | 100% |
+| `core/importing/import_metadata.py` | 90% |
+| `core/splitting/split_service.py` | 90% |
+| `core/analysis/focus_service.py` | 90% |
+| `core/analysis/skill_service.py` | 90% |
+| `core/cache/snapshot_cache.py` | 90% |
 | `snapshot/representation.py` | 95% |
 
 The checker requires `.coverage`, branch data, every listed source file, measured

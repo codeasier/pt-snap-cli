@@ -13,12 +13,12 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.core import dataset_resolver as resolver
-from pt_snap_cli.core import native_dataset_contract as native
-from pt_snap_cli.core import query_service as queries
-from pt_snap_cli.core.dataset_files import hash_file
-from pt_snap_cli.core.errors import DatabaseSchemaError, QueryTimeoutError
-from pt_snap_cli.core.report_service import ReportService
+from pt_snap_cli.core.analysis import query_service as queries
+from pt_snap_cli.core.analysis.report_service import ReportService
+from pt_snap_cli.core.common.errors import DatabaseSchemaError, QueryTimeoutError
+from pt_snap_cli.core.dataset import dataset_resolver as resolver
+from pt_snap_cli.core.dataset import native_dataset_contract as native
+from pt_snap_cli.core.dataset.dataset_files import hash_file
 from tests.test_dataset_focus import make_dataset
 from tests.test_native_dataset import dataset as native_dataset
 

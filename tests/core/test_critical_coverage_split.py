@@ -8,10 +8,10 @@ from types import SimpleNamespace
 
 import pytest
 
-import pt_snap_cli.core.split_service as split_module
-from pt_snap_cli.core.errors import SplitError
-from pt_snap_cli.core.models import SplitOptions
-from pt_snap_cli.core.split_service import SplitService
+import pt_snap_cli.core.splitting.split_service as split_module
+from pt_snap_cli.core.common.errors import SplitError
+from pt_snap_cli.core.common.models import SplitOptions
+from pt_snap_cli.core.splitting.split_service import SplitService
 
 
 @pytest.fixture

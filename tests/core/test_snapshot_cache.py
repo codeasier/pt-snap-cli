@@ -8,7 +8,7 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
-from pt_snap_cli.core.snapshot_cache import (
+from pt_snap_cli.core.cache.snapshot_cache import (
     seal_manifest,
     source_hashes,
     validate_cache,
@@ -66,7 +66,7 @@ class SnapshotCacheTest(unittest.TestCase):
         (self.directory / "manifest.json").write_text(json.dumps(self.manifest), encoding="utf-8")
 
     def test_readonly_transport_observes_writer_started_after_uri_creation(self):
-        from pt_snap_cli.core.dataset_files import member_is_immutable, readonly_member_uri
+        from pt_snap_cli.core.dataset.dataset_files import member_is_immutable, readonly_member_uri
 
         uri = readonly_member_uri(self.db)
         self.assertNotIn("immutable=1", uri)
@@ -81,7 +81,7 @@ class SnapshotCacheTest(unittest.TestCase):
     def test_consumer_write_after_sidecar_check_is_allowed(self):
         from unittest.mock import patch
 
-        from pt_snap_cli.core import snapshot_cache
+        from pt_snap_cli.core.cache import snapshot_cache
 
         connect = sqlite3.connect
         writers = []
@@ -231,7 +231,7 @@ class SnapshotCacheTest(unittest.TestCase):
     def test_manifest_changed_during_validation_is_rejected(self):
         from unittest.mock import patch
 
-        from pt_snap_cli.core import snapshot_cache
+        from pt_snap_cli.core.cache import snapshot_cache
 
         original = snapshot_cache.parser_members
 

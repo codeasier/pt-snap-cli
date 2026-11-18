@@ -23,8 +23,8 @@ from pt_snap_cli.core import (
     QueryService,
     TemplateNotFoundError,
 )
-from pt_snap_cli.core.context_cache import ContextCache
-from pt_snap_cli.core.query_limits import QueryLimits
+from pt_snap_cli.core.cache.context_cache import ContextCache
+from pt_snap_cli.core.common.query_limits import QueryLimits
 
 
 class TemplateSummaryPayload(TypedDict):

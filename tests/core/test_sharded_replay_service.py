@@ -2,8 +2,8 @@ import copy
 
 import pytest
 
-from pt_snap_cli.core import sharded_replay_service
-from pt_snap_cli.core.sharded_replay_service import ShardedReplayService
+from pt_snap_cli.core.splitting import sharded_replay_service
+from pt_snap_cli.core.splitting.sharded_replay_service import ShardedReplayService
 from pt_snap_cli.snapshot.tools.adaptors import sharded_replay
 
 from ..snapshot.test_sharded_replay import lifecycle_data, write_source

@@ -69,7 +69,7 @@ may point to an existing Chromium executable instead of downloading one.
 
 - Type checking covers all `src/pt_snap_cli`, including `snapshot/`. Zero errors
   is the gate; warnings are informational. Preserve the file-level Any/Unknown
-  error gates in `api.py`, `core/models.py`, and `snapshot/representation.py`;
+  error gates in `api.py`, `core/common/models.py`, and `snapshot/representation.py`;
   do not downgrade snapshot through an `executionEnvironments` exception.
 - Pytest treats `ResourceWarning` and `PytestUnraisableExceptionWarning` as
   errors. Ownership/teardown guidance lives in [tests](tests/AGENTS.md).

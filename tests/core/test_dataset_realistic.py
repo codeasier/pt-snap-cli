@@ -15,15 +15,15 @@ from typer.testing import CliRunner
 
 from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import app
-from pt_snap_cli.core import dataset_attribution
-from pt_snap_cli.core import dataset_lifecycle_scratch as scratch
-from pt_snap_cli.core import dataset_lifecycle_sql as lifecycle_sql
-from pt_snap_cli.core.dataset_contract import validate_dataset
-from pt_snap_cli.core.dataset_sources import QueryBudget
-from pt_snap_cli.core.errors import QueryExecutionError, QueryTimeoutError
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.models import ImportOptions
-from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.common.errors import QueryExecutionError, QueryTimeoutError
+from pt_snap_cli.core.common.models import ImportOptions
+from pt_snap_cli.core.dataset.dataset_contract import validate_dataset
+from pt_snap_cli.core.dataset.dataset_sources import QueryBudget
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_scratch as scratch
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_sql as lifecycle_sql
+from pt_snap_cli.core.dataset.query import dataset_attribution
+from pt_snap_cli.core.importing.import_service import ImportService
 from tests.core.dataset_differential_assertions import compare_case
 from tests.core.dataset_differential_cases import capacity_for_seed, configured_seeds, query_cases
 from tests.core.dataset_lifecycle_fixtures import build, db, member

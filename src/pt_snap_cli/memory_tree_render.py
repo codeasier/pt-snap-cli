@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import cast
 
-from pt_snap_cli.core.models import QueryResult
+from pt_snap_cli.core.common.models import QueryResult
 
 
 def render_memory_tree(result: QueryResult, event_id: int, *, html: bool = False) -> str:

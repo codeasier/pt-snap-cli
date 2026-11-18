@@ -5,7 +5,7 @@ import json
 import pytest
 
 from pt_snap_cli.api import QueryLimits, SnapshotAnalyzer
-from pt_snap_cli.core.errors import QueryExecutionError, QueryTimeoutError
+from pt_snap_cli.core.common.errors import QueryExecutionError, QueryTimeoutError
 from tests.dataset_failure_support import (
     ENV_NAMES,
     fault_hooks,

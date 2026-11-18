@@ -12,8 +12,8 @@ import pytest
 from typer.testing import CliRunner
 
 from pt_snap_cli.cli import app
-from pt_snap_cli.core.query_service import QueryService
-from pt_snap_cli.core.report_service import ReportService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.analysis.report_service import ReportService
 from pt_snap_cli.query.registry import QueryRegistry, _load_all_templates
 
 LONG_STACK = '训练.py:12 forward("模型🚀")\n' * 800

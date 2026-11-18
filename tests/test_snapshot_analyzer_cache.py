@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from pt_snap_cli.api import SnapshotAnalyzer
-from pt_snap_cli.core.context_cache import ContextCache
+from pt_snap_cli.core.cache.context_cache import ContextCache
 
 
 @pytest.fixture

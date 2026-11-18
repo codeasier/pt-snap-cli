@@ -23,12 +23,12 @@ from typer.testing import CliRunner
 from pt_snap_cli.api import FocusState, SnapshotAnalyzer
 from pt_snap_cli.cli import app
 from pt_snap_cli.core import InvalidDeviceError, QueryExecutionError, TemplateRenderError
-from pt_snap_cli.core.dataset_sources import QueryBudget
-from pt_snap_cli.core.error_codes import classify_error
-from pt_snap_cli.core.errors import QueryCancelledError, QueryTimeoutError
-from pt_snap_cli.core.json_codec import JSON_SCHEMA_VERSION
-from pt_snap_cli.core.query_service import QueryService
-from pt_snap_cli.core.report_service import ReportService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.analysis.report_service import ReportService
+from pt_snap_cli.core.common.error_codes import classify_error
+from pt_snap_cli.core.common.errors import QueryCancelledError, QueryTimeoutError
+from pt_snap_cli.core.common.json_codec import JSON_SCHEMA_VERSION
+from pt_snap_cli.core.dataset.dataset_sources import QueryBudget
 from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.registry import QueryRegistry, register_query
 from tests.test_dataset_focus import make_dataset
@@ -47,7 +47,7 @@ def test_cancelled_query_has_a_distinct_non_timeout_error_code(tmp_path, monkeyp
     def cancelled_tree(*args, **kwargs):
         raise error
 
-    monkeypatch.setattr("pt_snap_cli.core.query_service.frame_tree", cancelled_tree)
+    monkeypatch.setattr("pt_snap_cli.core.analysis.query_service.frame_tree", cancelled_tree)
     with SnapshotAnalyzer(root) as analyzer:
         with pytest.raises(QueryCancelledError):
             analyzer.execute_query("active_memory_frame_tree_at_event", {"event_id": 1})
@@ -1091,7 +1091,7 @@ def test_compatible_import_focus_metadata_query_contract(tmp_path: Path, monkeyp
 def test_dataset_point_event_sources_cli_api_report_contract(
     tmp_path: Path, template: str, frames: bool
 ) -> None:
-    from pt_snap_cli.core.report_service import ReportService
+    from pt_snap_cli.core.analysis.report_service import ReportService
     from tests.core.test_dataset_attribution import add_frames, case
 
     root = case(tmp_path)

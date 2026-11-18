@@ -13,7 +13,10 @@ from typer.testing import CliRunner
 
 from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import _safe_call, app
-from pt_snap_cli.core.dataset_contract import (
+from pt_snap_cli.core.analysis.focus_service import FocusService
+from pt_snap_cli.core.common.errors import ImportExecutionError, SourceChangedError
+from pt_snap_cli.core.common.models import ImportOptions
+from pt_snap_cli.core.dataset.dataset_contract import (
     ACTION_NAMES,
     BLOCK_COLUMNS,
     BLOCK_STATES,
@@ -22,11 +25,8 @@ from pt_snap_cli.core.dataset_contract import (
     TRACE_COLUMNS,
     validate_dataset,
 )
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
-from pt_snap_cli.core.errors import ImportExecutionError, SourceChangedError
-from pt_snap_cli.core.focus_service import FocusService
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.models import ImportOptions
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.importing.import_service import ImportService
 from tests.core.test_dataset_import import hashes
 from tests.snapshot.test_sharded_replay import lifecycle_data, write_source
 
@@ -295,8 +295,8 @@ def test_external_insight_artifact_reuses_without_claiming_metadata(
 def test_queries_validate_semantics_but_cache_import_does_not_scan(
     tmp_path, monkeypatch, sealed, external, set_focus, slice_index, mutation, diagnostic
 ):
-    from pt_snap_cli.core.errors import DatabaseSchemaError
-    from pt_snap_cli.core.snapshot_cache import seal_manifest, validate_cache
+    from pt_snap_cli.core.cache.snapshot_cache import seal_manifest, validate_cache
+    from pt_snap_cli.core.common.errors import DatabaseSchemaError
 
     request = options(tmp_path, focus=False)
     service = ImportService()
@@ -380,7 +380,7 @@ def test_external_cache_cli_failure_preserves_artifact_and_focus(tmp_path, monke
     focus.write_bytes(b'{"db_path":"/previous/project.db","device_id":0}')
     focus_before = focus.read_bytes()
     monkeypatch.setattr(
-        "pt_snap_cli.core.msinsight_export.MsinsightImportBackend.dump_to_dataset",
+        "pt_snap_cli.core.importing.msinsight_export.MsinsightImportBackend.dump_to_dataset",
         lambda *a, **k: pytest.fail("rejected external cache must not replay or publish"),
     )
     args = [
@@ -428,7 +428,7 @@ def test_invalid_compatible_cache_is_preserved(tmp_path, monkeypatch, external):
 
 
 def test_owned_cache_inspection_normalizes_deep_json(tmp_path):
-    from pt_snap_cli.core.msinsight_export import inspect_owned_cache
+    from pt_snap_cli.core.importing.msinsight_export import inspect_owned_cache
 
     (tmp_path / "manifest.json").write_text("[" * 200000 + "0" + "]" * 200000)
     with pytest.raises(ValueError, match="nesting"):
@@ -436,8 +436,8 @@ def test_owned_cache_inspection_normalizes_deep_json(tmp_path):
 
 
 def test_query_and_metadata_reject_deep_manifest_without_traceback(tmp_path):
-    from pt_snap_cli.core.errors import DatabaseSchemaError
-    from pt_snap_cli.core.import_metadata import ImportMetadataService
+    from pt_snap_cli.core.common.errors import DatabaseSchemaError
+    from pt_snap_cli.core.importing.import_metadata import ImportMetadataService
 
     result = ImportService().import_snapshot(options(tmp_path, focus=False))
     path = result.db_path / "manifest.json"
@@ -721,11 +721,11 @@ def test_failures_preserve_old_focus_and_unknown_owner(tmp_path, monkeypatch, ph
         raise OSError("injected " + phase)
 
     if phase == "conversion":
-        monkeypatch.setattr("pt_snap_cli.core.import_service.convert_shards", fail)
+        monkeypatch.setattr("pt_snap_cli.core.importing.import_service.convert_shards", fail)
     elif phase == "metadata":
         monkeypatch.setattr(service._metadata_service, "write", fail)
     elif phase == "validation":
-        monkeypatch.setattr("pt_snap_cli.core.import_service.inspect_owned_cache", fail)
+        monkeypatch.setattr("pt_snap_cli.core.importing.import_service.inspect_owned_cache", fail)
     elif phase == "source":
         monkeypatch.setattr(
             service,

@@ -24,9 +24,9 @@ from benchmarks.interop_acceptance import (
 )
 from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import app
-from pt_snap_cli.core.dataset_support import DATASET_SUPPORT
-from pt_snap_cli.core.errors import ImportExecutionError
-from pt_snap_cli.core.import_service import ImportService
+from pt_snap_cli.core.common.errors import ImportExecutionError
+from pt_snap_cli.core.dataset.dataset_support import DATASET_SUPPORT
+from pt_snap_cli.core.importing.import_service import ImportService
 from tests.core.test_dataset_attribution import add_frames, case
 from tests.core.test_msinsight_export import options
 

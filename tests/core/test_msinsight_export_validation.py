@@ -5,9 +5,9 @@ from contextlib import closing
 
 import pytest
 
-from pt_snap_cli.core.dataset_contract import DatasetContractError
-from pt_snap_cli.core.msinsight_export import _validate_shards, convert_shards
-from pt_snap_cli.core.sharded_replay_service import ShardedReplayResult
+from pt_snap_cli.core.dataset.dataset_contract import DatasetContractError
+from pt_snap_cli.core.importing.msinsight_export import _validate_shards, convert_shards
+from pt_snap_cli.core.splitting.sharded_replay_service import ShardedReplayResult
 from pt_snap_cli.snapshot.tools.adaptors.sharded_replay import ReplaySlice
 from tests.core.test_dataset_import import hashes
 

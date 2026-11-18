@@ -11,7 +11,7 @@ import pytest
 from typer.testing import CliRunner
 
 from pt_snap_cli.cli import app
-from pt_snap_cli.core.import_metadata import ImportMetadataService
+from pt_snap_cli.core.importing.import_metadata import ImportMetadataService
 from pt_snap_cli.query import registry
 
 ROOT = Path(__file__).resolve().parents[2]

@@ -26,8 +26,8 @@ def complete_categories() -> list[str]:
 
 def complete_skill_names() -> list[str]:
     """Return bundled agent skill names for shell completion."""
-    from pt_snap_cli.core.errors import SkillCatalogError
-    from pt_snap_cli.core.skill_service import SkillService
+    from pt_snap_cli.core.analysis.skill_service import SkillService
+    from pt_snap_cli.core.common.errors import SkillCatalogError
 
     try:
         return [skill.name for skill in SkillService().list_catalog()]
@@ -37,7 +37,7 @@ def complete_skill_names() -> list[str]:
 
 def complete_skill_targets() -> list[str]:
     """Return supported skill host names for shell completion."""
-    from pt_snap_cli.core.models import SKILL_HOSTS
+    from pt_snap_cli.core.common.models import SKILL_HOSTS
 
     return list(SKILL_HOSTS)
 
@@ -75,7 +75,7 @@ def complete_device_ids() -> list[str]:
         return []
 
     try:
-        from pt_snap_cli.core.dataset_resolver import DatasetResolver
+        from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
 
         devices = DatasetResolver().completion_device_ids(db_path)
         if devices is not None:

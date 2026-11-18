@@ -8,11 +8,11 @@ from contextlib import closing
 
 import pytest
 
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
-from pt_snap_cli.core.dataset_sources import DatasetSourceResolver, QueryBudget
-from pt_snap_cli.core.errors import QueryExecutionError
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.common.errors import QueryExecutionError
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.dataset.dataset_sources import DatasetSourceResolver, QueryBudget
+from pt_snap_cli.core.importing.import_service import ImportService
 from tests.core.test_dataset_attribution import case, standalone
 from tests.core.test_dataset_import import source_options
 from tests.core.test_dataset_source_reuse import framed_dataset

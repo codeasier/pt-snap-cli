@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pt_snap_cli.core.errors import (
+from pt_snap_cli.core.common.errors import (
     ImportExecutionError,
     ImportToolMissingError,
     PtSnapCoreError,

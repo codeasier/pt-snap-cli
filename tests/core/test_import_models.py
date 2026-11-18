@@ -5,8 +5,11 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-from pt_snap_cli.core.import_metadata import IMPORT_FORMAT_VERSION, METADATA_SCHEMA_VERSION
-from pt_snap_cli.core.models import ImportMetadata, ImportOptions, ImportResult
+from pt_snap_cli.core.common.models import ImportMetadata, ImportOptions, ImportResult
+from pt_snap_cli.core.importing.import_metadata import (
+    IMPORT_FORMAT_VERSION,
+    METADATA_SCHEMA_VERSION,
+)
 
 
 def _metadata() -> ImportMetadata:

@@ -20,11 +20,11 @@ import pytest
 
 from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.context import Context
-from pt_snap_cli.core import dataset_lifecycle_scratch as scratch
-from pt_snap_cli.core import dataset_lifecycle_sql
-from pt_snap_cli.core.errors import QueryExecutionError
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.query_limits import QueryLimits
+from pt_snap_cli.core.common.errors import QueryExecutionError
+from pt_snap_cli.core.common.query_limits import QueryLimits
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_scratch as scratch
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_sql
+from pt_snap_cli.core.importing.import_service import ImportService
 from tests.core.test_dataset_import import hashes, source_options
 
 ROOT = Path(__file__).resolve().parents[1]

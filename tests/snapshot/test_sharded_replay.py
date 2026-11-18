@@ -6,7 +6,7 @@ from contextlib import closing
 
 import pytest
 
-from pt_snap_cli.core.sharded_replay_service import ShardedReplayService
+from pt_snap_cli.core.splitting.sharded_replay_service import ShardedReplayService
 from pt_snap_cli.snapshot.base import Block, BlockState
 from pt_snap_cli.snapshot.representation import save_snapshot_representation
 from pt_snap_cli.snapshot.simulate import SimulateDeviceSnapshot

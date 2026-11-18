@@ -245,7 +245,7 @@ def require(condition: bool, name: str) -> None:
 
 def compare_artifact(root: Path, device: int, reference: Path) -> dict:
     from pt_snap_cli.api import SnapshotAnalyzer
-    from pt_snap_cli.core.report_service import ReportService
+    from pt_snap_cli.core.analysis.report_service import ReportService
 
     root = canonical(root)
     reference = canonical(reference)

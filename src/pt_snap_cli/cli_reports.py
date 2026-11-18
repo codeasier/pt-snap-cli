@@ -36,9 +36,9 @@ from pt_snap_cli.core import (
     TemplateNotFoundError,
     TemplateRenderError,
 )
-from pt_snap_cli.core.error_codes import DATABASE_NOT_FOUND, INVALID_PARAMETER
-from pt_snap_cli.core.errors import PtSnapCoreError
-from pt_snap_cli.core.query_limits import QueryLimits
+from pt_snap_cli.core.common.error_codes import DATABASE_NOT_FOUND, INVALID_PARAMETER
+from pt_snap_cli.core.common.errors import PtSnapCoreError
+from pt_snap_cli.core.common.query_limits import QueryLimits
 from pt_snap_cli.memory_tree_render import render_memory_tree
 
 report_app = typer.Typer(help="Generate memory analysis reports")

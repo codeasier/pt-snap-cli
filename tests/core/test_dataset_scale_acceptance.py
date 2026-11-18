@@ -16,10 +16,10 @@ from pathlib import Path
 import pytest
 
 from pt_snap_cli.api import SnapshotAnalyzer
-from pt_snap_cli.core.dataset_contract import ACTION_NAMES, BLOCK_STATES
-from pt_snap_cli.core.dataset_sources import QueryBudget
-from pt_snap_cli.core.errors import QueryExecutionError
-from pt_snap_cli.core.msinsight_export import DEFAULT_CAPACITY
+from pt_snap_cli.core.common.errors import QueryExecutionError
+from pt_snap_cli.core.dataset.dataset_contract import ACTION_NAMES, BLOCK_STATES
+from pt_snap_cli.core.dataset.dataset_sources import QueryBudget
+from pt_snap_cli.core.importing.msinsight_export import DEFAULT_CAPACITY
 from tests.core.dataset_lifecycle_fixtures import SCHEMA
 from tests.core.wheel_scale_acceptance import (
     API_QUERIES,

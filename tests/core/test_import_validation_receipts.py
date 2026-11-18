@@ -9,10 +9,15 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.core import dataset_resolver, import_service
-from pt_snap_cli.core.errors import ImportExecutionError, QueryTimeoutError
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.validation_receipts import import_receipts, load_receipt, save_receipt
+from pt_snap_cli.core.common.errors import ImportExecutionError, QueryTimeoutError
+from pt_snap_cli.core.dataset import dataset_resolver
+from pt_snap_cli.core.importing import import_service
+from pt_snap_cli.core.importing.import_service import ImportService
+from pt_snap_cli.core.importing.validation_receipts import (
+    import_receipts,
+    load_receipt,
+    save_receipt,
+)
 from tests.core.test_dataset_validation_cache import CancellableBudget
 from tests.core.test_msinsight_export import options
 

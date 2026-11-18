@@ -31,8 +31,8 @@ from pt_snap_cli.core import (
     SkillNotFoundError,
     SkillService,
 )
-from pt_snap_cli.core.error_codes import INVALID_PARAMETER
-from pt_snap_cli.core.skill_service import parse_host_option
+from pt_snap_cli.core.analysis.skill_service import parse_host_option
+from pt_snap_cli.core.common.error_codes import INVALID_PARAMETER
 
 skill_app = typer.Typer(help="Manage bundled agent skills", no_args_is_help=True)
 

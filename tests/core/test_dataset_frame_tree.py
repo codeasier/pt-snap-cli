@@ -12,15 +12,19 @@ from threading import Event
 import pytest
 from typer.testing import CliRunner
 
-import pt_snap_cli.core.query_service as query_service_module
+import pt_snap_cli.core.analysis.query_service as query_service_module
 from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import app
-from pt_snap_cli.core.dataset_frames import attach_frames
-from pt_snap_cli.core.errors import InvalidParameterError, QueryCancelledError, QueryExecutionError
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.models import ImportOptions
-from pt_snap_cli.core.query_limits import QueryLimits
-from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.common.errors import (
+    InvalidParameterError,
+    QueryCancelledError,
+    QueryExecutionError,
+)
+from pt_snap_cli.core.common.models import ImportOptions
+from pt_snap_cli.core.common.query_limits import QueryLimits
+from pt_snap_cli.core.dataset.query.dataset_frames import attach_frames
+from pt_snap_cli.core.importing.import_service import ImportService
 from pt_snap_cli.snapshot.base import TraceEntry
 from pt_snap_cli.snapshot.representation import load_snapshot_representation
 from pt_snap_cli.snapshot.tools.adaptors.ordered_frames import OrderedFrameWriter

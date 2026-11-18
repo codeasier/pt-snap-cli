@@ -13,10 +13,10 @@ from pathlib import Path
 import pytest
 
 from pt_snap_cli.api import QueryLimits, SnapshotAnalyzer
-from pt_snap_cli.core import dataset_lifecycle_scratch as scratch
-from pt_snap_cli.core import dataset_lifecycle_sql as sql
-from pt_snap_cli.core.dataset_lifecycle_connection import _AttachedSources
-from pt_snap_cli.core.errors import QueryExecutionError
+from pt_snap_cli.core.common.errors import QueryExecutionError
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_scratch as scratch
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_sql as sql
+from pt_snap_cli.core.dataset.lifecycle.dataset_lifecycle_connection import _AttachedSources
 from tests.dataset_failure_support import (
     ENV_NAMES,
     child_environment,

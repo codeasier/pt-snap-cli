@@ -7,9 +7,13 @@ from contextlib import closing
 import pytest
 
 from pt_snap_cli.core import QueryLimits, QueryService, ReportService
-from pt_snap_cli.core.dataset_sources import QueryBudget
-from pt_snap_cli.core.errors import InvalidParameterError, QueryExecutionError, QueryTimeoutError
-from pt_snap_cli.core.query_limits import resolve_query_limits
+from pt_snap_cli.core.common.errors import (
+    InvalidParameterError,
+    QueryExecutionError,
+    QueryTimeoutError,
+)
+from pt_snap_cli.core.common.query_limits import resolve_query_limits
+from pt_snap_cli.core.dataset.dataset_sources import QueryBudget
 from tests.core.test_dataset_attribution import case
 from tests.core.test_dataset_lifecycle_scratch import limited_connections, many_owners
 from tests.core.test_dataset_sql_pushdown import large_dataset

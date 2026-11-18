@@ -10,9 +10,10 @@ import pytest
 from typer.testing import CliRunner
 
 from pt_snap_cli.cli import app
-from pt_snap_cli.core import dataset_resolver, import_service
-from pt_snap_cli.core.errors import ImportExecutionError
-from pt_snap_cli.core.import_service import ImportService
+from pt_snap_cli.core.common.errors import ImportExecutionError
+from pt_snap_cli.core.dataset import dataset_resolver
+from pt_snap_cli.core.importing import import_service
+from pt_snap_cli.core.importing.import_service import ImportService
 from tests.core.test_msinsight_export import options
 
 

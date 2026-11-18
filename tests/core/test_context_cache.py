@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from pt_snap_cli.context import Context, DatabaseNotFoundError, SchemaVersionError
-from pt_snap_cli.core.context_cache import ContextCache
+from pt_snap_cli.core.cache.context_cache import ContextCache
 
 
 def _make_db(tmp_path: Path, name: str = "sample.db") -> Path:

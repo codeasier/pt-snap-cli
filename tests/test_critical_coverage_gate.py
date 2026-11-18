@@ -71,15 +71,15 @@ def write_evidence(guard, root, *, missing=None, uncovered=None, branches=True):
 
 def test_critical_floor_inventory_preserves_existing_and_adds_risky_modules(guard):
     assert guard.CRITICAL_FLOORS == {
-        "src/pt_snap_cli/core/snapshot_import_backend.py": 90,
+        "src/pt_snap_cli/core/importing/snapshot_import_backend.py": 90,
         "src/pt_snap_cli/snapshot/simulate/simulated_caching_allocator.py": 88,
         "src/pt_snap_cli/snapshot/simulate/snapshot_mutator.py": 84,
-        "src/pt_snap_cli/core/import_metadata_contract.py": 100,
-        "src/pt_snap_cli/core/import_metadata.py": 90,
-        "src/pt_snap_cli/core/split_service.py": 90,
-        "src/pt_snap_cli/core/focus_service.py": 90,
-        "src/pt_snap_cli/core/skill_service.py": 90,
-        "src/pt_snap_cli/core/snapshot_cache.py": 90,
+        "src/pt_snap_cli/core/importing/import_metadata_contract.py": 100,
+        "src/pt_snap_cli/core/importing/import_metadata.py": 90,
+        "src/pt_snap_cli/core/splitting/split_service.py": 90,
+        "src/pt_snap_cli/core/analysis/focus_service.py": 90,
+        "src/pt_snap_cli/core/analysis/skill_service.py": 90,
+        "src/pt_snap_cli/core/cache/snapshot_cache.py": 90,
         "src/pt_snap_cli/snapshot/representation.py": 95,
     }
 
@@ -128,7 +128,7 @@ def test_guard_rejects_unusable_evidence(guard, tmp_path, failure, coverage_conn
 
 @pytest.mark.parametrize("failure", ["unmeasured", "deleted", "no-statements", "below-floor"])
 def test_one_critical_file_cannot_be_hidden_by_other_full_coverage(guard, tmp_path, failure):
-    relative = "src/pt_snap_cli/core/focus_service.py"
+    relative = "src/pt_snap_cli/core/analysis/focus_service.py"
     write_evidence(
         guard,
         tmp_path,
@@ -139,7 +139,7 @@ def test_one_critical_file_cannot_be_hidden_by_other_full_coverage(guard, tmp_pa
         (tmp_path / relative).unlink()
     elif failure == "no-statements":
         (tmp_path / relative).write_text("# no executable source\n", encoding="utf-8")
-    with pytest.raises(guard.CoverageGuardError, match="core/focus_service.py"):
+    with pytest.raises(guard.CoverageGuardError, match="core/analysis/focus_service.py"):
         guard.check_coverage(tmp_path)
 
 
@@ -148,7 +148,7 @@ def test_guard_compares_unrounded_percentage(guard, tmp_path, monkeypatch):
     real_report = guard.Coverage.report
 
     def almost_passes(coverage, **kwargs):
-        if Path(kwargs["morfs"][0]).as_posix().endswith("core/focus_service.py"):
+        if Path(kwargs["morfs"][0]).as_posix().endswith("core/analysis/focus_service.py"):
             return 89.9999
         return real_report(coverage, **kwargs)
 

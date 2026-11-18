@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from pt_snap_cli.core import DatabaseSchemaError, FocusNotConfiguredError, OverviewService
-from pt_snap_cli.core.import_metadata import ImportMetadataService
+from pt_snap_cli.core.importing.import_metadata import ImportMetadataService
 
 pytestmark = pytest.mark.usefixtures("owned_service_instances")
 

@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.core import sharded_replay_service
-from pt_snap_cli.core.errors import ImportExecutionError, SourceChangedError
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.split_service import SplitService
+from pt_snap_cli.core.common.errors import ImportExecutionError, SourceChangedError
+from pt_snap_cli.core.importing.import_service import ImportService
+from pt_snap_cli.core.splitting import sharded_replay_service
+from pt_snap_cli.core.splitting.split_service import SplitService
 from tests.core.test_dataset_import import assert_preserved, hashes, saved_state, source_options
 
 

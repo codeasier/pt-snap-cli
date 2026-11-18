@@ -286,7 +286,7 @@ class TestSnapshotAnalyzerWithDB:
     def test_get_database_metadata_available(self, valid_db: Path) -> None:
         from dataclasses import replace
 
-        from pt_snap_cli.core.import_metadata import ImportMetadataService
+        from pt_snap_cli.core.importing.import_metadata import ImportMetadataService
 
         source = valid_db.parent / "snapshot.pkl"
         source.write_bytes(b"snapshot")

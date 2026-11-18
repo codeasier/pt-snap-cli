@@ -7,12 +7,16 @@ from pathlib import Path
 import pytest
 
 from pt_snap_cli.api import SnapshotAnalyzer
-from pt_snap_cli.core.context_cache import ContextCache
-from pt_snap_cli.core.dataset_contract import DatasetContractError, QueryScope, parse_manifest
-from pt_snap_cli.core.dataset_resolver import DatasetResolver, _hash_file
-from pt_snap_cli.core.errors import DatabaseSchemaError, InvalidParameterError
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.native_dataset_contract import parse_native_manifest
+from pt_snap_cli.core.cache.context_cache import ContextCache
+from pt_snap_cli.core.common.errors import DatabaseSchemaError, InvalidParameterError
+from pt_snap_cli.core.dataset.dataset_contract import (
+    DatasetContractError,
+    QueryScope,
+    parse_manifest,
+)
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver, _hash_file
+from pt_snap_cli.core.dataset.native_dataset_contract import parse_native_manifest
+from pt_snap_cli.core.importing.import_service import ImportService
 from tests.core.test_dataset_import import hashes, source_options
 
 

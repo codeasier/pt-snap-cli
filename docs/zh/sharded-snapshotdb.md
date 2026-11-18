@@ -10,7 +10,7 @@
 v1/v2 分析入口保留；P3 真实事件 peak/gap 与全部 action 完整文本栈统计语义在查询指南明确版本化。下述 P1 reader 新增将 complete 兼容 v1 manifest 或目录作为
 focus；`complete` 门槛只约束数据集，不约束旧单库分析。
 
-`pt_snap_cli.core.dataset_contract` 提供 `parse_manifest`、`validate_event_ids`、
+`pt_snap_cli.core.dataset.dataset_contract` 提供 `parse_manifest`、`validate_event_ids`、
 `validate_dataset`、不可变 manifest/device/slice 模型、`QueryScope` 和带
 `location/code` 的 `DatasetContractError`。生产端可在发布前与读取端共用同一合同。
 校验不加载 pickle、不创建缺失数据库、不迁移 SQLite、不写 focus。
@@ -150,7 +150,7 @@ dictionary 的十进制整数 key 以文本存储，使用真实带设备后缀�
 及[定点来源](querying.md#数据集定点事件归因)。
 
 ```python
-from pt_snap_cli.core.dataset_contract import QueryScope, validate_dataset
+from pt_snap_cli.core.dataset.dataset_contract import QueryScope, validate_dataset
 
 inspection = validate_dataset("/capture/snapshot.pkl.msinsight")
 QueryScope("event_range", device_id=0, start_event_id=1, end_event_id=3).validate(

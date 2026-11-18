@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.core.errors import ImportExecutionError
-from pt_snap_cli.core.snapshot_import_backend import SnapshotImportBackend
+from pt_snap_cli.core.common.errors import ImportExecutionError
+from pt_snap_cli.core.importing.snapshot_import_backend import SnapshotImportBackend
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def staged_backend(tmp_path, monkeypatch):
 
     monkeypatch.setattr(backend, "_load_run_dump_to_db", lambda: dump)
     monkeypatch.setattr(
-        "pt_snap_cli.core.snapshot_import_backend.tempfile.mkstemp", tracked_mkstemp
+        "pt_snap_cli.core.importing.snapshot_import_backend.tempfile.mkstemp", tracked_mkstemp
     )
     yield backend, source, output, destination, descriptors
     # Leak detection is deterministic even on Python versions without ResourceWarning.
@@ -53,14 +53,14 @@ def test_failure_closes_rollback_descriptor(staged_backend, monkeypatch, failure
     def post_publish(path):
         assert path.read_bytes() == b"new database"
         if failure == "rollback":
-            monkeypatch.setattr("pt_snap_cli.core.snapshot_import_backend.os.read", fail)
+            monkeypatch.setattr("pt_snap_cli.core.importing.snapshot_import_backend.os.read", fail)
         if failure in ("focus", "rollback"):
             raise RuntimeError("focus failed")
 
     if failure == "backup":
-        monkeypatch.setattr("pt_snap_cli.core.snapshot_import_backend.os.write", fail)
+        monkeypatch.setattr("pt_snap_cli.core.importing.snapshot_import_backend.os.write", fail)
     elif failure == "publish":
-        monkeypatch.setattr("pt_snap_cli.core.snapshot_import_backend.os.replace", fail)
+        monkeypatch.setattr("pt_snap_cli.core.importing.snapshot_import_backend.os.replace", fail)
     with pytest.raises((ImportExecutionError, RuntimeError), match="failed") as error:
         backend.dump_to_db(source, output, post_publish=post_publish)
     backups = list(output.glob("*.rollback"))
@@ -79,7 +79,7 @@ def test_short_backup_writes_preserve_complete_rollback(staged_backend, monkeypa
     original = destination.read_bytes()
     real_write = os.write
     monkeypatch.setattr(
-        "pt_snap_cli.core.snapshot_import_backend.os.write",
+        "pt_snap_cli.core.importing.snapshot_import_backend.os.write",
         lambda fd, data: real_write(fd, data[:3]),
     )
 
@@ -112,7 +112,9 @@ def test_failed_publication_closes_backup_before_unlink(staged_backend, monkeypa
         raise OSError("publication failed")
 
     monkeypatch.setattr(Path, "unlink", require_closed)
-    monkeypatch.setattr("pt_snap_cli.core.snapshot_import_backend.os.replace", fail_publish)
+    monkeypatch.setattr(
+        "pt_snap_cli.core.importing.snapshot_import_backend.os.replace", fail_publish
+    )
     with pytest.raises(ImportExecutionError, match="publication failed"):
         backend.dump_to_db(source, output, post_publish=lambda path: None)
     assert len(removed) == 1
@@ -122,7 +124,9 @@ def test_failed_publication_closes_backup_before_unlink(staged_backend, monkeypa
 
 def test_zero_backup_write_fails_without_publishing(staged_backend, monkeypatch):
     backend, source, output, destination, _ = staged_backend
-    monkeypatch.setattr("pt_snap_cli.core.snapshot_import_backend.os.write", lambda *args: 0)
+    monkeypatch.setattr(
+        "pt_snap_cli.core.importing.snapshot_import_backend.os.write", lambda *args: 0
+    )
     with pytest.raises(ImportExecutionError, match="backup"):
         backend.dump_to_db(source, output, post_publish=lambda path: None)
     assert destination.read_bytes() == b"previous database"

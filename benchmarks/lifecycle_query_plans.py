@@ -21,12 +21,12 @@ from contextlib import closing, nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
-from pt_snap_cli.core import dataset_lifecycle_sql
-from pt_snap_cli.core.context_cache import ContextCache
-from pt_snap_cli.core.dataset_global import global_query
-from pt_snap_cli.core.dataset_lifecycle_scratch import _ScratchSources
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
-from pt_snap_cli.core.dataset_sources import DatasetSourceResolver, QueryBudget
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_sql
+from pt_snap_cli.core.cache.context_cache import ContextCache
+from pt_snap_cli.core.dataset.query.dataset_global import global_query
+from pt_snap_cli.core.dataset.lifecycle.dataset_lifecycle_scratch import _ScratchSources
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.dataset.dataset_sources import DatasetSourceResolver, QueryBudget
 from pt_snap_cli.query.registry import get_query
 
 

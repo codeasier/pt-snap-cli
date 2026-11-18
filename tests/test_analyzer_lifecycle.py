@@ -12,9 +12,9 @@ from typer.testing import CliRunner
 from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import app
 from pt_snap_cli.core import DatabaseSchemaError, QueryExecutionError, TemplateNotFoundError
-from pt_snap_cli.core.context_cache import ContextCache
-from pt_snap_cli.core.overview_service import OverviewService
-from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.core.analysis.overview_service import OverviewService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.cache.context_cache import ContextCache
 
 
 @pytest.fixture(autouse=True)

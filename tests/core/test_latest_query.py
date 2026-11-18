@@ -9,11 +9,11 @@ from threading import Event, Lock
 import pytest
 
 from pt_snap_cli.api import SnapshotAnalyzer
-from pt_snap_cli.core.dataset_sources import QueryBudget
-from pt_snap_cli.core.errors import QueryCancelledError, QueryTimeoutError
-from pt_snap_cli.core.latest_query import LatestQuery
-from pt_snap_cli.core.query_service import QueryService
-from pt_snap_cli.core.validation_budget import validation_progress
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.common.errors import QueryCancelledError, QueryTimeoutError
+from pt_snap_cli.core.common.latest_query import LatestQuery
+from pt_snap_cli.core.common.validation_budget import validation_progress
+from pt_snap_cli.core.dataset.dataset_sources import QueryBudget
 from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.executor import QueryExecutor
 
@@ -21,7 +21,7 @@ from pt_snap_cli.query.executor import QueryExecutor
 @pytest.mark.parametrize("supplied_budget", [False, True])
 def test_queued_tree_timeout_includes_wait_and_does_not_start_worker(monkeypatch, supplied_budget):
     now = [100.0]
-    monkeypatch.setattr("pt_snap_cli.core.query_service.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("pt_snap_cli.core.analysis.query_service.time.monotonic", lambda: now[0])
     waiting = Event()
     work = Lock()
     work.acquire()

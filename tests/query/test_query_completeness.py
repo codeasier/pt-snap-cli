@@ -16,8 +16,12 @@ from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import app
 from pt_snap_cli.config import Config
 from pt_snap_cli.context import Context
-from pt_snap_cli.core.errors import InvalidParameterError, QueryTimeoutError
-from pt_snap_cli.core.query_service import QUERY_TIMEOUT_ENV, QueryService, resolve_query_timeout
+from pt_snap_cli.core.analysis.query_service import (
+    QUERY_TIMEOUT_ENV,
+    QueryService,
+    resolve_query_timeout,
+)
+from pt_snap_cli.core.common.errors import InvalidParameterError, QueryTimeoutError
 from pt_snap_cli.query.config import QueryParameter, QueryTemplate
 from pt_snap_cli.query.executor import (
     QueryExecutor,

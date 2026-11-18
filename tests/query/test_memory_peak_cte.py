@@ -202,7 +202,7 @@ def test_memory_peak_null_start_and_end_runs_via_query_service(
     the QueryService -> QueryExecutor pipeline used by the CLI and
     SnapshotAnalyzer."""
     from pt_snap_cli.config import Config
-    from pt_snap_cli.core.query_service import QueryService
+    from pt_snap_cli.core.analysis.query_service import QueryService
 
     config = Config()
     config.write_project_focus(memory_peak_db, device_id=0)

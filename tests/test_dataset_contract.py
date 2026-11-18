@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from pt_snap_cli.context import Context
-from pt_snap_cli.core.dataset_contract import (
+from pt_snap_cli.core.dataset.dataset_contract import (
     ACTION_NAMES,
     BLOCK_STATES,
     DatasetContractError,
@@ -314,7 +314,7 @@ def test_missing_slice_does_not_create_database(tmp_path):
 
 
 def test_compatibility_appended_columns_do_not_relax_native_schema(tmp_path):
-    from pt_snap_cli.core.dataset_contract import TRACE_COLUMNS, _schema
+    from pt_snap_cli.core.dataset.dataset_contract import TRACE_COLUMNS, _schema
 
     root = make_dataset(tmp_path / "dataset")
     mutate_db(root, "ALTER TABLE trace_entry_0 ADD COLUMN consumer_note TEXT")
@@ -325,8 +325,8 @@ def test_compatibility_appended_columns_do_not_relax_native_schema(tmp_path):
 
 
 def test_unsealed_index_corruption_is_rejected_before_query(tmp_path):
-    from pt_snap_cli.core.dataset_resolver import DatasetResolver
-    from pt_snap_cli.core.errors import DatabaseSchemaError
+    from pt_snap_cli.core.common.errors import DatabaseSchemaError
+    from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
 
     root = make_dataset(tmp_path / "dataset")
     member = root / "device_0/slice_00001.db"
@@ -347,8 +347,8 @@ def test_unsealed_index_corruption_is_rejected_before_query(tmp_path):
 
 @pytest.mark.parametrize("resolver", [False, True])
 def test_deep_manifest_uses_domain_diagnostic(tmp_path, resolver):
-    from pt_snap_cli.core.dataset_resolver import DatasetResolver
-    from pt_snap_cli.core.errors import DatabaseSchemaError
+    from pt_snap_cli.core.common.errors import DatabaseSchemaError
+    from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
 
     root = make_dataset(tmp_path / "dataset")
     (root / "manifest.json").write_text("[" * 200000 + "0" + "]" * 200000)

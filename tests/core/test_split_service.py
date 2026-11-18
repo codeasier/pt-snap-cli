@@ -9,11 +9,11 @@ from typing import Any
 
 import pytest
 
-import pt_snap_cli.core.split_service as split_module
+import pt_snap_cli.core.splitting.split_service as split_module
 from pt_snap_cli.core import SplitResult as ExportedSplitResult
-from pt_snap_cli.core.errors import SplitError
-from pt_snap_cli.core.models import SplitOptions
-from pt_snap_cli.core.split_service import SplitService
+from pt_snap_cli.core.common.errors import SplitError
+from pt_snap_cli.core.common.models import SplitOptions
+from pt_snap_cli.core.splitting.split_service import SplitService
 from pt_snap_cli.snapshot.representation import (
     canonical_snapshot_bytes,
     canonical_snapshot_sha256,
@@ -327,7 +327,9 @@ def test_invalid_boundaries_fail_before_engine(
         nonlocal called
         called = True
 
-    monkeypatch.setattr("pt_snap_cli.core.split_service.replay_snapshot", unexpected_engine)
+    monkeypatch.setattr(
+        "pt_snap_cli.core.splitting.split_service.replay_snapshot", unexpected_engine
+    )
     with pytest.raises(SplitError, match=phase):
         SplitService().split(_options(tmp_path, **changes))
     assert not called
@@ -369,7 +371,7 @@ def test_path_boundaries_and_conflict_fail_before_load(
         called = True
 
     monkeypatch.setattr(
-        "pt_snap_cli.core.split_service.load_snapshot_representation", unexpected_load
+        "pt_snap_cli.core.splitting.split_service.load_snapshot_representation", unexpected_load
     )
     for options in cases:
         with pytest.raises(SplitError):
@@ -496,7 +498,7 @@ def test_engine_failure_is_mapped_and_cleans_owned_stage(
     def fail_engine(*args: object, **kwargs: object) -> None:
         raise RuntimeError("engine failed")
 
-    monkeypatch.setattr("pt_snap_cli.core.split_service.replay_snapshot", fail_engine)
+    monkeypatch.setattr("pt_snap_cli.core.splitting.split_service.replay_snapshot", fail_engine)
     with pytest.raises(SplitError, match="load/engine"):
         SplitService().split(_options(tmp_path, device=0))
     assert not (tmp_path / "split").exists()
@@ -533,7 +535,7 @@ def test_cleanup_failure_never_masks_primary_error(
 ) -> None:
     if failure == "engine":
         monkeypatch.setattr(
-            "pt_snap_cli.core.split_service.replay_snapshot",
+            "pt_snap_cli.core.splitting.split_service.replay_snapshot",
             lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError(detail)),
         )
     elif failure == "generated":
@@ -562,7 +564,9 @@ def test_cleanup_failure_never_masks_primary_error(
             raise OSError("cleanup secondary")
         real_rmtree(path, *args, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr("pt_snap_cli.core.split_service.shutil.rmtree", fail_stage_cleanup)
+    monkeypatch.setattr(
+        "pt_snap_cli.core.splitting.split_service.shutil.rmtree", fail_stage_cleanup
+    )
     with pytest.raises(SplitError) as caught:
         SplitService().split(_options(tmp_path, device=0))
     assert caught.value.phase == phase
