@@ -17,12 +17,12 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from pt_snap_cli.core.import_metadata import (
+from pt_snap_cli.core.importing.import_metadata import (
     IMPORT_FORMAT_VERSION,
     METADATA_SCHEMA_VERSION,
     ImportMetadataService,
 )
-from pt_snap_cli.core.import_metadata_contract import metadata_from_mapping
+from pt_snap_cli.core.importing.import_metadata_contract import metadata_from_mapping
 
 PROPERTY_SETTINGS = settings(
     max_examples=35, derandomize=True, database=None, deadline=None, print_blob=True

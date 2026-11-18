@@ -94,9 +94,9 @@ from pt_snap_cli.core import (
     json_error,
     json_success,
 )
-from pt_snap_cli.core.error_codes import DATABASE_NOT_FOUND, ERROR, INVALID_PARAMETER
-from pt_snap_cli.core.errors import InvalidParameterError
-from pt_snap_cli.core.query_limits import QueryLimits
+from pt_snap_cli.core.common.error_codes import DATABASE_NOT_FOUND, ERROR, INVALID_PARAMETER
+from pt_snap_cli.core.common.errors import InvalidParameterError
+from pt_snap_cli.core.common.query_limits import QueryLimits
 from pt_snap_cli.query.config import OUTPUT_COLUMN_OPTIONAL
 from pt_snap_cli.query.executor import reported_sql_limit
 from pt_snap_cli.query.registry import discover_categories, get_query

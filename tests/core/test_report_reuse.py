@@ -7,14 +7,18 @@ from contextlib import closing
 
 import pytest
 
-import pt_snap_cli.core.query_service as query_service_module
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
-from pt_snap_cli.core.dataset_sources import QueryBudget
-from pt_snap_cli.core.errors import DatabaseSchemaError, QueryExecutionError, QueryTimeoutError
-from pt_snap_cli.core.focus_service import FocusService
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.query_service import QueryService
-from pt_snap_cli.core.report_service import ReportService
+import pt_snap_cli.core.analysis.query_service as query_service_module
+from pt_snap_cli.core.analysis.focus_service import FocusService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.analysis.report_service import ReportService
+from pt_snap_cli.core.common.errors import (
+    DatabaseSchemaError,
+    QueryExecutionError,
+    QueryTimeoutError,
+)
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.dataset.dataset_sources import QueryBudget
+from pt_snap_cli.core.importing.import_service import ImportService
 from tests.core.test_dataset_attribution import case
 from tests.core.test_dataset_import import source_options
 from tests.test_dataset_focus import make_dataset

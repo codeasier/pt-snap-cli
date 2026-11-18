@@ -13,16 +13,9 @@ from typer.testing import CliRunner
 from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import app
 from pt_snap_cli.completion import complete_device_ids
-from pt_snap_cli.core.context_cache import ContextCache
-from pt_snap_cli.core.dataset_contract import (
-    ACTION_NAMES,
-    BLOCK_STATES,
-    DatasetContractError,
-    QueryScope,
-    validate_dataset,
-)
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
-from pt_snap_cli.core.errors import (
+from pt_snap_cli.core.analysis.focus_service import FocusService
+from pt_snap_cli.core.cache.context_cache import ContextCache
+from pt_snap_cli.core.common.errors import (
     DatabaseSchemaError,
     InvalidDeviceError,
     InvalidParameterError,
@@ -30,7 +23,14 @@ from pt_snap_cli.core.errors import (
     TemplateNotFoundError,
     TemplateRenderError,
 )
-from pt_snap_cli.core.focus_service import FocusService
+from pt_snap_cli.core.dataset.dataset_contract import (
+    ACTION_NAMES,
+    BLOCK_STATES,
+    DatasetContractError,
+    QueryScope,
+    validate_dataset,
+)
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
 
 runner = CliRunner()
 
@@ -484,7 +484,7 @@ def test_member_alias_rejected_before_header_read(tmp_path, monkeypatch, alias_p
 
 
 def test_manifest_change_during_validation_fails(tmp_path, monkeypatch):
-    import pt_snap_cli.core.dataset_resolver as module
+    import pt_snap_cli.core.dataset.dataset_resolver as module
 
     root = make_dataset(tmp_path / "dataset")
     original = module.validate_dataset

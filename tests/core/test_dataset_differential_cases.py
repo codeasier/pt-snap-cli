@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import pytest
 
 from pt_snap_cli.api import SnapshotAnalyzer
-from pt_snap_cli.core.dataset_support import DATASET_SUPPORT
-from pt_snap_cli.core.errors import QueryExecutionError
+from pt_snap_cli.core.common.errors import QueryExecutionError
+from pt_snap_cli.core.dataset.dataset_support import DATASET_SUPPORT
 from pt_snap_cli.query import registry
 from tests.core.dataset_differential_assertions import compare_case
 from tests.core.dataset_differential_cases import (

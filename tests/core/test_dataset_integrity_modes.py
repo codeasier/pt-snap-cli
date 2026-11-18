@@ -11,11 +11,11 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.core import dataset_resolver as resolver
-from pt_snap_cli.core import native_dataset_contract as native
-from pt_snap_cli.core.dataset_files import hash_file
-from pt_snap_cli.core.errors import DatabaseSchemaError, QueryTimeoutError
-from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.common.errors import DatabaseSchemaError, QueryTimeoutError
+from pt_snap_cli.core.dataset import dataset_resolver as resolver
+from pt_snap_cli.core.dataset import native_dataset_contract as native
+from pt_snap_cli.core.dataset.dataset_files import hash_file
 from tests.core.test_dataset_validation_cache import CancellableBudget
 from tests.test_dataset_focus import make_dataset
 from tests.test_native_dataset import dataset as native_dataset
@@ -218,7 +218,7 @@ def test_new_process_is_cold_even_after_parent_admission(artifact, mode):
     resolver.DatasetResolver().inspect(root)
     code = """
 import sys
-from pt_snap_cli.core import dataset_resolver as r
+from pt_snap_cli.core.dataset import dataset_resolver as r
 assert not r._VALIDATED
 calls = []
 for name in ('validate_dataset', 'validate_native_dataset'):

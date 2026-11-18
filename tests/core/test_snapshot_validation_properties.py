@@ -17,8 +17,8 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from pt_snap_cli.core.errors import ImportExecutionError
-from pt_snap_cli.core.snapshot_import_backend import SnapshotImportBackend
+from pt_snap_cli.core.common.errors import ImportExecutionError
+from pt_snap_cli.core.importing.snapshot_import_backend import SnapshotImportBackend
 
 PROPERTY_SETTINGS = settings(
     max_examples=25, derandomize=True, database=None, deadline=None, print_blob=True

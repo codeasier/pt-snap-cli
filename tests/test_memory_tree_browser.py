@@ -11,7 +11,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from pt_snap_cli.core.models import QueryResult
+from pt_snap_cli.core.common.models import QueryResult
 from pt_snap_cli.memory_tree_render import render_memory_tree
 from tests._browser_support import browser_expect as expect
 

@@ -13,7 +13,7 @@ stack-statistics semantics are explicitly versioned in the querying guide. The P
 complete compatibility-v1 manifest or directory as focus. The `complete` gate
 applies only to datasets, not to legacy single-DB analysis.
 
-`pt_snap_cli.core.dataset_contract` provides `parse_manifest`,
+`pt_snap_cli.core.dataset.dataset_contract` provides `parse_manifest`,
 `validate_event_ids`, `validate_dataset`, immutable manifest/device/slice models,
 `QueryScope`, and `DatasetContractError` (`location`, `code`). Producers can share
 the same prepublication contract with readers. Validation never loads pickle,
@@ -185,7 +185,7 @@ below; the explicit [P3 support matrix](querying.md#dataset-global-built-in-supp
 and [point-event sources](querying.md#dataset-point-event-attribution) define execution.
 
 ```python
-from pt_snap_cli.core.dataset_contract import QueryScope, validate_dataset
+from pt_snap_cli.core.dataset.dataset_contract import QueryScope, validate_dataset
 
 inspection = validate_dataset("/capture/snapshot.pkl.msinsight")
 QueryScope("event_range", device_id=0, start_event_id=1, end_event_id=3).validate(

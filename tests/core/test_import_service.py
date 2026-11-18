@@ -10,13 +10,13 @@ import pytest
 
 from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.context import Context
-from pt_snap_cli.core.errors import (
+from pt_snap_cli.core.common.errors import (
     ImportExecutionError,
     ImportToolMissingError,
     InvalidDeviceError,
     SnapshotFileInvalidError,
 )
-from pt_snap_cli.core.models import ImportOptions
+from pt_snap_cli.core.common.models import ImportOptions
 from tests.snapshot.test_file_util import UNSAFE_PICKLE_PAYLOAD, write_unsafe_reduce_pickle
 
 FIXTURE_DIR = Path(__file__).parents[1] / "fixtures" / "snapshots"
@@ -36,7 +36,7 @@ def isolate_focus_state(
 
 
 def _import_service_type():
-    from pt_snap_cli.core.import_service import ImportService
+    from pt_snap_cli.core.importing.import_service import ImportService
 
     return ImportService
 
@@ -166,7 +166,9 @@ def test_import_replaces_destination_errors_are_wrapped(
     def fail_replace(*args: object) -> None:
         raise OSError("cannot replace")
 
-    monkeypatch.setattr("pt_snap_cli.core.snapshot_import_backend.os.replace", fail_replace)
+    monkeypatch.setattr(
+        "pt_snap_cli.core.importing.snapshot_import_backend.os.replace", fail_replace
+    )
 
     with pytest.raises(ImportExecutionError, match="cannot replace"):
         service.import_snapshot(
@@ -175,11 +177,11 @@ def test_import_replaces_destination_errors_are_wrapped(
 
 
 def test_snapshot_import_backend_lazy_loads_exact_runtime_module() -> None:
-    sys.modules.pop("pt_snap_cli.core.snapshot_import_backend", None)
+    sys.modules.pop("pt_snap_cli.core.importing.snapshot_import_backend", None)
     runtime_module = "pt_snap_cli.snapshot.tools.adaptors.snapshot2db"
     sys.modules.pop(runtime_module, None)
 
-    importlib.import_module("pt_snap_cli.core.snapshot_import_backend")
+    importlib.import_module("pt_snap_cli.core.importing.snapshot_import_backend")
 
     assert runtime_module not in sys.modules
 
@@ -402,7 +404,7 @@ def test_legacy_database_rebuilds_once_then_reuses(tmp_path: Path) -> None:
 def test_metadata_write_failure_preserves_existing_database(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from pt_snap_cli.core.errors import ImportMetadataError
+    from pt_snap_cli.core.common.errors import ImportMetadataError
 
     import_service_cls = _import_service_type()
     service = import_service_cls()
@@ -431,7 +433,7 @@ def test_metadata_write_failure_preserves_existing_database(
 def test_initial_hash_failure_preserves_existing_database(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from pt_snap_cli.core.errors import ImportMetadataError
+    from pt_snap_cli.core.common.errors import ImportMetadataError
 
     import_service_cls = _import_service_type()
     service = import_service_cls()
@@ -461,7 +463,7 @@ def test_initial_hash_failure_preserves_existing_database(
 def test_import_format_change_rebuilds_database(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    import pt_snap_cli.core.import_metadata as metadata_module
+    import pt_snap_cli.core.importing.import_metadata as metadata_module
 
     import_service_cls = _import_service_type()
     service = import_service_cls()
@@ -511,7 +513,7 @@ def test_device_change_rebuilds_database(tmp_path: Path) -> None:
 def test_source_change_during_import_preserves_existing_database(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from pt_snap_cli.core.errors import SourceChangedError
+    from pt_snap_cli.core.common.errors import SourceChangedError
 
     import_service_cls = _import_service_type()
     service = import_service_cls()
@@ -554,7 +556,7 @@ def test_focus_failure_after_publish_restores_existing_database(
     def fail_focus_write(*args: object, **kwargs: object) -> Path:
         raise OSError("focus write failed")
 
-    from pt_snap_cli.core.focus_service import FocusService
+    from pt_snap_cli.core.analysis.focus_service import FocusService
 
     focus_service = FocusService()
     monkeypatch.setattr(focus_service._config, "write_project_focus", fail_focus_write)
@@ -578,7 +580,7 @@ def test_focus_failure_after_first_publish_removes_database(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from pt_snap_cli.core.focus_service import FocusService
+    from pt_snap_cli.core.analysis.focus_service import FocusService
 
     import_service_cls = _import_service_type()
     focus_service = FocusService()
@@ -609,7 +611,7 @@ def test_focus_transaction_falls_back_when_hard_links_are_unavailable(
         ImportOptions(snapshot_file=EMPTY_CACHE_SNAPSHOT, output_dir=tmp_path, set_focus=False)
     )
     monkeypatch.setattr(
-        "pt_snap_cli.core.snapshot_import_backend.os.link",
+        "pt_snap_cli.core.importing.snapshot_import_backend.os.link",
         lambda *args: (_ for _ in ()).throw(OSError("hard links unavailable")),
     )
 
@@ -625,7 +627,7 @@ def test_focus_transaction_falls_back_when_hard_links_are_unavailable(
 def test_invalid_focus_device_is_normalized_as_import_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from pt_snap_cli.core.focus_service import FocusService
+    from pt_snap_cli.core.analysis.focus_service import FocusService
 
     focus_service = FocusService()
     monkeypatch.setattr(
@@ -647,7 +649,7 @@ def test_rollback_backup_writes_through_secure_mkstemp_fd(
     import os
     import tempfile
 
-    import pt_snap_cli.core.snapshot_import_backend as backend_module
+    import pt_snap_cli.core.importing.snapshot_import_backend as backend_module
 
     import_service_cls = _import_service_type()
     service = import_service_cls()
@@ -688,7 +690,7 @@ def test_rollback_backup_writes_through_secure_mkstemp_fd(
     def fail_focus_write(*args, **kwargs):
         raise OSError("focus write failed")
 
-    from pt_snap_cli.core.focus_service import FocusService
+    from pt_snap_cli.core.analysis.focus_service import FocusService
 
     focus_service = FocusService()
     monkeypatch.setattr(focus_service._config, "write_project_focus", fail_focus_write)

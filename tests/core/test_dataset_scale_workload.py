@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 
 from pt_snap_cli.api import SnapshotAnalyzer
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.models import ImportOptions
+from pt_snap_cli.core.common.models import ImportOptions
+from pt_snap_cli.core.importing.import_service import ImportService
 from pt_snap_cli.query import registry
 from pt_snap_cli.snapshot.representation import load_snapshot_representation
 from pt_snap_cli.snapshot.simulate import SimulateDeviceSnapshot

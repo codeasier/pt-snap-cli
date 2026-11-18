@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.core import snapshot_cache
-from pt_snap_cli.core.snapshot_cache import (
+from pt_snap_cli.core.cache import snapshot_cache
+from pt_snap_cli.core.cache.snapshot_cache import (
     parser_members,
     seal_manifest,
     source_hashes,

@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 import pytest
 
 import pt_snap_cli
-from pt_snap_cli.core.native_dataset_contract import NATIVE_FORMAT
+from pt_snap_cli.core.dataset.native_dataset_contract import NATIVE_FORMAT
 from tests.dataset_cli_resource_probe import relative_evidence_path
 from tests.test_dataset_focus import make_dataset
 from tests.test_native_dataset import dataset as native_dataset

@@ -12,15 +12,15 @@ from coverage.exceptions import CoverageException
 # These are independent floors, not an average that another module can offset.
 # Keep the original three floors unchanged when extending the risk inventory.
 CRITICAL_FLOORS = {
-    "src/pt_snap_cli/core/snapshot_import_backend.py": 90,
+    "src/pt_snap_cli/core/importing/snapshot_import_backend.py": 90,
     "src/pt_snap_cli/snapshot/simulate/simulated_caching_allocator.py": 88,
     "src/pt_snap_cli/snapshot/simulate/snapshot_mutator.py": 84,
-    "src/pt_snap_cli/core/import_metadata_contract.py": 100,
-    "src/pt_snap_cli/core/import_metadata.py": 90,
-    "src/pt_snap_cli/core/split_service.py": 90,
-    "src/pt_snap_cli/core/focus_service.py": 90,
-    "src/pt_snap_cli/core/skill_service.py": 90,
-    "src/pt_snap_cli/core/snapshot_cache.py": 90,
+    "src/pt_snap_cli/core/importing/import_metadata_contract.py": 100,
+    "src/pt_snap_cli/core/importing/import_metadata.py": 90,
+    "src/pt_snap_cli/core/splitting/split_service.py": 90,
+    "src/pt_snap_cli/core/analysis/focus_service.py": 90,
+    "src/pt_snap_cli/core/analysis/skill_service.py": 90,
+    "src/pt_snap_cli/core/cache/snapshot_cache.py": 90,
     "src/pt_snap_cli/snapshot/representation.py": 95,
 }
 

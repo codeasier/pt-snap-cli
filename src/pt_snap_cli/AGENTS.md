@@ -32,8 +32,8 @@ Parent scope: [source/distribution](../AGENTS.md).
   Preserve `_safe_call` handling for argument parsing as well as domain errors;
   successful service calls are not enough to validate JSON mode.
 - Adapters may format or translate public errors, but service behavior belongs
-  in core. Use existing serializers in `core/json_codec.py` and
-  `core/query_service.py` instead of constructing a second template schema.
+  in core. Use existing serializers in `core/common/json_codec.py` and
+  `core/analysis/query_service.py` instead of constructing a second template schema.
 - `SnapshotAnalyzer.set_focus()` changes validated session state; CLI focus
   persistence goes through `FocusService`/`Config`. Preserve their normalized
   shared behavior without making the API write project focus implicitly.

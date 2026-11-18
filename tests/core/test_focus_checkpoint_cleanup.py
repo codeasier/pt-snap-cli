@@ -7,9 +7,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import pt_snap_cli.core.focus_service as focus_module
+import pt_snap_cli.core.analysis.focus_service as focus_module
 from pt_snap_cli.config import Config
-from pt_snap_cli.core.focus_service import FocusService
+from pt_snap_cli.core.analysis.focus_service import FocusService
 
 
 @pytest.fixture

@@ -10,10 +10,10 @@ from pathlib import Path
 import pytest
 
 from pt_snap_cli.api import SnapshotAnalyzer
-from pt_snap_cli.core import import_service
-from pt_snap_cli.core.errors import ImportExecutionError
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.models import ImportOptions
+from pt_snap_cli.core.common.errors import ImportExecutionError
+from pt_snap_cli.core.common.models import ImportOptions
+from pt_snap_cli.core.importing import import_service
+from pt_snap_cli.core.importing.import_service import ImportService
 from tests.core.test_dataset_import import hashes
 from tests.core.test_msinsight_export import options
 from tests.snapshot.test_sharded_replay import lifecycle_data, write_source

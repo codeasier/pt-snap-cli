@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.core.import_metadata import (
+from pt_snap_cli.core.common.models import ImportMetadata
+from pt_snap_cli.core.importing.import_metadata import (
     IMPORT_FORMAT_VERSION,
     METADATA_SCHEMA_VERSION,
     ImportMetadataService,
 )
-from pt_snap_cli.core.models import ImportMetadata
 
 
 def _create_snapshot_db(path: Path) -> Path:
@@ -72,7 +72,7 @@ def test_write_and_inspect_metadata(tmp_path: Path) -> None:
 def test_write_closes_database_connection(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from unittest.mock import MagicMock
 
-    import pt_snap_cli.core.import_metadata as metadata_module
+    import pt_snap_cli.core.importing.import_metadata as metadata_module
 
     db_path = _create_snapshot_db(tmp_path / "snapshot.db")
     connection = sqlite3.connect(db_path)
@@ -259,7 +259,7 @@ def test_force_missing_database_reports_database_missing(tmp_path: Path) -> None
 def test_import_format_change_invalidates_cache(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    import pt_snap_cli.core.import_metadata as metadata_module
+    import pt_snap_cli.core.importing.import_metadata as metadata_module
 
     db_path = _create_snapshot_db(tmp_path / "snapshot.db")
     service = ImportMetadataService()

@@ -8,11 +8,11 @@ from contextlib import closing
 import pytest
 
 from benchmarks.active_at_event_capacity import build_case, run_case
-from pt_snap_cli.core import dataset_active_sql
-from pt_snap_cli.core.dataset_lifecycle_connection import _AttachedSources
-from pt_snap_cli.core.dataset_sources import QueryBudget
-from pt_snap_cli.core.errors import QueryExecutionError, QueryTimeoutError
-from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.common.errors import QueryExecutionError, QueryTimeoutError
+from pt_snap_cli.core.dataset.dataset_sources import QueryBudget
+from pt_snap_cli.core.dataset.lifecycle.dataset_lifecycle_connection import _AttachedSources
+from pt_snap_cli.core.dataset.query import dataset_active_sql
 from tests.core.test_dataset_attribution import case
 from tests.test_dataset_focus import hashes
 

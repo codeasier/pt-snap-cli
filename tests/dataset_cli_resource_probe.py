@@ -13,8 +13,8 @@ from contextlib import closing
 from pathlib import Path, PurePath
 
 from pt_snap_cli.cli import _safe_call
-from pt_snap_cli.core import dataset_files, dataset_resolver, native_dataset_contract
-from pt_snap_cli.core import query_service as queries
+from pt_snap_cli.core.analysis import query_service as queries
+from pt_snap_cli.core.dataset import dataset_files, dataset_resolver, native_dataset_contract
 
 
 def relative_evidence_path(path: PurePath, root: PurePath) -> str:

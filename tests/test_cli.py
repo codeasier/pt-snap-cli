@@ -1242,7 +1242,7 @@ class TestImportCommand:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test import reports built-in backend packaging guidance when unavailable."""
-        from pt_snap_cli.core.errors import ImportToolMissingError
+        from pt_snap_cli.core.common.errors import ImportToolMissingError
 
         snapshot = tmp_path / "sample.pkl"
         snapshot.write_bytes(b"not a real snapshot")
@@ -1253,7 +1253,7 @@ class TestImportCommand:
             )
 
         monkeypatch.setattr(
-            "pt_snap_cli.core.import_service.ImportService.import_snapshot",
+            "pt_snap_cli.core.importing.import_service.ImportService.import_snapshot",
             raise_missing_tool,
         )
 

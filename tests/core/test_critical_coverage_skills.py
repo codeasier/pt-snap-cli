@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-import pt_snap_cli.core.skill_service as skill_module
-from pt_snap_cli.core.errors import SkillCatalogError, SkillInstallError
-from pt_snap_cli.core.skill_service import SkillService
+import pt_snap_cli.core.analysis.skill_service as skill_module
+from pt_snap_cli.core.analysis.skill_service import SkillService
+from pt_snap_cli.core.common.errors import SkillCatalogError, SkillInstallError
 
 
 @pytest.fixture

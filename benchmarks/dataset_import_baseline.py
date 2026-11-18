@@ -128,9 +128,10 @@ def require_owned_child(args, identity: dict) -> None:
 
 def child(args) -> dict:
     from pt_snap_cli.api import SnapshotAnalyzer
-    from pt_snap_cli.core import import_service, sharded_replay_service
-    from pt_snap_cli.core.import_service import ImportService
-    from pt_snap_cli.core.models import ImportOptions
+    from pt_snap_cli.core.common.models import ImportOptions
+    from pt_snap_cli.core.importing import import_service
+    from pt_snap_cli.core.importing.import_service import ImportService
+    from pt_snap_cli.core.splitting import sharded_replay_service
     from pt_snap_cli.snapshot.tools.adaptors import snapshot2db
 
     logging.disable(logging.CRITICAL)

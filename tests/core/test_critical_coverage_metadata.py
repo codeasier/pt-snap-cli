@@ -7,20 +7,20 @@ from types import SimpleNamespace
 
 import pytest
 
-import pt_snap_cli.core.import_metadata as metadata_module
-from pt_snap_cli.core.errors import (
+import pt_snap_cli.core.importing.import_metadata as metadata_module
+from pt_snap_cli.core.common.errors import (
     DatabaseMissingError,
     DatabaseSchemaError,
     ImportMetadataError,
 )
-from pt_snap_cli.core.import_metadata import ImportMetadataService
-from pt_snap_cli.core.import_metadata_contract import (
+from pt_snap_cli.core.common.models import ImportMetadata
+from pt_snap_cli.core.importing.import_metadata import ImportMetadataService
+from pt_snap_cli.core.importing.import_metadata_contract import (
     metadata_from_mapping,
     required_int,
     required_str,
     validate_import_metadata,
 )
-from pt_snap_cli.core.models import ImportMetadata
 
 
 def metadata(**changes):

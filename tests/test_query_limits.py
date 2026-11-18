@@ -9,8 +9,8 @@ from typer.testing import CliRunner
 
 from pt_snap_cli.api import QueryLimits, SnapshotAnalyzer
 from pt_snap_cli.cli import app
-from pt_snap_cli.core.errors import InvalidParameterError, QueryExecutionError
-from pt_snap_cli.core.report_service import ReportService
+from pt_snap_cli.core.analysis.report_service import ReportService
+from pt_snap_cli.core.common.errors import InvalidParameterError, QueryExecutionError
 from tests.core.test_dataset_attribution import case
 from tests.test_dataset_focus import make_dataset
 
@@ -156,7 +156,7 @@ def test_invalid_limit_environment_is_json_error_for_capabilities(monkeypatch):
 
 
 def test_memory_tree_forwards_limits_without_capping_standalone_output(tmp_path, monkeypatch):
-    from pt_snap_cli.core.query_service import QueryService
+    from pt_snap_cli.core.analysis.query_service import QueryService
     from tests.frame_tree_helpers import create_frame_tree_db
 
     path = create_frame_tree_db(tmp_path / "frames.db")

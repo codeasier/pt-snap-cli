@@ -9,12 +9,16 @@ from pathlib import Path
 import pytest
 
 from pt_snap_cli.completion import complete_device_ids
-from pt_snap_cli.core import dataset_contract, dataset_resolver, native_dataset_contract
-from pt_snap_cli.core.dataset_contract import validate_dataset
-from pt_snap_cli.core.dataset_files import hash_file
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
-from pt_snap_cli.core.errors import DatabaseSchemaError, QueryCancelledError, QueryTimeoutError
-from pt_snap_cli.core.validation_budget import validation_progress
+from pt_snap_cli.core.common.errors import (
+    DatabaseSchemaError,
+    QueryCancelledError,
+    QueryTimeoutError,
+)
+from pt_snap_cli.core.common.validation_budget import validation_progress
+from pt_snap_cli.core.dataset import dataset_contract, dataset_resolver, native_dataset_contract
+from pt_snap_cli.core.dataset.dataset_contract import validate_dataset
+from pt_snap_cli.core.dataset.dataset_files import hash_file
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
 from tests.test_dataset_focus import make_dataset
 from tests.test_native_dataset import dataset as native_dataset
 
@@ -69,7 +73,7 @@ def test_wal_preparation_does_not_hide_subsequent_content_changes(tmp_path, monk
 def test_historical_digests_do_not_reject_valid_content_changes(
     tmp_path, monkeypatch, cache_mode, seal
 ):
-    from pt_snap_cli.core.snapshot_cache import seal_manifest
+    from pt_snap_cli.core.cache.snapshot_cache import seal_manifest
 
     if cache_mode is None:
         monkeypatch.delenv("PT_SNAP_DATASET_CACHE", raising=False)
@@ -379,7 +383,7 @@ def test_cold_query_passes_shared_deadline_and_cli_keeps_timeout_code(tmp_path, 
     from typer.testing import CliRunner
 
     from pt_snap_cli.cli import app
-    from pt_snap_cli.core.query_service import QueryService
+    from pt_snap_cli.core.analysis.query_service import QueryService
 
     root = make_dataset(tmp_path / "dataset", devices=(0,), slices=1)
     original = dataset_resolver._hash_file
@@ -416,7 +420,7 @@ def test_cold_query_passes_shared_deadline_and_cli_keeps_timeout_code(tmp_path, 
 def test_native_lock_wait_respects_deadline(tmp_path):
     import time
 
-    from pt_snap_cli.core.dataset_sources import QueryBudget
+    from pt_snap_cli.core.dataset.dataset_sources import QueryBudget
 
     root = native_dataset(tmp_path)
     member = sorted(root.glob("*/*.db"))[0]

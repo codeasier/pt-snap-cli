@@ -11,7 +11,7 @@ in scoped AGENTS guides, not in user walkthroughs.
 
 | Topic | Source of truth |
 | --- | --- |
-| Root commands/help/JSON | `cli.py`, `cli_output.py`, `core/json_codec.py`, `core/error_codes.py` |
+| Root commands/help/JSON | `cli.py`, `cli_output.py`, `core/common/json_codec.py`, `core/common/error_codes.py` |
 | Reports and skill commands | `cli_reports.py`, `cli_skills.py` and owning core services |
 | API/lifecycle | `api.py`, core result models, CLI/API contract tests |
 | Focus and read-only inspection | `config.py`, `context.py`, focus/overview/metadata services |

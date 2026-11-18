@@ -32,7 +32,7 @@ before running code that loads committed pickle inputs.
   preconditions and hook sequencing as well as the happy-path final totals.
 - Callstack storage uses interning in the database adaptor; readers select v1/v2
   through Context/query variants. Coordinate schema/index changes with those
-  readers, `core/import_metadata.py`, and English/Chinese database guides.
+  readers, `core/importing/import_metadata.py`, and English/Chinese database guides.
 - `util/sqlite_meta.py` must give `T | None` and `Optional[T]` the same scalar
   SQLite affinity; unsupported/multi-type unions retain their TEXT fallback.
 

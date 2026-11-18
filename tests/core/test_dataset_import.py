@@ -10,14 +10,19 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.core import import_metadata, import_service, native_dataset_contract
-from pt_snap_cli.core.dataset_import_backend import DatasetImportBackend
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
-from pt_snap_cli.core.errors import ImportExecutionError, InvalidParameterError, SourceChangedError
-from pt_snap_cli.core.focus_service import FocusService
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.models import ImportOptions
-from pt_snap_cli.core.native_dataset_contract import NATIVE_FORMAT
+from pt_snap_cli.core.analysis.focus_service import FocusService
+from pt_snap_cli.core.common.errors import (
+    ImportExecutionError,
+    InvalidParameterError,
+    SourceChangedError,
+)
+from pt_snap_cli.core.common.models import ImportOptions
+from pt_snap_cli.core.dataset import native_dataset_contract
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.dataset.native_dataset_contract import NATIVE_FORMAT
+from pt_snap_cli.core.importing import import_metadata, import_service
+from pt_snap_cli.core.importing.dataset_import_backend import DatasetImportBackend
+from pt_snap_cli.core.importing.import_service import ImportService
 from pt_snap_cli.snapshot.tools.adaptors import sharded_replay
 from tests.snapshot.test_sharded_replay import lifecycle_data, write_source
 
@@ -209,7 +214,7 @@ def test_prepublication_failure_preserves_artifact_focus_and_closes_connections(
 
     if phase == "load":
         monkeypatch.setattr(
-            "pt_snap_cli.core.sharded_replay_service.load_snapshot_representation", fail
+            "pt_snap_cli.core.splitting.sharded_replay_service.load_snapshot_representation", fail
         )
     elif phase == "write":
         monkeypatch.setattr(sharded_replay.SnapshotDbHandler, "insert_event", fail)

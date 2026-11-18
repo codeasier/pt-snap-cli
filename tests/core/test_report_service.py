@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.core.query_service import QueryService
-from pt_snap_cli.core.report_service import ReportService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.analysis.report_service import ReportService
 from pt_snap_cli.query.registry import QueryRegistry, _load_all_templates
 
 pytestmark = pytest.mark.usefixtures("owned_service_instances")

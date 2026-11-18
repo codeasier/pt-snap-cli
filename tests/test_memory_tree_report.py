@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 
 from pt_snap_cli.api import SnapshotAnalyzer
 from pt_snap_cli.cli import app
-from pt_snap_cli.core.report_service import ReportService
+from pt_snap_cli.core.analysis.report_service import ReportService
 from pt_snap_cli.memory_tree_render import render_memory_tree
 from tests.frame_tree_helpers import create_frame_tree_db
 

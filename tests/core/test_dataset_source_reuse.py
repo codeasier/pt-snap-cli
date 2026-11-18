@@ -7,11 +7,11 @@ from contextlib import closing
 
 import pytest
 
-from pt_snap_cli.core.context_cache import ContextCache
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
-from pt_snap_cli.core.dataset_sources import DatasetSourceResolver, QueryBudget
-from pt_snap_cli.core.errors import QueryExecutionError
-from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.cache.context_cache import ContextCache
+from pt_snap_cli.core.common.errors import QueryExecutionError
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.dataset.dataset_sources import DatasetSourceResolver, QueryBudget
 from tests.test_dataset_focus import make_dataset
 
 
@@ -122,7 +122,7 @@ def test_shared_long_text_reduction_is_small_but_full_sources_remain_budgeted(tm
 
 
 def test_fallback_still_charges_distinct_blocks_and_sources(tmp_path, monkeypatch):
-    from pt_snap_cli.core import dataset_attribution
+    from pt_snap_cli.core.dataset.query import dataset_attribution
 
     monkeypatch.setattr(dataset_attribution, "reduce_active", lambda *args: None)
     root = dataset(tmp_path, 100, blocks=True)

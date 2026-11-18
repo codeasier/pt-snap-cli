@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pt_snap_cli.core.capability_service import CapabilityService
+from pt_snap_cli.core.analysis.capability_service import CapabilityService
 from pt_snap_cli.query.registry import QueryRegistry
 
 

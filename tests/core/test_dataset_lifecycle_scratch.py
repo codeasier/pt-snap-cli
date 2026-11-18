@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.core import dataset_lifecycle_scratch as scratch
-from pt_snap_cli.core import dataset_lifecycle_sql
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
-from pt_snap_cli.core.dataset_sources import QueryBudget
-from pt_snap_cli.core.errors import QueryExecutionError, QueryTimeoutError
+from pt_snap_cli.core.common.errors import QueryExecutionError, QueryTimeoutError
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.dataset.dataset_sources import QueryBudget
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_scratch as scratch
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_sql
 from tests.core.test_dataset_sql_pushdown import run_resolved
 from tests.test_dataset_focus import make_dataset
 

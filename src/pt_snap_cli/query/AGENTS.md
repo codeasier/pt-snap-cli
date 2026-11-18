@@ -5,7 +5,7 @@ Parent scope: [package runtime](../AGENTS.md).
 ## Data Flow and Ownership
 
 `templates/<category>/*.yaml` → `config.py` → `registry.py` →
-`core/query_service.py` → `executor.py`/`Context` → mapped rows and adapter output.
+`core/analysis/query_service.py` → `executor.py`/`Context` → mapped rows and adapter output.
 The [template guide](templates/AGENTS.md) owns SQL/metadata authoring rules.
 
 | Module | Boundary |

@@ -5,21 +5,37 @@ Parent scope: [package runtime](../AGENTS.md).
 Core owns product semantics over config, Context, queries and snapshot mechanisms.
 CLI/API adapters consume its results and errors; presentation stays in adapters.
 
+
+Core modules are grouped by responsibility:
+
+| Package | Responsibility |
+| --- | --- |
+| `common/` | Shared result/error contracts, serialization and query budgets |
+| `analysis/` | Focus, query, overview, capability and report services |
+| `cache/` | Context lifetime and snapshot cache identity |
+| `dataset/` | Dataset contracts, source resolution and validation |
+| `dataset/query/` | Dataset query reduction, attribution and frame trees |
+| `dataset/lifecycle/` | Lifecycle SQL, attached connections and scratch storage |
+| `importing/` | Import orchestration, metadata, publication, integrity and export |
+| `splitting/` | Snapshot splitting and sharded replay |
+
+The public services and result types remain exported by `pt_snap_cli.core`.
+
 ## Service Boundaries
 
 | Files | Responsibility |
 | --- | --- |
-| `focus_service.py` | Resolve/validate database and device; explicit project/global focus writes |
-| `context_cache.py` | Bounded persistent Context LRU with resolved-path and file-signature invalidation |
-| `query_service.py` | Catalog contracts, focus/device selection, executor reuse, completeness and timeout budget |
-| `capability_service.py`, `overview_service.py` | Full catalog and read-only database/device/event-bound/import-metadata probes |
-| `report_service.py` | Compose named queries into peak-memory reports rather than duplicate SQL |
-| `import_service.py`, `import_metadata.py` | Trusted-input import validation, source/cache identity, metadata, optional focus |
-| `snapshot_import_backend.py` | Runtime adapter, temporary database, publication and rollback resources |
-| `split_service.py` | Strategy/device validation, staging, replay validation and exclusive directory publication |
-| `skill_service.py` | Skill discovery, status, install/upgrade/uninstall destination policy |
-| `models.py`, `errors.py` | Shared dataclass results and normalized domain failures |
-| `error_codes.py`, `json_codec.py` | Stable JSON error classification/hints and serializable envelopes |
+| `analysis/focus_service.py` | Resolve/validate database and device; explicit project/global focus writes |
+| `cache/context_cache.py` | Bounded persistent Context LRU with resolved-path and file-signature invalidation |
+| `analysis/query_service.py` | Catalog contracts, focus/device selection, executor reuse, completeness and timeout budget |
+| `analysis/capability_service.py`, `analysis/overview_service.py` | Full catalog and read-only database/device/event-bound/import-metadata probes |
+| `analysis/report_service.py` | Compose named queries into peak-memory reports rather than duplicate SQL |
+| `importing/import_service.py`, `importing/import_metadata.py` | Trusted-input import validation, source/cache identity, metadata, optional focus |
+| `importing/snapshot_import_backend.py` | Runtime adapter, temporary database, publication and rollback resources |
+| `splitting/split_service.py` | Strategy/device validation, staging, replay validation and exclusive directory publication |
+| `analysis/skill_service.py` | Skill discovery, status, install/upgrade/uninstall destination policy |
+| `common/models.py`, `common/errors.py` | Shared dataclass results and normalized domain failures |
+| `common/error_codes.py`, `common/json_codec.py` | Stable JSON error classification/hints and serializable envelopes |
 
 ## Ownership and Query Lifetime
 
@@ -75,6 +91,6 @@ concurrent destination creation must fail rather than replace another result.
 Use [service tests](../../../tests/core/AGENTS.md) for the owning suite. Shared
 result/error changes also require `tests/test_contract_cli_api.py` and JSON
 contracts; template metadata must flow through `template_info_to_dict` to both
-adapters. Keep the `models.py` Any/Unknown type gates intact. Runtime changes
+adapters. Keep the `common/models.py` Any/Unknown type gates intact. Runtime changes
 also follow [snapshot guidance](../snapshot/AGENTS.md), and skill content changes
 follow [authoring/evaluation](../../../skills/AGENTS.md).

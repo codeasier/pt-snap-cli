@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 
 from pt_snap_cli.cli import app
 from pt_snap_cli.config import ENV_DB_PATH
-from pt_snap_cli.core.json_codec import JSON_SCHEMA_VERSION
+from pt_snap_cli.core.common.json_codec import JSON_SCHEMA_VERSION
 from pt_snap_cli.query.config import QueryTemplate
 from pt_snap_cli.query.registry import QueryRegistry, register_query
 

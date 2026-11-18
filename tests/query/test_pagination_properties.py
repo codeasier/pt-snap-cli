@@ -17,8 +17,8 @@ import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
-from pt_snap_cli.core.query_limits import QueryLimits
-from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.common.query_limits import QueryLimits
 from pt_snap_cli.query import registry
 from pt_snap_cli.query.config import QueryConfig
 

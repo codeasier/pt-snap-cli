@@ -6,8 +6,8 @@ from contextlib import closing
 
 import pytest
 
-from pt_snap_cli.core.dataset_sources import QueryBudget
-from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.dataset.dataset_sources import QueryBudget
 from tests.test_dataset_focus import make_dataset
 
 

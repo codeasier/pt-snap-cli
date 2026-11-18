@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from pt_snap_cli.api import SnapshotAnalyzer
-from pt_snap_cli.core import dataset_attribution
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.dataset.query import dataset_attribution
 from tests.core.dataset_lifecycle_fixtures import db, native_dataset, row
 
 

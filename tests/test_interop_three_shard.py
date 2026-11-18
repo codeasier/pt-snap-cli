@@ -19,8 +19,8 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
 
-from pt_snap_cli.core.dataset_contract import QueryScope
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.dataset.dataset_contract import QueryScope
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
 from tests.fixtures.interop.generate_three_shard import (
     FORMATS,
     SOURCE,

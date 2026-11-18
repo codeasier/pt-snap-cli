@@ -1,6 +1,13 @@
-from pt_snap_cli.core.capability_service import CapabilityService
-from pt_snap_cli.core.error_codes import classify_error
-from pt_snap_cli.core.errors import (
+"""Product services grouped into analysis, dataset, import and shared layers."""
+
+from pt_snap_cli.core.analysis.capability_service import CapabilityService
+from pt_snap_cli.core.analysis.focus_service import FocusService
+from pt_snap_cli.core.analysis.overview_service import OverviewService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.analysis.report_service import ReportService
+from pt_snap_cli.core.analysis.skill_service import SkillService
+from pt_snap_cli.core.common.error_codes import classify_error
+from pt_snap_cli.core.common.errors import (
     DatabaseMissingError,
     DatabaseSchemaError,
     FocusFileInvalidError,
@@ -26,10 +33,7 @@ from pt_snap_cli.core.errors import (
     TemplateNotFoundError,
     TemplateRenderError,
 )
-from pt_snap_cli.core.focus_service import FocusService
-from pt_snap_cli.core.import_metadata import ImportMetadataService
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.json_codec import (
+from pt_snap_cli.core.common.json_codec import (
     JSON_SCHEMA_VERSION,
     JsonValue,
     dumps_json,
@@ -37,7 +41,7 @@ from pt_snap_cli.core.json_codec import (
     json_success,
     to_jsonable,
 )
-from pt_snap_cli.core.models import (
+from pt_snap_cli.core.common.models import (
     CapabilityCatalog,
     DatabaseOverview,
     DeviceTraceBounds,
@@ -58,12 +62,10 @@ from pt_snap_cli.core.models import (
     TemplateParameter,
     TemplateSummary,
 )
-from pt_snap_cli.core.overview_service import OverviewService
-from pt_snap_cli.core.query_limits import QueryLimits
-from pt_snap_cli.core.query_service import QueryService
-from pt_snap_cli.core.report_service import ReportService
-from pt_snap_cli.core.skill_service import SkillService
-from pt_snap_cli.core.split_service import SplitService
+from pt_snap_cli.core.common.query_limits import QueryLimits
+from pt_snap_cli.core.importing.import_metadata import ImportMetadataService
+from pt_snap_cli.core.importing.import_service import ImportService
+from pt_snap_cli.core.splitting.split_service import SplitService
 
 __all__ = [
     "QueryCancelledError",

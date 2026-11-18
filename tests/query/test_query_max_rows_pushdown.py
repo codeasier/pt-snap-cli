@@ -15,7 +15,7 @@ import pytest
 
 from pt_snap_cli.config import Config
 from pt_snap_cli.context import Context
-from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.core.analysis.query_service import QueryService
 from pt_snap_cli.query.executor import QueryExecutor
 from pt_snap_cli.query.registry import QueryRegistry, _load_all_templates
 

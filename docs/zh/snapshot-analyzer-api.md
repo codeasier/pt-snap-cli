@@ -87,7 +87,7 @@ with SnapshotAnalyzer(Path("/path/to/snapshot.db")) as scoped_analyzer:
 
 ```python
 from contextlib import closing
-from pt_snap_cli.core.context_cache import ContextCache
+from pt_snap_cli.core.cache.context_cache import ContextCache
 
 with closing(ContextCache()) as shared_cache:
     with SnapshotAnalyzer(Path("/path/to/snapshot.db"), context_cache=shared_cache) as first:

@@ -10,13 +10,17 @@ from pathlib import Path
 import pytest
 
 from pt_snap_cli.api import SnapshotAnalyzer
-from pt_snap_cli.core.context_cache import ContextCache
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
-from pt_snap_cli.core.dataset_sources import SOURCE_BATCH_SIZE, DatasetSourceResolver, QueryBudget
-from pt_snap_cli.core.errors import InvalidParameterError, QueryTimeoutError
-from pt_snap_cli.core.import_service import ImportService
-from pt_snap_cli.core.query_service import QueryService
-from pt_snap_cli.core.report_service import ReportService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.analysis.report_service import ReportService
+from pt_snap_cli.core.cache.context_cache import ContextCache
+from pt_snap_cli.core.common.errors import InvalidParameterError, QueryTimeoutError
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.dataset.dataset_sources import (
+    SOURCE_BATCH_SIZE,
+    DatasetSourceResolver,
+    QueryBudget,
+)
+from pt_snap_cli.core.importing.import_service import ImportService
 from tests.core.test_dataset_import import source_options
 from tests.test_dataset_focus import hashes, make_dataset
 
@@ -435,7 +439,7 @@ def test_native_same_event_active_sets_bytes_and_attribution_match_standalone(tm
 
 @pytest.mark.parametrize("ordered", [False, True])
 def test_cross_owner_same_full_stack_merges_before_top_n_like_standalone(tmp_path, ordered):
-    from pt_snap_cli.core.models import ImportOptions
+    from pt_snap_cli.core.common.models import ImportOptions
     from tests.snapshot.test_sharded_replay import block, event, segment, write_source
 
     data = {
@@ -650,7 +654,7 @@ def test_global_budget_counts_source_work_and_clears_sqlite_progress_handler(tmp
             return original(self, path, sql, params)
 
         monkeypatch.setattr(DatasetSourceResolver, "read", counted)
-        from pt_snap_cli.core.dataset_lifecycle_connection import _AttachedSources
+        from pt_snap_cli.core.dataset.lifecycle.dataset_lifecycle_connection import _AttachedSources
 
         original_attached = _AttachedSources.read
 

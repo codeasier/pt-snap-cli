@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.core.json_codec import (
+from pt_snap_cli.core.common.json_codec import (
     JSON_SCHEMA_VERSION,
     json_error,
     json_success,
     to_jsonable,
 )
-from pt_snap_cli.core.models import FocusState, ImportMetadata, ImportResult
+from pt_snap_cli.core.common.models import FocusState, ImportMetadata, ImportResult
 
 
 def test_to_jsonable_converts_paths_and_nested_models(tmp_path: Path) -> None:

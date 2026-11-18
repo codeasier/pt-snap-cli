@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from pt_snap_cli.core.errors import QueryExecutionError
-from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.core.analysis.query_service import QueryService
+from pt_snap_cli.core.common.errors import QueryExecutionError
 from tests.frame_tree_helpers import create_frame_tree_db
 
 
@@ -185,7 +185,7 @@ def test_inline_text_database_retains_queries_but_cannot_supply_original_frames(
 @pytest.mark.parametrize("name", ["event_frames"])
 @pytest.mark.parametrize("slice_index", [None, 0])
 def test_dataset_root_never_implicitly_selects_a_shard(tmp_path: Path, name: str, slice_index):
-    from pt_snap_cli.core.dataset_support import DATASET_SUPPORT
+    from pt_snap_cli.core.dataset.dataset_support import DATASET_SUPPORT
     from tests.test_dataset_focus import hashes, make_dataset
 
     root = make_dataset(tmp_path / "dataset")

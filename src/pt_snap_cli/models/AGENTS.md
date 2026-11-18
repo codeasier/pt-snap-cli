@@ -3,7 +3,7 @@
 Parent scope: [package runtime](../AGENTS.md).
 
 This scope owns exported dataclasses and allocator enums. It is separate from
-`core/models.py` service payloads and `snapshot/base/entities.py` replay objects.
+`core/common/models.py` service payloads and `snapshot/base/entities.py` replay objects.
 
 | File | Contract |
 | --- | --- |

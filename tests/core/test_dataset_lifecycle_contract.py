@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 
 from pt_snap_cli.api import SnapshotAnalyzer
-from pt_snap_cli.core import dataset_global
-from pt_snap_cli.core import dataset_lifecycle_scratch as scratch
-from pt_snap_cli.core import dataset_lifecycle_sql as sql
-from pt_snap_cli.core.dataset_contract import validate_dataset
-from pt_snap_cli.core.query_limits import QueryLimits
+from pt_snap_cli.core.common.query_limits import QueryLimits
+from pt_snap_cli.core.dataset.dataset_contract import validate_dataset
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_scratch as scratch
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_sql as sql
+from pt_snap_cli.core.dataset.query import dataset_global
 from tests.test_dataset_focus import hashes, make_dataset
 
 

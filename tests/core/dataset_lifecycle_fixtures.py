@@ -11,9 +11,9 @@ import random
 import sqlite3
 from contextlib import closing
 
-from pt_snap_cli.core.dataset_contract import ACTION_NAMES, BLOCK_STATES, validate_dataset
-from pt_snap_cli.core.dataset_resolver import DatasetResolver
-from pt_snap_cli.core.native_dataset_contract import NATIVE_FORMAT, cache_identity
+from pt_snap_cli.core.dataset.dataset_contract import ACTION_NAMES, BLOCK_STATES, validate_dataset
+from pt_snap_cli.core.dataset.dataset_resolver import DatasetResolver
+from pt_snap_cli.core.dataset.native_dataset_contract import NATIVE_FORMAT, cache_identity
 
 EVENT_COUNT = 80
 CAPACITY = 10

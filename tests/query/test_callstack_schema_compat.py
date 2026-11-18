@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from pt_snap_cli.context import Context
-from pt_snap_cli.core.query_service import QueryService
+from pt_snap_cli.core.analysis.query_service import QueryService
 from pt_snap_cli.query.config import QueryTemplate
 from pt_snap_cli.query.executor import QueryExecutionError, QueryExecutor
 from pt_snap_cli.query.registry import QueryRegistry, _load_all_templates, get_query

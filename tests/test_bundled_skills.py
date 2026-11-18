@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pt_snap_cli.core.skill_service import list_catalog_skills
+from pt_snap_cli.core.analysis.skill_service import list_catalog_skills
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPO_SKILLS = REPO_ROOT / "skills"

@@ -158,9 +158,9 @@ def run_cli(tmp_path, args, env=None, fault=None, evidence=None):
 @contextmanager
 def fault_hooks(kind, evidence):
     """Fault real execution boundaries; never fabricate rows or query results."""
-    from pt_snap_cli.core import dataset_lifecycle_scratch as scratch
-    from pt_snap_cli.core import dataset_lifecycle_sql as sql
-    from pt_snap_cli.core.dataset_lifecycle_connection import _AttachedSources
+    from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_scratch as scratch
+    from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_sql as sql
+    from pt_snap_cli.core.dataset.lifecycle.dataset_lifecycle_connection import _AttachedSources
 
     connections, directories = [], []
     events = []

@@ -13,9 +13,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from pt_snap_cli.api import QueryLimits, SnapshotAnalyzer
-from pt_snap_cli.core import dataset_lifecycle_scratch as scratch
-from pt_snap_cli.core import dataset_lifecycle_sql as sql
-from pt_snap_cli.core.dataset_lifecycle_connection import _AttachedSources
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_scratch as scratch
+from pt_snap_cli.core.dataset.lifecycle import dataset_lifecycle_sql as sql
+from pt_snap_cli.core.dataset.lifecycle.dataset_lifecycle_connection import _AttachedSources
 
 WAIT_SECONDS = 30
 QUERY_PARAMS = {"order_by": "id", "order_dir": "ASC", "limit": -1}

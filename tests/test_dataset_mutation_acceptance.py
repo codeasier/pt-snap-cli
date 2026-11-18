@@ -14,9 +14,9 @@ from unittest.mock import patch
 import pytest
 
 from pt_snap_cli.api import SnapshotAnalyzer
-from pt_snap_cli.core import dataset_resolver as resolver
-from pt_snap_cli.core.dataset_sources import DatasetSourceResolver
-from pt_snap_cli.core.errors import QueryTimeoutError
+from pt_snap_cli.core.common.errors import QueryTimeoutError
+from pt_snap_cli.core.dataset import dataset_resolver as resolver
+from pt_snap_cli.core.dataset.dataset_sources import DatasetSourceResolver
 from tests.core.dataset_lifecycle_fixtures import build
 from tests.dataset_concurrency_support import ISOLATED_ENV, WAIT_SECONDS
 from tests.test_dataset_focus import hashes
